@@ -131,11 +131,17 @@ pub enum OrchestratorError {
     #[error(transparent)]
     Runtime(#[from] crate::RuntimeError),
     #[error(transparent)]
-    Harness(#[from] HarnessReplayError),
+    Harness(Box<HarnessReplayError>),
     #[error(
         "native graph orchestration is unavailable because runx-runtime was built without the cli-tool feature"
     )]
     CliToolFeatureDisabled,
+}
+
+impl From<HarnessReplayError> for OrchestratorError {
+    fn from(source: HarnessReplayError) -> Self {
+        Self::Harness(Box::new(source))
+    }
 }
 
 #[derive(Clone, Debug, Default)]

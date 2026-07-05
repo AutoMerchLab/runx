@@ -260,7 +260,7 @@ fn run_inline_harness(skill_path: &Path, receipt_dir: Option<&OsString>) -> Exit
     let request = runx_runtime::InlineHarnessRequest {
         skill_path: skill_path.to_path_buf(),
         receipt_dir: receipt_dir.map(PathBuf::from),
-        env: None,
+        env: Some(runx_cli::runtime::local_development_receipt_env()),
     };
     let report = match runx_cli::runtime::local_orchestrator().run_inline_harness(&request) {
         Ok(report) => report,

@@ -65,18 +65,8 @@ pub enum HarnessReplayError {
         expected: String,
         actual: String,
     },
-    #[error(
-        "{message}; receipt={receipt_id}; disposition={disposition}; reason={reason_code}; summary={summary}; skill_stdout={skill_stdout}; skill_stderr={skill_stderr}"
-    )]
-    ExpectationFailed {
-        message: String,
-        receipt_id: String,
-        disposition: String,
-        reason_code: String,
-        summary: String,
-        skill_stdout: String,
-        skill_stderr: String,
-    },
+    #[error(transparent)]
+    ExpectationFailed(Box<HarnessExpectationFailure>),
     #[error("receipt digest failed: {message}")]
     ReceiptDigest { message: String },
     #[error("receipt proof failed for {receipt_id}: {findings}")]
@@ -92,6 +82,20 @@ pub enum HarnessReplayError {
         "native cli-tool harness replay is unavailable because runx-runtime was built without the cli-tool feature"
     )]
     CliToolFeatureDisabled,
+}
+
+#[derive(Debug, Error)]
+#[error(
+    "{message}; receipt={receipt_id}; disposition={disposition}; reason={reason_code}; summary={summary}; skill_stdout={skill_stdout}; skill_stderr={skill_stderr}"
+)]
+pub struct HarnessExpectationFailure {
+    message: String,
+    receipt_id: String,
+    disposition: String,
+    reason_code: String,
+    summary: String,
+    skill_stdout: String,
+    skill_stderr: String,
 }
 
 impl From<crate::execution::skill_front::SkillRunError> for HarnessReplayError {
@@ -209,7 +213,7 @@ fn expectation_error_with_output(
     error: HarnessReplayError,
     output: &HarnessReplayOutput,
 ) -> HarnessReplayError {
-    HarnessReplayError::ExpectationFailed {
+    HarnessReplayError::ExpectationFailed(Box::new(HarnessExpectationFailure {
         message: error.to_string(),
         receipt_id: output.receipt.id.to_string(),
         disposition: format!("{:?}", output.receipt.seal.disposition),
@@ -225,7 +229,7 @@ fn expectation_error_with_output(
             .as_ref()
             .map(|skill_output| truncate_diagnostic(&skill_output.stderr))
             .unwrap_or_default(),
-    }
+    }))
 }
 
 fn truncate_diagnostic(value: &str) -> String {

@@ -48,7 +48,8 @@ pub enum SkillAction {
 // rust-style-allow: long-function - the top-level command path owns resolve/inspect/run/failure presentation in one explicit dispatch.
 pub fn run_native_skill(plan: SkillPlan) -> ExitCode {
     let cwd = env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let env = env::vars().collect();
+    let mut env = env::vars().collect();
+    crate::runtime::ensure_local_development_receipt_signing_env(&mut env);
     let resume_skill_ref = plan.skill_path.to_string_lossy().into_owned();
     let resolved = match resolve_skill_ref_details(
         &plan.skill_path,

@@ -1,6 +1,7 @@
 // rust-style-allow: large-file because CLI runtime wiring binds payment
 // finality supervisor selection, external adapter translation, and receipt
 // metadata persistence at one audited command boundary.
+use std::collections::BTreeMap;
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -20,7 +21,8 @@ use runx_pay::{
 };
 use runx_runtime::{
     CredentialDelivery, HarnessReplayOutput, LocalOrchestrator, ProviderPermissionEffect,
-    RUNX_RECEIPT_DIR_ENV, RuntimeEffectRegistry,
+    RUNX_RECEIPT_DIR_ENV, RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
+    RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV, RUNX_RECEIPT_SIGN_KID_ENV, RuntimeEffectRegistry,
     adapters::external_adapter::{
         ExternalAdapterProcessOutcome, ExternalAdapterProcessSupervisor, ExternalAdapterSupervisor,
     },
@@ -29,10 +31,49 @@ use runx_runtime::{
 pub const RUNX_PAYMENT_FINALITY_SUPERVISOR_MANIFEST_ENV: &str =
     "RUNX_PAYMENT_FINALITY_SUPERVISOR_MANIFEST";
 const PAYMENT_FINALITY_SUPERVISOR_SKILL_REF: &str = "runx/payment-finality-supervisor";
+pub(crate) const LOCAL_DEVELOPMENT_RECEIPT_SIGNING_KID: &str = "runx-local-development";
+pub(crate) const LOCAL_DEVELOPMENT_RECEIPT_SIGNING_SEED_BASE64: &str =
+    "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=";
+pub(crate) const LOCAL_DEVELOPMENT_RECEIPT_SIGNING_ISSUER_TYPE: &str = "ci";
 
 #[must_use]
 pub fn local_orchestrator() -> LocalOrchestrator {
     LocalOrchestrator::with_effects(payment_effect_registry())
+}
+
+#[must_use]
+pub fn local_development_receipt_env() -> BTreeMap<String, String> {
+    let mut env = runx_runtime::RuntimeOptions::safe_process_env();
+    ensure_local_development_receipt_signing_env(&mut env);
+    env
+}
+
+pub(crate) fn ensure_local_development_receipt_signing_env(env: &mut BTreeMap<String, String>) {
+    if [
+        RUNX_RECEIPT_SIGN_KID_ENV,
+        RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
+        RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
+    ]
+    .iter()
+    .all(|name| env_value_is_blank(env, name))
+    {
+        env.insert(
+            RUNX_RECEIPT_SIGN_KID_ENV.to_owned(),
+            LOCAL_DEVELOPMENT_RECEIPT_SIGNING_KID.to_owned(),
+        );
+        env.insert(
+            RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV.to_owned(),
+            LOCAL_DEVELOPMENT_RECEIPT_SIGNING_SEED_BASE64.to_owned(),
+        );
+        env.insert(
+            RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV.to_owned(),
+            LOCAL_DEVELOPMENT_RECEIPT_SIGNING_ISSUER_TYPE.to_owned(),
+        );
+    }
+}
+
+fn env_value_is_blank(env: &BTreeMap<String, String>, name: &str) -> bool {
+    env.get(name).is_none_or(|value| value.trim().is_empty())
 }
 
 #[must_use]
@@ -265,6 +306,44 @@ mod tests {
     use runx_pay::PAYMENT_EFFECT_FAMILY;
 
     use super::*;
+
+    #[test]
+    fn local_development_receipts_supply_signing_env_for_fresh_users() {
+        let mut env = BTreeMap::new();
+
+        ensure_local_development_receipt_signing_env(&mut env);
+
+        assert_eq!(
+            env.get(RUNX_RECEIPT_SIGN_KID_ENV).map(String::as_str),
+            Some(LOCAL_DEVELOPMENT_RECEIPT_SIGNING_KID)
+        );
+        assert_eq!(
+            env.get(RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV)
+                .map(String::as_str),
+            Some(LOCAL_DEVELOPMENT_RECEIPT_SIGNING_ISSUER_TYPE)
+        );
+        assert!(
+            env.get(RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV)
+                .is_some_and(|value| !value.trim().is_empty())
+        );
+    }
+
+    #[test]
+    fn local_development_receipts_do_not_mask_partial_signing_env() {
+        let mut env = BTreeMap::from([(
+            RUNX_RECEIPT_SIGN_KID_ENV.to_owned(),
+            "explicit-kid".to_owned(),
+        )]);
+
+        ensure_local_development_receipt_signing_env(&mut env);
+
+        assert_eq!(
+            env.get(RUNX_RECEIPT_SIGN_KID_ENV).map(String::as_str),
+            Some("explicit-kid")
+        );
+        assert!(!env.contains_key(RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV));
+        assert!(!env.contains_key(RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV));
+    }
 
     #[test]
     fn external_adapter_payment_finality_supervisor_round_trips_evidence() -> Result<(), String> {

@@ -24,18 +24,6 @@ impl ReceiptServices {
         })
     }
 
-    pub(crate) fn from_env_or_local_development(
-        env: &BTreeMap<String, String>,
-    ) -> Result<Self, RuntimeReceiptSigningError> {
-        match RuntimeReceiptSignatureConfig::from_env(env) {
-            Ok(signature_config) => Ok(Self { signature_config }),
-            Err(RuntimeReceiptSigningError::MissingSigningEnv) => Ok(Self {
-                signature_config: RuntimeReceiptSignatureConfig::local_development(),
-            }),
-            Err(error) => Err(error),
-        }
-    }
-
     pub(crate) fn signature_config(&self) -> &RuntimeReceiptSignatureConfig {
         &self.signature_config
     }

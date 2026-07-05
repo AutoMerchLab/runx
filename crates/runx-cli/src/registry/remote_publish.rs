@@ -4,10 +4,17 @@ use std::path::Path;
 use runx_runtime::registry::{
     HttpMethod, HttpRequest, RegistryPublishHarnessReport, RuntimeHttpHeader, Transport,
 };
-use serde::{Deserialize, Serialize};
 
-use super::package::{HostedSkillPackageFile, SkillPackage};
+mod types;
+
+pub(super) use types::HostedSkillPublishResult;
+
+use super::package::SkillPackage;
 use super::{RegistryCliError, RegistryPlan, internal_error, usage_error};
+use types::{
+    HostedAdminSkillPublishEnvelope, HostedAdminSkillPublishRequest, HostedSkillPublishEnvelope,
+    HostedSkillPublishRequest,
+};
 
 pub(super) fn publish_remote_skill_package(
     registry_url: &str,
@@ -33,13 +40,15 @@ pub(super) fn publish_remote_skill_package(
             .map_err(|error| internal_error(error.to_string()))?;
         return publish_remote_admin_skill_package_with_transport(
             &transport,
-            registry_url,
-            &token,
-            &owner,
-            plan.version.as_deref(),
-            plan.upsert,
-            package,
-            harness,
+            RemoteAdminPublishRequest {
+                registry_url,
+                token: &token,
+                owner: &owner,
+                version: plan.version.as_deref(),
+                upsert: plan.upsert,
+                package,
+                harness,
+            },
         );
     }
     let token = crate::public_api_token::resolve(None, env, cwd)?.ok_or_else(|| {
@@ -100,36 +109,10 @@ pub(super) fn publish_remote_skill_package_with_transport<T: Transport>(
     version: Option<&str>,
     package: &SkillPackage,
 ) -> Result<HostedSkillPublishResult, RegistryCliError> {
-    let body = serde_json::to_string(&HostedSkillPublishRequest {
-        markdown: &package.markdown,
-        profile_document: package.profile_document.as_deref(),
-        version,
-        package_files: &package.package_files,
-    })
-    .map_err(|error| internal_error(error.to_string()))?;
-    let response = transport
-        .send(HttpRequest {
-            method: HttpMethod::Post,
-            url: format!("{}/v1/skills", registry_url.trim_end_matches('/')),
-            headers: vec![
-                RuntimeHttpHeader::new("authorization", format!("Bearer {token}")),
-                RuntimeHttpHeader::new("content-type", "application/json"),
-            ],
-            body: Some(body),
-        })
+    let body = serde_json::to_string(&HostedSkillPublishRequest::new(package, version))
         .map_err(|error| internal_error(error.to_string()))?;
-    if !(200..=299).contains(&response.status) {
-        if let Some(error) = crate::public_api::parse_error(&response.body) {
-            return Err(internal_error(format!(
-                "remote registry publish failed [{}]: {}",
-                error.code, error.detail
-            )));
-        }
-        return Err(internal_error(format!(
-            "remote registry publish returned HTTP {}: {}",
-            response.status, response.body
-        )));
-    }
+    let response = post_registry_request(transport, registry_url, token, "/v1/skills", body)?;
+    ensure_success_response(&response, "remote registry publish")?;
     let envelope =
         serde_json::from_str::<HostedSkillPublishEnvelope>(&response.body).map_err(|error| {
             internal_error(format!(
@@ -145,52 +128,36 @@ pub(super) fn publish_remote_skill_package_with_transport<T: Transport>(
     Ok(envelope.publish)
 }
 
+pub(super) struct RemoteAdminPublishRequest<'a> {
+    registry_url: &'a str,
+    token: &'a str,
+    owner: &'a str,
+    version: Option<&'a str>,
+    upsert: bool,
+    package: &'a SkillPackage,
+    harness: &'a RegistryPublishHarnessReport,
+}
+
 pub(super) fn publish_remote_admin_skill_package_with_transport<T: Transport>(
     transport: &T,
-    registry_url: &str,
-    token: &str,
-    owner: &str,
-    version: Option<&str>,
-    upsert: bool,
-    package: &SkillPackage,
-    harness: &RegistryPublishHarnessReport,
+    request: RemoteAdminPublishRequest<'_>,
 ) -> Result<HostedSkillPublishResult, RegistryCliError> {
-    let body = serde_json::to_string(&HostedAdminSkillPublishRequest {
-        owner,
-        markdown: &package.markdown,
-        profile_document: package.profile_document.as_deref(),
-        version,
-        upsert,
-        package_files: &package.package_files,
-        harness,
-    })
+    let body = serde_json::to_string(&HostedAdminSkillPublishRequest::new(
+        request.owner,
+        request.package,
+        request.version,
+        request.upsert,
+        request.harness,
+    ))
     .map_err(|error| internal_error(error.to_string()))?;
-    let response = transport
-        .send(HttpRequest {
-            method: HttpMethod::Post,
-            url: format!(
-                "{}/v1/admin/registry/publish",
-                registry_url.trim_end_matches('/')
-            ),
-            headers: vec![
-                RuntimeHttpHeader::new("authorization", format!("Bearer {token}")),
-                RuntimeHttpHeader::new("content-type", "application/json"),
-            ],
-            body: Some(body),
-        })
-        .map_err(|error| internal_error(error.to_string()))?;
-    if !(200..=299).contains(&response.status) {
-        if let Some(error) = crate::public_api::parse_error(&response.body) {
-            return Err(internal_error(format!(
-                "remote registry admin publish failed [{}]: {}",
-                error.code, error.detail
-            )));
-        }
-        return Err(internal_error(format!(
-            "remote registry admin publish returned HTTP {}: {}",
-            response.status, response.body
-        )));
-    }
+    let response = post_registry_request(
+        transport,
+        request.registry_url,
+        request.token,
+        "/v1/admin/registry/publish",
+        body,
+    )?;
+    ensure_success_response(&response, "remote registry admin publish")?;
     let envelope = serde_json::from_str::<HostedAdminSkillPublishEnvelope>(&response.body)
         .map_err(|error| {
             internal_error(format!(
@@ -208,165 +175,47 @@ pub(super) fn publish_remote_admin_skill_package_with_transport<T: Transport>(
     Ok(envelope.publish.into_hosted_result())
 }
 
+fn post_registry_request<T: Transport>(
+    transport: &T,
+    registry_url: &str,
+    token: &str,
+    path: &str,
+    body: String,
+) -> Result<runx_runtime::registry::HttpResponse, RegistryCliError> {
+    transport
+        .send(HttpRequest {
+            method: HttpMethod::Post,
+            url: format!("{}{}", registry_url.trim_end_matches('/'), path),
+            headers: vec![
+                RuntimeHttpHeader::new("authorization", format!("Bearer {token}")),
+                RuntimeHttpHeader::new("content-type", "application/json"),
+            ],
+            body: Some(body),
+        })
+        .map_err(|error| internal_error(error.to_string()))
+}
+
+fn ensure_success_response(
+    response: &runx_runtime::registry::HttpResponse,
+    label: &str,
+) -> Result<(), RegistryCliError> {
+    if (200..=299).contains(&response.status) {
+        return Ok(());
+    }
+    if let Some(error) = crate::public_api::parse_error(&response.body) {
+        return Err(internal_error(format!(
+            "{label} failed [{}]: {}",
+            error.code, error.detail
+        )));
+    }
+    Err(internal_error(format!(
+        "{label} returned HTTP {}: {}",
+        response.status, response.body
+    )))
+}
+
 fn registry_private_network_allowed(env: &BTreeMap<String, String>) -> bool {
     crate::public_api::private_network_allowed(false, env, "RUNX_REGISTRY_ALLOW_LOCAL_API")
-}
-
-#[derive(Serialize)]
-struct HostedSkillPublishRequest<'a> {
-    markdown: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    profile_document: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    version: Option<&'a str>,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    package_files: &'a Vec<HostedSkillPackageFile>,
-}
-
-#[derive(Serialize)]
-struct HostedAdminSkillPublishRequest<'a> {
-    owner: &'a str,
-    markdown: &'a str,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    profile_document: Option<&'a str>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    version: Option<&'a str>,
-    #[serde(skip_serializing_if = "is_false")]
-    upsert: bool,
-    #[serde(skip_serializing_if = "Vec::is_empty")]
-    package_files: &'a Vec<HostedSkillPackageFile>,
-    harness: &'a RegistryPublishHarnessReport,
-}
-
-fn is_false(value: &bool) -> bool {
-    !*value
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-struct HostedSkillPublishEnvelope {
-    status: String,
-    publish: HostedSkillPublishResult,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-struct HostedAdminSkillPublishEnvelope {
-    status: String,
-    publish: HostedAdminSkillPublishResult,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-struct HostedAdminSkillPublishResult {
-    status: String,
-    skill_id: String,
-    name: String,
-    version: String,
-    digest: String,
-    #[serde(default)]
-    profile_digest: Option<String>,
-    #[serde(default)]
-    record: Option<HostedAdminSkillRecord>,
-    link: HostedSkillPublishLink,
-}
-
-impl HostedAdminSkillPublishResult {
-    fn into_hosted_result(self) -> HostedSkillPublishResult {
-        let owner = self
-            .record
-            .as_ref()
-            .map(|record| record.owner.clone())
-            .or_else(|| {
-                self.skill_id
-                    .split_once('/')
-                    .map(|(owner, _)| owner.to_owned())
-            })
-            .unwrap_or_default();
-        let trust_tier = self
-            .record
-            .as_ref()
-            .and_then(|record| record.trust_tier.clone())
-            .unwrap_or_else(|| "first_party".to_owned());
-        HostedSkillPublishResult {
-            status: self.status,
-            public_url: self.link.public_url(&self.skill_id, &self.version),
-            skill_id: self.skill_id,
-            owner,
-            name: self.name,
-            version: self.version,
-            digest: self.digest,
-            profile_digest: self.profile_digest,
-            trust_tier,
-            install_command: self.link.install_command,
-            run_command: self.link.run_command,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-struct HostedAdminSkillRecord {
-    owner: String,
-    #[serde(default)]
-    trust_tier: Option<String>,
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-struct HostedSkillPublishLink {
-    install_command: String,
-    run_command: String,
-    #[serde(default)]
-    public_url: Option<String>,
-    #[serde(default)]
-    link: Option<String>,
-}
-
-impl HostedSkillPublishLink {
-    fn public_url(&self, skill_id: &str, version: &str) -> String {
-        self.public_url
-            .as_deref()
-            .or(self
-                .link
-                .as_deref()
-                .filter(|link| link.starts_with("http://") || link.starts_with("https://")))
-            .map(str::to_owned)
-            .unwrap_or_else(|| runx_skill_public_url(skill_id, version))
-    }
-}
-
-fn runx_skill_public_url(skill_id: &str, version: &str) -> String {
-    let (owner, name) = skill_id.split_once('/').unwrap_or(("", skill_id));
-    format!(
-        "https://runx.ai/x/{}/{}@{}",
-        encode_path_component(owner),
-        encode_path_component(name),
-        encode_path_component(version)
-    )
-}
-
-fn encode_path_component(value: &str) -> String {
-    let mut encoded = String::new();
-    for byte in value.bytes() {
-        if matches!(byte, b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~') {
-            encoded.push(char::from(byte));
-        } else {
-            encoded.push_str(&format!("%{byte:02X}"));
-        }
-    }
-    encoded
-}
-
-#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
-pub(super) struct HostedSkillPublishResult {
-    pub(super) status: String,
-    pub(super) skill_id: String,
-    pub(super) owner: String,
-    pub(super) name: String,
-    pub(super) version: String,
-    pub(super) digest: String,
-    #[serde(default)]
-    pub(super) profile_digest: Option<String>,
-    pub(super) trust_tier: String,
-    pub(super) install_command: String,
-    pub(super) run_command: String,
-    pub(super) public_url: String,
 }
 
 #[cfg(test)]
@@ -377,6 +226,7 @@ mod tests {
         HttpMethod, HttpRequest, HttpResponse, RuntimeHttpError, Transport,
     };
 
+    use super::super::package::HostedSkillPackageFile;
     use super::*;
 
     #[test]
@@ -446,7 +296,8 @@ mod tests {
     }
 
     #[test]
-    fn remote_registry_publish_rejects_unsuccessful_2xx_envelope() {
+    fn remote_registry_publish_rejects_unsuccessful_2xx_envelope()
+    -> Result<(), Box<dyn std::error::Error>> {
         let transport = StubTransport::new(HttpResponse {
             status: 200,
             body: serde_json::json!({
@@ -476,16 +327,19 @@ mod tests {
             package_files: Vec::new(),
         };
 
-        let error = publish_remote_skill_package_with_transport(
+        let error = match publish_remote_skill_package_with_transport(
             &transport,
             "https://runx.test/",
             "rxk_secret",
             None,
             &package,
-        )
-        .unwrap_err();
+        ) {
+            Ok(_) => return Err("unsuccessful registry response was accepted".into()),
+            Err(error) => error,
+        };
 
         assert!(error.to_string().contains("unsuccessful status"));
+        Ok(())
     }
 
     #[test]
@@ -547,13 +401,15 @@ mod tests {
 
         let result = publish_remote_admin_skill_package_with_transport(
             &transport,
-            "https://runx.test/",
-            "admin-token",
-            "runx",
-            Some("sha-123"),
-            true,
-            &package,
-            &harness,
+            RemoteAdminPublishRequest {
+                registry_url: "https://runx.test/",
+                token: "admin-token",
+                owner: "runx",
+                version: Some("sha-123"),
+                upsert: true,
+                package: &package,
+                harness: &harness,
+            },
         )?;
 
         assert_eq!(result.skill_id, "runx/hello");

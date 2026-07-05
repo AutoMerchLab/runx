@@ -112,7 +112,7 @@ impl ThreadOutboxProviderProcessSupervisor {
             .args(manifest.transport.args.clone().unwrap_or_default())
             .env(secret_env_map(credential_delivery))
             .stdin(Some(ProcessStdin::new(
-                request_bytes(&request)?,
+                request_bytes(request)?,
                 "writing thread outbox provider request",
             )))
             .timeout(Some(Duration::from_millis(self.options.timeout_ms)))
@@ -162,7 +162,7 @@ impl ThreadOutboxProviderProcessSupervisor {
         }
         let provider_response = parse_provider_response(&output.stdout.bytes, credential_delivery)?;
         let observation = provider_response.observation;
-        validate_observation(manifest, &request, &observation)?;
+        validate_observation(manifest, request, &observation)?;
         Ok(ThreadOutboxProviderProcessOutcome {
             observation,
             provider_output: provider_response.output,

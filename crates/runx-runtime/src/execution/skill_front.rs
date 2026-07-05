@@ -93,7 +93,7 @@ pub(crate) fn execute_skill_run_with_overrides(
     effects: &RuntimeEffectRegistry,
 ) -> Result<JsonValue, SkillRunError> {
     let raw_workspace = WorkspaceEnv::new(request.env.clone(), request.cwd.clone());
-    let receipts = ReceiptServices::from_env_or_local_development(raw_workspace.env())
+    let receipts = ReceiptServices::from_env(raw_workspace.env())
         .map_err(|error| SkillRunError::Invalid(error.to_string()))?;
     let mut runtime_env = request.env.clone();
     strip_receipt_signing_env(&mut runtime_env);
