@@ -9,8 +9,8 @@
 ## 2. Source Code & Provenance
 - The skill code is available at: [source_url](https://github.com/AutoMerchLab/runx/tree/ed42aefe707851d220e6131e68615cc86d29c53a/skills/crm-cleanup)
 - **PR URL:** https://github.com/runxhq/runx/pull/264
-- **X.yaml:** [Raw link](https://raw.githubusercontent.com/AutoMerchLab/runx/59d6d07ecc81bb68b2ac98e6a403aaf863ec5f76/skills/crm-cleanup/X.yaml)
-- **SKILL.md:** [Raw link](https://raw.githubusercontent.com/AutoMerchLab/runx/59d6d07ecc81bb68b2ac98e6a403aaf863ec5f76/skills/crm-cleanup/SKILL.md)
+- **X.yaml:** [Raw link](https://raw.githubusercontent.com/AutoMerchLab/runx/73b14f9a84fd500cc44dae2bd076610a624ec803/skills/crm-cleanup/X.yaml)
+- **SKILL.md:** [Raw link](https://raw.githubusercontent.com/AutoMerchLab/runx/73b14f9a84fd500cc44dae2bd076610a624ec803/skills/crm-cleanup/SKILL.md)
 
 ## 3. Harness Verification
 The local harness was run successfully against `skills/crm-cleanup`:

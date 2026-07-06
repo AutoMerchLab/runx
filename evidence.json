@@ -3,7 +3,7 @@
   "observations": [
     {
       "type": "runx_cli_version",
-      "value": "runx-cli 0.6.14",
+      "value": "runx-cli 0.6.16",
       "detail": "CLI version used"
     },
     {
@@ -18,12 +18,12 @@
     },
     {
       "type": "version",
-      "value": "1.0.1",
+      "value": "1.0.2",
       "detail": "Version deployed"
     },
     {
       "type": "registry_ref",
-      "value": "automerchlab/crm-cleanup@1.0.1",
+      "value": "automerchlab/crm-cleanup@sha-0c7de8ffc412",
       "detail": "Registry reference"
     },
     {
@@ -38,32 +38,32 @@
     },
     {
       "type": "source_url",
-      "value": "https://github.com/AutoMerchLab/runx/tree/59d6d07ecc81bb68b2ac98e6a403aaf863ec5f76/skills/crm-cleanup",
+      "value": "https://github.com/AutoMerchLab/runx/tree/73b14f9a84fd500cc44dae2bd076610a624ec803/skills/crm-cleanup",
       "detail": "Source URL"
     },
     {
       "type": "raw_x_yaml",
-      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/59d6d07ecc81bb68b2ac98e6a403aaf863ec5f76/skills/crm-cleanup/X.yaml",
+      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/73b14f9a84fd500cc44dae2bd076610a624ec803/skills/crm-cleanup/X.yaml",
       "detail": "Raw X.yaml"
     },
     {
       "type": "raw_skill_md",
-      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/59d6d07ecc81bb68b2ac98e6a403aaf863ec5f76/skills/crm-cleanup/SKILL.md",
+      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/73b14f9a84fd500cc44dae2bd076610a624ec803/skills/crm-cleanup/SKILL.md",
       "detail": "Raw SKILL.md"
     },
     {
       "type": "verification_json",
-      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/59d6d07ecc81bb68b2ac98e6a403aaf863ec5f76/verification.json",
+      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/73b14f9a84fd500cc44dae2bd076610a624ec803/verification.json",
       "detail": "Verification JSON"
     },
     {
       "type": "evidence_json",
-      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/59d6d07ecc81bb68b2ac98e6a403aaf863ec5f76/evidence.json",
+      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/73b14f9a84fd500cc44dae2bd076610a624ec803/evidence.json",
       "detail": "Evidence JSON"
     },
     {
       "type": "report",
-      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/59d6d07ecc81bb68b2ac98e6a403aaf863ec5f76/report.md",
+      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/73b14f9a84fd500cc44dae2bd076610a624ec803/report.md",
       "detail": "Report MD"
     },
     {
@@ -73,7 +73,7 @@
     },
     {
       "type": "install_command",
-      "value": "runx add automerchlab/crm-cleanup@1.0.1",
+      "value": "runx add automerchlab/crm-cleanup@sha-0c7de8ffc412",
       "detail": "Install command"
     },
     {
