@@ -1,0 +1,15 @@
+{
+  "status": "passed",
+  "case_count": 2,
+  "assertion_error_count": 0,
+  "assertion_errors": [],
+  "case_names": [
+    "sealed_healthy_signals_continue",
+    "contradictory_signals_escalate"
+  ],
+  "receipt_ids": [
+    "sha256:7a1195f01ce5991dba246492e5f9996309d4ec9df368c6bad486468ddc8f2818",
+    "sha256:2873078acbdf556645dcf18651698f827003f22bbe7578d14b9dd03d7a8ec18d"
+  ],
+  "graph_case_count": 0
+}

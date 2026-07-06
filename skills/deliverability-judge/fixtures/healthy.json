@@ -1,0 +1,9 @@
+{
+  "evidence": {
+    "postmaster_report": { "source": "postmaster.google.com", "timestamp": "2026-06-25T12:00:00Z", "reputation_score": 95, "domain": "example.com" },
+    "bounce_metrics": { "source": "esp-bounce-monitor", "timestamp": "2026-06-25T12:00:00Z", "bounce_pct": 1.2 },
+    "complaint_metrics": { "source": "esp-feedback-loop", "timestamp": "2026-06-25T12:00:00Z", "complaint_pct": 0.05 },
+    "placement_probe": { "source": "seedlist-placement-probe", "timestamp": "2026-06-25T12:00:00Z", "inbox_pct": 97.5 }
+  },
+  "policy": { "min_reputation_score": 80, "max_bounce_pct": 5, "max_complaint_pct": 0.3 }
+}

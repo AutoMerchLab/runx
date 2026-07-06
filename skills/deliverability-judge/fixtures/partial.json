@@ -1,0 +1,7 @@
+{
+  "evidence": {
+    "postmaster_report": { "source": "postmaster.google.com", "timestamp": "2026-06-25T12:00:00Z", "reputation_score": 95, "domain": "example.com" },
+    "bounce_metrics": { "source": "esp-bounce-monitor", "timestamp": "2026-06-25T12:00:00Z", "bounce_pct": 1.2 }
+  },
+  "policy": { "min_reputation_score": 80, "max_bounce_pct": 5, "max_complaint_pct": 0.3 }
+}
