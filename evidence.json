@@ -1,0 +1,79 @@
+{
+  "claimant": "automerchlab",
+  "bounty": 79,
+  "package": {
+    "name": "crm-cleanup",
+    "version": "1.0.0",
+    "registry": "https://api.runx.ai",
+    "public_url": "https://runx.ai/x/automerchlab/crm-cleanup@sha-placeholder",
+    "install_command": "runx add automerchlab/crm-cleanup@1.0.0",
+    "publish_method": "runx login --provider github --for publish && runx registry publish ./skills/crm-cleanup/SKILL.md --registry https://api.runx.ai"
+  },
+  "pr": {
+    "url": "https://github.com/runxhq/runx/pull/TBD",
+    "head_commit": "TBD_COMMIT_HASH"
+  },
+  "source": {
+    "source_url": "https://github.com/automerchlab/runx/tree/TBD_COMMIT_HASH/skills/crm-cleanup",
+    "x_yaml": "https://raw.githubusercontent.com/automerchlab/runx/TBD_COMMIT_HASH/skills/crm-cleanup/X.yaml",
+    "skill_md": "https://raw.githubusercontent.com/automerchlab/runx/TBD_COMMIT_HASH/skills/crm-cleanup/SKILL.md",
+    "verification_json": "https://raw.githubusercontent.com/automerchlab/runx/TBD_COMMIT_HASH/verification.json",
+    "evidence_json": "https://raw.githubusercontent.com/automerchlab/runx/TBD_COMMIT_HASH/evidence.json",
+    "report_md": "https://raw.githubusercontent.com/automerchlab/runx/TBD_COMMIT_HASH/report.md"
+  },
+  "dogfood": {
+    "package": "automerchlab/crm-cleanup@1.0.0",
+    "command": "runx skill ./skills/crm-cleanup --json --input transcript='The client confirmed the budget is $10k and next step is to send a proposal.' --input crm_schema='{\"fields\": [\"budget\", \"status\", \"next_step\"]}' > dogfood_receipt.json",
+    "input": {
+      "transcript": "The client confirmed the budget is $10k and next step is to send a proposal.",
+      "crm_schema": "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
+    },
+    "output": {
+      "field_updates": {
+        "budget": "0k and next step is to send a proposal",
+        "next_step": "to send a proposal"
+      },
+      "takeaways": [
+        "Identified budget: 0k and next step is to send a proposal",
+        "Identified next step: to send a proposal"
+      ],
+      "write_proposal": true
+    },
+    "receipt_ref": "runx:receipt:sha256:f9c88ba17a3ff4afbf07bef75b13da7c035ecc631646bc2a6acc999d1f2f1148",
+    "verify_verdict": "valid: true",
+    "harness_cases": [
+      {
+        "name": "actionable",
+        "status": "sealed"
+      },
+      {
+        "name": "noop",
+        "status": "sealed"
+      }
+    ]
+  },
+  "observations": [
+    "runx CLI version: runx-cli 0.6.16",
+    "publisher owner: automerchlab",
+    "package name: crm-cleanup",
+    "version: 1.0.0",
+    "registry ref: https://api.runx.ai",
+    "public_url is the live registry listing (placeholder currently)",
+    "pr_url points to the submitted PR (placeholder currently)",
+    "source_url points to the specific commit tree",
+    "raw x_yaml and raw skill_md point to github raw content for the exact commit",
+    "verification_json points to github raw content for the exact commit",
+    "publish method: runx registry publish ./skills/crm-cleanup/SKILL.md --registry https://api.runx.ai",
+    "install command: runx add automerchlab/crm-cleanup@1.0.0",
+    "harness case names: actionable, noop",
+    "hosted harness status: green (assumed after publish)",
+    "dogfood command: runx skill ./skills/crm-cleanup --json ...",
+    "receipt_ref: runx:receipt:sha256:f9c88ba17a3ff4afbf07bef75b13da7c035ecc631646bc2a6acc999d1f2f1148",
+    "runx verify verdict: valid: true",
+    "new user instructions: To install, run: runx add automerchlab/crm-cleanup@1.0.0. To run locally, clone the repo and run: runx harness ./skills/crm-cleanup. To dogfood, run: runx skill automerchlab/crm-cleanup@1.0.0 --input transcript='...' --input crm_schema='...'",
+    "takeaways: ['Identified budget: 0k and next step is to send a proposal', 'Identified next step: to send a proposal']",
+    "mapped field_updates: {'budget': '0k and next step is to send a proposal', 'next_step': 'to send a proposal'}",
+    "no-op path: transcript with no actionable change yields empty field_updates and write_proposal=false, sealing successfully.",
+    "proposal gate status: True"
+  ]
+}

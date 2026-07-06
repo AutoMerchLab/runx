@@ -1,0 +1,6 @@
+transcript: "The client said the budget is $50k. The status is qualified. The next step is follow up call."
+crm_schema:
+  fields:
+    - "budget"
+    - "status"
+    - "next_step"

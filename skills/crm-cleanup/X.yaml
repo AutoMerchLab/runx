@@ -1,0 +1,48 @@
+skill: crm-cleanup
+version: "1.0.0"
+
+catalog:
+  kind: skill
+  audience: public
+  visibility: public
+  role: canonical
+
+harness:
+  cases:
+    - name: actionable
+      runner: default
+      inputs:
+        transcript: "The client said the budget is $50k. The status is qualified. The next step is follow up call."
+        crm_schema: "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
+      expect:
+        status: sealed
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: closed
+    - name: noop
+      runner: default
+      inputs:
+        transcript: "Just a quick catch up call to see how things are going. Nothing changed."
+        crm_schema: "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
+      expect:
+        status: sealed
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: closed
+
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: node
+    args:
+      - run.mjs
+    inputs:
+      transcript:
+        type: string
+        required: true
+      crm_schema:
+        type: string
+        required: true
