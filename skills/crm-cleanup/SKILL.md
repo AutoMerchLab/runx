@@ -1,5 +1,5 @@
 ---
-name: CRM Cleanup
+name: crm-cleanup
 description: Extracts structured, actionable CRM updates from natural language meeting transcripts.
 ---
 
