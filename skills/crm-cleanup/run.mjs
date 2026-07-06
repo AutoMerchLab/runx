@@ -28,6 +28,9 @@ function main() {
   
   const crm_schema = parseSchema(crm_schema_raw);
   const allowedFields = crm_schema.fields || [];
+  if (allowedFields.length === 0) {
+    return refuse("No fields defined in schema");
+  }
 
   const takeaways = [];
   const field_updates = {};
