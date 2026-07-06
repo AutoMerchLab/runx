@@ -1,0 +1,267 @@
+{
+  "summary": "Evidence packet for the runx deliverability-judge skill (automerchlab/deliverability-judge@0.1.0). A real post-publish dogfood run of the published package produced a sealed runx.receipt.v1 that passes runx verify with a production signature. The sealed_healthy_signals_continue case fused four sealed signals into verdict.healthy with recommendation.action continue; the contradictory_signals_escalate case refused a verdict and sealed the escalation. All source and evidence artifacts pin to a single PR head commit.",
+  "dogfood": {
+    "package": "automerchlab/deliverability-judge@0.1.0",
+    "input": {
+      "evidence": {
+        "postmaster_report": {
+          "source": "postmaster.google.com",
+          "timestamp": "2026-06-25T12:00:00Z",
+          "reputation_score": 95,
+          "domain": "example.com"
+        },
+        "bounce_metrics": {
+          "source": "esp-bounce-monitor",
+          "timestamp": "2026-06-25T12:00:00Z",
+          "bounce_pct": 1.2
+        },
+        "complaint_metrics": {
+          "source": "esp-feedback-loop",
+          "timestamp": "2026-06-25T12:00:00Z",
+          "complaint_pct": 0.05
+        },
+        "placement_probe": {
+          "source": "seedlist-placement-probe",
+          "timestamp": "2026-06-25T12:00:00Z",
+          "inbox_pct": 97.5
+        }
+      },
+      "policy": {
+        "min_reputation_score": 80,
+        "max_bounce_pct": 5,
+        "max_complaint_pct": 0.3
+      }
+    },
+    "command": "runx skill automerchlab/deliverability-judge@0.1.0 --registry https://api.runx.ai --json --input-json evidence='{\"postmaster_report\": {\"source\": \"postmaster.google.com\", \"timestamp\": \"2026-06-25T12:00:00Z\", \"reputation_score\": 95, \"domain\": \"example.com\"}, \"bounce_metrics\": {\"source\": \"esp-bounce-monitor\", \"timestamp\": \"2026-06-25T12:00:00Z\", \"bounce_pct\": 1.2}, \"complaint_metrics\": {\"source\": \"esp-feedback-loop\", \"timestamp\": \"2026-06-25T12:00:00Z\", \"complaint_pct\": 0.05}, \"placement_probe\": {\"source\": \"seedlist-placement-probe\", \"timestamp\": \"2026-06-25T12:00:00Z\", \"inbox_pct\": 97.5}}' --input-json policy='{\"min_reputation_score\": 80, \"max_bounce_pct\": 5, \"max_complaint_pct\": 0.3}' -R ./receipts",
+    "receipt_ref": "runx:receipt:sha256:89f6a06de8e95c92e650d77b1e1af38a142af8efcd1f285ea69c717335793669",
+    "verify_verdict": "valid",
+    "output": {
+      "artifacts": {},
+      "contradictions": [],
+      "escalation": null,
+      "missing_signals": [],
+      "recommendation": {
+        "action": "continue",
+        "evidence_hash": "sha256:384bd388046cd00a4c2ef369387390252dd367ee08d0b384324bc343f0d21f9b",
+        "signal_bindings": [
+          {
+            "signal": "postmaster_report",
+            "source": "postmaster.google.com",
+            "timestamp": "2026-06-25T12:00:00Z",
+            "within_policy": true
+          },
+          {
+            "signal": "bounce_metrics",
+            "source": "esp-bounce-monitor",
+            "timestamp": "2026-06-25T12:00:00Z",
+            "within_policy": true
+          },
+          {
+            "signal": "complaint_metrics",
+            "source": "esp-feedback-loop",
+            "timestamp": "2026-06-25T12:00:00Z",
+            "within_policy": true
+          },
+          {
+            "signal": "placement_probe",
+            "source": "seedlist-placement-probe",
+            "timestamp": "2026-06-25T12:00:00Z",
+            "within_policy": true
+          }
+        ]
+      },
+      "signals": {
+        "bounce_metrics": {
+          "sealed": true,
+          "source": "esp-bounce-monitor",
+          "threshold": 5,
+          "timestamp": "2026-06-25T12:00:00Z",
+          "value": 1.2,
+          "within_policy": true
+        },
+        "complaint_metrics": {
+          "sealed": true,
+          "source": "esp-feedback-loop",
+          "threshold": 0.3,
+          "timestamp": "2026-06-25T12:00:00Z",
+          "value": 0.05,
+          "within_policy": true
+        },
+        "placement_probe": {
+          "sealed": true,
+          "source": "seedlist-placement-probe",
+          "threshold": 90,
+          "timestamp": "2026-06-25T12:00:00Z",
+          "value": 97.5,
+          "within_policy": true
+        },
+        "postmaster_report": {
+          "sealed": true,
+          "source": "postmaster.google.com",
+          "threshold": 80,
+          "timestamp": "2026-06-25T12:00:00Z",
+          "value": 95,
+          "within_policy": true
+        }
+      },
+      "validation": {
+        "every_signal_has_source": true,
+        "every_signal_has_timestamp": true,
+        "every_signal_sealed": true,
+        "holds_state": false,
+        "mints_authority": false,
+        "no_contradictions": true,
+        "no_invented_signals": true,
+        "read_only": true,
+        "valid": true
+      },
+      "verdict": {
+        "confidence_window": "7d",
+        "reason": "All four signals are sealed, within policy, and non-contradictory.",
+        "state": "healthy"
+      }
+    },
+    "harness_cases": [
+      {
+        "name": "sealed_healthy_signals_continue",
+        "status": "sealed"
+      },
+      {
+        "name": "contradictory_signals_escalate",
+        "status": "refused"
+      }
+    ]
+  },
+  "observations": [
+    {
+      "type": "runx_version",
+      "value": "runx-cli 0.6.14",
+      "detail": "runx --version used for publish/install/dogfood/verify (>= 0.6.13)."
+    },
+    {
+      "type": "publisher_owner",
+      "value": "automerchlab",
+      "detail": "Publisher owner (registry publisher handle automerchlab, id user_b9d6b703ee246af3a536028e)."
+    },
+    {
+      "type": "package_name",
+      "value": "deliverability-judge",
+      "detail": "Exact published package name (no near-name / rename)."
+    },
+    {
+      "type": "version",
+      "value": "0.1.0",
+      "detail": "Published package version."
+    },
+    {
+      "type": "registry_ref",
+      "value": "automerchlab/deliverability-judge@0.1.0",
+      "detail": "Fully qualified registry reference."
+    },
+    {
+      "type": "digest",
+      "value": "55eb8cbbad1254f409e755a48898ad673071ec891c269c8de5a6f05a58e2ab35",
+      "detail": "Published skill digest."
+    },
+    {
+      "type": "profile_digest",
+      "value": "6ccf3590a5edb5adfce61f80f1b7b549d2ad6f11e039b54b57e91d430e891ba7",
+      "detail": "Published X.yaml profile digest."
+    },
+    {
+      "type": "public_url",
+      "value": "https://runx.ai/x/automerchlab/deliverability-judge@0.1.0",
+      "detail": "Live registry listing / canonical adoption page."
+    },
+    {
+      "type": "pr_url",
+      "value": "https://github.com/runxhq/runx/pull/271",
+      "detail": "Public PR against runxhq/runx carrying the package files."
+    },
+    {
+      "type": "source_url",
+      "value": "https://github.com/automerchlab/runx/tree/cda4e6d34f2c2153d38dbfcaec80bb5f14d703e9",
+      "detail": "Public source revision (PR head commit)."
+    },
+    {
+      "type": "raw_x_yaml",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/cda4e6d34f2c2153d38dbfcaec80bb5f14d703e9/skills/deliverability-judge/X.yaml",
+      "detail": "Raw X.yaml at the source revision."
+    },
+    {
+      "type": "raw_skill_md",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/cda4e6d34f2c2153d38dbfcaec80bb5f14d703e9/skills/deliverability-judge/SKILL.md",
+      "detail": "Raw SKILL.md at the source revision."
+    },
+    {
+      "type": "verification_json",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/cda4e6d34f2c2153d38dbfcaec80bb5f14d703e9/skills/deliverability-judge/evidence/verification.json",
+      "detail": "Raw runx verify verdict."
+    },
+    {
+      "type": "publish_method",
+      "value": "runx login --provider github --for publish, then runx registry publish ./skills/deliverability-judge/SKILL.md --registry https://api.runx.ai --version 0.1.0 --profile ./skills/deliverability-judge/X.yaml",
+      "detail": "Authenticate (owner derived from login) and publish commands."
+    },
+    {
+      "type": "install_command",
+      "value": "runx add automerchlab/deliverability-judge@0.1.0 --registry https://api.runx.ai",
+      "detail": "Clean install command (verified: source=remote, status=success)."
+    },
+    {
+      "type": "verdict",
+      "value": "{\"confidence_window\": \"7d\", \"reason\": \"All four signals are sealed, within policy, and non-contradictory.\", \"state\": \"healthy\"}",
+      "detail": "Fused verdict for the healthy dogfood run."
+    },
+    {
+      "type": "recommendation",
+      "value": "action=continue, evidence_hash=sha256:384bd388046cd00a4c2ef369387390252dd367ee08d0b384324bc343f0d21f9b",
+      "detail": "Read-only recommendation issued for the healthy run (only emitted when every signal sealed and non-contradictory)."
+    },
+    {
+      "type": "signal_evaluations",
+      "value": "{\"bounce_metrics\": {\"sealed\": true, \"source\": \"esp-bounce-monitor\", \"value\": 1.2, \"within_policy\": true}, \"complaint_metrics\": {\"sealed\": true, \"source\": \"esp-feedback-loop\", \"value\": 0.05, \"within_policy\": true}, \"placement_probe\": {\"sealed\": true, \"source\": \"seedlist-placement-probe\", \"value\": 97.5, \"within_policy\": true}, \"postmaster_report\": {\"sealed\": true, \"source\": \"postmaster.google.com\", \"value\": 95, \"within_policy\": true}}",
+      "detail": "Each signal evaluation with its sealed source, value, and within-policy result."
+    },
+    {
+      "type": "refused_reason",
+      "value": "contradictory_signals_escalate: postmaster_report reputation 92 meets threshold 80 but bounce_metrics 8.5% exceeds threshold 5%; contradicting_signals=[postmaster_report, bounce_metrics]; no recommendation emitted, escalated to human_reviewer, refusal sealed.",
+      "detail": "Refused reason with the contradicting signal names for the stop case."
+    },
+    {
+      "type": "harness_cases",
+      "value": "sealed_healthy_signals_continue (sealed), contradictory_signals_escalate (refused)",
+      "detail": "Inline harness case names with status."
+    },
+    {
+      "type": "hosted_harness_status",
+      "value": "WSL Linux local `runx harness ./skills/deliverability-judge` -> passed, 2/2 cases, 0 assertion errors (sealed_healthy_signals_continue sealed; contradictory_signals_escalate failure/sealed). Published package installs cleanly from the remote registry (runx add: source=remote, status=success). The runx CLI exposes no client-side hosted-harness invocation (runx harness accepts only a local path/SKILL.md); the hosted registry harness runs server-side against the two inline X.yaml cases at review time. Environment: WSL Linux local + remote registry install.",
+      "detail": "Harness status with explicit environment labeling (local vs hosted)."
+    },
+    {
+      "type": "dogfood_command",
+      "value": "runx skill automerchlab/deliverability-judge@0.1.0 --registry https://api.runx.ai --json --input-json evidence='{\"postmaster_report\": {\"source\": \"postmaster.google.com\", \"timestamp\": \"2026-06-25T12:00:00Z\", \"reputation_score\": 95, \"domain\": \"example.com\"}, \"bounce_metrics\": {\"source\": \"esp-bounce-monitor\", \"timestamp\": \"2026-06-25T12:00:00Z\", \"bounce_pct\": 1.2}, \"complaint_metrics\": {\"source\": \"esp-feedback-loop\", \"timestamp\": \"2026-06-25T12:00:00Z\", \"complaint_pct\": 0.05}, \"placement_probe\": {\"source\": \"seedlist-placement-probe\", \"timestamp\": \"2026-06-25T12:00:00Z\", \"inbox_pct\": 97.5}}' --input-json policy='{\"min_reputation_score\": 80, \"max_bounce_pct\": 5, \"max_complaint_pct\": 0.3}' -R ./receipts",
+      "detail": "Exact post-publish dogfood command."
+    },
+    {
+      "type": "receipt_ref",
+      "value": "runx:receipt:sha256:89f6a06de8e95c92e650d77b1e1af38a142af8efcd1f285ea69c717335793669",
+      "detail": "Sealed receipt id from the post-publish dogfood run of the published package (not a harness fixture seal)."
+    },
+    {
+      "type": "runx_verify_verdict",
+      "value": "valid=True, signature_mode=production, signature_status=valid, digest=valid, content_address=valid",
+      "detail": "runx verify verdict for the post-publish dogfood receipt."
+    },
+    {
+      "type": "read_only_shape",
+      "value": "SHAPE-A: mints no authority, holds no state, emits no Effect; no operational_proposal.v1 envelope and no AttenuationRequest. The recommendation is a signal a human or downstream lane reads, never an auto-executed throttle.",
+      "detail": "Read-only guarantees."
+    },
+    {
+      "type": "how_to_use",
+      "value": "Install: runx add automerchlab/deliverability-judge@0.1.0 --registry https://api.runx.ai. Run: runx skill automerchlab/deliverability-judge@0.1.0 --registry https://api.runx.ai --json --input-json evidence='{...four sealed signals...}' --input-json policy='{...thresholds...}' -R ./receipts. Verify: runx verify --receipt <receipt.json> --json (expects valid=true, signature_mode=production).",
+      "detail": "End-to-end install/run/verify for a new user without private context."
+    }
+  ]
+}
