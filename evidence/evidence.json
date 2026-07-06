@@ -38,32 +38,32 @@
     },
     {
       "type": "source_url",
-      "value": "https://github.com/automerchlab/runx/tree/0977fd025787e23971c971408454f4d86d3d2dd5/skills/schema-guard",
+      "value": "https://github.com/automerchlab/runx/tree/c9fbc169e354adac7556f70cd3d3b3f90b29b344/skills/schema-guard",
       "detail": "Source URL"
     },
     {
       "type": "raw_x_yaml",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/0977fd025787e23971c971408454f4d86d3d2dd5/skills/schema-guard/X.yaml",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/c9fbc169e354adac7556f70cd3d3b3f90b29b344/skills/schema-guard/X.yaml",
       "detail": "Raw X.yaml"
     },
     {
       "type": "raw_skill_md",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/0977fd025787e23971c971408454f4d86d3d2dd5/skills/schema-guard/SKILL.md",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/c9fbc169e354adac7556f70cd3d3b3f90b29b344/skills/schema-guard/SKILL.md",
       "detail": "Raw SKILL.md"
     },
     {
       "type": "verification_json",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/0977fd025787e23971c971408454f4d86d3d2dd5/evidence/verification.json",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/c9fbc169e354adac7556f70cd3d3b3f90b29b344/evidence/verification.json",
       "detail": "Verification JSON"
     },
     {
       "type": "evidence_json",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/0977fd025787e23971c971408454f4d86d3d2dd5/evidence/evidence.json",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/c9fbc169e354adac7556f70cd3d3b3f90b29b344/evidence/evidence.json",
       "detail": "Evidence JSON"
     },
     {
       "type": "report",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/0977fd025787e23971c971408454f4d86d3d2dd5/evidence/report.md",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/c9fbc169e354adac7556f70cd3d3b3f90b29b344/evidence/report.md",
       "detail": "Report MD"
     },
     {
