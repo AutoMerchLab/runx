@@ -1,5 +1,5 @@
 skill: crm-cleanup
-version: "1.0.0"
+version: "1.0.1"
 
 catalog:
   kind: skill
@@ -31,6 +31,17 @@ harness:
           schema: runx.receipt.v1
           state: sealed
           disposition: closed
+    - name: invalid_schema
+      runner: default
+      inputs:
+        transcript: "Client wants to move forward."
+        crm_schema: "{}"
+      expect:
+        status: failure
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: failed
 
 runners:
   default:
