@@ -21,5 +21,9 @@
     "status": "unverified",
     "message": "single receipt verification cannot prove receipt-tree lineage"
   },
-  "findings": []
+  "findings": [],
+  "cross_references": {
+    "evidence_json_commit": "ed42aefe707851d220e6131e68615cc86d29c53a",
+    "source_url_commit": "ed42aefe707851d220e6131e68615cc86d29c53a"
+  }
 }

@@ -7,10 +7,10 @@
 - **CLI Version used:** `runx-cli 0.6.16`
 
 ## 2. Source Code & Provenance
-- The skill code is available at: [source_url](https://github.com/automerchlab/runx/tree/TBD_COMMIT_HASH/skills/crm-cleanup)
-- **PR URL:** https://github.com/runxhq/runx/pull/TBD
-- **X.yaml:** [Raw link](https://raw.githubusercontent.com/automerchlab/runx/TBD_COMMIT_HASH/skills/crm-cleanup/X.yaml)
-- **SKILL.md:** [Raw link](https://raw.githubusercontent.com/automerchlab/runx/TBD_COMMIT_HASH/skills/crm-cleanup/SKILL.md)
+- The skill code is available at: [source_url](https://github.com/automerchlab/runx/tree/ed42aefe707851d220e6131e68615cc86d29c53a/skills/crm-cleanup)
+- **PR URL:** https://github.com/runxhq/runx/pull/264
+- **X.yaml:** [Raw link](https://raw.githubusercontent.com/automerchlab/runx/ed42aefe707851d220e6131e68615cc86d29c53a/skills/crm-cleanup/X.yaml)
+- **SKILL.md:** [Raw link](https://raw.githubusercontent.com/automerchlab/runx/ed42aefe707851d220e6131e68615cc86d29c53a/skills/crm-cleanup/SKILL.md)
 
 ## 3. Harness Verification
 The local harness was run successfully against `skills/crm-cleanup`:
@@ -25,7 +25,7 @@ runx skill ./skills/crm-cleanup --json --input transcript='The client confirmed 
 The resulting output correctly extracted the takeaways and field updates. The receipt `sha256:f9c88ba17a3ff4afbf07bef75b13da7c035ecc631646bc2a6acc999d1f2f1148` was successfully verified via `runx verify`.
 
 ## 5. Artifacts Overview
-All artifacts (X.yaml, SKILL.md, evidence.json, verification.json, report.md) share the same exact commit hash `TBD_COMMIT_HASH` to guarantee integrity and provenance.
+All artifacts (X.yaml, SKILL.md, evidence.json, verification.json, report.md) share the same exact commit hash `ed42aefe707851d220e6131e68615cc86d29c53a` to guarantee integrity and provenance.
 
 ## 6. Public Value & Use Case
 The **CRM Cleanup** skill brings significant operational value by allowing customer success or sales agents to simply feed their raw transcripts and CRM schema into the skill, securely extracting field updates. By emitting a `write_proposal` without mutating the data directly, it fits elegantly into automated review/approval workflows, preventing data rot safely.
