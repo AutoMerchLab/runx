@@ -1,0 +1,44 @@
+skill: schema-guard
+version: 0.2.0
+harness:
+  cases:
+    - name: compatible
+      inputs:
+        current_schema:
+          name: string
+          age: number
+        proposed_schema:
+          name: string
+          age: number
+          email: string
+        sample_payloads: []
+        compatibility_policy:
+          breaking_allowed: false
+          required_fields:
+            - name
+          versioning_rule: semver
+      expect:
+        status: sealed
+    - name: breaking
+      inputs:
+        current_schema:
+          name: string
+          age: number
+        proposed_schema:
+          name: string
+        sample_payloads: []
+        compatibility_policy:
+          breaking_allowed: false
+          required_fields:
+            - name
+          versioning_rule: semver
+      expect:
+        status: failure
+runners:
+  schema-guard:
+    default: true
+    type: cli-tool
+    command: node
+    args:
+      - run.mjs
+    input_mode: stdin

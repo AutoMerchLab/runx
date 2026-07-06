@@ -1,0 +1,15 @@
+{
+  "current_schema": {
+    "name": "string",
+    "age": "number"
+  },
+  "proposed_schema": {
+    "name": "string"
+  },
+  "sample_payloads": [],
+  "compatibility_policy": {
+    "breaking_allowed": false,
+    "required_fields": ["name"],
+    "versioning_rule": "semver"
+  }
+}

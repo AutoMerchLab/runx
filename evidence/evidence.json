@@ -1,0 +1,153 @@
+{
+  "summary": "Schema Guard skill delivery for Bounty #84. Compatibility and breaking schema detection.",
+  "observations": [
+    {
+      "type": "runx_cli_version",
+      "value": "runx-cli 0.6.14",
+      "detail": "CLI version used"
+    },
+    {
+      "type": "publisher_owner",
+      "value": "automerchlab",
+      "detail": "Verified claimant account"
+    },
+    {
+      "type": "package_name",
+      "value": "schema-guard",
+      "detail": "Exact package name"
+    },
+    {
+      "type": "version",
+      "value": "sha-57ed207841a8",
+      "detail": "Version deployed"
+    },
+    {
+      "type": "registry_ref",
+      "value": "automerchlab/schema-guard@sha-57ed207841a8",
+      "detail": "Registry reference"
+    },
+    {
+      "type": "public_url",
+      "value": "https://runx.ai/x/automerchlab/schema-guard",
+      "detail": "Live public URL"
+    },
+    {
+      "type": "pr_url",
+      "value": "https://github.com/runxhq/runx/pull/PLACEHOLDER",
+      "detail": "PR URL"
+    },
+    {
+      "type": "source_url",
+      "value": "https://github.com/automerchlab/runx/tree/57e3b73da6d4524a40729ac6d6393dfc465e24b9/skills/schema-guard",
+      "detail": "Source URL"
+    },
+    {
+      "type": "raw_x_yaml",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/57e3b73da6d4524a40729ac6d6393dfc465e24b9/skills/schema-guard/X.yaml",
+      "detail": "Raw X.yaml"
+    },
+    {
+      "type": "raw_skill_md",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/57e3b73da6d4524a40729ac6d6393dfc465e24b9/skills/schema-guard/SKILL.md",
+      "detail": "Raw SKILL.md"
+    },
+    {
+      "type": "verification_json",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/57e3b73da6d4524a40729ac6d6393dfc465e24b9/evidence/verification.json",
+      "detail": "Verification JSON"
+    },
+    {
+      "type": "evidence_json",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/57e3b73da6d4524a40729ac6d6393dfc465e24b9/evidence/evidence.json",
+      "detail": "Evidence JSON"
+    },
+    {
+      "type": "report",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/57e3b73da6d4524a40729ac6d6393dfc465e24b9/evidence/report.md",
+      "detail": "Report MD"
+    },
+    {
+      "type": "publish_method",
+      "value": "runx registry publish ./skills/schema-guard/SKILL.md --registry https://api.runx.ai",
+      "detail": "Publish method"
+    },
+    {
+      "type": "install_command",
+      "value": "runx add automerchlab/schema-guard@sha-57ed207841a8",
+      "detail": "Install command"
+    },
+    {
+      "type": "harness_case_names",
+      "value": "compatible, breaking",
+      "detail": "Tested harness cases"
+    },
+    {
+      "type": "hosted_harness_status",
+      "value": "passed",
+      "detail": "Hosted harness check"
+    },
+    {
+      "type": "dogfood_command",
+      "value": "runx skill automerchlab/schema-guard@sha-57ed207841a8 --registry https://api.runx.ai --json < skills/schema-guard/fixtures/compatible.json > receipt.json",
+      "detail": "Dogfood command"
+    },
+    {
+      "type": "receipt_ref",
+      "value": "runx:receipt:sha256:a5b8877728f8792d9ce320e896630497928b16821319e0a26184c8e122c396dd",
+      "detail": "Dogfood receipt ID"
+    },
+    {
+      "type": "runx_verify_verdict",
+      "value": "valid",
+      "detail": "Verification verdict"
+    },
+    {
+      "type": "new_user_instructions",
+      "value": "runx add automerchlab/schema-guard; runx skill automerchlab/schema-guard < input.json > receipt.json",
+      "detail": "Usage instructions"
+    },
+    {
+      "type": "compatibility status",
+      "value": "true",
+      "detail": "Additive schema change yields compatibility"
+    },
+    {
+      "type": "breaking_changes",
+      "value": "none",
+      "detail": "No breaking changes detected"
+    },
+    {
+      "type": "validation_results",
+      "value": "[]",
+      "detail": "No validation errors"
+    },
+    {
+      "type": "proposal status",
+      "value": "generated",
+      "detail": "publish_schema_proposal was generated"
+    }
+  ],
+  "dogfood": {
+    "package": "schema-guard",
+    "input": "compatible.json",
+    "command": "runx skill automerchlab/schema-guard@sha-57ed207841a8 --registry https://api.runx.ai --json < skills/schema-guard/fixtures/compatible.json",
+    "receipt_ref": "sha256:a5b8877728f8792d9ce320e896630497928b16821319e0a26184c8e122c396dd",
+    "verify_verdict": "valid",
+    "harness_cases": [
+      {
+        "name": "compatible",
+        "status": "sealed"
+      },
+      {
+        "name": "breaking",
+        "status": "refused"
+      }
+    ],
+    "output": {
+      "compatibility": true,
+      "validation_results": [],
+      "migration_notes": [],
+      "publish_schema_proposal": true
+    }
+  }
+}
