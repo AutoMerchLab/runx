@@ -38,32 +38,32 @@
     },
     {
       "type": "source_url",
-      "value": "https://github.com/AutoMerchLab/runx/tree/37e4724349b71f4407805632848175261d92b150/skills/crm-cleanup",
+      "value": "https://github.com/AutoMerchLab/runx/tree/46f577f9f5e5bab4690a83b5b9cfebe16ffafe64/skills/crm-cleanup",
       "detail": "Source URL"
     },
     {
       "type": "raw_x_yaml",
-      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/37e4724349b71f4407805632848175261d92b150/skills/crm-cleanup/X.yaml",
+      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/46f577f9f5e5bab4690a83b5b9cfebe16ffafe64/skills/crm-cleanup/X.yaml",
       "detail": "Raw X.yaml"
     },
     {
       "type": "raw_skill_md",
-      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/37e4724349b71f4407805632848175261d92b150/skills/crm-cleanup/SKILL.md",
+      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/46f577f9f5e5bab4690a83b5b9cfebe16ffafe64/skills/crm-cleanup/SKILL.md",
       "detail": "Raw SKILL.md"
     },
     {
       "type": "verification_json",
-      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/37e4724349b71f4407805632848175261d92b150/verification.json",
+      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/46f577f9f5e5bab4690a83b5b9cfebe16ffafe64/verification.json",
       "detail": "Verification JSON"
     },
     {
       "type": "evidence_json",
-      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/37e4724349b71f4407805632848175261d92b150/evidence.json",
+      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/46f577f9f5e5bab4690a83b5b9cfebe16ffafe64/evidence.json",
       "detail": "Evidence JSON"
     },
     {
       "type": "report",
-      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/37e4724349b71f4407805632848175261d92b150/report.md",
+      "value": "https://raw.githubusercontent.com/AutoMerchLab/runx/46f577f9f5e5bab4690a83b5b9cfebe16ffafe64/report.md",
       "detail": "Report MD"
     },
     {
