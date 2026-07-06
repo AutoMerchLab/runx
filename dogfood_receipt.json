@@ -1,6 +1,6 @@
 {
   "closure": {
-    "closed_at": "2026-07-06T08:32:25.271Z",
+    "closed_at": "2026-07-06T08:56:20.134Z",
     "disposition": "closed",
     "reason_code": "process_closed",
     "summary": "cli-tool default completed"
@@ -9,24 +9,24 @@
     "exit_code": 0,
     "skill_claim": {
       "field_updates": {
-        "budget": "0k and next step is to send a proposal",
+        "budget": "$10k",
         "next_step": "to send a proposal"
       },
       "takeaways": [
-        "Identified budget: 0k and next step is to send a proposal",
+        "Identified budget: $10k",
         "Identified next step: to send a proposal"
       ],
       "write_proposal": true
     },
     "stderr": "",
-    "stdout": "{\n  \"takeaways\": [\n    \"Identified budget: 0k and next step is to send a proposal\",\n    \"Identified next step: to send a proposal\"\n  ],\n  \"field_updates\": {\n    \"budget\": \"0k and next step is to send a proposal\",\n    \"next_step\": \"to send a proposal\"\n  },\n  \"write_proposal\": true\n}\n",
+    "stdout": "{\n  \"takeaways\": [\n    \"Identified budget: $10k\",\n    \"Identified next step: to send a proposal\"\n  ],\n  \"field_updates\": {\n    \"budget\": \"$10k\",\n    \"next_step\": \"to send a proposal\"\n  },\n  \"write_proposal\": true\n}\n",
     "structured_output": {
       "field_updates": {
-        "budget": "0k and next step is to send a proposal",
+        "budget": "$10k",
         "next_step": "to send a proposal"
       },
       "takeaways": [
-        "Identified budget: 0k and next step is to send a proposal",
+        "Identified budget: $10k",
         "Identified next step: to send a proposal"
       ],
       "write_proposal": true
@@ -34,11 +34,11 @@
   },
   "payload": {
     "field_updates": {
-      "budget": "0k and next step is to send a proposal",
+      "budget": "$10k",
       "next_step": "to send a proposal"
     },
     "takeaways": [
-      "Identified budget: 0k and next step is to send a proposal",
+      "Identified budget: $10k",
       "Identified next step: to send a proposal"
     ],
     "write_proposal": true
@@ -48,7 +48,7 @@
       {
         "artifact_refs": [],
         "closure": {
-          "closed_at": "2026-07-06T08:32:25.271Z",
+          "closed_at": "2026-07-06T08:56:20.134Z",
           "disposition": "closed",
           "reason_code": "process_exit",
           "summary": "cli-tool exited successfully"
@@ -103,7 +103,7 @@
       "terms": []
     },
     "canonicalization": "runx.receipt.c14n.v1",
-    "created_at": "2026-07-06T08:32:25.271Z",
+    "created_at": "2026-07-06T08:56:20.134Z",
     "decisions": [
       {
         "artifact_refs": [],
@@ -131,12 +131,12 @@
         "selected_harness_ref": null
       }
     ],
-    "digest": "sha256:029aae9f623968c19de7f25e09ab1e44fc7e34536caa8d5ca9eb809bed7924ee",
-    "id": "sha256:f9c88ba17a3ff4afbf07bef75b13da7c035ecc631646bc2a6acc999d1f2f1148",
+    "digest": "sha256:8a8c0655cf652c9138c610a94d75fa922a127420e724b8ca102e8b89680e2457",
+    "id": "sha256:0585d981045572e9966a927201a26d37a38566b8725628fb7641160293bd7a39",
     "idempotency": {
-      "content_hash": "sha256:run_default_429f9e3ff244-default-content",
-      "intent_key": "sha256:run_default_429f9e3ff244-default-intent",
-      "trigger_fingerprint": "sha256:run_default_429f9e3ff244-default-trigger"
+      "content_hash": "sha256:run_default_ed9646309ae0-default-content",
+      "intent_key": "sha256:run_default_ed9646309ae0-default-intent",
+      "trigger_fingerprint": "sha256:run_default_ed9646309ae0-default-trigger"
     },
     "issuer": {
       "kid": "runtime-skeleton",
@@ -149,7 +149,7 @@
     },
     "schema": "runx.receipt.v1",
     "seal": {
-      "closed_at": "2026-07-06T08:32:25.271Z",
+      "closed_at": "2026-07-06T08:56:20.134Z",
       "criteria": [
         {
           "criterion_id": "process_exit",
@@ -160,26 +160,26 @@
         }
       ],
       "disposition": "closed",
-      "last_observed_at": "2026-07-06T08:32:25.271Z",
+      "last_observed_at": "2026-07-06T08:56:20.134Z",
       "reason_code": "process_closed",
       "summary": "cli-tool default completed"
     },
     "signals": [],
     "signature": {
       "alg": "Ed25519",
-      "value": "sig:sha256:029aae9f623968c19de7f25e09ab1e44fc7e34536caa8d5ca9eb809bed7924ee"
+      "value": "sig:sha256:8a8c0655cf652c9138c610a94d75fa922a127420e724b8ca102e8b89680e2457"
     },
     "subject": {
       "commitments": [],
       "kind": "skill",
       "ref": {
         "type": "harness",
-        "uri": "hrn_run_default_429f9e3ff244_default"
+        "uri": "hrn_run_default_ed9646309ae0_default"
       }
     }
   },
-  "receipt_id": "sha256:f9c88ba17a3ff4afbf07bef75b13da7c035ecc631646bc2a6acc999d1f2f1148",
-  "run_id": "run_default_429f9e3ff244",
+  "receipt_id": "sha256:0585d981045572e9966a927201a26d37a38566b8725628fb7641160293bd7a39",
+  "run_id": "run_default_ed9646309ae0",
   "schema": "runx.skill_run.v1",
   "skill_name": "crm-cleanup",
   "status": "sealed"
