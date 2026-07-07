@@ -1,29 +1,25 @@
 {
   "schema": "runx.verify_verdict.v1",
-  "receipt_id": "sha256:f22c5391ad2842dd0edaa3d816d6e1c78d2edf58a9d5f7d30d70631f119ab00c",
+  "receipt_id": "sha256:f4030faf730b22a3046d77e3bdb4649e73e6a4e383d8e6c4c702dc4ca4fd9c89",
   "valid": true,
   "digest": {
     "status": "valid",
-    "expected": "sha256:44945be4ea9488247c43e910a7bc74c15c9fcbd3ddcd8d0f9a0fe65b6583d9fc",
-    "actual": "sha256:44945be4ea9488247c43e910a7bc74c15c9fcbd3ddcd8d0f9a0fe65b6583d9fc"
+    "expected": "sha256:6fa93847e07b882e38ffce2c3cba7901021a0efe7fc06ef0541f9740192bc49e",
+    "actual": "sha256:6fa93847e07b882e38ffce2c3cba7901021a0efe7fc06ef0541f9740192bc49e"
   },
   "content_address": {
     "status": "valid",
-    "expected": "sha256:f22c5391ad2842dd0edaa3d816d6e1c78d2edf58a9d5f7d30d70631f119ab00c",
-    "actual": "sha256:f22c5391ad2842dd0edaa3d816d6e1c78d2edf58a9d5f7d30d70631f119ab00c"
+    "expected": "sha256:f4030faf730b22a3046d77e3bdb4649e73e6a4e383d8e6c4c702dc4ca4fd9c89",
+    "actual": "sha256:f4030faf730b22a3046d77e3bdb4649e73e6a4e383d8e6c4c702dc4ca4fd9c89"
   },
   "signature": {
     "mode": "production",
     "status": "valid",
-    "kid": "runtime-skeleton"
+    "kid": "key1"
   },
   "lineage": {
     "status": "unverified",
     "message": "single receipt verification cannot prove receipt-tree lineage"
   },
-  "findings": [],
-  "cross_references": {
-    "evidence_json_commit": "73b14f9a84fd500cc44dae2bd076610a624ec803",
-    "source_url_commit": "73b14f9a84fd500cc44dae2bd076610a624ec803"
-  }
+  "findings": []
 }
