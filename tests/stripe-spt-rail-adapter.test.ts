@@ -104,6 +104,16 @@ describe("stripe-spt rail external adapter", () => {
     expect(response.status).toBe("failed");
     expect(response.stderr).toContain("payment admission amount does not match");
   });
+
+  it("refuses a local live profile instead of reading ambient Stripe secrets", () => {
+    const response = invokeAdapter({
+      ...adapterInputs(),
+      rail_profile_ref: "rail-profile:stripe-spt:live",
+    });
+
+    expect(response.status).toBe("failed");
+    expect(response.stderr).toContain("requires a hosted payment provider");
+  });
 });
 
 function adapterInputs(): Record<string, unknown> {
@@ -130,18 +140,14 @@ function adapterInputs(): Record<string, unknown> {
     idempotency: {
       key: "payment:test-1",
     },
+    rail_profile_ref: "rail-profile:stripe-spt:test",
   };
 }
 
 function invokeAdapter(inputs: Record<string, unknown>): Record<string, unknown> {
   const result = spawnSync(process.execPath, [adapterPath], {
     cwd: stageDir,
-    env: {
-      ...process.env,
-      RUNX_STRIPE_SPT_MOCK: "1",
-      RUNX_STRIPE_SPT_EXECUTOR_MODULE: "",
-      RUNX_STRIPE_SPT_RESTRICTED_KEY: "",
-    },
+    env: process.env,
     input: JSON.stringify({
       schema: "runx.external_adapter.invocation.v1",
       protocol_version: "runx.external_adapter.v1",

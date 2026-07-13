@@ -64,7 +64,7 @@ const commands: readonly CommandMatrixEntry[] = [
   command("config.set", "runx config set <key> <value>", [], ["--json"], "filesystem", ["config", "cli-presentation"], ["config.set.validate"]),
   command("config.get", "runx config get <key>", [], ["--json"], "filesystem", ["config", "cli-presentation"], ["config.get.validate"]),
   command("config.list", "runx config list", [], ["--json"], "filesystem", ["config", "cli-presentation"], ["config.list.execute"]),
-  command("login", "runx login [--provider github|google|gitlab] [--api-base-url url] [--allow-local-api] [--json]", [], ["--provider", "--api-base-url", "--allow-local-api", "--json"], "filesystem", ["config", "cli-presentation"], ["login.validate"]),
+  command("login", "runx login [--provider github|google|gitlab] [--for default|publish] [--from-gh] [--api-base-url url] [--allow-local-api] [--json]", [], ["--provider", "--for", "--from-gh", "--api-base-url", "--allow-local-api", "--json"], "filesystem", ["config", "cli-presentation"], ["login.validate"]),
   command("policy.inspect", "runx policy inspect <policy.json>", [], ["--json"], "none", ["policy", "cli-presentation"], ["policy.inspect.validate"]),
   command("policy.lint", "runx policy lint <policy.json>", [], ["--json"], "none", ["policy", "cli-presentation"], ["policy.lint.validate"]),
   command("publish", "runx publish <receipt.json> [--api-base-url url] [--token token] [--allow-local-api] [--json]", [], ["--api-base-url", "--token", "--allow-local-api", "--json"], "external-stub", ["receipts", "cli-presentation"], ["publish.validate"]),

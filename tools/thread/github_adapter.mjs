@@ -819,17 +819,37 @@ export function pushGitHubCreateIssue({
       outbox_receipt_id: firstNonEmptyString(metadata.outbox_receipt_id, outbox.entry_id),
     }),
   );
-  const existingIssue = findGitHubIssueByOutboxEntry({
-    repoSlug,
-    entryId: outbox.entry_id,
-    cwd,
-    env,
-  });
+  const linkedIssueRef = linkedIssueRefForCreate({ repoSlug, state, outbox });
+  const existingIssue = linkedIssueRef
+    ? undefined
+    : findGitHubIssueByOutboxEntry({
+        repoSlug,
+        entryId: outbox.entry_id,
+        cwd,
+        env,
+      });
 
   let issueRef;
   let existingLabels = [];
   let created = false;
-  if (existingIssue) {
+  if (linkedIssueRef) {
+    issueRef = linkedIssueRef;
+    const issueState = getGitHubIssueState({
+      repoSlug,
+      issueNumber: issueRef.issue_number,
+      cwd,
+      env,
+    });
+    existingLabels = normalizeLabelNames(issueState.labels) ?? [];
+    updateGitHubIssue({
+      repoSlug,
+      issueNumber: issueRef.issue_number,
+      title,
+      body: issueBody,
+      cwd,
+      env,
+    });
+  } else if (existingIssue) {
     issueRef = buildGitHubIssueRef(repoSlug, existingIssue.number);
     existingLabels = normalizeLabelNames(existingIssue.labels) ?? [];
     updateGitHubIssue({
@@ -889,6 +909,24 @@ export function pushGitHubCreateIssue({
       added_labels: labelResult.addedLabels,
     }),
   };
+}
+
+function linkedIssueRefForCreate({ repoSlug, state, outbox }) {
+  for (const candidate of [
+    outbox.thread_locator,
+    outbox.locator,
+    state.thread_locator,
+    state.canonical_uri,
+    optionalRecord(state.adapter)?.adapter_ref,
+  ]) {
+    const value = firstNonEmptyString(candidate);
+    if (!value) continue;
+    try {
+      const issueRef = parseGitHubIssueRef(value);
+      if (issueRef.repo_slug === repoSlug) return issueRef;
+    } catch {}
+  }
+  return undefined;
 }
 
 export function pushGitHubLifecycleIntent({
@@ -1400,7 +1438,10 @@ export function readGitHubThreadSnapshot({ adapterRef, env, cwd }) {
       env,
       acceptedStatuses: [200],
     }));
-    return buildGitHubThreadSnapshot(issue.state, issue.labels, comments.map((comment) => comment.body));
+    return buildGitHubThreadSnapshot(issue.state, issue.labels, comments.map((comment) => comment.body), {
+      title: issue.title,
+      body: issue.body,
+    });
   }
   const issue = runGhJson([
     "issue",
@@ -1409,22 +1450,112 @@ export function readGitHubThreadSnapshot({ adapterRef, env, cwd }) {
     "--repo",
     issueRef.repo_slug,
     "--json",
-    "labels,state,comments",
+    "labels,state,comments,title,body",
   ], { cwd, env }, { tokenFallback: true });
   const comments = Array.isArray(issue.comments) ? issue.comments : [];
-  return buildGitHubThreadSnapshot(issue.state, issue.labels, comments.map((comment) => comment.body));
+  return buildGitHubThreadSnapshot(issue.state, issue.labels, comments.map((comment) => comment.body), {
+    title: issue.title,
+    body: issue.body,
+  });
 }
 
-function buildGitHubThreadSnapshot(state, labels, commentBodies) {
+export function listGitHubIssuesWithAnyLabel({ repoSlug, labels, env, cwd, limit = 1000 }) {
+  const normalizedRepo = firstNonEmptyString(repoSlug);
+  if (!normalizedRepo) {
+    throw new Error("GitHub repo slug is required.");
+  }
+  const wantedLabels = [...new Set(stringList(labels))];
+  if (wantedLabels.length === 0) return [];
+
+  const byNumber = new Map();
+  for (const label of wantedLabels) {
+    const issues = listGitHubIssuesByLabel({
+      repoSlug: normalizedRepo,
+      label,
+      env,
+      cwd,
+      limit,
+    });
+    for (const issue of issues) {
+      const number = firstNonEmptyString(issue.number);
+      if (!number) continue;
+      const issueRef = buildGitHubIssueRef(normalizedRepo, number);
+      const existing = byNumber.get(number);
+      byNumber.set(number, {
+        number,
+        title: firstNonEmptyString(issue.title, existing?.title),
+        state: firstNonEmptyString(issue.state, existing?.state, "OPEN"),
+        url: firstNonEmptyString(issue.url, issue.html_url, existing?.url, issueRef.issue_url),
+        thread_locator: issueRef.thread_locator,
+        labels: [
+          ...new Set([
+            ...(existing?.labels ?? []),
+            ...(normalizeLabelNames(issue.labels) ?? []),
+          ]),
+        ],
+      });
+    }
+  }
+
+  return [...byNumber.values()].sort((a, b) => Number(a.number) - Number(b.number));
+}
+
+function listGitHubIssuesByLabel({ repoSlug, label, env, cwd, limit }) {
+  if (canUseGitHubRest(env) && !firstNonEmptyString(env?.RUNX_GH_BIN)) {
+    return listGitHubIssuesByLabelRest({ repoSlug, label, env, limit });
+  }
+  return runGhJson([
+    "issue",
+    "list",
+    "--repo",
+    repoSlug,
+    "--state",
+    "all",
+    "--label",
+    label,
+    "--limit",
+    String(limit),
+    "--json",
+    "number,title,state,labels,url",
+  ], { cwd, env }, { tokenFallback: true });
+}
+
+function listGitHubIssuesByLabelRest({ repoSlug, label, env, limit }) {
+  const issues = [];
+  for (let page = 1; issues.length < limit; page += 1) {
+    const response = runGitHubRest({
+      method: "GET",
+      path: gitHubRepoApiPath(
+        repoSlug,
+        `issues?state=all&per_page=100&page=${page}&labels=${encodeURIComponent(label)}`,
+      ),
+      env,
+      acceptedStatuses: [200],
+    });
+    const pageIssues = parseGitHubRestArray(response)
+      .filter((issue) => !issue.pull_request);
+    issues.push(...pageIssues);
+    if (pageIssues.length < 100) break;
+  }
+  return issues.slice(0, limit);
+}
+
+function buildGitHubThreadSnapshot(state, labels, commentBodies, issue = {}) {
   const commentMarkers = [];
+  const visibleCommentBodies = [];
   for (const body of commentBodies) {
     const entryId = parseGitHubOutboxEntryMarker(body);
     if (entryId) commentMarkers.push(entryId);
+    const visibleBody = stripGitHubOutboxEntryMarker(firstNonEmptyText(body)) ?? "";
+    if (visibleBody) visibleCommentBodies.push(visibleBody);
   }
   return {
     state: firstNonEmptyString(state, "OPEN"),
+    title: firstNonEmptyString(issue.title),
+    body: stripGitHubOutboxEntryMarker(firstNonEmptyText(issue.body)) ?? "",
     labels: normalizeLabelNames(labels) ?? [],
     comment_markers: commentMarkers,
+    comment_bodies: visibleCommentBodies,
   };
 }
 

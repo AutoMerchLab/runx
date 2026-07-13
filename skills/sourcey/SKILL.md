@@ -230,10 +230,39 @@ with `needs_more_evidence` or `needs_review` instead of producing filler.
 - CI or deploy may run deterministic `sourcey build` from committed source.
 - Deploy must not be the step where docs scope, prose, or IA is invented. Do
   discovery, authoring, and review before deploy.
+- For Astro host apps, prefer the first-class `sourcey/astro` integration over
+  a separate prebuild script that writes into `public/docs`. Keep
+  `docs/sourcey.config.ts` and markdown/spec inputs as source; let `astro dev`
+  serve Sourcey through Vite and `astro build` write generated docs into the
+  final output under the configured route.
 - For public publication, include enough proof for an external reviewer to
   inspect the target project, source commit, Sourcey config or input source,
   generated page list, deployment URL, parent domain, and durability of the
   hosting choice.
+
+## Astro host pattern
+
+Use this shape when the target already uses Astro and docs should live at a
+path such as `/docs`:
+
+```typescript
+import { defineConfig } from "astro/config";
+import sourcey from "sourcey/astro";
+
+export default defineConfig({
+  site: "https://example.com",
+  integrations: [
+    sourcey({
+      config: "./docs/sourcey.config.ts",
+      routeBase: "/docs",
+    }),
+  ],
+});
+```
+
+Do not add `prebuild`, `build:docs`, or committed `public/docs` artifacts for
+this path unless the project explicitly cannot use Astro integrations. The
+generated output remains reproducible build output, not authored source.
 
 ## Config reference
 

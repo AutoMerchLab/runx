@@ -31,6 +31,7 @@ fn cli_rejects_local_credential_for_cli_tool_before_spawn() -> Result<(), Box<dy
         .arg("--secret-env")
         .arg("GITHUB_TOKEN")
         .arg("--json")
+        .arg("--skip-operator-context")
         .env("GITHUB_TOKEN", SECRET)
         .output()?;
 
@@ -73,6 +74,7 @@ fn cli_rejects_secret_env_without_credential() -> Result<(), Box<dyn std::error:
         .arg("--secret-env")
         .arg("GITHUB_TOKEN")
         .arg("--json")
+        .arg("--skip-operator-context")
         .env("GITHUB_TOKEN", SECRET)
         .output()?;
 
@@ -112,6 +114,7 @@ fn cli_rejects_empty_secret_value() -> Result<(), Box<dyn std::error::Error>> {
         .arg("--secret-env")
         .arg("GITHUB_TOKEN")
         .arg("--json")
+        .arg("--skip-operator-context")
         .env("GITHUB_TOKEN", "")
         .output()?;
 
@@ -142,6 +145,7 @@ fn cli_rejects_secret_env_value_on_argv() -> Result<(), Box<dyn std::error::Erro
         .arg("--secret-env")
         .arg(format!("GITHUB_TOKEN={SECRET}"))
         .arg("--json")
+        .arg("--skip-operator-context")
         .output()?;
 
     assert!(

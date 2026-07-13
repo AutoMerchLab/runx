@@ -78,10 +78,63 @@ describe("spawnNativeRunx", () => {
       }),
     ).rejects.toThrow("native runx stdout exceeded 3 bytes");
   });
+
+  it("can tee stderr before the native process exits while still capturing stdout", async () => {
+    const releasePath = childReleasePath();
+    let stderr = "";
+    let sawEarlyStderr = () => {};
+    const earlyStderr = new Promise<void>((resolve) => {
+      sawEarlyStderr = resolve;
+    });
+    const resultPromise = spawnNativeRunx({
+      command: process.execPath,
+      args: [
+        "-e",
+        childScript(
+          releasePath,
+          "process.stderr.write('early-err');",
+          "process.stdout.write('{\"ok\":true}'); process.exit(0);",
+        ),
+      ],
+      cwd: process.cwd(),
+      env: {},
+      timeoutMs: 5_000,
+      maxOutputBytes: 1_000,
+      stderr: {
+        write: (chunk: string | Uint8Array) => {
+          stderr += chunk.toString();
+          sawEarlyStderr();
+          return true;
+        },
+      } as NodeJS.WritableStream,
+    });
+    let settled = false;
+    resultPromise.then(
+      () => {
+        settled = true;
+      },
+      () => {
+        settled = true;
+      },
+    );
+
+    await earlyStderr;
+
+    expect(settled).toBe(false);
+    releaseChild(releasePath);
+    await expect(resultPromise).resolves.toMatchObject({
+      status: 0,
+      signal: null,
+      stdout: "{\"ok\":true}",
+      stderr: "early-err",
+    });
+    expect(stderr).toBe("early-err");
+  });
 });
 
 describe("streamNativeRunx", () => {
   it("writes stdout and stderr before the native process exits", async () => {
+    const releasePath = childReleasePath();
     let stdout = "";
     let stderr = "";
     let sawEarlyOutput = () => {};
@@ -91,7 +144,11 @@ describe("streamNativeRunx", () => {
     const resultPromise = streamNativeRunx(
       [
         "-e",
-        "process.stdout.write('early-out'); process.stderr.write('early-err'); setTimeout(() => process.exit(7), 500);",
+        childScript(
+          releasePath,
+          "process.stdout.write('early-out'); process.stderr.write('early-err');",
+          "process.exit(7);",
+        ),
       ],
       {
         env: { RUNX_DEV_RUST_CLI_BIN: process.execPath },
@@ -124,8 +181,27 @@ describe("streamNativeRunx", () => {
     await earlyOutput;
 
     expect(settled).toBe(false);
+    releaseChild(releasePath);
     await expect(resultPromise).resolves.toEqual({ status: 7, signal: null });
     expect(stdout).toBe("early-out");
     expect(stderr).toBe("early-err");
   });
 });
+
+function childReleasePath(): string {
+  return path.join(mkdtempSync(path.join(os.tmpdir(), "runx-native-release-")), "release");
+}
+
+// The child emits its early output immediately, then holds until the parent
+// (having observed that output while the promise is still pending) writes the
+// release sentinel: deterministic sequencing instead of a fixed grace period.
+function childScript(releasePath: string, earlyScript: string, exitScript: string): string {
+  return (
+    `${earlyScript} const releasePath = ${JSON.stringify(releasePath)}; ` +
+    `const timer = setInterval(() => { try { require('fs').accessSync(releasePath); clearInterval(timer); ${exitScript} } catch {} }, 10);`
+  );
+}
+
+function releaseChild(releasePath: string): void {
+  writeFileSync(releasePath, "");
+}

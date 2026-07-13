@@ -53,9 +53,11 @@ fn render_shim(
     }
     output.push_str("---\n");
     output.push_str(&format!("# {} - governed by runx\n\n", skill.name));
-    output.push_str("This skill runs under runx governance. Do not perform the work yourself.\n");
     output.push_str(
-        "Execution, policy enforcement, approvals, and the signed receipt happen inside runx.\n\n",
+        "Run the declared runner through runx; do not bypass it by independently reproducing work that runner owns.\n",
+    );
+    output.push_str(
+        "Runx governs this runner's execution, policy, approvals, and signed receipt. A planning runner seals a plan, not the downstream external action; only report delivery or mutation when a provider-specific governed runner returns provider evidence.\n\n",
     );
     output.push_str(
         "Before running, the shell must provide `RUNX_RECEIPT_SIGN_KID`, \

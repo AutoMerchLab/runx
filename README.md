@@ -136,6 +136,8 @@ use it as a strategy document, private state file, target registry, copy deck,
 or secret container.
 
 Browse the public catalog at [runx.ai/x](https://runx.ai/x).
+For category slugs, duplicate checks, and contributor discovery flow, see
+[docs/skill-catalog.md](docs/skill-catalog.md).
 
 ## graphs make acts composable
 
@@ -323,6 +325,7 @@ See [docs/reference.md](docs/reference.md) and
 | [security authority proof](docs/security-authority-proof.md) | scope, credentials, grants, verification |
 | [demos](docs/demos.md) | runnable proof paths |
 | [publishing](docs/publishing.md) | local and hosted skill publishing |
+| [skill catalog](docs/skill-catalog.md) | categories, search, duplicate checks, first-party map |
 | [reference](docs/reference.md) | CLI, crates, registry, receipts, extension protocols |
 | [the spec](https://runx.ai/spec) | act model, receipt grammar, public contracts |
 | [the catalog](https://runx.ai/x) | governed skills by URL |

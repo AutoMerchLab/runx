@@ -252,6 +252,10 @@ Registry search and install now normalize public trust into three tiers:
 metadata still travels with the registry row, but the user-facing install/search
 surface stays readable.
 
+Use [skill-catalog.md](skill-catalog.md) for the maintained category list,
+catalog search flow, and duplicate-check standard before proposing a new
+first-party skill.
+
 ## Skill And X Model
 
 Executable skills split authored skill content from execution profiles. `X.yaml`

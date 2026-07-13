@@ -442,6 +442,10 @@ pub(crate) fn resolve_and_invoke_local_tool(
         Err(error) if local_lookup_miss(&error) => return Ok(None),
         Err(error) => return Err(catalog_error(request.skill_name, error)),
     };
+    crate::execution::prepared_skill::verify_prepared_artifact_at_use(
+        request.env,
+        &resolution.manifest_path,
+    )?;
 
     let artifacts = resolution.tool.artifacts.clone();
     let declared_inputs = resolution.tool.inputs.clone();

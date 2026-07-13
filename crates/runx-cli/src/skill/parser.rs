@@ -48,6 +48,10 @@ pub fn parse_skill_plan(args: &[OsString]) -> Result<SkillPlan, String> {
         registry: state.registry,
         expected_digest: state.expected_digest,
         json: state.json,
+        non_interactive: state.non_interactive,
+        skip_operator_context: state.skip_operator_context,
+        full_operator_context: state.full_operator_context,
+        approve_operator_context: state.approve_operator_context,
         inputs: state.inputs,
         local_credential,
     })
@@ -63,6 +67,10 @@ struct SkillParseState {
     registry: Option<String>,
     expected_digest: Option<String>,
     json: bool,
+    non_interactive: bool,
+    skip_operator_context: bool,
+    full_operator_context: bool,
+    approve_operator_context: Option<String>,
     inspect: bool,
     force_run: bool,
     inputs: BTreeMap<String, JsonValue>,
@@ -450,7 +458,42 @@ fn parse_skill_arg(
             state.secret_env = Some(parse_secret_env(&string_arg(args, index)?)?);
         }
         "--json" | "-j" => state.json = true,
-        "--non-interactive" => {}
+        value if value.starts_with("--approve-operator-context=") => {
+            state.approve_operator_context = Some(non_empty_flag_value(
+                "--approve-operator-context",
+                value.trim_start_matches("--approve-operator-context="),
+            )?);
+        }
+        "--approve-operator-context" => {
+            index += 1;
+            state.approve_operator_context = Some(non_empty_flag_value(
+                "--approve-operator-context",
+                &string_arg(args, index)?,
+            )?);
+        }
+        value if value.starts_with("--skip-operator-context=") => {
+            state.skip_operator_context = parse_boolean_flag(
+                "--skip-operator-context",
+                value.trim_start_matches("--skip-operator-context="),
+            )?;
+        }
+        value if value.starts_with("--no-operator-context=") => {
+            state.skip_operator_context = parse_boolean_flag(
+                "--no-operator-context",
+                value.trim_start_matches("--no-operator-context="),
+            )?;
+        }
+        "--skip-operator-context" | "--no-operator-context" => {
+            state.skip_operator_context = true;
+        }
+        value if value.starts_with("--full-operator-context=") => {
+            state.full_operator_context = parse_boolean_flag(
+                "--full-operator-context",
+                value.trim_start_matches("--full-operator-context="),
+            )?;
+        }
+        "--full-operator-context" => state.full_operator_context = true,
+        "--non-interactive" => state.non_interactive = true,
         value if value.starts_with("--") => {
             index = parse_direct_input_arg(args, index, value, &mut state.inputs)?;
         }
@@ -475,6 +518,14 @@ fn non_empty_flag_value(flag: &str, value: &str) -> Result<String, String> {
         return Err(format!("runx skill {flag} requires a non-empty value"));
     }
     Ok(value.to_owned())
+}
+
+fn parse_boolean_flag(flag: &str, value: &str) -> Result<bool, String> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err(format!("runx skill {flag} expects true or false")),
+    }
 }
 
 fn skill_resume_flag_error() -> String {
@@ -708,6 +759,97 @@ mod tests {
             plan.inputs.get("title"),
             Some(&runx_contracts::JsonValue::String("hello".to_owned()))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn skip_operator_context_flag_is_not_a_skill_input() -> Result<(), String> {
+        let args = [
+            "skill",
+            "skills/messageboard",
+            "--skip-operator-context",
+            "--input",
+            "title=hello",
+        ]
+        .into_iter()
+        .map(std::ffi::OsString::from)
+        .collect::<Vec<_>>();
+        let plan = super::parse_skill_plan(&args)?;
+
+        assert!(plan.skip_operator_context);
+        assert_eq!(plan.inputs.len(), 1);
+        assert_eq!(
+            plan.inputs.get("title"),
+            Some(&runx_contracts::JsonValue::String("hello".to_owned()))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn approve_operator_context_flag_is_not_a_skill_input() -> Result<(), String> {
+        let args = [
+            "skill",
+            "skills/messageboard",
+            "--approve-operator-context",
+            "sha256:abc123",
+            "--non-interactive",
+            "--input",
+            "title=hello",
+        ]
+        .into_iter()
+        .map(std::ffi::OsString::from)
+        .collect::<Vec<_>>();
+        let plan = super::parse_skill_plan(&args)?;
+
+        assert_eq!(
+            plan.approve_operator_context.as_deref(),
+            Some("sha256:abc123")
+        );
+        assert!(plan.non_interactive);
+        assert_eq!(plan.inputs.len(), 1);
+        assert!(plan.inputs.contains_key("title"));
+        Ok(())
+    }
+
+    #[test]
+    fn full_operator_context_flag_is_not_a_skill_input() -> Result<(), String> {
+        let args = [
+            "skill",
+            "skills/messageboard",
+            "--full-operator-context",
+            "--input",
+            "title=hello",
+        ]
+        .into_iter()
+        .map(std::ffi::OsString::from)
+        .collect::<Vec<_>>();
+        let plan = super::parse_skill_plan(&args)?;
+
+        assert!(plan.full_operator_context);
+        assert_eq!(plan.inputs.len(), 1);
+        assert!(plan.inputs.contains_key("title"));
+        Ok(())
+    }
+
+    #[test]
+    fn inline_operator_context_flags_are_not_skill_inputs() -> Result<(), String> {
+        let args = [
+            "skill",
+            "skills/messageboard",
+            "--full-operator-context=true",
+            "--skip-operator-context=false",
+            "--input",
+            "title=hello",
+        ]
+        .into_iter()
+        .map(std::ffi::OsString::from)
+        .collect::<Vec<_>>();
+        let plan = super::parse_skill_plan(&args)?;
+
+        assert!(plan.full_operator_context);
+        assert!(!plan.skip_operator_context);
+        assert_eq!(plan.inputs.len(), 1);
+        assert!(plan.inputs.contains_key("title"));
         Ok(())
     }
 

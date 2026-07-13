@@ -70,7 +70,10 @@ pub(super) fn execute_agent_skill_run(
         .map_err(|error| SkillRunError::Invalid(format!("failed to serialize answer: {error}")))?;
     let disposition = answer_disposition(&answer)?;
     let receipt = match domain_act_frame(&invocation, &answer, governed_effect.as_ref()) {
-        Some(frame) => {
+        Some(mut frame) => {
+            frame.artifact_refs.extend(
+                crate::execution::prepared_skill::prepared_receipt_references(workspace.env()),
+            );
             let label = disposition.label();
             let created_at = crate::time::now_iso8601();
             let graph_name = identifier_segment(&run_id);
@@ -93,6 +96,7 @@ pub(super) fn execute_agent_skill_run(
             &stdout,
             disposition,
             receipts.signature_config(),
+            workspace.env(),
         )?,
     };
     write_skill_receipt(request, workspace, receipts, &receipt)?;

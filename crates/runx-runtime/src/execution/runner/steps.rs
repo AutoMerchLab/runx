@@ -492,6 +492,9 @@ where
             projection: &projection,
             created_at: &context.runtime.options.created_at,
             authority_grant_refs,
+            operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
+                &context.runtime.options.env,
+            ),
             closure: None,
         },
         context.runtime.options.signature_policy(),
@@ -656,6 +659,9 @@ fn run_replayed_effect_step(
             projection: &projection,
             created_at: replay.receipt_created_at(),
             authority_grant_refs,
+            operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
+                &runtime.options.env,
+            ),
             closure: None,
         },
         runtime.options.signature_policy(),
@@ -1021,6 +1027,9 @@ fn seal_agent_act_step<A>(
             projection: &projection,
             created_at: &runtime.options.created_at,
             authority_grant_refs: Vec::new(),
+            operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
+                &runtime.options.env,
+            ),
             closure: Some(StepSealClosure {
                 disposition,
                 reason_code: format!("agent_act_{disposition_label}"),
@@ -1295,6 +1304,9 @@ where
                 projection: &projection,
                 created_at: &runtime.options.created_at,
                 authority_grant_refs,
+                operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
+                    &runtime.options.env,
+                ),
                 closure: None,
             },
             runtime.options.signature_policy(),
@@ -1409,6 +1421,8 @@ fn agent_answer_disposition_value(
     })
 }
 
+// rust-style-allow: long-function because an approval step resolves, projects,
+// and seals one trust-boundary decision without exposing a partially built receipt.
 pub(super) fn run_approval_step<A>(
     runtime: &Runtime<A>,
     graph_name: &str,
@@ -1426,7 +1440,11 @@ where
     // fixture host already resolves approvals by gate_id; keying the request id
     // the same way lets a seeded graph run drive an approval gate to a decision.
     let request_id = gate.id.to_string();
-    let resolution = resolve_step_approval(step, host, request_id, gate.clone())?;
+    let resolution = completed_approval_resolution(
+        step,
+        &gate,
+        resolve_step_approval(step, host, request_id, gate.clone())?,
+    )?;
     let outputs = approval_outputs(step, &gate, &resolution)?;
     let stdout = serde_json::to_string(&outputs)
         .map_err(|source| RuntimeError::json("serializing approval run output", source))?;
@@ -1448,6 +1466,9 @@ where
             projection: &projection,
             created_at: &runtime.options.created_at,
             authority_grant_refs: Vec::new(),
+            operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
+                &runtime.options.env,
+            ),
             closure: None,
         },
         runtime.options.signature_policy(),
@@ -1464,6 +1485,20 @@ where
         receipt,
         admission_witness,
     })
+}
+
+fn completed_approval_resolution(
+    step: &GraphStep,
+    gate: &ApprovalGate,
+    resolution: ApprovalResolution,
+) -> Result<ApprovalResolution, RuntimeError> {
+    if matches!(resolution, ApprovalResolution::Pending { .. }) {
+        return Err(RuntimeError::GraphBlocked {
+            step_id: step.id.clone(),
+            reason: format!("approval gate '{}' is pending", gate.id),
+        });
+    }
+    Ok(resolution)
 }
 
 fn run_type_ref(step: &GraphStep) -> Result<&str, RuntimeError> {
@@ -1618,6 +1653,9 @@ where
             projection: &projection,
             created_at: &runtime.options.created_at,
             authority_grant_refs: Vec::new(),
+            operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
+                &runtime.options.env,
+            ),
             closure: None,
         },
         runtime.options.signature_policy(),

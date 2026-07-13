@@ -33,6 +33,8 @@ runners:
     artifacts:
       named_emits:
         result: runx.scafld.command_result.v1
+      packets:
+        result: runx.scafld.command_result.v1
     inputs:
       command:
         type: string

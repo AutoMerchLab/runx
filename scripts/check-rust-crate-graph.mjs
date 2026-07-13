@@ -21,11 +21,11 @@ const apiBearingPublishedCrates = new Set([
   "runx-contracts",
   "runx-core",
   "runx-parser",
+  "runx-receipts",
+  "runx-runtime",
 ]);
 
 const reservationVersionCrates = new Set([
-  "runx-receipts",
-  "runx-runtime",
   "runx-sdk",
 ]);
 
@@ -117,12 +117,19 @@ const findings = [];
 const workspaceManifest = await readManifest("Cargo.toml");
 const actualMembers = parseWorkspaceMembers(workspaceManifest);
 const workspaceRunxVersions = parseWorkspaceRunxDependencyVersions(workspaceManifest);
+const crateManifests = new Map();
 
 checkMembers(actualMembers);
 checkDisallowedDependencies("workspace", workspaceManifest);
 
 for (const crateName of expectedMembers) {
-  const manifest = await readManifest(`${crateName}/Cargo.toml`);
+  crateManifests.set(crateName, await readManifest(`${crateName}/Cargo.toml`));
+}
+
+checkNoCliVersionBleed(crateManifests, workspaceRunxVersions);
+
+for (const crateName of expectedMembers) {
+  const manifest = crateManifests.get(crateName);
   const packageName = parsePackageName(manifest);
   if (packageName !== crateName) {
     findings.push(`${crateName}/Cargo.toml package name is ${packageName ?? "missing"}, expected ${crateName}`);
@@ -203,6 +210,27 @@ function checkWorkspaceDependencyVersion(crateName, manifest) {
   if (workspaceVersion !== packageVersion) {
     findings.push(
       `workspace dependency ${crateName} version ${workspaceVersion} must match ${crateName}/Cargo.toml version ${packageVersion ?? "missing"}`,
+    );
+  }
+}
+
+function checkNoCliVersionBleed(manifests, workspaceVersions) {
+  const cliVersion = parsePackageVersion(manifests.get("runx-cli") ?? "");
+  if (!cliVersion) {
+    return;
+  }
+
+  const stampedCrates = expectedMembers
+    .filter((crateName) => crateName !== "runx-cli")
+    .filter((crateName) => parsePackageVersion(manifests.get(crateName) ?? "") === cliVersion);
+  const nonCliWorkspaceDeps = [...workspaceVersions.entries()].filter(([crateName]) => crateName !== "runx-cli");
+  const stampedWorkspaceDeps = nonCliWorkspaceDeps
+    .filter(([, version]) => version === cliVersion)
+    .map(([crateName]) => crateName);
+
+  if (stampedCrates.length === expectedMembers.length - 1 && stampedWorkspaceDeps.length === nonCliWorkspaceDeps.length) {
+    findings.push(
+      "CLI releases must not stamp the internal Rust crate graph. Only runx-cli may match the cli-v tag unless an explicit library-crate release is requested.",
     );
   }
 }

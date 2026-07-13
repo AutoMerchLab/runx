@@ -1,6 +1,6 @@
 [package]
 name = "runx-runtime"
-version = "0.0.1"
+version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
 description = "Native Rust runtime for local runx execution, adapters, harness replay, receipts, and sandboxing."
@@ -84,6 +84,9 @@ wait-timeout = "0.2.1"
 [dev-dependencies]
 criterion = "0.7.0"
 proptest = { version = "1.11.0", default-features = false, features = ["std"] }
+# Same crate/features as the runtime dependency above; integration tests use it
+# to poll descendant-process death instead of fixed sleeps.
+rustix = { version = "1.1.4", features = ["process"] }
 tempfile = "3.23.0"
 
 [lib]

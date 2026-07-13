@@ -28,6 +28,7 @@ export interface NativeRunxOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly cwd?: string;
   readonly timeoutMs?: number;
+  readonly stderr?: NodeJS.WritableStream;
 }
 
 export interface NativeRunxStreamOptions extends NativeRunxOptions {
@@ -64,6 +65,7 @@ export async function runNativeRunx(
     env: nativeRunxEnv(options.env),
     timeoutMs,
     maxOutputBytes,
+    stderr: options.stderr,
   });
 }
 
@@ -109,6 +111,7 @@ interface SpawnNativeRunxOptions {
   readonly env: NodeJS.ProcessEnv;
   readonly timeoutMs: number;
   readonly maxOutputBytes: number;
+  readonly stderr?: NodeJS.WritableStream;
 }
 
 export function spawnNativeRunx(options: SpawnNativeRunxOptions): Promise<NativeRunxProcessResult> {
@@ -165,6 +168,7 @@ export function spawnNativeRunx(options: SpawnNativeRunxOptions): Promise<Native
         stderrBytes += chunkBytes;
         if (stderrBytes <= options.maxOutputBytes) {
           stderr += chunk;
+          options.stderr?.write(chunk);
           return;
         }
       }

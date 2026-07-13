@@ -41,6 +41,17 @@ cargo test --manifest-path crates/Cargo.toml -p runx-receipts
 Avoid running multiple heavy Rust gates in parallel; this workspace has had
 false timeouts when the eval binary is starved.
 
+## Release Discipline
+
+`cli-vX.Y.Z` is the CLI distribution version only. It may stamp/publish
+`packages/cli`, native npm packages, and the `runx-cli` crate. It must not stamp
+or publish internal Rust library crates unless the operator explicitly requests a
+separate library-crate release.
+
+Do not bump another patch to fix a broken release channel. Repair the existing
+release asset, channel manifest, or workflow in place, and validate the manifest
+against the actual archive contents before claiming the channel is live.
+
 ## Spec Workflow
 
 Use scafld for non-trivial scoped work:

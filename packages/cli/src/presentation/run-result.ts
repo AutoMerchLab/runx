@@ -29,6 +29,25 @@ export function writeLocalSkillResult(
   parsed: ParsedArgs,
   result: RunLocalSkillResult,
 ): number {
+  if (result.status === "needs_operator_approval") {
+    if (parsed.json) {
+      io.stdout.write(`${JSON.stringify({
+        status: result.status,
+        disposition: "approval_required",
+        execution_status: null,
+        outcome_state: "pending",
+        skill: result.skill.name,
+        skill_path: result.skillPath,
+        digest: result.digest,
+        approval_flag: result.approvalFlag,
+      }, null, 2)}\n`);
+    } else {
+      io.stdout.write(
+        `Approval required\nRerun the same command with:\n  ${result.approvalFlag}\n`,
+      );
+    }
+    return 2;
+  }
   if (isNeedsAgentResult(result)) {
     return writeNeedsAgentResult(io, env, parsed, result);
   }

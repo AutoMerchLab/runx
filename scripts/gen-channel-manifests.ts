@@ -39,13 +39,23 @@ const outDir = path.resolve(workspaceRoot, options.outDir);
 const written: string[] = [];
 write("homebrew/runx.rb", renderHomebrew(manifest));
 write("scoop/runx.json", renderScoop(manifest));
-write("winget/runx.yaml", renderWinget(manifest));
+for (const file of renderWinget(manifest)) {
+  write(file.path, file.contents);
+}
 write("aur/PKGBUILD", renderPkgbuild(manifest));
 
 console.log(JSON.stringify({ status: "generated", version: manifest.version, files: written }, null, 2));
 
 function archiveUrl(m: Manifest, target: string): string {
   return `https://github.com/${m.repo}/releases/download/${m.tag}/${artifact(m, target).file}`;
+}
+
+function archiveStem(m: Manifest, target: string): string {
+  return `runx-${m.version}-${target}`;
+}
+
+function windowsBinaryPath(m: Manifest, target: string): string {
+  return `${archiveStem(m, target)}\\runx.exe`;
 }
 
 function artifact(m: Manifest, target: string): Artifact {
@@ -90,7 +100,7 @@ class Runx < Formula
   end
 
   def install
-    bin.install "runx"
+    bin.install Dir["*/runx"].first => "runx"
   end
 
   test do
@@ -110,6 +120,7 @@ function renderScoop(m: Manifest): string {
       "64bit": {
         url: archiveUrl(m, TARGETS.winX64),
         hash: artifact(m, TARGETS.winX64).sha256,
+        extract_dir: archiveStem(m, TARGETS.winX64),
         bin: "runx.exe",
       },
     },
@@ -121,34 +132,61 @@ function renderScoop(m: Manifest): string {
       architecture: {
         "64bit": {
           url: `https://github.com/${m.repo}/releases/download/cli-v$version/runx-$version-${TARGETS.winX64}.zip`,
+          extract_dir: `runx-$version-${TARGETS.winX64}`,
         },
       },
     },
   }, null, 2)}\n`;
 }
 
-function renderWinget(m: Manifest): string {
-  // Single-file winget manifest (installer + locale merged for brevity).
-  return `# yaml-language-server: $schema=https://aka.ms/winget-manifest.singleton.1.6.0.schema.json
+function renderWinget(m: Manifest): readonly { path: string; contents: string }[] {
+  const base = "winget";
+  const manifestVersion = "1.6.0";
+  return [
+    {
+      path: `${base}/runxhq.runx.yaml`,
+      contents: `# yaml-language-server: $schema=https://aka.ms/winget-manifest.version.${manifestVersion}.schema.json
 PackageIdentifier: runxhq.runx
 PackageVersion: ${m.version}
+DefaultLocale: en-US
+ManifestType: version
+ManifestVersion: ${manifestVersion}
+`,
+    },
+    {
+      path: `${base}/runxhq.runx.locale.en-US.yaml`,
+      contents: `# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.${manifestVersion}.schema.json
+PackageIdentifier: runxhq.runx
+PackageVersion: ${m.version}
+PackageLocale: en-US
 PackageName: runx
 Publisher: runxhq
 License: MIT
 ShortDescription: ${m.description}
 PackageUrl: ${m.homepage}
+ManifestType: defaultLocale
+ManifestVersion: ${manifestVersion}
+`,
+    },
+    {
+      path: `${base}/runxhq.runx.installer.yaml`,
+      contents: `# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.${manifestVersion}.schema.json
+PackageIdentifier: runxhq.runx
+PackageVersion: ${m.version}
 InstallerType: zip
 NestedInstallerType: portable
 NestedInstallerFiles:
-  - RelativeFilePath: runx.exe
+  - RelativeFilePath: ${windowsBinaryPath(m, TARGETS.winX64)}
     PortableCommandAlias: runx
 Installers:
   - Architecture: x64
     InstallerUrl: ${archiveUrl(m, TARGETS.winX64)}
     InstallerSha256: ${artifact(m, TARGETS.winX64).sha256.toUpperCase()}
-ManifestType: singleton
-ManifestVersion: 1.6.0
-`;
+ManifestType: installer
+ManifestVersion: ${manifestVersion}
+`,
+    },
+  ];
 }
 
 function renderPkgbuild(m: Manifest): string {
@@ -169,7 +207,12 @@ sha256sums_x86_64=('${artifact(m, TARGETS.linuxX64).sha256}')
 sha256sums_aarch64=('${artifact(m, TARGETS.linuxArm64).sha256}')
 
 package() {
-  install -Dm755 "runx" "$pkgdir/usr/bin/runx"
+  case "$CARCH" in
+    x86_64) target="${TARGETS.linuxX64}" ;;
+    aarch64) target="${TARGETS.linuxArm64}" ;;
+    *) echo "unsupported architecture: $CARCH" >&2; return 1 ;;
+  esac
+  install -Dm755 "runx-\${pkgver}-\${target}/runx" "$pkgdir/usr/bin/runx"
 }
 `;
 }

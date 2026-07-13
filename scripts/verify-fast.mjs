@@ -58,36 +58,30 @@ await runSerialGroup("rust structure checks", [
   step("cutover:legacy-check", "pnpm", ["cutover:legacy-check"]),
 ]);
 
-const cliBuild = await runStep(
-  step("build native runx binary", cargo, [
+// One invocation for both binaries: the resolver unifies runx-runtime's feature
+// set across the two packages, so its lib compiles once instead of twice with
+// divergent feature fingerprints.
+const rustBuild = await runStep(
+  step("build rust binaries", cargo, [
     "build",
     "--quiet",
     "--manifest-path",
     "crates/Cargo.toml",
     "-p",
     "runx-cli",
-    "--bin",
-    "runx",
-  ]),
-  rustBuildEnv,
-);
-const oracleBuild = await runStep(
-  step("build harness fixture oracle binary", cargo, [
-    "build",
-    "--quiet",
-    "--manifest-path",
-    "crates/Cargo.toml",
     "-p",
     "runx-runtime",
     "--features",
-    "cli-tool",
+    "runx-runtime/cli-tool",
+    "--bin",
+    "runx",
     "--bin",
     "runx-harness-fixture-oracles",
   ]),
   rustBuildEnv,
 );
 
-if (cliBuild.status === 0 && oracleBuild.status === 0) {
+if (rustBuild.status === 0) {
   await runSerialGroup(
     "generated artifacts and fixtures",
     [

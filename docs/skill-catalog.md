@@ -1,0 +1,165 @@
+# Skill catalog and discovery
+
+The runx catalog has two jobs:
+
+- help operators find a skill they can run now;
+- help contributors avoid opening a duplicate skill PR or publishing a package
+  into the wrong category.
+
+The live registry is the source of truth for published community and verified
+packages. This page is the maintainer-curated map: it explains how to search,
+which category slugs are canonical, and what evidence a new skill proposal must
+include before it belongs in the runx repo.
+
+## Where to look first
+
+Use the public catalog when you want to browse or share a package:
+
+```text
+https://runx.ai/x
+https://runx.ai/x?category=security
+https://runx.ai/x/<owner>/<skill>@<version>
+```
+
+Use the CLI when you are preparing work or checking for overlap:
+
+```bash
+runx registry search "cve audit" --registry https://api.runx.ai --json
+runx registry read runx/dependency-cve-audit@sha-e11c90bbeb16 --registry https://api.runx.ai --json
+runx add runx/dependency-cve-audit@sha-e11c90bbeb16 --registry https://api.runx.ai
+runx skill runx/dependency-cve-audit@sha-e11c90bbeb16 --registry https://api.runx.ai --json
+```
+
+The command shape is deliberate:
+
+| Need | Command or URL |
+| --- | --- |
+| Browse the catalog | `https://runx.ai/x` |
+| Browse one category | `https://runx.ai/x?category=<slug>` |
+| Search from a terminal | `runx registry search <query>` |
+| Inspect one package | `runx registry read <owner>/<name>@<version>` |
+| Install package material | `runx add <owner>/<name>@<version>` |
+| Execute a local or registry skill | `runx skill <path-or-ref>` |
+
+Do not combine the install and execution verbs. Installation is `runx add`;
+execution is `runx skill`.
+
+## Canonical category slugs
+
+Registry categories are maintained by runx, not invented per package. A skill
+author may request a category with `runx.category` in `SKILL.md` or the execution
+profile, but the hosted registry owns the final facet shown on `runx.ai/x`.
+
+| Slug | Label | Use for |
+| --- | --- | --- |
+| `code` | CODE | Software lifecycle: implement, review, release, refactor, and repo evolution. |
+| `payments` | PAYMENTS | Money movement: charge, refund, settlement, dispute, and billing rails. |
+| `data` | DATA | Pipelines, querying, enrichment, analytics, and extraction. |
+| `research` | RESEARCH | Bounded investigation and synthesis: briefs, market and ecosystem analysis. |
+| `content` | CONTENT | Creation and publishing: drafts, documentation, posts, and marketing copy. |
+| `security` | SECURITY | Risk and trust: vulnerability scans, advisories, audits, and compliance. |
+| `ops` | OPS | Running systems: deploy, monitor, incident, infra, triage, and intake. |
+| `growth` | GROWTH | Go-to-market: sales, outreach, CRM, SEO, and campaigns. |
+| `authoring` | AUTHORING | Skill building: design, harness, evaluation, improvement, and registry trust. |
+
+`authoring` is a builder-surface category. It is reachable in the catalog and
+API, but buyer-facing homepage rows can omit it to keep product discovery
+focused on executable business domains.
+
+## First-party skill map
+
+The first-party map is intentionally smaller than the live catalog. It lists
+skills the runx repo maintains directly, not every community package. Community
+packages should be discovered through the live registry and promoted by
+evidence, not copied into the repo by default.
+
+| Category | Maintained packages |
+| --- | --- |
+| `authoring` | `design-skill`, `evolve`, `improve-skill`, `overlay-generator`, `policy-author`, `review-receipt`, `skill-lab`, `skill-testing` |
+| `code` | `release` |
+| `content` | `brand-voice`, `content-pipeline`, `draft-content`, `moltbook` |
+| `data` | `data-store`, `run-history-analyst`, `sql-analyst` |
+| `growth` | `lead-enrichment`, `lead-router`, `nitrosend` |
+| `ops` | `github-sync`, `governed-outbound`, `inbox-and-calendar-exec`, `issue-intake`, `issue-triage`, `messageboard`, `n8n-handoff`, `ops-desk`, `send-as`, `zapier-handoff` |
+| `payments` | `charge`, `dispute-respond`, `mock-pay`, `mock-refund`, `mpp-pay`, `mpp-refund`, `refund`, `settle-invoice`, `spend`, `stripe-pay`, `stripe-refund`, `x402-pay` |
+| `research` | `ecosystem-brief`, `research` |
+| `security` | `dependency-cve-audit`, `ecosystem-vuln-scan`, `least-privilege-auditor`, `receipt-auditor`, `redact-pii`, `sandbox-harden`, `sign-receipt`, `vault-unseal` |
+
+Graph stages, harness fixtures, context-only packages, and provider bindings are
+not listed here unless they are meant to be run as catalog packages. Their
+ownership lives with the parent skill or binding metadata.
+
+## Duplicate check before opening a skill PR
+
+Before opening a new first-party skill PR, do the overlap check in public:
+
+1. Search the live catalog by name, category, and capability words.
+2. Read the closest first-party and verified community packages.
+3. Search open PRs and issues for the same category and runner shape.
+4. Decide whether the work is a new skill, an improvement to an existing skill,
+   a graph composition, or a community package that does not belong in the
+   first-party repo.
+5. Put that reasoning in the PR body.
+
+Useful commands:
+
+```bash
+runx registry search "<capability>" --registry https://api.runx.ai --json
+gh pr list --repo runxhq/runx --search "<capability> OR <category>" --state open
+gh issue list --repo runxhq/runx --search "<capability> OR <category>" --state open
+```
+
+A strong proposal answers:
+
+- What pain does this skill solve that the current catalog does not?
+- Which existing packages did you compare against?
+- Why is this a new first-party package rather than a community registry
+  package, graph composition, or patch to an existing skill?
+- What runner files, `SKILL.md`, `X.yaml`, fixtures, harness evidence, receipt,
+  and public registry URL prove it works?
+- What authority, network, filesystem, provider, or spend boundaries does the
+  execution profile declare?
+
+Do not bundle unrelated CLI, runtime, docs, or release changes into a skill PR.
+A first-party skill PR should be narrow enough that a maintainer can review the
+package, harness, and evidence without separating it from repo history.
+
+## When a community package is enough
+
+Most new skills should start outside the first-party repo:
+
+```bash
+runx new <skill-name>
+runx harness ./<skill-name> --json
+runx login --for publish
+runx registry publish ./<skill-name>/SKILL.md --registry https://api.runx.ai
+```
+
+That gives the package a durable URL, immutable digest, install path, and
+publisher identity without making runx maintain it. Community packages can still
+be used immediately:
+
+```bash
+runx add <owner>/<skill>@<version> --registry https://api.runx.ai
+runx skill <owner>/<skill>@<version> --registry https://api.runx.ai --json
+```
+
+Promote a community skill toward first-party only when it has clear adoption,
+verified runs, a stable execution profile, and a maintainership reason that
+belongs in runx rather than in the publisher's own repo.
+
+## Discovery contract for maintainers
+
+When reviewing a skill PR, maintainers should check:
+
+- the requested `runx.category` is one of the canonical slugs above;
+- the public registry search does not already return a maintained equivalent;
+- any overlap is explicitly explained in the PR body;
+- the package contains only consumable skill material;
+- `runx add` installs the same files that hosted publish validated;
+- `runx skill` executes the package or fails closed with a useful receipt;
+- public artifact URLs point to durable pages, not throwaway previews.
+
+If a proposal is useful but not first-party, close the repo PR or issue with a
+clear pointer to the live registry package and the evidence needed for future
+promotion. That keeps the issue board clean without penalizing the contributor.

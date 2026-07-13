@@ -1,3 +1,5 @@
+// rust-style-allow: large-file - the canonical entrypoint keeps request/result
+// types and prepared/unprepared execution dispatch in one reviewable boundary.
 //! Canonical local orchestration entrypoint.
 //!
 //! CLI commands and TypeScript wrappers should enter local skill, graph, and
@@ -11,6 +13,7 @@ use runx_contracts::{ClosureDisposition, JsonValue, Receipt};
 use thiserror::Error;
 
 use super::harness::{HarnessReplayError, HarnessReplayOutput};
+use super::prepared_skill::{PreparedEntryProvenance, PreparedSkillRun, prepare_skill_run};
 #[cfg(feature = "cli-tool")]
 use super::runner::GraphRun;
 use super::skill_front::{InlineHarnessReport, SkillRunError};
@@ -175,6 +178,51 @@ impl LocalOrchestrator {
             request,
             &overrides,
             &self.effects,
+        )?;
+        Ok(skill_result(output))
+    }
+
+    pub fn prepare_skill(
+        &self,
+        request: SkillRunRequest,
+        runner: Option<&str>,
+        entry: PreparedEntryProvenance,
+    ) -> Result<PreparedSkillRun, OrchestratorError> {
+        Ok(prepare_skill_run(request, runner, entry)?)
+    }
+
+    pub fn run_prepared_skill(
+        &self,
+        prepared: &PreparedSkillRun,
+    ) -> Result<RunResult, OrchestratorError> {
+        if !prepared.is_ready() {
+            return Err(SkillRunError::Invalid(
+                prepared
+                    .report()
+                    .blocked_reason
+                    .clone()
+                    .unwrap_or_else(|| "prepared skill run is blocked".to_owned()),
+            )
+            .into());
+        }
+        if prepared.approval().is_none() {
+            return Err(SkillRunError::Invalid(
+                "prepared skill run requires digest-bound operator approval".to_owned(),
+            )
+            .into());
+        }
+        prepared.verify_artifacts()?;
+        let overrides = super::skill_front::SkillRunOverrides {
+            runner: Some(prepared.selected_runner().to_owned()),
+            seeded_answers: None,
+        };
+        let output = super::skill_front::execute_prepared_skill_run_with_resolved(
+            prepared.request(),
+            &overrides,
+            &self.effects,
+            &prepared.report().request.skill_path,
+            prepared.manifest(),
+            prepared.runner(),
         )?;
         Ok(skill_result(output))
     }

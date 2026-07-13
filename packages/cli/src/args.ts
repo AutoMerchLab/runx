@@ -53,6 +53,9 @@ export interface ParsedArgs {
   readonly inputs: Readonly<Record<string, unknown>>;
   readonly nonInteractive: boolean;
   readonly json: boolean;
+  readonly skipOperatorContext: boolean;
+  readonly fullOperatorContext: boolean;
+  readonly approveOperatorContext?: string;
   readonly answersPath?: string;
   readonly receiptDir?: string;
   readonly runner?: string;
@@ -88,6 +91,8 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
   const inputs: Record<string, unknown> = {};
   let nonInteractive = false;
   let json = false;
+  let skipOperatorContext = false;
+  let fullOperatorContext = false;
   let answersPath: string | undefined;
   let receiptDir: string | undefined;
   let runId: string | undefined;
@@ -119,6 +124,16 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
 
     if (knownKey === "json") {
       json = true;
+      continue;
+    }
+
+    if (knownKey === "skipOperatorContext" || knownKey === "noOperatorContext") {
+      skipOperatorContext = inlineValue === undefined ? true : truthyFlag(parseInputValue(inlineValue));
+      continue;
+    }
+
+    if (knownKey === "fullOperatorContext") {
+      fullOperatorContext = inlineValue === undefined ? true : truthyFlag(parseInputValue(inlineValue));
       continue;
     }
 
@@ -200,6 +215,9 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     isReceiptPublish && truthyFlag(inputs["allow-local-api"]);
   const registryUrl = (isTopLevelAdd || isSkillRun) && typeof inputs.registry === "string" ? inputs.registry : undefined;
   const expectedDigest = (isTopLevelAdd || isSkillRun) && typeof inputs.digest === "string" ? normalizeDigest(inputs.digest) : undefined;
+  const approveOperatorContext = isSkillRun && typeof inputs["approve-operator-context"] === "string"
+    ? String(inputs["approve-operator-context"])
+    : undefined;
   const selectedRunner = runner ?? (isSkillRun ? positionals[1] : undefined);
   const selectedRunId = isResume ? positionals[0] : runId;
   const selectedAnswersPath = isResume ? positionals[1] : answersPath;
@@ -221,7 +239,7 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
       : isRetiredSkillAdd
         ? {}
         : isSkillRun
-            ? omitInputs(inputs, ["registry", "digest"])
+            ? omitInputs(inputs, ["registry", "digest", "approve-operator-context"])
             : isConfig
               ? {}
               : isPolicy
@@ -302,6 +320,9 @@ export function parseArgs(argv: readonly string[]): ParsedArgs {
     inputs: effectiveInputs,
     nonInteractive,
     json,
+    skipOperatorContext,
+    fullOperatorContext,
+    approveOperatorContext,
     answersPath: selectedAnswersPath,
     receiptDir,
     runner: selectedRunner,

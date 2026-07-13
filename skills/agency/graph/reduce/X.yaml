@@ -19,6 +19,8 @@ runners:
     artifacts:
       named_emits:
         reduction: runx.agency.reduction.v1
+      packets:
+        reduction: runx.agency.reduction.v1
     inputs:
       events:
         type: json

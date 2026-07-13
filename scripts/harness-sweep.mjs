@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 
 const schema = "runx.inline_harness_sweep.v1";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const defaultExpectedSkillCount = 76;
+const defaultExpectedSkillCount = 77;
 
 try {
   const options = parseArgs(process.argv.slice(2));
@@ -108,7 +108,9 @@ function runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed) {
   const started = performance.now();
   const skillDir = path.join(repoRoot, "skills", skill.name);
   const receiptDir = path.join(tempRoot, "receipts", skill.name);
+  const skillWorkspaceDir = path.join(workspaceDir, skill.name);
   mkdirSync(receiptDir, { recursive: true });
+  mkdirSync(skillWorkspaceDir, { recursive: true });
 
   if (!existsSync(path.join(skillDir, "SKILL.md"))) {
     return failedSkill(skill.name, started, "missing SKILL.md");
@@ -118,17 +120,17 @@ function runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed) {
   }
   const fixtureFiles = standaloneFixtureFiles(skillDir);
   if (fixtureFiles.length > 0) {
-    return runStandaloneFixtureHarness(skill, fixtureFiles, runxBin, tempRoot, receiptDir, started, workspaceDir, allowed);
+    return runStandaloneFixtureHarness(skill, fixtureFiles, runxBin, tempRoot, receiptDir, started, skillWorkspaceDir, allowed);
   }
 
   const result = spawnSync(
     runxBin,
     ["harness", skillDir, "--json", "--receipt-dir", receiptDir],
     {
-      cwd: workspaceDir,
+      cwd: skillWorkspaceDir,
       encoding: "utf8",
       maxBuffer: 64 * 1024 * 1024,
-      env: harnessEnv(runxBin, tempRoot, workspaceDir),
+      env: harnessEnv(runxBin, tempRoot, skillWorkspaceDir),
     },
   );
   const elapsedMs = Math.round(performance.now() - started);
@@ -162,15 +164,17 @@ function runStandaloneFixtureHarness(skill, fixtureFiles, runxBin, tempRoot, rec
   let exitStatus = 0;
   for (const fixturePath of fixtureFiles) {
     const caseName = path.basename(fixturePath).replace(/\.ya?ml$/u, "");
+    const fixtureWorkspaceDir = path.join(workspaceDir, caseName);
+    mkdirSync(fixtureWorkspaceDir, { recursive: true });
     caseNames.push(caseName);
     const result = spawnSync(
       runxBin,
       ["harness", fixturePath, "--json", "--receipt-dir", receiptDir],
       {
-        cwd: workspaceDir,
+        cwd: fixtureWorkspaceDir,
         encoding: "utf8",
         maxBuffer: 64 * 1024 * 1024,
-        env: harnessEnv(runxBin, tempRoot, workspaceDir),
+        env: harnessEnv(runxBin, tempRoot, fixtureWorkspaceDir),
       },
     );
     if (result.status !== 0 && exitStatus === 0) {
@@ -182,7 +186,7 @@ function runStandaloneFixtureHarness(skill, fixtureFiles, runxBin, tempRoot, rec
       continue;
     }
     assertionErrors.push(
-      `${caseName}: ${output.parse_error ?? nonEmpty(result.stderr) ?? `runx exited ${result.status ?? "with signal"}`}`,
+      `${caseName}: ${nonEmpty(result.stderr) ?? output.parse_error ?? `runx exited ${result.status ?? "with signal"}`}`,
     );
   }
   const elapsedMs = Math.round(performance.now() - started);
@@ -293,6 +297,7 @@ function officialSkills() {
 function harnessEnv(runxBin, tempRoot, workspaceDir) {
   const runxHome = path.join(tempRoot, "runx-home");
   mkdirSync(runxHome, { recursive: true });
+  const toolRoots = harnessToolRoots();
   return {
     ...process.env,
     NO_COLOR: "1",
@@ -302,12 +307,24 @@ function harnessEnv(runxBin, tempRoot, workspaceDir) {
     RUNX_PARSER_EVAL_BIN: runxBin,
     RUNX_RUST_CLI_BIN: runxBin,
     RUNX_DEV_RUST_CLI_BIN: runxBin,
+    RUNX_TOOL_ROOTS: process.env.RUNX_TOOL_ROOTS
+      ? `${process.env.RUNX_TOOL_ROOTS}${path.delimiter}${toolRoots}`
+      : toolRoots,
     RUNX_RECEIPT_SIGN_KID: process.env.RUNX_RECEIPT_SIGN_KID ?? "harness-sweep-test-key",
     RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64:
       process.env.RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64
         ?? "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
     RUNX_RECEIPT_SIGN_ISSUER_TYPE: process.env.RUNX_RECEIPT_SIGN_ISSUER_TYPE ?? "hosted",
   };
+}
+
+function harnessToolRoots() {
+  return [
+    path.join(repoRoot, "tools"),
+    ...officialSkills()
+      .map((skill) => path.join(repoRoot, "skills", skill.name, "tools"))
+      .filter(existsSync),
+  ].join(path.delimiter);
 }
 
 function parseHarnessReport(stdout) {

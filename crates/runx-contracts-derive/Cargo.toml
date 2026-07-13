@@ -3,8 +3,13 @@ name = "runx-contracts-derive"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
+description = "Derive macros for runx contract JSON schema declarations."
 license.workspace = true
-publish = false
+repository.workspace = true
+homepage.workspace = true
+keywords = ["runx", "schema", "derive", "agents", "contracts"]
+categories = ["development-tools"]
+include = ["Cargo.toml", "src/**/*.rs"]
 
 [lib]
 proc-macro = true

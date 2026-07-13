@@ -334,6 +334,7 @@ export async function dispatchCli(
       inputs: evolveInputs,
       parsed,
       env,
+      stderr: io.stderr,
     });
     return writeLocalSkillResult(io, env, parsed, result);
   }
@@ -343,6 +344,7 @@ export async function dispatchCli(
     inputs: parsed.inputs,
     parsed,
     env,
+    stderr: io.stderr,
   });
   return writeLocalSkillResult(io, env, parsed, result);
 }
@@ -375,6 +377,7 @@ async function executeLocalSkillCommand(options: {
   readonly inputs: Readonly<Record<string, unknown>>;
   readonly parsed: ParsedArgs;
   readonly env: NodeJS.ProcessEnv;
+  readonly stderr: NodeJS.WritableStream;
 }): Promise<CliSkillRunResult> {
   const env = await withBundledCliToolRoots(options.env);
   const resolvedReceiptDir = options.parsed.receiptDir ? resolvePathFromUserInput(options.parsed.receiptDir, env) : undefined;
@@ -400,8 +403,15 @@ async function executeLocalSkillCommand(options: {
   if (options.parsed.nonInteractive) {
     args.push("--non-interactive");
   }
+  if (options.parsed.skipOperatorContext) {
+    args.push("--skip-operator-context");
+  }
+  if (options.parsed.fullOperatorContext) {
+    args.push("--full-operator-context");
+  }
+  pushOptionalFlag(args, "--approve-operator-context", options.parsed.approveOperatorContext);
 
-  const result = await runNativeRunx(args, { env });
+  const result = await runNativeRunx(args, { env, stderr: options.stderr });
   const output = parseNativeSkillOutput(args, result);
   return nativeSkillRunResult(options.skillPath, output);
 }
@@ -536,6 +546,20 @@ function nativeSkillRunResult(skillPath: string, value: unknown): CliSkillRunRes
       skillPath,
       runId,
       requests,
+    };
+  }
+  if (status === "needs_operator_approval") {
+    const digest = stringField(value, "digest");
+    const approvalFlag = stringField(value, "approval_flag");
+    if (!digest || !approvalFlag) {
+      throw new Error("native runx skill needs_operator_approval payload is missing digest or approval_flag.");
+    }
+    return {
+      status: "needs_operator_approval",
+      skill: { name: skillName },
+      skillPath,
+      digest,
+      approvalFlag,
     };
   }
   if (status === "sealed") {

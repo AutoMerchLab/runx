@@ -17,14 +17,12 @@ they behave differently.
 
 The skill must be real and runnable:
 
-- A valid `SKILL.md` (frontmatter `name`, `description`, and `source`, with
-  optional portable `category`) and an execution profile (`X.yaml`) when the
-  skill has a runnable path. Format:
+- A valid `SKILL.md` (frontmatter `name`, `description`, and `source`) and an
+  execution profile (`X.yaml`) when the skill has a runnable path. Format:
   https://runx.ai/SKILL.md
-  Use top-level `category` only for the upstream skill's own portable taxonomy.
   Use `runx.category` for the runx catalog category/facet; runx categories are
-  intentionally specific and should not be inferred from arbitrary upstream
-  category values.
+  maintained slugs, not arbitrary tags. See
+  [skill-catalog.md](skill-catalog.md) before choosing one.
 - It passes the harness:
   ```bash
   runx harness ./skills/<your-skill> --json
@@ -73,6 +71,16 @@ runx login --for publish
 runx registry publish ./skills/<your-skill>/SKILL.md --registry https://api.runx.ai
 ```
 
+If GitHub's browser consent control is unavailable, use the identity already
+authenticated by GitHub CLI:
+
+```bash
+runx login --provider github --for publish --from-gh
+```
+
+This verifies the active `gh` identity once and stores only the resulting
+purpose-scoped runx credential. It does not store the GitHub CLI credential.
+
 For remote publishes the CLI sends a bounded skill package:
 
 - `SKILL.md` is the portable skill contract and is sent as the primary document.
@@ -98,8 +106,9 @@ instead of trusting a client-supplied summary, while keeping local credentials,
 fixtures, source trees, and build trash out of the registry. The local harness
 still runs first for fast feedback.
 
-`runx login --for publish` opens the hosted sign-in flow and stores a
-purpose-scoped public API token in the encrypted local config at
+`runx login --for publish` opens the hosted sign-in flow. Add `--from-gh` to use
+the active GitHub CLI identity without the browser consent step. Both paths store
+a purpose-scoped public API token in the encrypted local config at
 `public.api_token`. The token can publish and report skills, but it cannot move
 money, mutate hosted billing state, or operate unrelated hosted surfaces. Hosted
 CLI commands use token precedence in this order: an explicit `--token` when the
@@ -155,9 +164,16 @@ runx treats it like every other governed action, with no special-casing:
   runx add <publisher>/<skill>@<version>  # the friendly install path
   ```
 
+Before opening a first-party skill PR, check the live catalog and the
+maintainer-curated first-party map in [skill-catalog.md](skill-catalog.md).
+Most new skills should start as community registry packages; first-party
+inclusion needs a clear maintainership reason and a narrow PR with no unrelated
+repo history.
+
 ## Links
 
 - Skill format: https://runx.ai/SKILL.md
 - Catalog: https://runx.ai/x
 - Publish surface: https://runx.ai/x/publish
+- Catalog and discovery guide: ./skill-catalog.md
 - Quickstart: https://runx.ai/docs/quickstart

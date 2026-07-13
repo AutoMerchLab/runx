@@ -215,6 +215,8 @@ fn exports_default_runner_inputs_when_skill_frontmatter_has_none()
     assert!(shim.contains("--principal \"<principal>\""));
     assert!(shim.contains("- objective (required) - Bounded send objective."));
     assert!(shim.contains("- provider_context (optional) - Provider readiness."));
+    assert!(shim.contains("A planning runner seals a plan, not the downstream external action"));
+    assert!(!shim.contains("Do not perform the work yourself"));
     Ok(())
 }
 

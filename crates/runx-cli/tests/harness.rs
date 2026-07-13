@@ -42,7 +42,14 @@ fn scaffolded_next_steps_run_without_signer_env() -> TestResult {
 
     let skill = unsigned_runx_command()?
         .current_dir(&skill_dir)
-        .args(["skill", ".", "--input", "message=hello", "--json"])
+        .args([
+            "skill",
+            ".",
+            "--input",
+            "message=hello",
+            "--json",
+            "--skip-operator-context",
+        ])
         .output()?;
     assert_eq!(
         skill.status.code(),

@@ -748,6 +748,21 @@ pub(crate) fn graph_domain_act_receipt(
     ) else {
         return Ok(None);
     };
+    for reference in run
+        .steps
+        .iter()
+        .flat_map(|step| step.receipt.acts.iter())
+        .flat_map(|receipt_act| receipt_act.artifact_refs.iter())
+        .filter(|reference| reference.uri.as_str().contains("operator_context"))
+    {
+        if !frame
+            .artifact_refs
+            .iter()
+            .any(|existing| existing.uri == reference.uri)
+        {
+            frame.artifact_refs.push(reference.clone());
+        }
+    }
     // Compute path: when the act declares `mint_authority`, the runtime mints the
     // child term and proves the subset against the graph charter off the model
     // path, overriding the (empty, since the parser holds them mutually exclusive)

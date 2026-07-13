@@ -4,7 +4,7 @@ mod receipts;
 mod sandbox;
 mod tool_roots;
 
-#[cfg(any(feature = "mcp", feature = "agent"))]
+#[cfg(any(feature = "cli-tool", feature = "mcp", feature = "agent"))]
 pub(crate) use env::process_env_snapshot;
 pub(crate) use env::{WorkspaceEnv, merge_inferred_tool_roots, process_env_value};
 pub(crate) use receipts::ReceiptServices;
@@ -68,9 +68,9 @@ mod tests {
     }
 
     #[test]
-    fn receipt_services_local_development_fallback_only_handles_absent_signer_env() {
-        let receipts = ReceiptServices::from_env_or_local_development(&BTreeMap::new())
-            .expect("absent signer env should use local-development receipts");
+    fn receipt_services_local_development_fallback_only_handles_absent_signer_env()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let receipts = ReceiptServices::from_env_or_local_development(&BTreeMap::new())?;
 
         assert!(
             receipts
@@ -83,8 +83,10 @@ mod tests {
             RUNX_RECEIPT_SIGN_KID_ENV.to_owned(),
             "partial-explicit-key".to_owned(),
         )]);
-        let error = ReceiptServices::from_env_or_local_development(&partial_env)
-            .expect_err("partial signer env must still fail closed");
+        let Err(error) = ReceiptServices::from_env_or_local_development(&partial_env) else {
+            return Err("partial signer env must still fail closed".into());
+        };
         assert!(error.to_string().contains("set together"));
+        Ok(())
     }
 }

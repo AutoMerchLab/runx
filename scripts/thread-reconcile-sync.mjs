@@ -10,6 +10,7 @@ import {
 } from "../tools/thread/thread_desired_state.mjs";
 import {
   firstNonEmptyString,
+  listGitHubIssuesWithAnyLabel,
   parseGitHubIssueRef,
   prune,
   readGitHubThreadSnapshot,
@@ -69,13 +70,16 @@ async function main() {
   }
 
   observed += await flushObservations(config, pendingObservations);
+  const orphanResults = retireOrphanManagedThreads({ config, threads, results });
+  results.push(...orphanResults);
 
-  process.stdout.write(`${JSON.stringify({
+  await writeJsonLine({
     ok: true,
     reconciled: threads.length,
+    orphaned: orphanResults.length,
     observed,
     results,
-  })}\n`);
+  });
 }
 
 function reconcileThread(thread, config) {
@@ -102,6 +106,7 @@ function reconcileThread(thread, config) {
   let locator = firstNonEmptyString(thread.thread_locator);
   let providerThreadId;
   let created = false;
+  let contentRefreshed = false;
   let snapshot;
   if (!locator) {
     const pushed = runProvider(buildCreateFrame(thread, frameOptions(config)), config);
@@ -117,6 +122,10 @@ function reconcileThread(thread, config) {
     //    this single snapshot, so a fully-current thread costs one read and zero
     //    writes (no per-comment re-fetch).
     snapshot = readGitHubThreadSnapshot({ adapterRef: locator, env: config.env });
+    if (issueContentDrift(snapshot, thread)) {
+      runProvider(buildCreateFrame(thread, frameOptions(config)), config);
+      contentRefreshed = true;
+    }
   }
 
   // 3. Reconcile labels + open/closed only when the snapshot shows drift.
@@ -131,7 +140,13 @@ function reconcileThread(thread, config) {
 
   // 4. Post only comments whose marker is not already on the issue.
   const presentComments = new Set(snapshot.comment_markers);
-  const missingComments = comments.filter((comment) => !presentComments.has(comment.entry_id));
+  const presentCommentBodies = new Set(
+    (Array.isArray(snapshot.comment_bodies) ? snapshot.comment_bodies : []).map(normalizeMarkdown),
+  );
+  const missingComments = comments.filter((comment) =>
+    !presentComments.has(comment.entry_id)
+    && !presentCommentBodies.has(normalizeMarkdown(comment.body))
+  );
   for (const comment of missingComments) {
     runProvider(buildMessageFrame(thread, comment, locator, frameOptions(config)), config);
   }
@@ -141,6 +156,7 @@ function reconcileThread(thread, config) {
       identity_key: thread.identity_key,
       locator,
       created,
+      content_refreshed: contentRefreshed,
       state: thread.state,
       labels_changed: labelAdds.length + labelRemoves.length + (stateDrift ? 1 : 0),
       comments_posted: missingComments.length,
@@ -150,6 +166,91 @@ function reconcileThread(thread, config) {
     // changes again. The source only sends changed threads, so this stays cheap.
     observation: buildObservation(thread, locator, providerThreadId),
   };
+}
+
+function retireOrphanManagedThreads({ config, threads, results }) {
+  if (!config.fullReconcile || !config.targetRepo) return [];
+  const managedLabels = uniqueStrings(threads.flatMap((thread) => thread.managed_labels ?? []));
+  if (managedLabels.length === 0) return [];
+
+  const desiredLocators = new Set();
+  for (const thread of threads) {
+    const locator = safeIssueRef(thread.thread_locator)?.thread_locator;
+    if (locator) desiredLocators.add(locator);
+  }
+  for (const result of results) {
+    const locator = safeIssueRef(result.locator)?.thread_locator;
+    if (locator) desiredLocators.add(locator);
+  }
+
+  const providerIssues = listGitHubIssuesWithAnyLabel({
+    repoSlug: config.targetRepo,
+    labels: managedLabels,
+    env: config.env,
+  });
+  const retired = [];
+  for (const issue of providerIssues) {
+    const issueRef = safeIssueRef(issue.thread_locator);
+    if (!issueRef || desiredLocators.has(issueRef.thread_locator)) continue;
+    const managedPresent = uniqueStrings((issue.labels ?? []).filter((label) => managedLabels.includes(label)));
+    if (managedPresent.length === 0) continue;
+
+    const thread = {
+      schema_version: 1,
+      provider: "github",
+      target_repo: config.targetRepo,
+      identity_key: `orphan:${config.targetRepo}#${issueRef.issue_number}`,
+      thread_locator: issueRef.thread_locator,
+      title: firstNonEmptyString(issue.title, `Orphaned managed thread #${issueRef.issue_number}`),
+      body: "This provider thread is no longer present in the source desired-state payload.",
+      labels: [],
+      managed_labels: managedLabels,
+      state: "closed",
+      close_reason: "not_planned",
+      comments: [],
+    };
+    const stateDrift = String(issue.state ?? "").toUpperCase() !== "CLOSED";
+    if (config.dryRun) {
+      retired.push({
+        identity_key: thread.identity_key,
+        locator: issueRef.thread_locator,
+        orphaned: true,
+        dry_run: true,
+        labels_changed: managedPresent.length,
+        state_changed: stateDrift,
+      });
+      continue;
+    }
+    runProvider(buildLifecycleFrame(thread, issueRef.thread_locator, frameOptions(config)), config);
+    retired.push({
+      identity_key: thread.identity_key,
+      locator: issueRef.thread_locator,
+      orphaned: true,
+      state: "closed",
+      labels_changed: managedPresent.length + (stateDrift ? 1 : 0),
+    });
+  }
+  return retired;
+}
+
+function uniqueStrings(values) {
+  return [...new Set(
+    values
+      .map((value) => firstNonEmptyString(value))
+      .filter((value) => value !== undefined),
+  )];
+}
+
+function issueContentDrift(snapshot, thread) {
+  const desiredTitle = firstNonEmptyString(thread.title);
+  const desiredBody = firstNonEmptyString(thread.body);
+  const titleDrift = desiredTitle ? firstNonEmptyString(snapshot.title) !== desiredTitle : false;
+  const bodyDrift = desiredBody ? normalizeMarkdown(snapshot.body) !== normalizeMarkdown(desiredBody) : false;
+  return titleDrift || bodyDrift;
+}
+
+function normalizeMarkdown(value) {
+  return String(value ?? "").replace(/\r\n/g, "\n").trim();
 }
 
 function buildObservation(thread, locator, providerThreadId) {
@@ -273,6 +374,18 @@ function logSyncEvent(event, fields) {
   process.stderr.write(`[thread-sync] ${event} ${JSON.stringify(prune(fields) ?? {})}\n`);
 }
 
+function writeJsonLine(payload) {
+  return new Promise((resolve, reject) => {
+    process.stdout.write(`${JSON.stringify(payload)}\n`, (error) => {
+      if (error) {
+        reject(error);
+        return;
+      }
+      resolve();
+    });
+  });
+}
+
 function logThreadProgress(config, fields) {
   const index = Number.isInteger(fields.index) ? fields.index : 0;
   const total = Number.isInteger(fields.total) ? fields.total : 0;
@@ -336,7 +449,9 @@ function trim(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : undefined;
 }
 
-main().catch((error) => {
+main().then(() => {
+  process.exit(0);
+}).catch((error) => {
   console.error(messageOf(error));
   process.exit(1);
 });

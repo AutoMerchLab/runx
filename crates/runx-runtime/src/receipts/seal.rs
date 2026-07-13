@@ -207,6 +207,7 @@ pub(crate) struct StepSeal<'a> {
     pub(crate) projection: &'a StepOutputProjection,
     pub(crate) created_at: &'a str,
     pub(crate) authority_grant_refs: Vec<Reference>,
+    pub(crate) operator_refs: Vec<Reference>,
     pub(crate) closure: Option<StepSealClosure>,
 }
 
@@ -244,6 +245,7 @@ pub(crate) fn seal_step(
         projection,
         created_at,
         authority_grant_refs,
+        operator_refs,
         closure,
     } = params;
     let StepSealClosure {
@@ -251,6 +253,20 @@ pub(crate) fn seal_step(
         reason_code,
         summary,
     } = closure.unwrap_or_else(|| StepSealClosure::default_for(output, step_id));
+    let mut projection = StepOutputProjection {
+        outputs: projection.outputs.clone(),
+        claim: projection.claim.clone(),
+        refs: projection.refs.clone(),
+    };
+    for reference in operator_refs {
+        if reference.reference_type == ReferenceType::Artifact {
+            projection.refs.artifact_refs.push(reference.clone());
+        } else {
+            projection.refs.artifact_refs.push(reference.clone());
+            projection.refs.verification_refs.push(reference.clone());
+        }
+        projection.refs.evidence_refs.push(reference);
+    }
     step_receipt_with_disposition_projection_authority_and_policy(
         StepReceiptWithDisposition {
             graph_name,
@@ -262,7 +278,7 @@ pub(crate) fn seal_step(
             reason_code,
             summary,
         },
-        projection,
+        &projection,
         authority_grant_refs,
         signature_policy,
     )
@@ -384,6 +400,7 @@ pub(crate) fn graph_receipt_with_disposition_and_policy(
     // the only graph body digest/signature/proof seal this path needs.
     let mut receipt =
         build_graph_receipt(graph_name, Vec::new(), &sync_points, created_at, &closure);
+    bind_graph_operator_refs(&mut receipt, steps);
     content_address_receipt(&mut receipt, signature_policy)?;
     let parent_ref = Reference::runx(ReferenceType::Receipt, &receipt.id);
 
@@ -407,6 +424,7 @@ pub(crate) fn graph_receipt_with_disposition_and_policy(
     // is unchanged (lineage excluded); only the full digest commits the children.
     let mut receipt =
         build_graph_receipt(graph_name, child_refs, &sync_points, created_at, &closure);
+    bind_graph_operator_refs(&mut receipt, steps);
     seal_receipt_unvalidated(&mut receipt, signature_policy)?;
 
     validate_receipt_tree_with_policy(
@@ -417,6 +435,53 @@ pub(crate) fn graph_receipt_with_disposition_and_policy(
         signature_policy,
     )?;
     Ok(receipt)
+}
+
+fn bind_graph_operator_refs(receipt: &mut Receipt, steps: &[StepRun]) {
+    let mut refs = Vec::<Reference>::new();
+    for reference in steps
+        .iter()
+        .flat_map(|step| step.receipt.acts.iter())
+        .flat_map(|act| act.artifact_refs.iter())
+        .filter(|reference| reference.uri.as_str().contains("operator_context"))
+    {
+        if !refs.iter().any(|existing| existing.uri == reference.uri) {
+            refs.push(reference.clone());
+        }
+    }
+    let artifacts = refs
+        .iter()
+        .filter(|reference| reference.reference_type == ReferenceType::Artifact)
+        .cloned()
+        .collect::<Vec<_>>();
+    let decisions = refs
+        .iter()
+        .filter(|reference| reference.reference_type == ReferenceType::Decision)
+        .cloned()
+        .collect::<Vec<_>>();
+    for act in &mut receipt.acts {
+        act.artifact_refs.extend(artifacts.iter().cloned());
+        act.artifact_refs.extend(decisions.iter().cloned());
+        for criterion in &mut act.criterion_bindings {
+            criterion.evidence_refs.extend(refs.iter().cloned());
+            criterion
+                .verification_refs
+                .extend(decisions.iter().cloned());
+        }
+    }
+    for decision in &mut receipt.decisions {
+        decision.artifact_refs.extend(artifacts.iter().cloned());
+        decision
+            .justification
+            .evidence_refs
+            .extend(refs.iter().cloned());
+    }
+    for criterion in &mut receipt.seal.criteria {
+        criterion.evidence_refs.extend(refs.iter().cloned());
+        criterion
+            .verification_refs
+            .extend(decisions.iter().cloned());
+    }
 }
 
 fn build_graph_receipt(

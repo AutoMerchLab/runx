@@ -1,7 +1,9 @@
 import { chmod, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { once } from "node:events";
+import { createServer } from "node:http";
 import os from "node:os";
 import path from "node:path";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -10,10 +12,12 @@ import {
   ensureGitHubIssueReference,
   gitHubIssueSearchQuery,
   hydrateGitHubIssueThread,
+  listGitHubIssuesWithAnyLabel,
   mapGitHubPullRequestToOutboxEntry,
   parseGitHubIssueRef,
   pushGitHubCreateIssue,
   pushGitHubLifecycleIntent,
+  readGitHubThreadSnapshot,
   selectPreferredGitHubPullRequest,
 } from "../tools/thread/github_adapter.mjs";
 import {
@@ -414,6 +418,44 @@ describe("GitHub thread helper", () => {
     expect(lifecycleBody.outbox_entry.metadata.remove_labels).toContain("available");
   });
 
+  it("maps a linked desired-thread refresh to the existing provider issue", () => {
+    const thread = {
+      schema_version: 1,
+      provider: "github",
+      target_repo: "auscaster/frantic-board",
+      identity_key: "frantic:bounty:90",
+      thread_locator: "github://auscaster/frantic-board/issues/205",
+      title: "Frantic bounty #90: runx skill: compliance pack",
+      body: "Status: claimed",
+      labels: ["bounty", "funded", "claimed"],
+      managed_labels: ["bounty", "funded", "available", "claimed", "paid", "closed"],
+      state: "open",
+      comments: [],
+      ref: { posting_id: "round-one-090", bounty_number: 90 },
+    };
+
+    const frame = buildCreateFrame(thread, { sourceId: "frantic" });
+    expect(frame.thread_locator).toMatchObject({
+      type: "provider_thread",
+      locator: "github://auscaster/frantic-board/issues/205",
+    });
+    const body = JSON.parse((frame.payload as { body: string }).body);
+    expect(body.thread).toMatchObject({
+      adapter: {
+        adapter_ref: "auscaster/frantic-board#issue/205",
+      },
+      thread_locator: "github://auscaster/frantic-board/issues/205",
+    });
+    expect(body.outbox_entry).toMatchObject({
+      kind: "provider_thread_create",
+      thread_locator: "github://auscaster/frantic-board/issues/205",
+      metadata: {
+        target_repo: "auscaster/frantic-board",
+        title: "Frantic bounty #90: runx skill: compliance pack",
+      },
+    });
+  });
+
   it("creates Frantic GitHub issues idempotently through the GitHub adapter", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-frantic-github-create-"));
     const ghBin = path.join(tempDir, "fake-gh.mjs");
@@ -604,6 +646,185 @@ describe("GitHub thread helper", () => {
     }
   });
 
+  it("includes visible comment bodies in issue snapshots for markerless dedupe", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-frantic-github-snapshot-"));
+    const ghBin = path.join(tempDir, "fake-gh.mjs");
+    const logPath = path.join(tempDir, "gh.log");
+
+    try {
+      await writeFile(ghBin, fakeGhScript(logPath));
+      await chmod(ghBin, 0o700);
+      const snapshot = readGitHubThreadSnapshot({
+        adapterRef: "github://auscaster/frantic-board/issues/7",
+        env: {
+          ...process.env,
+          RUNX_GH_BIN: ghBin,
+          GH_FAKE_LOG: logPath,
+          GH_FAKE_COMMENTS: JSON.stringify([
+            {
+              body: "Frantic posted this bounty.",
+            },
+            {
+              body: [
+                "Frantic funding is visible on the ledger.",
+                "",
+                "<!-- runx-outbox-envelope: v1 -->",
+                "<!-- runx-outbox-entry: organic:posting:p-1:funded:thread.comment -->",
+              ].join("\n"),
+            },
+          ]),
+        },
+      });
+
+      expect(snapshot.comment_bodies).toContain("Frantic posted this bounty.");
+      expect(snapshot.comment_bodies).toContain("Frantic funding is visible on the ledger.");
+      expect(snapshot.comment_markers).toContain("organic:posting:p-1:funded:thread.comment");
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("lists GitHub issues carrying any managed label without duplicates", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-frantic-github-list-"));
+    const ghBin = path.join(tempDir, "fake-gh.mjs");
+    const logPath = path.join(tempDir, "gh.log");
+
+    try {
+      await writeFile(ghBin, fakeGhScript(logPath));
+      await chmod(ghBin, 0o700);
+      const issues = listGitHubIssuesWithAnyLabel({
+        repoSlug: "auscaster/frantic-board",
+        labels: ["bounty", "funded"],
+        env: {
+          ...process.env,
+          RUNX_GH_BIN: ghBin,
+          GH_FAKE_LOG: logPath,
+          GH_FAKE_ISSUES: JSON.stringify([
+            {
+              number: 71,
+              title: "old paid bounty",
+              state: "CLOSED",
+              url: "https://github.com/auscaster/frantic-board/issues/71",
+              labels: [{ name: "bounty" }, { name: "funded" }],
+            },
+            {
+              number: 72,
+              title: "funded bounty",
+              state: "OPEN",
+              url: "https://github.com/auscaster/frantic-board/issues/72",
+              labels: [{ name: "funded" }],
+            },
+            {
+              number: 73,
+              title: "unmanaged issue",
+              state: "OPEN",
+              url: "https://github.com/auscaster/frantic-board/issues/73",
+              labels: [{ name: "help wanted" }],
+            },
+          ]),
+        },
+      });
+
+      expect(issues.map((issue) => issue.number)).toEqual(["71", "72"]);
+      expect(issues[0]).toMatchObject({
+        thread_locator: "github://auscaster/frantic-board/issues/71",
+        labels: ["bounty", "funded"],
+      });
+      const calls = JSON.parse(await readFile(logPath, "utf8"));
+      expect(calls.map((call: { args: string[] }) => call.args.slice(0, 2).join(" "))).toEqual([
+        "issue list",
+        "issue list",
+      ]);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("dry-runs orphan retirement for managed GitHub issues missing from full desired state", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-frantic-thread-sync-"));
+    const ghBin = path.join(tempDir, "fake-gh.mjs");
+    const logPath = path.join(tempDir, "gh.log");
+    const desiredThread = {
+      schema_version: 1,
+      provider: "github",
+      target_repo: "auscaster/frantic-board",
+      identity_key: "frantic:bounty:10",
+      thread_locator: "github://auscaster/frantic-board/issues/10",
+      title: "Frantic bounty #10: live thread",
+      body: "Still desired.",
+      labels: ["bounty", "funded"],
+      managed_labels: ["bounty", "funded", "available", "claimed", "paid", "closed"],
+      state: "open",
+      comments: [],
+    };
+    const server = createServer((request, response) => {
+      if (request.url?.startsWith("/internal/thread-desired-state")) {
+        response.writeHead(200, { "content-type": "application/json", connection: "close" });
+        response.end(JSON.stringify({ threads: [desiredThread] }));
+        return;
+      }
+      response.writeHead(404, { "content-type": "application/json", connection: "close" });
+      response.end(JSON.stringify({ error: "not_found" }));
+    });
+
+    try {
+      await writeFile(ghBin, fakeGhScript(logPath));
+      await chmod(ghBin, 0o700);
+      server.listen(0, "127.0.0.1");
+      await once(server, "listening");
+      const address = server.address();
+      if (!address || typeof address === "string") throw new Error("test server did not bind");
+
+      const result = await spawnNode(["scripts/thread-reconcile-sync.mjs"], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          RUNX_GH_BIN: ghBin,
+          GH_FAKE_LOG: logPath,
+          GH_FAKE_ISSUES: JSON.stringify([
+            {
+              number: 10,
+              title: "live thread",
+              state: "OPEN",
+              labels: [{ name: "bounty" }, { name: "funded" }],
+            },
+            {
+              number: 11,
+              title: "stale managed thread",
+              state: "CLOSED",
+              labels: [{ name: "bounty" }, { name: "funded" }, { name: "paid" }, { name: "closed" }],
+            },
+            {
+              number: 12,
+              title: "unmanaged issue",
+              state: "OPEN",
+              labels: [{ name: "help wanted" }],
+            },
+          ]),
+          THREAD_SYNC_API_BASE_URL: `http://127.0.0.1:${address.port}`,
+          THREAD_SYNC_INTERNAL_SECRET: "test-secret",
+          THREAD_SYNC_TARGET_REPO: "auscaster/frantic-board",
+          THREAD_SYNC_FULL_RECONCILE: "1",
+          THREAD_SYNC_DRY_RUN: "1",
+          THREAD_SYNC_PROGRESS_EVERY: "999",
+        },
+      });
+
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      const output = JSON.parse(result.stdout);
+      expect(output).toMatchObject({ ok: true, reconciled: 1, orphaned: 1 });
+      expect(output.results).toContainEqual(expect.objectContaining({
+        identity_key: "orphan:auscaster/frantic-board#11",
+        locator: "github://auscaster/frantic-board/issues/11",
+        orphaned: true,
+        dry_run: true,
+      }));
+    } finally {
+      server.close();
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("publishes an already-open lifecycle operation without GitHub mutation", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-frantic-github-"));
     const ghBin = path.join(tempDir, "fake-gh.mjs");
@@ -752,7 +973,13 @@ calls.push({ args });
 writeFileSync(logPath, JSON.stringify(calls));
 
 if (args[0] === "issue" && args[1] === "list") {
-  process.stdout.write(JSON.stringify([]));
+  const issues = JSON.parse(process.env.GH_FAKE_ISSUES || "[]");
+  const labelIndex = args.indexOf("--label");
+  const wantedLabel = labelIndex >= 0 ? args[labelIndex + 1] : undefined;
+  const filtered = wantedLabel
+    ? issues.filter((issue) => (issue.labels || []).some((label) => (label.name || label) === wantedLabel))
+    : issues;
+  process.stdout.write(JSON.stringify(filtered));
   process.exit(0);
 }
 if (args[0] === "issue" && args[1] === "create") {
@@ -761,9 +988,12 @@ if (args[0] === "issue" && args[1] === "create") {
 }
 if (args[0] === "issue" && args[1] === "view") {
   process.stdout.write(JSON.stringify({
+    title: "Fixture issue",
+    body: "Fixture body",
     state: process.env.GH_FAKE_ISSUE_STATE || "OPEN",
     url: "https://github.com/auscaster/frantic-board/issues/7",
-    labels: [{ name: "frantic:open" }]
+    labels: [{ name: "frantic:open" }],
+    comments: JSON.parse(process.env.GH_FAKE_COMMENTS || "[]")
   }));
   process.exit(0);
 }
@@ -773,4 +1003,38 @@ if (args[0] === "label" && args[1] === "list") {
 }
 process.stdout.write("");
 `;
+}
+
+function spawnNode(args: string[], options: { cwd: string; env: NodeJS.ProcessEnv }) {
+  return new Promise<{ status: number | null; signal: NodeJS.Signals | null; stdout: string; stderr: string }>(
+    (resolve, reject) => {
+      const child = spawn(process.execPath, args, {
+        cwd: options.cwd,
+        env: options.env,
+        stdio: ["ignore", "pipe", "pipe"],
+      });
+      let stdout = "";
+      let stderr = "";
+      const timeout = setTimeout(() => {
+        child.kill("SIGTERM");
+        reject(new Error(`node ${args.join(" ")} timed out\n${stderr || stdout}`));
+      }, 5_000);
+      child.stdout.setEncoding("utf8");
+      child.stderr.setEncoding("utf8");
+      child.stdout.on("data", (chunk) => {
+        stdout += chunk;
+      });
+      child.stderr.on("data", (chunk) => {
+        stderr += chunk;
+      });
+      child.on("error", (error) => {
+        clearTimeout(timeout);
+        reject(error);
+      });
+      child.on("close", (status, signal) => {
+        clearTimeout(timeout);
+        resolve({ status, signal, stdout, stderr });
+      });
+    },
+  );
 }

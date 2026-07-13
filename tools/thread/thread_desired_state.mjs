@@ -28,37 +28,40 @@ export function buildCreateFrame(thread, options = {}) {
   const t = normalizeThread(thread);
   const sourceId = firstNonEmptyString(options.sourceId, DEFAULT_SOURCE_ID);
   const pending = pendingLocator(t);
-  const threadFrame = {
-    kind: "runx.thread.v1",
-    adapter: {
-      type: "github",
-      provider: "github",
-      surface: "issue_thread",
-      adapter_ref: `${t.target_repo}#issue/new:${t.identity_key}`,
-    },
-    thread_kind: "signal",
-    thread_locator: pending.locator,
-    canonical_uri: pending.uri,
-    title: t.title,
-    metadata: {
-      repo: t.target_repo,
-      source: sourceId,
-      source_ref: t.identity_key,
-      pending_provider_thread: true,
-    },
-    entries: [],
-    decisions: [],
-    outbox: [],
-    source_refs: [
-      { type: "provider_repository", uri: `https://github.com/${t.target_repo}`, provider: "github" },
-    ],
-    generated_at: new Date().toISOString(),
-  };
+  const existingIssueRef = existingIssueRefFromLocator(t.thread_locator);
+  const threadFrame = existingIssueRef
+    ? locatedThreadFrame(t, existingIssueRef, sourceId)
+    : {
+        kind: "runx.thread.v1",
+        adapter: {
+          type: "github",
+          provider: "github",
+          surface: "issue_thread",
+          adapter_ref: `${t.target_repo}#issue/new:${t.identity_key}`,
+        },
+        thread_kind: "signal",
+        thread_locator: pending.locator,
+        canonical_uri: pending.uri,
+        title: t.title,
+        metadata: {
+          repo: t.target_repo,
+          source: sourceId,
+          source_ref: t.identity_key,
+          pending_provider_thread: true,
+        },
+        entries: [],
+        decisions: [],
+        outbox: [],
+        source_refs: [
+          { type: "provider_repository", uri: `https://github.com/${t.target_repo}`, provider: "github" },
+        ],
+        generated_at: new Date().toISOString(),
+      };
   const outboxEntry = {
     entry_id: t.identity_key,
     kind: "provider_thread_create",
     status: "pending",
-    thread_locator: pending.locator,
+    thread_locator: existingIssueRef?.thread_locator ?? pending.locator,
     title: t.title,
     metadata: prune({
       schema_version: "runx.outbox-entry.provider-thread-create.v1",
@@ -78,7 +81,9 @@ export function buildCreateFrame(thread, options = {}) {
     pushId: `thread-reconcile:${t.identity_key}:create`,
     idempotencyKey: `${t.identity_key}:create`,
     adapterId: options.adapterId,
-    threadLocator: { type: "provider_thread_target", provider: "github", uri: pending.uri, locator: pending.locator },
+    threadLocator: existingIssueRef
+      ? providerThreadLocator(existingIssueRef)
+      : { type: "provider_thread_target", provider: "github", uri: pending.uri, locator: pending.locator },
     outboxEntryId: t.identity_key,
     thread: threadFrame,
     outboxEntry,
@@ -238,6 +243,16 @@ function pendingLocator(t) {
     uri: `https://github.com/${t.target_repo}/issues/new`,
     locator: `github://${t.target_repo}/issues/new/${encodedKey}`,
   };
+}
+
+function existingIssueRefFromLocator(locator) {
+  const value = firstNonEmptyString(locator);
+  if (!value) return undefined;
+  try {
+    return parseGitHubIssueRef(value);
+  } catch {
+    return undefined;
+  }
 }
 
 function requiredString(value, label) {

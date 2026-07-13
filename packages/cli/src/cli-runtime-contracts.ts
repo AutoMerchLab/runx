@@ -96,6 +96,13 @@ export type CliRuntimeReceipt = Partial<ReceiptContract> & {
 
 export type CliSkillRunResult =
   | {
+      readonly status: "needs_operator_approval";
+      readonly skill: { readonly name: string };
+      readonly skillPath: string;
+      readonly digest: string;
+      readonly approvalFlag: string;
+    }
+  | {
       readonly status: "needs_agent";
       readonly skill: { readonly name: string };
       readonly skillPath: string;

@@ -1841,7 +1841,7 @@ dependencies = [
 
 [[package]]
 name = "runx-receipts"
-version = "0.0.1"
+version = "0.0.2"
 dependencies = [
  "base64",
  "criterion",
@@ -1857,7 +1857,7 @@ dependencies = [
 
 [[package]]
 name = "runx-runtime"
-version = "0.0.1"
+version = "0.1.0"
 dependencies = [
  "aes-gcm",
  "base64",

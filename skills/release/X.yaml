@@ -298,7 +298,7 @@ runners:
             named_emits:
               release_report: release_report
             packets:
-              release_report: runx.release.verification_report.v1
+              release_report: runx.release.verification_summary.v1
       policy:
         guards:
           - step: publish-release

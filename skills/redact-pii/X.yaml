@@ -18,6 +18,8 @@ runners:
     artifacts:
       named_emits:
         redaction_report: runx.redaction.report.v1
+      packets:
+        redaction_report: runx.redaction.report.v1
     runx:
       category: security
     inputs:

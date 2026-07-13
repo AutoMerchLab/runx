@@ -224,6 +224,28 @@ Defined in `config.yaml` under `safety`. Key rules:
 
 ---
 
+## Release Discipline
+
+`cli-vX.Y.Z` is the CLI distribution tag, not a workspace-wide crate release. A
+CLI release may stamp and publish only:
+
+- `packages/cli/package.json` and its native optional dependencies
+- native npm packages used by the CLI selector
+- `crates/runx-cli/Cargo.toml` and the `runx-cli` lockfile entry
+
+Do not stamp or publish internal Rust crates (`runx-core`, `runx-runtime`,
+`runx-parser`, `runx-contracts`, `runx-pay`, `runx-receipts`, `runx-sdk`, or
+`runx-contracts-derive`) during a CLI release unless the operator explicitly
+requests a separate library-crate release.
+
+Never bump a new patch version just to repair package-channel drift. Fix the
+existing release asset, channel manifest, or workflow in place. Before declaring
+Homebrew, Scoop, winget, AUR, npm, crates.io, or GHCR healthy, validate the
+generated channel manifest against the actual archive contents and run the
+workflow dry-run/dispatch path where available.
+
+---
+
 ## Coding Conventions
 
 See `CONVENTIONS.md` for full coding standards. Key points:

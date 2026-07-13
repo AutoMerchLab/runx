@@ -21,6 +21,24 @@ export interface GitHubHydratedThread {
   readonly watermark?: string;
 }
 
+export interface GitHubThreadSnapshot {
+  readonly state: string;
+  readonly title?: string;
+  readonly body: string;
+  readonly labels: readonly string[];
+  readonly comment_markers: readonly string[];
+  readonly comment_bodies: readonly string[];
+}
+
+export interface GitHubListedIssue {
+  readonly number: string;
+  readonly title?: string;
+  readonly state: string;
+  readonly url: string;
+  readonly thread_locator: string;
+  readonly labels: readonly string[];
+}
+
 export function firstNonEmptyString(...values: readonly unknown[]): string | undefined;
 export function parseGitHubIssueRef(...values: readonly unknown[]): GitHubIssueRef;
 export function findGitHubIssueRefs(value: string | undefined): readonly GitHubIssueRef[];
@@ -61,6 +79,18 @@ export function fetchGitHubIssueThread(options: {
   readonly env?: NodeJS.ProcessEnv;
   readonly cwd?: string;
 }): GitHubHydratedThread;
+export function readGitHubThreadSnapshot(options: {
+  readonly adapterRef: string;
+  readonly env?: NodeJS.ProcessEnv;
+  readonly cwd?: string;
+}): GitHubThreadSnapshot;
+export function listGitHubIssuesWithAnyLabel(options: {
+  readonly repoSlug: string;
+  readonly labels: readonly string[];
+  readonly env?: NodeJS.ProcessEnv;
+  readonly cwd?: string;
+  readonly limit?: number;
+}): readonly GitHubListedIssue[];
 export function pushGitHubCreateIssue(options: {
   readonly thread: Record<string, unknown>;
   readonly outboxEntry: Record<string, unknown>;

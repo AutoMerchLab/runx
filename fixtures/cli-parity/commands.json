@@ -320,11 +320,13 @@
     },
     {
       "id": "login",
-      "usage": "runx login [--provider github|google|gitlab] [--api-base-url url] [--allow-local-api] [--json]",
+      "usage": "runx login [--provider github|google|gitlab] [--for default|publish] [--from-gh] [--api-base-url url] [--allow-local-api] [--json]",
       "aliases": [],
       "requiredPositionals": [],
       "flags": [
         "--provider",
+        "--for",
+        "--from-gh",
         "--api-base-url",
         "--allow-local-api",
         "--json"

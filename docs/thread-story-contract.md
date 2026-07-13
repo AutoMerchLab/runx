@@ -71,6 +71,13 @@ repair sweeps, the driver accepts `THREAD_SYNC_FULL_RECONCILE=1` or
 `THREAD_SYNC_MODE=full` and sends `mode=full` to the source, asking it to return
 every mirrorable thread rather than only changed threads.
 
+Full reconcile also audits the provider for issues carrying any label declared
+in the source threads' `managed_labels`. A provider issue with managed labels but
+no matching desired thread is an orphan: the driver removes the managed labels
+and reconciles it closed. This keeps provider notice boards from retaining stale
+source-owned labels after the source has cancelled, retired, or otherwise
+stopped publishing a thread.
+
 The driver flushes observations after each reconciled thread. That is deliberate:
 if a long repair run is cancelled after a provider mutation, the source still
 records the provider locator/cursor for work already completed. Long runs also

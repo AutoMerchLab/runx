@@ -5,8 +5,15 @@ Maintainer doc. Most contributors do not need it.
 ## Identity
 
 The CLI ships from `github.com/runxhq/runx`. Release tags are `cli-vX.Y.Z`
-(prefixed so they do not collide with the repo's other release trains). The
-git tag is the single source of truth for the version.
+(prefixed so they do not collide with the repo's other release trains). In the
+workspace, `release/status.json` is the operator source of truth for package
+release status, the CLI package allowlist, and the cloud pin. The git tag is the
+immutable OSS release event that the public workflow builds.
+
+Release policy lives at the workspace root (`AGENTS.md` plus
+`release/status.json`). This doc is the OSS maintainer runbook. If a release doc,
+package manifest, cloud pin, or channel table disagrees with `release/status.json`,
+fix the drift there and run the root checks; do not invent a second release flow.
 
 The same product version is used on every active channel. The release workflow
 is secret-gated, so package-manager channels that are not configured are skipped
@@ -26,9 +33,10 @@ the binary was installed.
 ## Versioning model
 
 The source tree keeps its development version; release jobs **stamp** the tag
-version, they never commit it. One command stamps every version-bearing
-manifest (npm `package.json` + its `optionalDependencies`, `runx-cli/Cargo.toml`,
-and `Cargo.lock`):
+version, they never commit it. `cli-vX.Y.Z` is the CLI distribution version, not
+a workspace-wide library-crate release. One command stamps only the CLI package
+surfaces: npm `package.json` + its `optionalDependencies`, `runx-cli`, and the
+`runx-cli` lockfile entry.
 
 ```bash
 pnpm exec tsx scripts/set-release-version.ts X.Y.Z          # write
@@ -37,9 +45,13 @@ pnpm exec tsx scripts/set-release-version.ts --check X.Y.Z  # CI drift guard
 
 It accepts a raw `cli-vX.Y.Z` / `vX.Y.Z` tag and strips the prefix.
 
-The dependency crates (`runx-runtime`, `runx-contracts`, ...) carry their own
-versions and are **not** tied to the release version; they only publish to
-crates.io when their own version is bumped.
+Cargo publishing is CLI-only. The release job publishes `runx-cli` and does not
+stamp or publish internal Rust crates (`runx-core`, `runx-runtime`,
+`runx-parser`, `runx-contracts`, `runx-pay`, `runx-receipts`, `runx-sdk`, or
+`runx-contracts-derive`) unless the operator explicitly requests a separate
+library-crate release. Never cut a new patch just to repair a package-manager
+manifest; repair the existing release asset, channel manifest, or workflow in
+place.
 
 ## Pipeline
 
@@ -62,12 +74,15 @@ channel that downloads its archives):
    publish the Release with all archives. This is the hub.
 5. **publish-npm** — verify + publish the selector and native packages with npm
    provenance (`skip-existing`).
-6. **publish-crates** — publish the crates in dependency order, then `runx-cli`.
+6. **publish-crates** — publish `runx-cli` only.
 7. **package-managers** — build the channel input from the published checksums
    (`build-channel-input.mjs`), render Homebrew / Scoop / winget / AUR manifests
-   (`gen-channel-manifests.ts`), attach them to the Release.
+   (`gen-channel-manifests.ts`), verify them against the actual release archive
+   contents (`check-channel-manifests.mjs`), and attach them to the Release.
 8. **publish-{homebrew,scoop,winget,aur}** — push to the owned registries when
-   their credentials are configured; otherwise skipped with a warning.
+   their credentials are configured; otherwise skipped with a warning. winget
+   submits the validated `channels/winget/` manifest set directly; it must not
+   use a generator that guesses archive nesting.
 9. **publish-docker** — multi-arch GHCR image (pulls the musl archive from the
    Release; no Rust toolchain in the image build).
 
@@ -118,13 +133,20 @@ package.
 ## Cutting a release
 
 ```bash
-# 1. dry-run from the Actions tab (workflow_dispatch, version = X.Y.Z) — optional
-# 2. tag and push:
+# 1. from the workspace root, prepare cloud/status together:
+pnpm release:prepare -- --version X.Y.Z
+pnpm release:check
+pnpm release:check:live # required before claiming public package channels are live
+
+# 2. dry-run from the Actions tab (workflow_dispatch, version = X.Y.Z)
+# 3. tag and push:
 git tag cli-vX.Y.Z
 git push origin cli-vX.Y.Z
 ```
 
-Never move a published semver tag; cut a new patch instead.
+Never move a published semver tag. Never bump a new patch just to repair channel
+drift; fix the existing channel artifact or workflow unless the binary itself is
+wrong.
 
 ## Layout
 
@@ -135,6 +157,8 @@ scripts/
   build-release-archives.ts   # raw tar.gz/zip + .sha256 per target (release hub)
   build-channel-input.mjs     # checksums -> channel manifest input
   gen-channel-manifests.ts    # render Homebrew / Scoop / winget / AUR
+  check-channel-manifests.mjs # verify channel manifests against real archives
+  publish-winget-manifest.mjs # submit the validated winget manifest set
   make-signature-manifest.ts  # npm native-package signature manifest
   package-rust-cli.ts         # npm selector + native package staging
   check-rust-cli-release-artifacts.ts  # npm release contract validator

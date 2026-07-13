@@ -356,7 +356,7 @@ Commands:
   runx history [query] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--receipt-dir dir] [--json]
   runx resume <run-id> <answers.json> [-R dir] [-j|--json]
   runx list [tools|skills|graphs|packets|overlays] [--ok-only|--invalid-only] [-j|--json]
-  runx login [--provider github|google|gitlab] [--for default|publish] [--api-base-url url] [--allow-local-api] [-j|--json]
+  runx login [--provider github|google|gitlab] [--for default|publish] [--from-gh] [--api-base-url url] [--allow-local-api] [-j|--json]
   runx config set|get|list [provider|model|api-key|public-token] [value] [-j|--json]
   runx policy inspect|lint <policy.json> [--json]
   runx publish <receipt.json> [--api-base-url url] [--token token] [--allow-local-api] [-j|--json]
@@ -367,7 +367,7 @@ Commands:
   runx dev [root] [--lane lane] [--json]
   runx export <claude|codex> [skill-ref...] [--project] [--json]
   runx mcp serve <skill-ref...> [--receipt-dir dir] [--http-listen [addr]] [--http-allow-non-loopback]
-  runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [-j] [--registry url|path] [--digest sha256] [--flag value] [--credential descriptor --secret-env NAME] [-R dir]
+  runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [-j] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [--credential descriptor --secret-env NAME] [-R dir]
   runx skill inspect <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-j] [--registry url|path] [--digest sha256]
   runx add <skill-ref|github-url> [--registry url|path] [--version version] [--ref git-ref] [--digest sha256] [--to dir] [--api-base-url url] [--json]
   runx harness <fixture.yaml...|skill-dir|SKILL.md> [-R dir] [-j|--json]
@@ -435,11 +435,12 @@ pub fn login_help_text() -> String {
 runx login
 
 Usage:
-  runx login [--provider github|google|gitlab] [--for default|publish] [--api-base-url url] [--allow-local-api] [-j|--json]
+  runx login [--provider github|google|gitlab] [--for default|publish] [--from-gh] [--api-base-url url] [--allow-local-api] [-j|--json]
 
 Options:
   --provider provider
   --for purpose
+  --from-gh            Use the active GitHub CLI identity instead of browser OAuth
   --api-base-url url
   --allow-local-api
   -j, --json
@@ -531,13 +532,17 @@ pub fn skill_help_text() -> String {
 runx skill
 
 Usage:
-  runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [-j] [--registry url|path] [--digest sha256] [--flag value] [--credential descriptor --secret-env NAME] [-R dir]
+  runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [-j] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [--credential descriptor --secret-env NAME] [-R dir]
   runx skill inspect <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-j] [--registry url|path] [--digest sha256]
 
 Options:
   -p, --profile name       Use a local credential profile from .runx/credentials.json
   -i, --input key=value    Set a structured input; repeat for multiple inputs
   --input-json key=json    Set an input that must parse as JSON
+  --approve-operator-context digest
+                            Run only when the prepared context matches this digest
+  --full-operator-context  Print the complete prepared context before approval
+  --skip-operator-context  Run without context preparation, approval, drift checks, or receipt binding
   -R, --receipts dir       Write receipts under dir
   --receipt-dir dir        Alias for --receipts
   -j, --json               Print machine-readable output

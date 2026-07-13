@@ -32,7 +32,7 @@ mod agent;
 mod graph;
 mod graph_state;
 mod inline_harness;
-mod runner_manifest;
+pub(crate) mod runner_manifest;
 
 #[cfg(feature = "cli-tool")]
 pub(crate) use self::graph::SkillRunGraphAdapter;
@@ -44,6 +44,20 @@ use self::graph::execute_graph_skill_run;
 use self::runner_manifest::{
     execute_cli_tool_skill_run, load_runner_manifest, resolve_skill_dir, runner_invocation,
     selected_runner,
+};
+
+pub use super::operator_context::{
+    SkillOperatorContextChain, SkillOperatorContextContextSkill, SkillOperatorContextDocument,
+    SkillOperatorContextNode, SkillOperatorContextOptions, SkillOperatorContextPackage,
+    SkillOperatorContextRegistry, SkillOperatorContextRunner, SkillOperatorContextStep,
+    SkillOperatorContextTarget, SkillOperatorContextTerminal, SkillOperatorContextTool,
+    load_skill_operator_context_chain,
+};
+pub use super::prepared_skill::{
+    PREPARED_SKILL_REPORT_SCHEMA, PreparedCredentialSummary, PreparedEntryProvenance,
+    PreparedGovernanceSummary, PreparedInputSummary, PreparedRequestSummary, PreparedSkillRun,
+    PreparedSkillRunApproval, PreparedSkillRunReport, PreparedSkillRunStatus, PreparedTraceEntry,
+    prepare_skill_run,
 };
 
 // The run-result envelope schema. The string keeps the `skill_run` name, a stable
@@ -92,16 +106,57 @@ pub(crate) fn execute_skill_run_with_overrides(
     overrides: &SkillRunOverrides,
     effects: &RuntimeEffectRegistry,
 ) -> Result<JsonValue, SkillRunError> {
+    let skill_dir = resolve_skill_dir(&request.skill_path)?;
+    let manifest = load_runner_manifest(&skill_dir)?;
+    let runner = selected_runner(&manifest, overrides.runner.as_deref())?;
+    execute_skill_run_with_resolved(request, overrides, effects, &skill_dir, &manifest, runner)
+}
+
+pub(crate) fn execute_skill_run_with_resolved(
+    request: &SkillRunRequest,
+    overrides: &SkillRunOverrides,
+    effects: &RuntimeEffectRegistry,
+    skill_dir: &Path,
+    manifest: &SkillRunnerManifest,
+    runner: &SkillRunnerDefinition,
+) -> Result<JsonValue, SkillRunError> {
+    execute_skill_run_with_resolved_trust(
+        request, overrides, effects, skill_dir, manifest, runner, false,
+    )
+}
+
+pub(crate) fn execute_prepared_skill_run_with_resolved(
+    request: &SkillRunRequest,
+    overrides: &SkillRunOverrides,
+    effects: &RuntimeEffectRegistry,
+    skill_dir: &Path,
+    manifest: &SkillRunnerManifest,
+    runner: &SkillRunnerDefinition,
+) -> Result<JsonValue, SkillRunError> {
+    execute_skill_run_with_resolved_trust(
+        request, overrides, effects, skill_dir, manifest, runner, true,
+    )
+}
+
+fn execute_skill_run_with_resolved_trust(
+    request: &SkillRunRequest,
+    overrides: &SkillRunOverrides,
+    effects: &RuntimeEffectRegistry,
+    skill_dir: &Path,
+    manifest: &SkillRunnerManifest,
+    runner: &SkillRunnerDefinition,
+    trusted_prepared: bool,
+) -> Result<JsonValue, SkillRunError> {
     let raw_workspace = WorkspaceEnv::new(request.env.clone(), request.cwd.clone());
     let receipts = ReceiptServices::from_env_or_local_development(raw_workspace.env())
         .map_err(|error| SkillRunError::Invalid(error.to_string()))?;
     let mut runtime_env = request.env.clone();
     strip_receipt_signing_env(&mut runtime_env);
+    if !trusted_prepared {
+        super::prepared_skill::strip_untrusted_prepared_env(&mut runtime_env);
+    }
     let workspace = WorkspaceEnv::new(runtime_env, request.cwd.clone());
-    let skill_dir = resolve_skill_dir(&request.skill_path)?;
-    let manifest = load_runner_manifest(&skill_dir)?;
-    let runner = selected_runner(&manifest, overrides.runner.as_deref())?;
-    let skill_env = workspace.skill_env_for_skill(&skill_dir);
+    let skill_env = workspace.skill_env_for_skill(skill_dir);
     if runner.source.source_type == runx_parser::SourceKind::CliTool
         && request.local_credential.is_some()
     {
@@ -110,7 +165,7 @@ pub(crate) fn execute_skill_run_with_overrides(
         ));
     }
     let invocation = runner_invocation(
-        &skill_dir,
+        skill_dir,
         runner,
         &request.inputs,
         &skill_env,
@@ -118,17 +173,17 @@ pub(crate) fn execute_skill_run_with_overrides(
     )?;
     if runner.source.source_type == runx_parser::SourceKind::CliTool {
         return execute_cli_tool_skill_run(
-            request, &workspace, &receipts, &manifest, runner, invocation,
+            request, &workspace, &receipts, manifest, runner, invocation,
         );
     }
     if runner.source.source_type == runx_parser::SourceKind::Graph {
         return execute_graph_skill_run(
-            request, overrides, effects, &workspace, &receipts, &manifest, runner,
+            request, overrides, effects, &workspace, &receipts, manifest, runner,
         );
     }
 
     execute_agent_skill_run(
-        request, overrides, &workspace, &receipts, &manifest, runner, invocation,
+        request, overrides, &workspace, &receipts, manifest, runner, invocation,
     )
 }
 
@@ -231,6 +286,7 @@ fn seal_skill_answer(
     stdout: &str,
     disposition: ClosureDisposition,
     signature_config: &RuntimeReceiptSignatureConfig,
+    env: &std::collections::BTreeMap<String, String>,
 ) -> Result<runx_contracts::Receipt, SkillRunError> {
     let disposition_label = disposition.label();
     let succeeded = disposition == ClosureDisposition::Closed;
@@ -255,10 +311,13 @@ fn seal_skill_answer(
         run_id,
         runner,
         &skill_output,
-        disposition,
-        format!("agent_act_{disposition_label}"),
-        format!("agent act closed with {disposition_label}"),
+        StepSealClosure {
+            disposition,
+            reason_code: format!("agent_act_{disposition_label}"),
+            summary: format!("agent act closed with {disposition_label}"),
+        },
         signature_config,
+        env,
     )
 }
 
@@ -483,10 +542,9 @@ fn seal_skill_output(
     run_id: &str,
     runner: &SkillRunnerDefinition,
     output: &SkillOutput,
-    disposition: ClosureDisposition,
-    reason_code: String,
-    summary: String,
+    closure: StepSealClosure,
     signature_config: &RuntimeReceiptSignatureConfig,
+    env: &std::collections::BTreeMap<String, String>,
 ) -> Result<runx_contracts::Receipt, SkillRunError> {
     let graph_name = identifier_segment(run_id);
     let step_id = identifier_segment(&runner.name);
@@ -500,11 +558,8 @@ fn seal_skill_output(
             projection: &projection,
             created_at: &crate::time::now_iso8601(),
             authority_grant_refs: Vec::new(),
-            closure: Some(StepSealClosure {
-                disposition,
-                reason_code,
-                summary,
-            }),
+            operator_refs: super::prepared_skill::prepared_receipt_references(env),
+            closure: Some(closure),
         },
         signature_config.signature_policy(),
     )?)

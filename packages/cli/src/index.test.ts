@@ -37,6 +37,49 @@ describe("parseArgs", () => {
     });
   });
 
+  it("keeps operator context skip out of skill inputs", () => {
+    const parsed = parseArgs([
+      "skill",
+      "skills/example",
+      "--skip-operator-context",
+      "--project-url",
+      "https://example.com",
+    ]);
+    expect(parsed.skipOperatorContext).toBe(true);
+    expect(parsed.inputs).toEqual({
+      "project-url": "https://example.com",
+    });
+  });
+
+  it("keeps full operator context out of skill inputs", () => {
+    const parsed = parseArgs([
+      "skill",
+      "skills/example",
+      "--full-operator-context",
+      "--project-url",
+      "https://example.com",
+    ]);
+    expect(parsed.fullOperatorContext).toBe(true);
+    expect(parsed.inputs).toEqual({
+      "project-url": "https://example.com",
+    });
+  });
+
+  it("keeps digest-bound operator approval out of skill inputs", () => {
+    const parsed = parseArgs([
+      "skill",
+      "skills/example",
+      "--approve-operator-context",
+      "sha256:abc123",
+      "--project-url",
+      "https://example.com",
+    ]);
+    expect(parsed.approveOperatorContext).toBe("sha256:abc123");
+    expect(parsed.inputs).toEqual({
+      "project-url": "https://example.com",
+    });
+  });
+
   it("parses structured JSON skill input values", () => {
     expect(parseArgs(["skill", "skills/example", "--thread", "{\"thread_locator\":\"local://fixture\"}"]).inputs).toEqual({
       thread: {
@@ -73,7 +116,7 @@ Return the provided task id.
     const stderr = createMemoryStream();
     const receiptDir = path.join(tempDir, "receipts");
     const exitCode = await runCli(
-      ["skill", skillDir, "--task-id", "abc-123", "--non-interactive", "--json"],
+      ["skill", skillDir, "--task-id", "abc-123", "--non-interactive", "--json", "--skip-operator-context"],
       { stdin: process.stdin, stdout, stderr },
       { ...process.env, RUNX_CWD: process.cwd(), RUNX_RECEIPT_DIR: receiptDir },
     );
@@ -143,7 +186,7 @@ Return the provided task id.
     const firstStdout = createMemoryStream();
     const firstStderr = createMemoryStream();
     const firstExitCode = await runCli(
-      ["skill", skillDir, "--task-id", "abc-123", "--receipt-dir", receiptDir, "--non-interactive", "--json"],
+      ["skill", skillDir, "--task-id", "abc-123", "--receipt-dir", receiptDir, "--non-interactive", "--json", "--skip-operator-context"],
       { stdin: process.stdin, stdout: firstStdout, stderr: firstStderr },
       hostDrivenAgentEnv(tempDir),
     );
@@ -341,12 +384,16 @@ Return the provided task id.
         },
       },
     });
+    await writeFile(
+      path.join(skillDir, "SKILL.md"),
+      "---\nname: agent-task\n---\n# Agent Task\n",
+    );
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
     const fakeBinDir = await createFakeAgentBin(["claude", "codex"]);
 
     const exitCode = await runCli(
-      ["skill", skillDir, "--prompt", "review this", "--non-interactive"],
+      ["skill", skillDir, "--prompt", "review this", "--non-interactive", "--skip-operator-context"],
       { stdin: process.stdin, stdout, stderr },
       hostDrivenAgentEnv(tempDir, { PATH: fakeBinDir }),
     );
@@ -386,7 +433,7 @@ Return the provided task id.
     const stderr = createMemoryStream();
 
     const exitCode = await runCli(
-      ["skill", "skills/sourcey", "--run", "--json"],
+      ["skill", "skills/sourcey", "--run", "--json", "--skip-operator-context"],
       { stdin: process.stdin, stdout, stderr },
       { ...process.env, RUNX_CWD: process.cwd(), RUNX_RECEIPT_DIR: tempDir },
     );
@@ -404,7 +451,7 @@ Return the provided task id.
     });
   });
 
-  it("keeps native needs-agent --json output machine-readable without progress lines", async () => {
+  it("keeps native operator approval --json output machine-readable without progress lines", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-cli-native-agent-json-"));
     tempDirs.push(tempDir);
     const skillDir = path.join(tempDir, "agent-task");
@@ -421,6 +468,10 @@ Return the provided task id.
         },
       },
     });
+    await writeFile(
+      path.join(skillDir, "SKILL.md"),
+      "---\nname: agent-task\n---\n# Agent Task\n",
+    );
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
 
@@ -431,19 +482,18 @@ Return the provided task id.
     );
 
     expect(exitCode).toBe(2);
-    expect(stderr.contents()).toBe("");
+    expect(stderr.contents()).toContain("Prepared run");
+    expect(stderr.contents()).toContain("Full context: add --full-operator-context");
+    expect(stderr.contents()).not.toContain("--- root skill ---");
     expect(stdout.contents().trimStart().startsWith("{")).toBe(true);
     expect(stdout.contents()).not.toContain("Resolution requested");
     expect(stdout.contents()).not.toContain("needs caller result");
     expect(JSON.parse(stdout.contents())).toMatchObject({
-      status: "needs_agent",
-      run_id: "run_agent_task-review-output",
-      requests: [
-        {
-          id: "agent_task.review.output",
-          kind: "agent_act",
-        },
-      ],
+      status: "needs_operator_approval",
+      disposition: "approval_required",
+      outcome_state: "pending",
+      digest: expect.stringMatching(/^sha256:/),
+      approval_flag: expect.stringContaining("--approve-operator-context sha256:"),
     });
   });
 
@@ -454,7 +504,7 @@ Return the provided task id.
     const stderr = createMemoryStream();
 
     const exitCode = await runCli(
-      ["skill", "fixtures/skills/echo", "--message", "hello"],
+      ["skill", "fixtures/skills/echo", "--message", "hello", "--skip-operator-context"],
       { stdin: process.stdin, stdout, stderr },
       { ...process.env, RUNX_CWD: process.cwd(), RUNX_RECEIPT_DIR: path.join(tempDir, "receipts") },
     );
@@ -594,7 +644,7 @@ Return the provided task id.
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
     const exitCode = await runCli(
-      ["skill", skillDir, "--prompt", "review this", "--non-interactive", "--json"],
+      ["skill", skillDir, "--prompt", "review this", "--non-interactive", "--json", "--skip-operator-context"],
       { stdin: process.stdin, stdout, stderr },
       env,
     );
@@ -662,7 +712,7 @@ Return the provided task id.
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
     const exitCode = await runCli(
-      ["skill", skillDir, "--prompt", "review this", "--non-interactive", "--json"],
+      ["skill", skillDir, "--prompt", "review this", "--non-interactive", "--json", "--skip-operator-context"],
       { stdin: process.stdin, stdout, stderr },
       env,
     );
@@ -737,7 +787,7 @@ Read note.txt and produce a grounded summary.
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
     const exitCode = await runCli(
-      ["skill", skillDir, "--repo-root", tempDir, "--non-interactive", "--json"],
+      ["skill", skillDir, "--repo-root", tempDir, "--non-interactive", "--json", "--skip-operator-context"],
       { stdin: process.stdin, stdout, stderr },
       env,
     );
@@ -806,7 +856,7 @@ Return the grounded label.
     const firstStdout = createMemoryStream();
     const firstStderr = createMemoryStream();
     const firstExit = await runCli(
-      ["skill", skillDir, "--prompt", "hello", "--receipt-dir", receiptDir, "--non-interactive", "--json"],
+      ["skill", skillDir, "--prompt", "hello", "--receipt-dir", receiptDir, "--non-interactive", "--json", "--skip-operator-context"],
       { stdin: process.stdin, stdout: firstStdout, stderr: firstStderr },
       env,
     );
@@ -903,7 +953,7 @@ Answer the prompt directly.
     const stdout = createMemoryStream();
     const stderr = createMemoryStream();
     const exitCode = await runCli(
-      ["skill", skillDir, "--prompt", "hello", "--non-interactive", "--json"],
+      ["skill", skillDir, "--prompt", "hello", "--non-interactive", "--json", "--skip-operator-context"],
       { stdin: process.stdin, stdout, stderr },
       env,
     );
@@ -1268,7 +1318,7 @@ Answer the prompt directly.
     const stderr = createMemoryStream();
 
     const firstExit = await runCli(
-      ["skill", "sourcey", "--run", "--json"],
+      ["skill", "sourcey", "--run", "--json", "--skip-operator-context"],
       { stdin: process.stdin, stdout, stderr },
       { ...process.env, RUNX_CWD: process.cwd(), RUNX_RECEIPT_DIR: tempDir },
     );
