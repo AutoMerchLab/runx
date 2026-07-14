@@ -1,5 +1,5 @@
 {
-  "summary": "Evidence packet for the runx crm-cleanup skill (automerchlab/crm-cleanup@sha-44376c7817e7). A real post-publish dogfood run of the published package produced a sealed runx.receipt.v1 that passes runx verify with a production signature. This revision answers the prior review: the extractor now handles natural phrasings (not only the '<field> is <value>' template) and flags actionable-but-unextractable lines under needs_review instead of silently dropping them, and X.yaml declares the typed outputs (takeaways, field_updates, needs_review, write_proposal). The dogfood transcript is deliberately natural ('got around $75k to spend', 'moving them to qualified', 'I will send over a proposal by Friday') and sealed with 3 takeaway(s), field_updates {budget=$75k, next_step=send over a proposal by Friday, status=qualified}, and a gated write_proposal. source_url, X.yaml, SKILL.md and verification.json all resolve at a single source revision (commit 8eae1e5dd49704c4c20b54a8f15fb4b94954366f); this evidence packet and the report are its direct child and describe that same revision.",
+  "summary": "Evidence packet for the runx crm-cleanup skill (automerchlab/crm-cleanup@sha-44376c7817e7). A real post-publish dogfood run of the published package produced a sealed runx.receipt.v1 that passes runx verify with a production signature. This revision answers the prior review: the extractor now handles natural phrasings (not only the literal 'field is value' template) and flags actionable-but-unextractable lines under needs_review instead of silently dropping them, and X.yaml declares the typed outputs (takeaways, field_updates, needs_review, write_proposal). The dogfood transcript is deliberately natural ('got around $75k to spend', 'moving them to qualified', 'I will send over a proposal by Friday') and sealed with 3 takeaway(s), field_updates {budget=$75k, next_step=send over a proposal by Friday, status=qualified}, and a gated write_proposal. source_url, X.yaml, SKILL.md and verification.json all resolve at a single source revision (commit 3266c6b6c8d830e5f05447d93e9a1e3011ccb056); this evidence packet and the report are its direct child and describe that same revision.",
   "dogfood": {
     "package": "automerchlab/crm-cleanup@sha-44376c7817e7",
     "input": {
@@ -84,22 +84,22 @@
     },
     {
       "type": "source_url",
-      "value": "https://github.com/automerchlab/runx/tree/8eae1e5dd49704c4c20b54a8f15fb4b94954366f",
+      "value": "https://github.com/automerchlab/runx/tree/3266c6b6c8d830e5f05447d93e9a1e3011ccb056",
       "detail": "Public source/provenance revision (single source revision)."
     },
     {
       "type": "raw_x_yaml",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/8eae1e5dd49704c4c20b54a8f15fb4b94954366f/skills/crm-cleanup/X.yaml",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/3266c6b6c8d830e5f05447d93e9a1e3011ccb056/skills/crm-cleanup/X.yaml",
       "detail": "Raw X.yaml at the source revision."
     },
     {
       "type": "raw_skill_md",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/8eae1e5dd49704c4c20b54a8f15fb4b94954366f/skills/crm-cleanup/SKILL.md",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/3266c6b6c8d830e5f05447d93e9a1e3011ccb056/skills/crm-cleanup/SKILL.md",
       "detail": "Raw SKILL.md at the source revision."
     },
     {
       "type": "verification_json",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/8eae1e5dd49704c4c20b54a8f15fb4b94954366f/verification.json",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/3266c6b6c8d830e5f05447d93e9a1e3011ccb056/verification.json",
       "detail": "Raw runx verify verdict at the source revision."
     },
     {
@@ -154,7 +154,7 @@
     },
     {
       "type": "natural_phrasing_extraction",
-      "value": "The dogfood transcript uses no '<field> is <value>' template: budget from 'got around $75k to spend', status from 'moving them to qualified' (transition-cued), next_step from 'I will send over a proposal by Friday'. The 'natural' harness case seals on the same shape, proving extraction on a transcript not shaped to the regex.",
+      "value": "The dogfood transcript uses no literal 'field is value' template: budget from 'got around $75k to spend', status from 'moving them to qualified' (transition-cued), next_step from 'I will send over a proposal by Friday'. The 'natural' harness case seals on the same shape, proving extraction on a transcript not shaped to the regex.",
       "detail": "Broadened extraction: field-type inference (money/enum/action/generic) + synonym vocab."
     },
     {
@@ -179,7 +179,7 @@
     },
     {
       "type": "how_to_use",
-      "value": "Install: runx add automerchlab/crm-cleanup@sha-44376c7817e7 --registry https://api.runx.ai. Run: runx skill automerchlab/crm-cleanup@sha-44376c7817e7 --registry https://api.runx.ai --json -i transcript='<text>' -i crm_schema='{\"fields\":[\"budget\",\"status\",\"next_step\"]}' -R ./receipts. Verify: runx verify --receipt <receipt.json> --json (expects valid=true, signature_mode=production).",
+      "value": "Install: runx add automerchlab/crm-cleanup@sha-44376c7817e7 --registry https://api.runx.ai. Run: runx skill automerchlab/crm-cleanup@sha-44376c7817e7 --registry https://api.runx.ai --json -i transcript='The budget is $50k. The next step is a follow up call.' -i crm_schema='{\"fields\":[\"budget\",\"status\",\"next_step\"]}' -R ./receipts. Verify: runx verify --receipt dogfood_receipt.json --json (expects valid=true, signature_mode=production).",
       "detail": "End-to-end install/run/verify for a new user without private context."
     }
   ]
