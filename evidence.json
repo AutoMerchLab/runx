@@ -1,30 +1,39 @@
 {
-  "summary": "Evidence packet for the runx crm-cleanup skill (automerchlab/crm-cleanup@sha-0c7de8ffc412). A real post-publish dogfood run of the published package produced a sealed runx.receipt.v1 that passes runx verify with a production signature. The actionable transcript sealed with 3 takeaway(s), field_updates {budget=$50k, next_step=follow up call, status=qualified}, and a gated write_proposal; the noop case is the empty field_updates no-op path. source_url, X.yaml, SKILL.md and verification.json all resolve at a single source revision (commit e2cb3b4678fd123c35d4851cd136f1d13f805ae5); this evidence packet and the report are its direct child and describe that same revision.",
+  "summary": "Evidence packet for the runx crm-cleanup skill (automerchlab/crm-cleanup@sha-44376c7817e7). A real post-publish dogfood run of the published package produced a sealed runx.receipt.v1 that passes runx verify with a production signature. This revision answers the prior review: the extractor now handles natural phrasings (not only the '<field> is <value>' template) and flags actionable-but-unextractable lines under needs_review instead of silently dropping them, and X.yaml declares the typed outputs (takeaways, field_updates, needs_review, write_proposal). The dogfood transcript is deliberately natural ('got around $75k to spend', 'moving them to qualified', 'I will send over a proposal by Friday') and sealed with 3 takeaway(s), field_updates {budget=$75k, next_step=send over a proposal by Friday, status=qualified}, and a gated write_proposal. source_url, X.yaml, SKILL.md and verification.json all resolve at a single source revision (commit 8eae1e5dd49704c4c20b54a8f15fb4b94954366f); this evidence packet and the report are its direct child and describe that same revision.",
   "dogfood": {
-    "package": "automerchlab/crm-cleanup@sha-0c7de8ffc412",
+    "package": "automerchlab/crm-cleanup@sha-44376c7817e7",
     "input": {
-      "transcript": "The client said the budget is $50k. The status is qualified. The next step is follow up call.",
+      "transcript": "Great call. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.",
       "crm_schema": "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
     },
-    "command": "runx skill automerchlab/crm-cleanup@sha-0c7de8ffc412 --registry https://api.runx.ai --json -i transcript='The client said the budget is $50k. The status is qualified. The next step is follow up call.' -i crm_schema='{\"fields\": [\"budget\", \"status\", \"next_step\"]}' -R ./receipts",
-    "receipt_ref": "runx:receipt:sha256:f4030faf730b22a3046d77e3bdb4649e73e6a4e383d8e6c4c702dc4ca4fd9c89",
+    "command": "runx skill automerchlab/crm-cleanup@sha-44376c7817e7 --registry https://api.runx.ai --json -i transcript='Great call. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.' -i crm_schema='{\"fields\": [\"budget\", \"status\", \"next_step\"]}' -R ./receipts",
+    "receipt_ref": "runx:receipt:sha256:0ea8bb73fca87c1963a160120fe64dbb753a12809fce3d1db13d6a27f7ab4e36",
     "verify_verdict": "valid",
     "output": {
       "takeaways": [
-        "Identified budget: $50k",
+        "Identified budget: $75k",
         "Identified status: qualified",
-        "Identified next step: follow up call"
+        "Identified next step: send over a proposal by Friday"
       ],
       "field_updates": {
-        "budget": "$50k",
-        "next_step": "follow up call",
+        "budget": "$75k",
+        "next_step": "send over a proposal by Friday",
         "status": "qualified"
       },
+      "needs_review": [],
       "write_proposal": true
     },
     "harness_cases": [
       {
-        "name": "actionable",
+        "name": "templated",
+        "status": "sealed"
+      },
+      {
+        "name": "natural",
+        "status": "sealed"
+      },
+      {
+        "name": "needs_review",
         "status": "sealed"
       },
       {
@@ -55,17 +64,17 @@
     },
     {
       "type": "version",
-      "value": "sha-0c7de8ffc412",
+      "value": "sha-44376c7817e7",
       "detail": "Published package version."
     },
     {
       "type": "registry_ref",
-      "value": "automerchlab/crm-cleanup@sha-0c7de8ffc412",
+      "value": "automerchlab/crm-cleanup@sha-44376c7817e7",
       "detail": "Fully qualified registry reference."
     },
     {
       "type": "public_url",
-      "value": "https://runx.ai/x/automerchlab/crm-cleanup@sha-0c7de8ffc412",
+      "value": "https://runx.ai/x/automerchlab/crm-cleanup@sha-44376c7817e7",
       "detail": "Live registry listing / canonical adoption page."
     },
     {
@@ -75,22 +84,22 @@
     },
     {
       "type": "source_url",
-      "value": "https://github.com/automerchlab/runx/tree/e2cb3b4678fd123c35d4851cd136f1d13f805ae5",
+      "value": "https://github.com/automerchlab/runx/tree/8eae1e5dd49704c4c20b54a8f15fb4b94954366f",
       "detail": "Public source/provenance revision (single source revision)."
     },
     {
       "type": "raw_x_yaml",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/e2cb3b4678fd123c35d4851cd136f1d13f805ae5/skills/crm-cleanup/X.yaml",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/8eae1e5dd49704c4c20b54a8f15fb4b94954366f/skills/crm-cleanup/X.yaml",
       "detail": "Raw X.yaml at the source revision."
     },
     {
       "type": "raw_skill_md",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/e2cb3b4678fd123c35d4851cd136f1d13f805ae5/skills/crm-cleanup/SKILL.md",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/8eae1e5dd49704c4c20b54a8f15fb4b94954366f/skills/crm-cleanup/SKILL.md",
       "detail": "Raw SKILL.md at the source revision."
     },
     {
       "type": "verification_json",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/e2cb3b4678fd123c35d4851cd136f1d13f805ae5/verification.json",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/8eae1e5dd49704c4c20b54a8f15fb4b94954366f/verification.json",
       "detail": "Raw runx verify verdict at the source revision."
     },
     {
@@ -100,27 +109,27 @@
     },
     {
       "type": "install_command",
-      "value": "runx add automerchlab/crm-cleanup@sha-0c7de8ffc412 --registry https://api.runx.ai",
+      "value": "runx add automerchlab/crm-cleanup@sha-44376c7817e7 --registry https://api.runx.ai",
       "detail": "Clean install command (verified: source=remote, status=installed)."
     },
     {
       "type": "harness_cases",
-      "value": "actionable (sealed), noop (sealed), invalid_schema (failed)",
+      "value": "templated (sealed), natural (sealed), needs_review (sealed), noop (sealed), invalid_schema (failed)",
       "detail": "Harness case names with status."
     },
     {
       "type": "hosted_harness_status",
-      "value": "Published package installs cleanly from the remote registry (runx add: source=remote, status=installed); harness cases validate: WSL local `runx harness ./skills/crm-cleanup` passed 3/3 with 0 assertion errors (actionable sealed, noop sealed, invalid_schema failed). Environment: WSL Linux local + remote registry install.",
+      "value": "Published package installs cleanly from the remote registry (runx add: source=remote, status=installed); harness cases validate: WSL local `runx harness ./skills/crm-cleanup` passed 5/5 with 0 assertion errors (templated (sealed), natural (sealed), needs_review (sealed), noop (sealed), invalid_schema (failed)). The published files are byte-identical to these (same content digest sha256:5217938d802516c0763a83635ae570d05708021834e4d3b7309ae27756086ed3), so the reviewer's hosted harness runs the same cases. Environment: WSL Linux local + remote registry install.",
       "detail": "Harness status with explicit environment labeling."
     },
     {
       "type": "dogfood_command",
-      "value": "runx skill automerchlab/crm-cleanup@sha-0c7de8ffc412 --registry https://api.runx.ai --json -i transcript='The client said the budget is $50k. The status is qualified. The next step is follow up call.' -i crm_schema='{\"fields\": [\"budget\", \"status\", \"next_step\"]}' -R ./receipts",
+      "value": "runx skill automerchlab/crm-cleanup@sha-44376c7817e7 --registry https://api.runx.ai --json -i transcript='Great call. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.' -i crm_schema='{\"fields\": [\"budget\", \"status\", \"next_step\"]}' -R ./receipts",
       "detail": "Exact post-publish dogfood command."
     },
     {
       "type": "receipt_ref",
-      "value": "runx:receipt:sha256:f4030faf730b22a3046d77e3bdb4649e73e6a4e383d8e6c4c702dc4ca4fd9c89",
+      "value": "runx:receipt:sha256:0ea8bb73fca87c1963a160120fe64dbb753a12809fce3d1db13d6a27f7ab4e36",
       "detail": "Sealed receipt id from the post-publish dogfood run (not a harness fixture seal)."
     },
     {
@@ -130,18 +139,33 @@
     },
     {
       "type": "registry_provenance",
-      "value": "registry_source=remote https://api.runx.ai, skill_id=automerchlab/crm-cleanup, version=sha-0c7de8ffc412, trust_state=trusted, trust_tier=community",
+      "value": "registry_source=remote https://api.runx.ai, skill_id=automerchlab/crm-cleanup, version=sha-44376c7817e7, trust_state=trusted, trust_tier=community",
       "detail": "Receipt registry provenance: the dogfood run resolved the published package from the remote registry at the exact published version (same published package version)."
     },
     {
       "type": "takeaways",
-      "value": "Identified budget: $50k; Identified status: qualified; Identified next step: follow up call",
+      "value": "Identified budget: $75k; Identified status: qualified; Identified next step: send over a proposal by Friday",
       "detail": "Grounded takeaways extracted from the transcript."
     },
     {
       "type": "field_updates",
-      "value": "budget=$50k, next_step=follow up call, status=qualified",
+      "value": "budget=$75k, next_step=send over a proposal by Friday, status=qualified",
       "detail": "Mapped field_updates keyed to crm_schema fields, each traceable to a transcript takeaway."
+    },
+    {
+      "type": "natural_phrasing_extraction",
+      "value": "The dogfood transcript uses no '<field> is <value>' template: budget from 'got around $75k to spend', status from 'moving them to qualified' (transition-cued), next_step from 'I will send over a proposal by Friday'. The 'natural' harness case seals on the same shape, proving extraction on a transcript not shaped to the regex.",
+      "detail": "Broadened extraction: field-type inference (money/enum/action/generic) + synonym vocab."
+    },
+    {
+      "type": "needs_review_behavior",
+      "value": "needs_review=[] on this transcript (all three fields extracted cleanly). The dedicated 'needs_review' harness case exercises the anomaly path: a line that references a field with an actionable cue but carries no extractable value is emitted as {field, line, reason} rather than silently dropped.",
+      "detail": "Answers the prior review: unextractable-but-actionable lines are flagged, not swallowed."
+    },
+    {
+      "type": "typed_outputs",
+      "value": "X.yaml runners.default.outputs declares takeaways: array, field_updates: object, needs_review: array, write_proposal: boolean (previously these lived only in SKILL.md prose).",
+      "detail": "Typed outputs are now declared in the profile."
     },
     {
       "type": "no_op_path",
@@ -155,7 +179,7 @@
     },
     {
       "type": "how_to_use",
-      "value": "Install: runx add automerchlab/crm-cleanup@sha-0c7de8ffc412 --registry https://api.runx.ai. Run: runx skill automerchlab/crm-cleanup@sha-0c7de8ffc412 --registry https://api.runx.ai --json -i transcript='<text>' -i crm_schema='{\"fields\":[\"budget\",\"status\",\"next_step\"]}' -R ./receipts. Verify: runx verify --receipt <receipt.json> --json (expects valid=true, signature_mode=production).",
+      "value": "Install: runx add automerchlab/crm-cleanup@sha-44376c7817e7 --registry https://api.runx.ai. Run: runx skill automerchlab/crm-cleanup@sha-44376c7817e7 --registry https://api.runx.ai --json -i transcript='<text>' -i crm_schema='{\"fields\":[\"budget\",\"status\",\"next_step\"]}' -R ./receipts. Verify: runx verify --receipt <receipt.json> --json (expects valid=true, signature_mode=production).",
       "detail": "End-to-end install/run/verify for a new user without private context."
     }
   ]
