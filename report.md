@@ -70,7 +70,7 @@ It never posts or assigns work directly.
 ## How a new user installs, runs, verifies (no private context)
 1. `runx add automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai`
 2. `runx skill automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai --json --input-json incident_timeline='[{"at": "2026-07-14T08:50:00Z", "event": "Webhook delivery failures climbed to 35%", "impact": "312 merchant webhook endpoints missed order notifications for 22 minutes"}, {"at": "2026-07-14T09:12:00Z", "event": "Dispatcher rolled back to v1.9.2, failure rate recovered"}]' --input-json alerts='[{"at": "2026-07-14T08:52:00Z", "name": "WebhookDeliveryFailureRateHigh", "severity": "critical"}]' --input-json deploy_events='[{"at": "2026-07-14T08:41:00Z", "service": "webhook-dispatcher", "version": "v1.9.3"}]' --input-json chat_notes='[{"at": "2026-07-14T08:58:00Z", "author": "oncall", "text": "The v1.9.3 webhook-dispatcher deploy introduced a malformed signature header, receivers reject the payload; rolling back."}, {"at": "2026-07-14T09:13:00Z", "author": "oncall", "text": "Rollback done, deliveries recovering."}]' --input-json postmortem_policy='{"require_confirmed_root_cause": true, "max_correlation_window_min": 30, "publish_target": "incident-review", "visibility": "internal"}' -R ./receipts`
-3. `runx verify --receipt ./receipts/sha256-<id>.json --json` -> valid=true, signature_mode=production.
+3. `runx verify --receipt dogfood_receipt.json --json (or the new receipt file your own run writes under ./receipts)` -> valid=true, signature_mode=production.
 
 ## What to inspect first
 1. `runx verify --receipt dogfood_receipt.json --json` (valid=true, production).
