@@ -1,0 +1,27 @@
+# Conflicting evidence: two deploys both inside the correlation window and two
+# hedged notes blaming different services. Expected: root_cause unknown, every
+# candidate and hypothesis emitted under unknowns, publish_proposal null.
+incident_timeline:
+  - at: "14:05"
+    event: "API latency degraded above SLO"
+alerts:
+  - at: "14:06"
+    name: "LatencyHigh"
+    severity: "warning"
+deploy_events:
+  - at: "13:50"
+    service: "api-gateway"
+    version: "v1.2.0"
+  - at: "13:55"
+    service: "search"
+    version: "v3.1.0"
+chat_notes:
+  - at: "14:15"
+    author: "dev1"
+    text: "Might be the api-gateway v1.2.0 deploy?"
+  - at: "14:17"
+    author: "dev2"
+    text: "I suspect the search v3.1.0 change instead, not sure."
+postmortem_policy:
+  require_confirmed_root_cause: true
+  max_correlation_window_min: 30

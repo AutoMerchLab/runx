@@ -1,0 +1,122 @@
+skill: postmortem-maker
+version: "1.0.0"
+
+catalog:
+  kind: skill
+  audience: public
+  visibility: public
+  role: canonical
+
+harness:
+  cases:
+    - name: consistent-incident-sealed
+      runner: default
+      inputs:
+        incident_timeline:
+          - at: "10:02"
+            event: "Checkout error rate spiked to 40%"
+            impact: "~1200 users saw failed checkouts over 18 minutes"
+          - at: "10:20"
+            event: "Error rate returned to baseline after rollback"
+        alerts:
+          - at: "10:03"
+            name: "CheckoutErrorRateHigh"
+            severity: "critical"
+        deploy_events:
+          - at: "09:58"
+            service: "checkout-api"
+            version: "v2.4.1"
+        chat_notes:
+          - at: "10:10"
+            author: "oncall"
+            text: "The 09:58 checkout-api v2.4.1 deploy introduced a null pointer in the payment path; rolling back now."
+          - at: "10:21"
+            author: "oncall"
+            text: "Rollback complete, error rate is back to normal."
+        postmortem_policy:
+          require_confirmed_root_cause: true
+          max_correlation_window_min: 30
+          publish_target: "incident-review"
+          visibility: "internal"
+      expect:
+        status: sealed
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: closed
+    - name: conflicting-evidence-uncertain
+      runner: default
+      inputs:
+        incident_timeline:
+          - at: "14:05"
+            event: "API latency degraded above SLO"
+        alerts:
+          - at: "14:06"
+            name: "LatencyHigh"
+            severity: "warning"
+        deploy_events:
+          - at: "13:50"
+            service: "api-gateway"
+            version: "v1.2.0"
+          - at: "13:55"
+            service: "search"
+            version: "v3.1.0"
+        chat_notes:
+          - at: "14:15"
+            author: "dev1"
+            text: "Might be the api-gateway v1.2.0 deploy?"
+          - at: "14:17"
+            author: "dev2"
+            text: "I suspect the search v3.1.0 change instead, not sure."
+        postmortem_policy:
+          require_confirmed_root_cause: true
+          max_correlation_window_min: 30
+      expect:
+        status: sealed
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: closed
+    - name: missing-inputs-refused
+      runner: default
+      inputs:
+        incident_timeline: []
+        alerts: []
+        deploy_events: []
+        chat_notes: []
+        postmortem_policy: {}
+      expect:
+        status: failure
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: failed
+
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: node
+    args:
+      - run.mjs
+    inputs:
+      incident_timeline:
+        type: array
+        required: true
+      alerts:
+        type: array
+        required: true
+      deploy_events:
+        type: array
+        required: true
+      chat_notes:
+        type: array
+        required: false
+      postmortem_policy:
+        type: object
+        required: false
+    outputs:
+      postmortem: object
+      unknowns: array
+      action_items: array
+      publish_proposal: object

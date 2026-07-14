@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "case_count": 3,
+  "assertion_error_count": 0,
+  "assertion_errors": [],
+  "case_names": [
+    "consistent-incident-sealed",
+    "conflicting-evidence-uncertain",
+    "missing-inputs-refused"
+  ],
+  "receipt_ids": [
+    "sha256:5a18a922f99c26743f38bbbbb6800b4c12c77d7f2b1ae10fef7873c2c0ed5165",
+    "sha256:87c1ca59166d7c7b49fdd719c546e92a42f6c076730329bfecb5156ff216a1fe",
+    "sha256:e084f061b8b08be4eb76c835e9f22491c9954789bfb5510bf2a3310f8c32f0c3"
+  ],
+  "graph_case_count": 0
+}

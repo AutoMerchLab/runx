@@ -1,0 +1,29 @@
+# Consistent evidence: one deploy 5 min before the first alert, a declarative
+# (non-hedged) chat note confirming the cause, and quantified impact.
+# Expected: root_cause confirmed, status complete, gated publish_proposal drafted.
+incident_timeline:
+  - at: "10:02"
+    event: "Checkout error rate spiked to 40%"
+    impact: "~1200 users saw failed checkouts over 18 minutes"
+  - at: "10:20"
+    event: "Error rate returned to baseline after rollback"
+alerts:
+  - at: "10:03"
+    name: "CheckoutErrorRateHigh"
+    severity: "critical"
+deploy_events:
+  - at: "09:58"
+    service: "checkout-api"
+    version: "v2.4.1"
+chat_notes:
+  - at: "10:10"
+    author: "oncall"
+    text: "The 09:58 checkout-api v2.4.1 deploy introduced a null pointer in the payment path; rolling back now."
+  - at: "10:21"
+    author: "oncall"
+    text: "Rollback complete, error rate is back to normal."
+postmortem_policy:
+  require_confirmed_root_cause: true
+  max_correlation_window_min: 30
+  publish_target: "incident-review"
+  visibility: "internal"

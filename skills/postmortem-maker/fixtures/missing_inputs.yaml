@@ -1,0 +1,7 @@
+# Insufficient evidence: no timeline events, alerts, or deploys at all.
+# Expected: refused — with no evidence to fold, any postmortem would be invented.
+incident_timeline: []
+alerts: []
+deploy_events: []
+chat_notes: []
+postmortem_policy: {}
