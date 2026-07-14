@@ -1,0 +1,297 @@
+{
+  "summary": "Evidence packet for the runx postmortem-maker skill (automerchlab/postmortem-maker@1.0.0). The skill folds incident fragments (timeline, alerts, deploys, chat notes, policy) into a traceable postmortem without promoting unknowns to facts: every timeline row and root-cause claim cites its input evidence, hedged chat speculation stays a hypothesis, conflicting or insufficient evidence yields unknowns and NO publish proposal, and the publish_proposal that is emitted is gated (requires_approval) and consumed by a downstream send-as/doc-publisher executor \u2014 the skill posts nothing. A real post-publish dogfood run of the PUBLISHED registry package (registry_source=remote, version=1.0.0) produced a sealed runx.receipt.v1 that passes runx verify with a production signature: root_cause confirmed (webhook-dispatcher@v1.9.3 deploy 11 min before the first alert, corroborated by a declarative oncall note), impact known (312 merchant endpoints, 22 minutes), 0 unknowns, 2 action items each naming a target lane, and a gated publish proposal. source_url, X.yaml, SKILL.md and verification.json all resolve at a single source revision (commit b0ad3f4545a528a083317b92524eabf7fbdf9830); this evidence packet and the report are its direct child (same revision). The committed skill files are the files that were published as automerchlab/postmortem-maker@1.0.0 and the dogfood ran that published package, not a local path.",
+  "dogfood": {
+    "package": "automerchlab/postmortem-maker@1.0.0",
+    "input": {
+      "incident_timeline": [
+        {
+          "at": "2026-07-14T08:50:00Z",
+          "event": "Webhook delivery failures climbed to 35%",
+          "impact": "312 merchant webhook endpoints missed order notifications for 22 minutes"
+        },
+        {
+          "at": "2026-07-14T09:12:00Z",
+          "event": "Dispatcher rolled back to v1.9.2, failure rate recovered"
+        }
+      ],
+      "alerts": [
+        {
+          "at": "2026-07-14T08:52:00Z",
+          "name": "WebhookDeliveryFailureRateHigh",
+          "severity": "critical"
+        }
+      ],
+      "deploy_events": [
+        {
+          "at": "2026-07-14T08:41:00Z",
+          "service": "webhook-dispatcher",
+          "version": "v1.9.3"
+        }
+      ],
+      "chat_notes": [
+        {
+          "at": "2026-07-14T08:58:00Z",
+          "author": "oncall",
+          "text": "The v1.9.3 webhook-dispatcher deploy introduced a malformed signature header, receivers reject the payload; rolling back."
+        },
+        {
+          "at": "2026-07-14T09:13:00Z",
+          "author": "oncall",
+          "text": "Rollback done, deliveries recovering."
+        }
+      ],
+      "postmortem_policy": {
+        "require_confirmed_root_cause": true,
+        "max_correlation_window_min": 30,
+        "publish_target": "incident-review",
+        "visibility": "internal"
+      }
+    },
+    "command": "runx skill automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai --json --input-json incident_timeline='[{\"at\": \"2026-07-14T08:50:00Z\", \"event\": \"Webhook delivery failures climbed to 35%\", \"impact\": \"312 merchant webhook endpoints missed order notifications for 22 minutes\"}, {\"at\": \"2026-07-14T09:12:00Z\", \"event\": \"Dispatcher rolled back to v1.9.2, failure rate recovered\"}]' --input-json alerts='[{\"at\": \"2026-07-14T08:52:00Z\", \"name\": \"WebhookDeliveryFailureRateHigh\", \"severity\": \"critical\"}]' --input-json deploy_events='[{\"at\": \"2026-07-14T08:41:00Z\", \"service\": \"webhook-dispatcher\", \"version\": \"v1.9.3\"}]' --input-json chat_notes='[{\"at\": \"2026-07-14T08:58:00Z\", \"author\": \"oncall\", \"text\": \"The v1.9.3 webhook-dispatcher deploy introduced a malformed signature header, receivers reject the payload; rolling back.\"}, {\"at\": \"2026-07-14T09:13:00Z\", \"author\": \"oncall\", \"text\": \"Rollback done, deliveries recovering.\"}]' --input-json postmortem_policy='{\"require_confirmed_root_cause\": true, \"max_correlation_window_min\": 30, \"publish_target\": \"incident-review\", \"visibility\": \"internal\"}' -R ./receipts",
+    "receipt_ref": "runx:receipt:sha256:de99603f53042768c4250bc38a89f2eeee31e7f7754c6bca07f782c588d40f0a",
+    "verify_verdict": "valid",
+    "output": {
+      "postmortem": {
+        "impact": {
+          "evidence": "incident_timeline[0]",
+          "status": "known",
+          "summary": "312 merchant webhook endpoints missed order notifications for 22 minutes"
+        },
+        "root_cause": {
+          "evidence": [
+            "deploy_events[0]",
+            "alerts (first at minute 29733652)",
+            "chat_notes[0]"
+          ],
+          "statement": "Deploy of webhook-dispatcher@v1.9.3 at 2026-07-14T08:41:00Z 11 min before the first alert",
+          "status": "confirmed"
+        },
+        "status": "complete",
+        "summary": "Incident folded from 2 timeline event(s), 1 alert(s), 1 deploy(s), and 2 chat note(s). Root cause: confirmed (Deploy of webhook-dispatcher@v1.9.3 at 2026-07-14T08:41:00Z 11 min before the first alert). Impact: known. 0 open unknown(s). A gated publish proposal was drafted for approval.",
+        "timeline": [
+          {
+            "at": "2026-07-14T08:41:00Z",
+            "description": "Deploy: webhook-dispatcher@v1.9.3",
+            "evidence": "deploy_events[0]",
+            "kind": "deploy",
+            "min": 29733641
+          },
+          {
+            "at": "2026-07-14T08:50:00Z",
+            "description": "Webhook delivery failures climbed to 35%",
+            "evidence": "incident_timeline[0]",
+            "kind": "event",
+            "min": 29733650
+          },
+          {
+            "at": "2026-07-14T08:52:00Z",
+            "description": "Alert fired: WebhookDeliveryFailureRateHigh (critical)",
+            "evidence": "alerts[0]",
+            "kind": "alert",
+            "min": 29733652
+          },
+          {
+            "at": "2026-07-14T09:12:00Z",
+            "description": "Dispatcher rolled back to v1.9.2, failure rate recovered",
+            "evidence": "incident_timeline[1]",
+            "kind": "event",
+            "min": 29733672
+          }
+        ]
+      },
+      "unknowns": [],
+      "action_items": [
+        {
+          "evidence": [
+            "deploy_events[0]",
+            "alerts (first at minute 29733652)"
+          ],
+          "owner_lane": "improve-skill",
+          "priority": "high",
+          "title": "Add an automated rollback / deploy guard for webhook-dispatcher"
+        },
+        {
+          "evidence": [
+            "alerts[0]"
+          ],
+          "owner_lane": "policy-author",
+          "priority": "medium",
+          "title": "Ensure a runbook exists for alert \"WebhookDeliveryFailureRateHigh\""
+        }
+      ],
+      "publish_proposal": {
+        "action": "publish_postmortem",
+        "grounded_in": {
+          "impact_evidence": "incident_timeline[0]",
+          "root_cause_status": "confirmed"
+        },
+        "note": "Gated proposal. This skill posts nothing; a downstream send-as/doc-publisher executor acts on approval.",
+        "requires_approval": true,
+        "target": "incident-review",
+        "title": "Postmortem: webhook-dispatcher incident",
+        "visibility": "internal"
+      }
+    },
+    "harness_cases": [
+      {
+        "name": "consistent-incident-sealed",
+        "status": "sealed"
+      },
+      {
+        "name": "conflicting-evidence-uncertain",
+        "status": "sealed"
+      },
+      {
+        "name": "missing-inputs-refused",
+        "status": "refused"
+      }
+    ]
+  },
+  "observations": [
+    {
+      "type": "runx_version",
+      "value": "runx-cli 0.6.16",
+      "detail": "Exact runx --version output; the publish/install/dogfood/verify commands were run with this binary (>= 0.6.14 floor)."
+    },
+    {
+      "type": "publisher_owner",
+      "value": "automerchlab",
+      "detail": "Publisher owner of the skill."
+    },
+    {
+      "type": "package_name",
+      "value": "postmortem-maker",
+      "detail": "Exact published package name (no near-name or rename)."
+    },
+    {
+      "type": "version",
+      "value": "1.0.0",
+      "detail": "Published package version; X.yaml declares the same version (guarded by an assertion in the build script)."
+    },
+    {
+      "type": "registry_ref",
+      "value": "automerchlab/postmortem-maker@1.0.0",
+      "detail": "Fully qualified registry reference; runx registry read automerchlab/postmortem-maker@1.0.0 --json resolves the published metadata and digests."
+    },
+    {
+      "type": "public_url",
+      "value": "https://runx.ai/x/automerchlab/postmortem-maker@1.0.0",
+      "detail": "Live registry listing / canonical adoption page."
+    },
+    {
+      "type": "pr_url",
+      "value": "https://github.com/runxhq/runx/pull/320",
+      "detail": "Public PR against runxhq/runx containing the full package: X.yaml, SKILL.md, run.mjs, fixtures, and harness evidence."
+    },
+    {
+      "type": "source_url",
+      "value": "https://github.com/automerchlab/runx/tree/b0ad3f4545a528a083317b92524eabf7fbdf9830",
+      "detail": "Public source/provenance revision (single source revision)."
+    },
+    {
+      "type": "raw_x_yaml",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/b0ad3f4545a528a083317b92524eabf7fbdf9830/skills/postmortem-maker/X.yaml",
+      "detail": "Raw X.yaml at the source revision (PR head lineage)."
+    },
+    {
+      "type": "raw_skill_md",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/b0ad3f4545a528a083317b92524eabf7fbdf9830/skills/postmortem-maker/SKILL.md",
+      "detail": "Raw SKILL.md at the source revision (PR head lineage)."
+    },
+    {
+      "type": "verification_json",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/b0ad3f4545a528a083317b92524eabf7fbdf9830/verification.json",
+      "detail": "Raw runx verify verdict at the source revision."
+    },
+    {
+      "type": "publish_method",
+      "value": "runx login --provider github --for publish, then runx registry publish ./skills/postmortem-maker/SKILL.md --registry https://api.runx.ai --version 1.0.0",
+      "detail": "Authenticate and publish commands (purpose-scoped publish credential; no tokens or secrets appear in any artifact)."
+    },
+    {
+      "type": "install_command",
+      "value": "runx add automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai",
+      "detail": "Clean install command (verified: source=remote, status=installed, digest sha256:4059df32bd27f27b37e6c3c6afbe6743a1049d8fd4d52daf0f572357b95a9fc2; installed files include run.mjs, X.yaml, SKILL.md)."
+    },
+    {
+      "type": "harness_cases",
+      "value": "consistent-incident-sealed (sealed), conflicting-evidence-uncertain (sealed), missing-inputs-refused (refused)",
+      "detail": "Harness case names with status: one sealed case where consistent incident evidence yields postmortem, action_items, and publish_proposal; one uncertain case where conflicting evidence yields unknowns and no publish_proposal (seals deterministically); one refused case where empty evidence is refused."
+    },
+    {
+      "type": "hosted_harness_status",
+      "value": "Published package installs cleanly from the remote registry (runx add: source=remote, status=installed); harness cases validate: WSL Linux local `runx harness ./skills/postmortem-maker` passed 3/3 cases with 0 assertion errors (consistent-incident-sealed (sealed), conflicting-evidence-uncertain (sealed), missing-inputs-refused (refused)). The committed skill files are the files that were published (same content digest sha256:4059df32bd27f27b37e6c3c6afbe6743a1049d8fd4d52daf0f572357b95a9fc2), so the reviewer's hosted harness runs the same cases. Environment: WSL Linux local + remote registry install.",
+      "detail": "Harness status with explicit environment labeling."
+    },
+    {
+      "type": "dogfood_command",
+      "value": "runx skill automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai --json --input-json incident_timeline='[{\"at\": \"2026-07-14T08:50:00Z\", \"event\": \"Webhook delivery failures climbed to 35%\", \"impact\": \"312 merchant webhook endpoints missed order notifications for 22 minutes\"}, {\"at\": \"2026-07-14T09:12:00Z\", \"event\": \"Dispatcher rolled back to v1.9.2, failure rate recovered\"}]' --input-json alerts='[{\"at\": \"2026-07-14T08:52:00Z\", \"name\": \"WebhookDeliveryFailureRateHigh\", \"severity\": \"critical\"}]' --input-json deploy_events='[{\"at\": \"2026-07-14T08:41:00Z\", \"service\": \"webhook-dispatcher\", \"version\": \"v1.9.3\"}]' --input-json chat_notes='[{\"at\": \"2026-07-14T08:58:00Z\", \"author\": \"oncall\", \"text\": \"The v1.9.3 webhook-dispatcher deploy introduced a malformed signature header, receivers reject the payload; rolling back.\"}, {\"at\": \"2026-07-14T09:13:00Z\", \"author\": \"oncall\", \"text\": \"Rollback done, deliveries recovering.\"}]' --input-json postmortem_policy='{\"require_confirmed_root_cause\": true, \"max_correlation_window_min\": 30, \"publish_target\": \"incident-review\", \"visibility\": \"internal\"}' -R ./receipts",
+      "detail": "Exact post-publish dogfood command (published package, not a local path)."
+    },
+    {
+      "type": "receipt_ref",
+      "value": "runx:receipt:sha256:de99603f53042768c4250bc38a89f2eeee31e7f7754c6bca07f782c588d40f0a",
+      "detail": "Sealed receipt id from the post-publish dogfood run of automerchlab/postmortem-maker@1.0.0 \u2014 not a harness fixture seal (harness receipts are separate, under skills/postmortem-maker/harness/receipts/)."
+    },
+    {
+      "type": "runx_verify_verdict",
+      "value": "valid=True, signature_mode=production, signature_status=valid, digest=valid, content_address=valid",
+      "detail": "runx verify --receipt dogfood_receipt.json --json verdict for the dogfood receipt."
+    },
+    {
+      "type": "registry_provenance",
+      "value": "registry_source=remote https://api.runx.ai, skill_id=automerchlab/postmortem-maker, version=1.0.0, trust_state=trusted, trust_tier=community",
+      "detail": "Receipt registry provenance: the dogfood run resolved the PUBLISHED package from the remote registry at the exact published version (same published package version)."
+    },
+    {
+      "type": "timeline_count",
+      "value": "4",
+      "detail": "Unified postmortem timeline rows folded from 2 incident events + 1 alert + 1 deploy, chronologically ordered; every row cites its input evidence (e.g. deploy_events[0])."
+    },
+    {
+      "type": "impact",
+      "value": "312 merchant webhook endpoints missed order notifications for 22 minutes (status=known, evidence=incident_timeline[0])",
+      "detail": "Impact taken from the quantified impact field on incident_timeline[0], not invented."
+    },
+    {
+      "type": "root_cause_status",
+      "value": "confirmed \u2014 Deploy of webhook-dispatcher@v1.9.3 at 2026-07-14T08:41:00Z 11 min before the first alert (evidence: deploy_events[0], alerts (first at minute 29733652), chat_notes[0])",
+      "detail": "Root cause: single deploy correlated inside the policy window AND corroborated by a declarative (non-hedged) oncall note; hedged speculation alone can never confirm."
+    },
+    {
+      "type": "unknowns",
+      "value": "0 open unknowns: []",
+      "detail": "Unresolved facts stay in unknowns; on this dogfood incident the evidence was consistent so none remained. The conflicting-evidence-uncertain harness case shows the populated path (4 unknowns, no proposal)."
+    },
+    {
+      "type": "action_items",
+      "value": "2 action items: Add an automated rollback / deploy guard for webhook-dispatcher [lane=improve-skill, priority=high]; Ensure a runbook exists for alert \"WebhookDeliveryFailureRateHigh\" [lane=policy-author, priority=medium]",
+      "detail": "Each action item names its target lane (improve-skill / policy-author / ops) and cites grounding evidence; the skill assigns no live tasks."
+    },
+    {
+      "type": "proposal_status",
+      "value": "drafted, gated: action=publish_postmortem, target=incident-review, visibility=internal, requires_approval=True",
+      "detail": "publish_proposal is a gated proposal consumed by send-as or the doc-publisher executor; this skill posts nothing and assigns no live tasks. With conflicting/insufficient evidence the proposal is null (see harness)."
+    },
+    {
+      "type": "postmortem_status",
+      "value": "complete",
+      "detail": "complete = confirmed root cause + known impact; conflicting evidence yields needs_review instead."
+    },
+    {
+      "type": "evidence_citation_model",
+      "value": "Every timeline row carries evidence=<input ref> (incident_timeline[i] / alerts[i] / deploy_events[i]); the root-cause claim carries the deploy, alert-window, and chat-note refs; hypotheses and candidates emitted to unknowns carry their chat_notes/deploy_events refs.",
+      "detail": "Each timeline entry and root-cause claim cites input evidence; unresolved facts remain in unknowns."
+    },
+    {
+      "type": "receipt_id",
+      "value": "sha256:de99603f53042768c4250bc38a89f2eeee31e7f7754c6bca07f782c588d40f0a",
+      "detail": "Sealed receipt id of the post-publish dogfood run (same id as receipt_ref)."
+    },
+    {
+      "type": "how_to_use",
+      "value": "Install: runx add automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai. Run: runx skill automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai --json --input-json incident_timeline='[{\"at\": \"2026-07-14T08:50:00Z\", \"event\": \"Webhook delivery failures climbed to 35%\", \"impact\": \"312 merchant webhook endpoints missed order notifications for 22 minutes\"}, {\"at\": \"2026-07-14T09:12:00Z\", \"event\": \"Dispatcher rolled back to v1.9.2, failure rate recovered\"}]' --input-json alerts='[{\"at\": \"2026-07-14T08:52:00Z\", \"name\": \"WebhookDeliveryFailureRateHigh\", \"severity\": \"critical\"}]' --input-json deploy_events='[{\"at\": \"2026-07-14T08:41:00Z\", \"service\": \"webhook-dispatcher\", \"version\": \"v1.9.3\"}]' --input-json chat_notes='[{\"at\": \"2026-07-14T08:58:00Z\", \"author\": \"oncall\", \"text\": \"The v1.9.3 webhook-dispatcher deploy introduced a malformed signature header, receivers reject the payload; rolling back.\"}, {\"at\": \"2026-07-14T09:13:00Z\", \"author\": \"oncall\", \"text\": \"Rollback done, deliveries recovering.\"}]' --input-json postmortem_policy='{\"require_confirmed_root_cause\": true, \"max_correlation_window_min\": 30, \"publish_target\": \"incident-review\", \"visibility\": \"internal\"}' -R ./receipts. Verify: runx verify --receipt ./receipts/sha256-<id>.json --json (expects valid=true, signature_mode=production). No private context needed: the skill is public on the registry, the source is public in the PR, and the inputs are plain JSON arrays/objects documented in SKILL.md.",
+      "detail": "End-to-end install/run/verify for a new user without private context."
+    }
+  ]
+}
