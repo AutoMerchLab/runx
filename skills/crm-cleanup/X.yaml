@@ -9,7 +9,7 @@ catalog:
 
 harness:
   cases:
-    - name: actionable
+    - name: templated
       runner: default
       inputs:
         transcript: "The client said the budget is $50k. The status is qualified. The next step is follow up call."
@@ -20,10 +20,32 @@ harness:
           schema: runx.receipt.v1
           state: sealed
           disposition: closed
+    - name: natural
+      runner: default
+      inputs:
+        transcript: "Great call. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday."
+        crm_schema: "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
+      expect:
+        status: sealed
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: closed
+    - name: needs_review
+      runner: default
+      inputs:
+        transcript: "We talked budget but they were cagey about the exact number. We should update their status after legal reviews the contract."
+        crm_schema: "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
+      expect:
+        status: sealed
+        receipt:
+          schema: runx.receipt.v1
+          state: sealed
+          disposition: closed
     - name: noop
       runner: default
       inputs:
-        transcript: "Just a quick catch up call to see how things are going. Nothing changed."
+        transcript: "Quick sync, everything is on track, nothing to update right now."
         crm_schema: "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
       expect:
         status: sealed
@@ -57,3 +79,8 @@ runners:
       crm_schema:
         type: string
         required: true
+    outputs:
+      takeaways: array
+      field_updates: object
+      needs_review: array
+      write_proposal: boolean

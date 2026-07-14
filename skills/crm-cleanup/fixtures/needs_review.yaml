@@ -1,0 +1,10 @@
+# Fields are referenced with an actionable cue but carry no extractable value,
+# so they surface in needs_review rather than being silently dropped:
+# budget mentioned but "cagey about the exact number"; status update deferred
+# "after legal reviews the contract".
+transcript: "We talked budget but they were cagey about the exact number. We should update their status after legal reviews the contract."
+crm_schema:
+  fields:
+    - "budget"
+    - "status"
+    - "next_step"
