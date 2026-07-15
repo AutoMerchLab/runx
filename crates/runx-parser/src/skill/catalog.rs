@@ -1,9 +1,25 @@
+// rust-style-allow: large-file - catalog enums, parsing, and cross-field capability validation form one public metadata contract.
 use runx_contracts::JsonObject;
 use serde::{Deserialize, Serialize};
 
 use crate::ValidationError;
 
 use super::FIELDS;
+
+const CATALOG_FIELDS: &[&str] = &[
+    "approval",
+    "audience",
+    "canonical_skill",
+    "completion",
+    "execution",
+    "kind",
+    "part_of",
+    "provider",
+    "requires_adapter",
+    "role",
+    "runtime_path",
+    "visibility",
+];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -37,6 +53,30 @@ pub enum CatalogRole {
     GraphStage,
     RuntimePath,
     HarnessFixture,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogExecution {
+    Plan,
+    Read,
+    Execute,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogCompletion {
+    Plan,
+    RuntimeReceipt,
+    ProviderReadback,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogApproval {
+    None,
+    Conditional,
+    Required,
 }
 
 impl CatalogKind {
@@ -81,6 +121,36 @@ impl CatalogRole {
     }
 }
 
+impl CatalogExecution {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CatalogExecution::Plan => "plan",
+            CatalogExecution::Read => "read",
+            CatalogExecution::Execute => "execute",
+        }
+    }
+}
+
+impl CatalogCompletion {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CatalogCompletion::Plan => "plan",
+            CatalogCompletion::RuntimeReceipt => "runtime_receipt",
+            CatalogCompletion::ProviderReadback => "provider_readback",
+        }
+    }
+}
+
+impl CatalogApproval {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            CatalogApproval::None => "none",
+            CatalogApproval::Conditional => "conditional",
+            CatalogApproval::Required => "required",
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CatalogMetadata {
@@ -96,6 +166,14 @@ pub struct CatalogMetadata {
     pub runtime_path: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub part_of: Vec<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution: Option<CatalogExecution>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion: Option<CatalogCompletion>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub requires_adapter: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approval: Option<CatalogApproval>,
 }
 
 pub(crate) fn validate_catalog_metadata(
@@ -105,6 +183,7 @@ pub(crate) fn validate_catalog_metadata(
     let Some(value) = value else {
         return Ok(None);
     };
+    FIELDS.reject_unknown_fields(&value, label, CATALOG_FIELDS)?;
     let kind = parse_catalog_kind(&value, label)?;
     let audience = parse_catalog_audience(&value, label)?;
     let visibility = parse_catalog_visibility(&value, label)?;
@@ -120,6 +199,26 @@ pub(crate) fn validate_catalog_metadata(
     let part_of = FIELDS
         .optional_string_array(value.get("part_of"), &format!("{label}.part_of"))?
         .unwrap_or_default();
+    let execution = parse_catalog_execution(&value, label)?;
+    let completion = parse_catalog_completion(&value, label)?;
+    let requires_adapter = FIELDS.optional_bool(
+        value.get("requires_adapter"),
+        &format!("{label}.requires_adapter"),
+    )?;
+    let approval = parse_catalog_approval(&value, label)?;
+    let capability_fields = [
+        execution.is_some(),
+        completion.is_some(),
+        requires_adapter.is_some(),
+        approval.is_some(),
+    ];
+    if capability_fields.iter().any(|present| *present)
+        && capability_fields.iter().any(|present| !*present)
+    {
+        return Err(FIELDS.validation_error(format!(
+            "{label} capability metadata must declare execution, completion, requires_adapter, and approval together."
+        )));
+    }
     validate_catalog_bindings(role, &canonical_skill, &provider, &part_of, label)?;
     Ok(Some(CatalogMetadata {
         kind,
@@ -130,7 +229,66 @@ pub(crate) fn validate_catalog_metadata(
         provider,
         runtime_path,
         part_of,
+        execution,
+        completion,
+        requires_adapter,
+        approval,
     }))
+}
+
+fn parse_catalog_execution(
+    value: &JsonObject,
+    label: &str,
+) -> Result<Option<CatalogExecution>, ValidationError> {
+    match FIELDS
+        .optional_string(value.get("execution"), &format!("{label}.execution"))?
+        .as_deref()
+    {
+        Some("plan") => Ok(Some(CatalogExecution::Plan)),
+        Some("read") => Ok(Some(CatalogExecution::Read)),
+        Some("execute") => Ok(Some(CatalogExecution::Execute)),
+        None => Ok(None),
+        Some(_) => {
+            Err(FIELDS
+                .validation_error(format!("{label}.execution must be plan, read, or execute.")))
+        }
+    }
+}
+
+fn parse_catalog_completion(
+    value: &JsonObject,
+    label: &str,
+) -> Result<Option<CatalogCompletion>, ValidationError> {
+    match FIELDS
+        .optional_string(value.get("completion"), &format!("{label}.completion"))?
+        .as_deref()
+    {
+        Some("plan") => Ok(Some(CatalogCompletion::Plan)),
+        Some("runtime_receipt") => Ok(Some(CatalogCompletion::RuntimeReceipt)),
+        Some("provider_readback") => Ok(Some(CatalogCompletion::ProviderReadback)),
+        None => Ok(None),
+        Some(_) => Err(FIELDS.validation_error(format!(
+            "{label}.completion must be plan, runtime_receipt, or provider_readback."
+        ))),
+    }
+}
+
+fn parse_catalog_approval(
+    value: &JsonObject,
+    label: &str,
+) -> Result<Option<CatalogApproval>, ValidationError> {
+    match FIELDS
+        .optional_string(value.get("approval"), &format!("{label}.approval"))?
+        .as_deref()
+    {
+        Some("none") => Ok(Some(CatalogApproval::None)),
+        Some("conditional") => Ok(Some(CatalogApproval::Conditional)),
+        Some("required") => Ok(Some(CatalogApproval::Required)),
+        None => Ok(None),
+        Some(_) => Err(FIELDS.validation_error(format!(
+            "{label}.approval must be none, conditional, or required."
+        ))),
+    }
 }
 
 fn parse_catalog_kind(value: &JsonObject, label: &str) -> Result<CatalogKind, ValidationError> {

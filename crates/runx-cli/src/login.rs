@@ -12,10 +12,6 @@ use std::time::{Duration, Instant};
 use runx_runtime::registry::{
     HttpMethod, HttpRequest, RuntimeHttpError, RuntimeHttpHeader, Transport,
 };
-use runx_runtime::{
-    ConfigError, ConfigKey, load_runx_config_file, resolve_runx_home_dir, update_runx_config_value,
-    write_runx_config_file,
-};
 use serde::Deserialize;
 
 use crate::cli_args::{flag_value, os_arg, split_flag};
@@ -40,11 +36,12 @@ pub enum LoginCliError {
     MissingSigninUrl,
     LoginTimedOut,
     MissingToken,
+    MissingPrincipal,
     InvalidFromGhProvider,
     GithubCliUnavailable(std::io::Error),
     GithubCliFailed,
     MissingGithubCliToken,
-    Config(ConfigError),
+    Environment(String),
     Serialize(serde_json::Error),
 }
 
@@ -66,6 +63,12 @@ impl fmt::Display for LoginCliError {
             Self::MissingToken => {
                 write!(formatter, "public API login completed without an API token")
             }
+            Self::MissingPrincipal => {
+                write!(
+                    formatter,
+                    "public API login completed without a principal identity"
+                )
+            }
             Self::InvalidFromGhProvider => {
                 write!(formatter, "--from-gh is only valid with --provider github")
             }
@@ -81,7 +84,7 @@ impl fmt::Display for LoginCliError {
                 formatter,
                 "`gh auth token` returned no credential; run `gh auth login` and retry"
             ),
-            Self::Config(error) => write!(formatter, "{error}"),
+            Self::Environment(error) => write!(formatter, "{error}"),
             Self::Serialize(error) => {
                 write!(formatter, "failed to serialize login result: {error}")
             }
@@ -91,9 +94,9 @@ impl fmt::Display for LoginCliError {
 
 impl std::error::Error for LoginCliError {}
 
-impl From<ConfigError> for LoginCliError {
-    fn from(error: ConfigError) -> Self {
-        Self::Config(error)
+impl From<crate::public_api::ApiEnvironmentError> for LoginCliError {
+    fn from(error: crate::public_api::ApiEnvironmentError) -> Self {
+        Self::Environment(error.to_string())
     }
 }
 
@@ -278,16 +281,10 @@ pub fn run_native_login(plan: LoginPlan) -> ExitCode {
         Ok(output) => crate::cli_io::write_stdout_code(&output, 0),
         Err(error) => {
             if plan.json {
-                let body = serde_json::json!({
-                    "status": "failure",
-                    "error": {
-                        "message": error.to_string(),
-                        "code": "login_failed",
-                    },
-                });
-                let serialized = serde_json::to_string_pretty(&body)
-                    .unwrap_or_else(|_| "{\"status\":\"failure\"}".to_owned());
-                return crate::cli_io::write_stdout_code(&format!("{serialized}\n"), 1);
+                return crate::cli_io::write_stdout_code(
+                    &crate::cli_error::json_failure_output(&error.to_string(), "login_failed"),
+                    1,
+                );
             }
             let _ignored = crate::cli_io::write_stderr(&format!("runx login: {error}\n"));
             ExitCode::from(1)
@@ -318,10 +315,15 @@ fn run_provider_token_login_with_transport<T: Transport>(
     github_token: &str,
 ) -> Result<String, LoginCliError> {
     validate_from_gh_provider(plan)?;
-    let base_url = resolve_public_api_base_url(plan, env);
+    let environment = crate::public_api::ApiEnvironment::resolve_unauthenticated(
+        plan.api_base_url.as_deref(),
+        env,
+        cwd,
+    )?;
+    let base_url = environment.base_url();
     let completed = exchange_provider_token(
         transport,
-        &base_url,
+        base_url,
         plan.provider.as_deref().unwrap_or("github"),
         plan.purpose.as_deref(),
         github_token,
@@ -329,12 +331,22 @@ fn run_provider_token_login_with_transport<T: Transport>(
     if completed.status != "success" || completed.token.trim().is_empty() {
         return Err(LoginCliError::MissingToken);
     }
-    store_public_api_token(env, cwd, &completed.token)?;
+    let principal_id = completed.principal_id.trim();
+    if principal_id.is_empty() {
+        return Err(LoginCliError::MissingPrincipal);
+    }
+    crate::public_api::store_authenticated_environment(
+        env,
+        cwd,
+        base_url,
+        principal_id,
+        &completed.token,
+    )?;
     render_login_result(
         plan.json,
         &LoginResult {
             status: "success",
-            principal_id: completed.principal_id,
+            principal_id: principal_id.to_owned(),
             credential_id: completed.credential_id,
         },
     )
@@ -373,10 +385,15 @@ fn run_login_command_with_transport<T: Transport>(
     transport: &T,
     sleep: impl Fn(Duration),
 ) -> Result<String, LoginCliError> {
-    let base_url = resolve_public_api_base_url(plan, env);
+    let environment = crate::public_api::ApiEnvironment::resolve_unauthenticated(
+        plan.api_base_url.as_deref(),
+        env,
+        cwd,
+    )?;
+    let base_url = environment.base_url();
     let started = start_login_session(
         transport,
-        &base_url,
+        base_url,
         plan.provider.as_deref(),
         plan.purpose.as_deref(),
     )?;
@@ -390,29 +407,45 @@ fn run_login_command_with_transport<T: Transport>(
             "Open this URL to sign in to runx:\n{signin_url}\n\nWaiting for public API login...\n"
         ));
     }
+    let completed = wait_for_login_completion(transport, base_url, &started, &sleep)?;
+    let token = completed
+        .token
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or(LoginCliError::MissingToken)?;
+    let principal_id = completed
+        .principal_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .ok_or(LoginCliError::MissingPrincipal)?;
+    crate::public_api::store_authenticated_environment(env, cwd, base_url, principal_id, token)?;
+    render_login_result(
+        plan.json,
+        &LoginResult {
+            status: "success",
+            principal_id: principal_id.to_owned(),
+            credential_id: completed.credential_id.unwrap_or_default(),
+        },
+    )
+}
 
+fn wait_for_login_completion<T: Transport>(
+    transport: &T,
+    base_url: &str,
+    started: &LoginStartResponse,
+    sleep: &impl Fn(Duration),
+) -> Result<LoginCompleteResponse, LoginCliError> {
     let deadline = Instant::now() + Duration::from_secs(DEFAULT_LOGIN_TIMEOUT_SECONDS);
     let mut poll_after = Duration::from_millis(started.poll_after_ms.unwrap_or(1000));
     loop {
         let completed = complete_login_session(
             transport,
-            &base_url,
+            base_url,
             &started.session_id,
             &started.login_token,
         )?;
         if completed.status == "success" {
-            let token = completed
-                .token
-                .as_deref()
-                .filter(|value| !value.trim().is_empty())
-                .ok_or(LoginCliError::MissingToken)?;
-            store_public_api_token(env, cwd, token)?;
-            let result = LoginResult {
-                status: "success",
-                principal_id: completed.principal_id.unwrap_or_default(),
-                credential_id: completed.credential_id.unwrap_or_default(),
-            };
-            return render_login_result(plan.json, &result);
+            return Ok(completed);
         }
         if Instant::now() >= deadline {
             return Err(LoginCliError::LoginTimedOut);
@@ -424,29 +457,8 @@ fn run_login_command_with_transport<T: Transport>(
     }
 }
 
-fn store_public_api_token(
-    env: &BTreeMap<String, String>,
-    cwd: &Path,
-    token: &str,
-) -> Result<(), LoginCliError> {
-    let config_dir = resolve_runx_home_dir(env, cwd);
-    let config_path = config_dir.join("config.json");
-    let config = load_runx_config_file(&config_path)?;
-    let next = update_runx_config_value(config, ConfigKey::PublicApiToken, token, &config_dir)?;
-    write_runx_config_file(&config_path, &next)?;
-    Ok(())
-}
-
 fn allow_local_api(plan: &LoginPlan, env: &BTreeMap<String, String>) -> bool {
-    crate::public_api::private_network_allowed(
-        plan.allow_local_api,
-        env,
-        "RUNX_LOGIN_ALLOW_LOCAL_API",
-    )
-}
-
-fn resolve_public_api_base_url(plan: &LoginPlan, env: &BTreeMap<String, String>) -> String {
-    crate::public_api::resolve_base_url(plan.api_base_url.as_deref(), env)
+    crate::public_api::private_network_allowed(plan.allow_local_api, env)
 }
 
 fn start_login_session<T: Transport>(

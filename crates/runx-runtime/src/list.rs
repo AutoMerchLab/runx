@@ -1,7 +1,7 @@
 // rust-style-allow: large-file because native list discovery intentionally keeps
 // tool, skill, graph, packet, and overlay projection in one audited cutover
 // surface until the TypeScript list command is fully retired.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -12,7 +12,7 @@ pub use runx_contracts::{
 use serde::Deserialize;
 
 use crate::RuntimeError;
-use crate::filesystem::{read_dir_sorted, read_to_string};
+use crate::filesystem::{find_files_named, read_dir_sorted, read_to_string};
 use crate::path_util::{count_yaml_files, display_path, lexical_normalize, project_path};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -142,10 +142,14 @@ fn read_validated_tool_manifest(manifest_path: &Path) -> Result<runx_parser::Val
 fn tool_emits(artifacts: &runx_parser::SkillArtifactContract) -> Vec<RunxListEmit> {
     if let Some(named_emits) = &artifacts.named_emits {
         return named_emits
-            .iter()
-            .map(|(name, packet)| RunxListEmit {
+            .keys()
+            .map(|name| RunxListEmit {
                 name: name.clone(),
-                packet: Some(packet.clone()),
+                packet: artifacts
+                    .packets
+                    .as_ref()
+                    .and_then(|packets| packets.get(name))
+                    .cloned(),
             })
             .collect();
     }
@@ -154,7 +158,7 @@ fn tool_emits(artifacts: &runx_parser::SkillArtifactContract) -> Vec<RunxListEmi
         .iter()
         .map(|name| RunxListEmit {
             name: name.clone(),
-            packet: None,
+            packet: artifacts.packet.clone(),
         })
         .collect()
 }
@@ -179,6 +183,8 @@ fn discover_skill_and_graph_list_items(root: &Path) -> Result<Vec<RunxListItem>,
                     })
                     .collect::<Vec<_>>();
                 let is_graph = !graph_steps.is_empty();
+                let scopes = skill_scopes(&manifest);
+                let emits = skill_emits(&manifest);
                 items.push(RunxListItem {
                     kind: if is_graph {
                         RunxListItemKind::Graph
@@ -190,8 +196,8 @@ fn discover_skill_and_graph_list_items(root: &Path) -> Result<Vec<RunxListItem>,
                     path: relative_path,
                     status: RunxListStatus::Ok,
                     diagnostics: None,
-                    scopes: None,
-                    emits: None,
+                    scopes,
+                    emits,
                     fixtures: Some(count_yaml_files(&skill_dir.join("fixtures"))?),
                     harness_cases: Some(
                         manifest
@@ -212,6 +218,88 @@ fn discover_skill_and_graph_list_items(root: &Path) -> Result<Vec<RunxListItem>,
         }
     }
     Ok(items)
+}
+
+fn skill_scopes(manifest: &runx_parser::SkillRunnerManifest) -> Option<Vec<String>> {
+    let mut scopes = BTreeSet::new();
+    for runner in manifest.runners.values() {
+        if let Some(values) = runner
+            .raw
+            .get("scopes")
+            .and_then(runx_contracts::JsonValue::as_array)
+        {
+            scopes.extend(
+                values
+                    .iter()
+                    .filter_map(runx_contracts::JsonValue::as_str)
+                    .map(str::to_owned),
+            );
+        }
+        if let Some(graph) = &runner.source.graph {
+            for step in &graph.steps {
+                scopes.extend(step.scopes.iter().cloned());
+            }
+        }
+    }
+    (!scopes.is_empty()).then(|| scopes.into_iter().collect())
+}
+
+fn skill_emits(manifest: &runx_parser::SkillRunnerManifest) -> Option<Vec<RunxListEmit>> {
+    let mut emits = BTreeSet::<(String, Option<String>)>::new();
+    for runner in manifest.runners.values() {
+        if let Some(artifacts) = &runner.artifacts {
+            emits.extend(
+                tool_emits(artifacts)
+                    .into_iter()
+                    .map(|emit| (emit.name, emit.packet)),
+            );
+        }
+        if let Some(graph) = &runner.source.graph {
+            for step in &graph.steps {
+                if let Some(artifacts) = step.artifacts.as_ref() {
+                    emits.extend(json_artifact_emits(artifacts));
+                }
+            }
+        }
+    }
+    (!emits.is_empty()).then(|| {
+        emits
+            .into_iter()
+            .map(|(name, packet)| RunxListEmit { name, packet })
+            .collect()
+    })
+}
+
+fn json_artifact_emits(artifacts: &runx_contracts::JsonObject) -> Vec<(String, Option<String>)> {
+    if let Some(named) = artifacts
+        .get("named_emits")
+        .and_then(runx_contracts::JsonValue::as_object)
+    {
+        let packets = artifacts
+            .get("packets")
+            .and_then(runx_contracts::JsonValue::as_object);
+        return named
+            .keys()
+            .map(|name| {
+                let packet = packets
+                    .and_then(|packets| packets.get(name))
+                    .and_then(runx_contracts::JsonValue::as_str)
+                    .map(str::to_owned);
+                (name.clone(), packet)
+            })
+            .collect();
+    }
+    artifacts
+        .get("wrap_as")
+        .and_then(runx_contracts::JsonValue::as_str)
+        .map(|name| {
+            let packet = artifacts
+                .get("packet")
+                .and_then(runx_contracts::JsonValue::as_str)
+                .map(str::to_owned);
+            vec![(name.to_owned(), packet)]
+        })
+        .unwrap_or_default()
 }
 
 fn read_validated_runner_manifest(
@@ -439,15 +527,7 @@ fn discover_skill_profile_paths(root: &Path) -> Result<Vec<PathBuf>, RuntimeErro
     if root_profile.exists() {
         paths.push(root_profile);
     }
-    for skill_entry in read_dir_sorted(&root.join("skills"))? {
-        if !skill_entry.is_dir {
-            continue;
-        }
-        let profile_path = skill_entry.path.join("X.yaml");
-        if profile_path.exists() {
-            paths.push(profile_path);
-        }
-    }
+    paths.extend(find_files_named(&root.join("skills"), "X.yaml")?);
     paths.sort();
     Ok(paths)
 }
@@ -513,6 +593,47 @@ mod tests {
         assert_eq!(
             overlay_wraps("name: demo\n  wraps: vendor/base\n"),
             Some("vendor/base".to_owned())
+        );
+    }
+
+    #[test]
+    fn named_emit_lists_only_explicit_packet_binding() {
+        let artifacts = runx_parser::SkillArtifactContract {
+            emits: None,
+            named_emits: Some(BTreeMap::from([("plan".to_owned(), "plan".to_owned())])),
+            packets: Some(BTreeMap::from([(
+                "plan".to_owned(),
+                "runx.plan.v1".to_owned(),
+            )])),
+            wrap_as: None,
+            packet: None,
+        };
+
+        assert_eq!(
+            tool_emits(&artifacts),
+            vec![RunxListEmit {
+                name: "plan".to_owned(),
+                packet: Some("runx.plan.v1".to_owned()),
+            }]
+        );
+    }
+
+    #[test]
+    fn named_emit_output_name_is_not_reported_as_a_packet() {
+        let artifacts = runx_parser::SkillArtifactContract {
+            emits: None,
+            named_emits: Some(BTreeMap::from([("plan".to_owned(), "plan".to_owned())])),
+            packets: None,
+            wrap_as: None,
+            packet: None,
+        };
+
+        assert_eq!(
+            tool_emits(&artifacts),
+            vec![RunxListEmit {
+                name: "plan".to_owned(),
+                packet: None,
+            }]
         );
     }
 

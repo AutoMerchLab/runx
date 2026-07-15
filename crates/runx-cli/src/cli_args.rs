@@ -29,6 +29,24 @@ pub fn flag_value(
     Ok((value.to_owned(), index + 2))
 }
 
+pub fn os_flag_value(
+    args: &[OsString],
+    index: usize,
+    flag: &str,
+    inline_value: Option<&str>,
+) -> Result<(OsString, usize), String> {
+    if let Some(value) = inline_value {
+        return Ok((OsString::from(value), index + 1));
+    }
+    let value = args
+        .get(index + 1)
+        .ok_or_else(|| format!("{flag} requires a value"))?;
+    if value.to_str().is_some_and(|value| value.starts_with("--")) {
+        return Err(format!("{flag} requires a value"));
+    }
+    Ok((value.clone(), index + 2))
+}
+
 pub fn optional_flag_value(
     args: &[OsString],
     index: usize,

@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.runx.ai/runx/unseal/v1.json",
+  "x-runx-packet-id": "runx.unseal.v1",
+  "type": "object",
+  "required": [
+    "unseal_plan"
+  ],
+  "properties": {
+    "unseal_plan": {
+      "type": "object",
+      "required": ["decision", "secret_ref", "purpose", "ttl", "scope", "principal", "gates", "blockers", "execution"],
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": ["ready_for_approval", "needs_agent", "denied"]
+        },
+        "secret_ref": { "type": "string" },
+        "purpose": { "type": "string" },
+        "ttl": { "type": "string" },
+        "scope": { "type": "object" },
+        "principal": { "type": "string" },
+        "gates": {
+          "type": "object",
+          "required": ["human_approval_required"],
+          "properties": {
+            "human_approval_required": { "const": true }
+          },
+          "additionalProperties": false
+        },
+        "blockers": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "execution": {
+          "type": "object",
+          "required": ["requires_adapter", "requires_approval"],
+          "properties": {
+            "requires_adapter": { "const": true },
+            "requires_approval": { "const": true }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

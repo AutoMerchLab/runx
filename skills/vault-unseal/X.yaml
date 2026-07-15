@@ -1,10 +1,14 @@
 skill: vault-unseal
-version: "0.1.0"
+version: "0.1.1"
 catalog:
   kind: skill
   audience: public
   visibility: public
   role: canonical
+  execution: plan
+  completion: plan
+  requires_adapter: true
+  approval: required
 runners:
   vault-unseal:
     default: true

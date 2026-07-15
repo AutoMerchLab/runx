@@ -1,10 +1,14 @@
 skill: weather-forecast
-version: "0.1.0"
+version: "0.1.1"
 catalog:
   kind: skill
   audience: public
   visibility: public
   role: canonical
+  execution: read
+  completion: runtime_receipt
+  requires_adapter: false
+  approval: none
 runners:
   normalize:
     default: true

@@ -25,9 +25,9 @@ Use the CLI when you are preparing work or checking for overlap:
 
 ```bash
 runx registry search "cve audit" --registry https://api.runx.ai --json
-runx registry read runx/dependency-cve-audit@sha-e11c90bbeb16 --registry https://api.runx.ai --json
-runx add runx/dependency-cve-audit@sha-e11c90bbeb16 --registry https://api.runx.ai
-runx skill runx/dependency-cve-audit@sha-e11c90bbeb16 --registry https://api.runx.ai --json
+runx registry read runx/cve-audit@sha-e11c90bbeb16 --registry https://api.runx.ai --json
+runx add runx/cve-audit@sha-e11c90bbeb16 --registry https://api.runx.ai
+runx skill runx/cve-audit@sha-e11c90bbeb16 --registry https://api.runx.ai --json
 ```
 
 The command shape is deliberate:
@@ -43,6 +43,25 @@ The command shape is deliberate:
 
 Do not combine the install and execution verbs. Installation is `runx add`;
 execution is `runx skill`.
+
+## Naming a skill
+
+Name a skill so an agent instinctively reaches for the right one:
+
+- Name the **job**, not the mechanism. Drop `-auditor`, `-generator`,
+  `-analyst`, `-pipeline` suffixes.
+- One distinct **verb per pipeline layer** so sibling skills never blur. The
+  security trio is the model: `cve-audit` (detect, deterministic) ->
+  `vuln-triage` (assess, agent) -> `vuln-disclosure` (publish, governed).
+- Keep provider rails and integrations descriptive (`stripe-pay`, `web-fetch`).
+- Retrieval beats cleverness: the searchable term wins, and keywords the name
+  drops go in the `description`.
+
+Renaming an existing skill is a `git mv`, a token sweep, and a regenerate
+(`packet-schemas`, `official-lock`) plus `verify:fast` and the harness. For a
+maintained `runx/*` skill the hosted registry row is preserved (its
+`created_at` and version history carry across) during the operator deploy, so a
+rename never resets the row.
 
 ## Canonical category slugs
 
@@ -75,15 +94,15 @@ evidence, not copied into the repo by default.
 
 | Category | Maintained packages |
 | --- | --- |
-| `authoring` | `design-skill`, `evolve`, `improve-skill`, `overlay-generator`, `policy-author`, `review-receipt`, `skill-lab`, `skill-testing` |
+| `authoring` | `design-skill`, `evolve`, `improve-skill`, `overlay`, `policy-author`, `review-receipt`, `skill-lab`, `skill-testing` |
 | `code` | `release` |
-| `content` | `brand-voice`, `content-pipeline`, `draft-content`, `moltbook` |
-| `data` | `data-store`, `run-history-analyst`, `sql-analyst` |
+| `content` | `brand-voice`, `content-pipeline`, `ghostwrite`, `moltbook` |
+| `data` | `data-store`, `run-history`, `sql-analyst` |
 | `growth` | `lead-enrichment`, `lead-router`, `nitrosend` |
-| `ops` | `github-sync`, `governed-outbound`, `inbox-and-calendar-exec`, `issue-intake`, `issue-triage`, `messageboard`, `n8n-handoff`, `ops-desk`, `send-as`, `zapier-handoff` |
+| `ops` | `github-sync`, `governed-outbound`, `chief-of-staff`, `issue-intake`, `issue-triage`, `messageboard`, `n8n-handoff`, `ops-desk`, `send-as`, `zapier-handoff` |
 | `payments` | `charge`, `dispute-respond`, `mock-pay`, `mock-refund`, `mpp-pay`, `mpp-refund`, `refund`, `settle-invoice`, `spend`, `stripe-pay`, `stripe-refund`, `x402-pay` |
 | `research` | `ecosystem-brief`, `research` |
-| `security` | `dependency-cve-audit`, `ecosystem-vuln-scan`, `least-privilege-auditor`, `receipt-auditor`, `redact-pii`, `sandbox-harden`, `sign-receipt`, `vault-unseal` |
+| `security` | `cve-audit`, `vuln-triage`, `vuln-disclosure`, `least-privilege`, `audit-receipt`, `redact-pii`, `sandbox-harden`, `sign-receipt`, `vault-unseal` |
 
 Graph stages, harness fixtures, context-only packages, and provider bindings are
 not listed here unless they are meant to be run as catalog packages. Their

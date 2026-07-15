@@ -10,7 +10,7 @@ homepage.workspace = true
 readme = "README.md"
 keywords = ["runx", "runtime", "agents", "sandbox", "mcp"]
 categories = ["development-tools"]
-include = ["Cargo.toml", "README.md", "src/**/*.rs"]
+include = ["Cargo.toml", "README.md", "assets/VOICE.md", "src/**/*.rs"]
 # Integration tests are compiled as a single binary (tests/integration.rs) so the
 # crate and its heavy deps link once instead of once per test file. Each test file
 # is a module of that binary; see .scafld/specs/active/test-surface-build-consolidation.md.
@@ -21,7 +21,7 @@ workspace = true
 
 [features]
 default = []
-async-http = ["dep:reqwest", "dep:tokio", "dep:rustls"]
+async-http = ["dep:reqwest", "dep:tokio", "dep:rustls", "tokio/rt-multi-thread"]
 cli-tool = ["async-http"]
 mcp = ["dep:rmcp", "dep:tokio", "tokio/process", "tokio/io-util", "tokio/sync", "tokio/rt-multi-thread"]
 # Expose the governed MCP server over streamable HTTP/SSE (rmcp's tower service
@@ -49,6 +49,7 @@ base64 = "0.22.1"
 bytes = { version = "1.11.1", optional = true }
 http = { version = "1.4.0", optional = true }
 http-body-util = { version = "0.1.3", optional = true }
+httpdate = "1.0.3"
 runx-contracts.workspace = true
 runx-core.workspace = true
 runx-parser.workspace = true
@@ -59,6 +60,7 @@ runx-receipts.workspace = true
 # read_limited_response_body), so a decompression bomb stays bounded.
 reqwest = { version = "=0.13.4", default-features = false, features = ["rustls-no-provider", "json", "gzip", "brotli", "deflate", "zstd", "http2"], optional = true }
 ring = "0.17.14"
+jsonschema = { version = "0.46.5", default-features = false }
 # Drive rustls with the ring provider (already linked via `ring`) instead of
 # reqwest's default aws-lc-rs, so the vendored aws-lc-sys C crypto blob is not
 # compiled in. ring is then the single, unambiguous process-default provider.

@@ -9,7 +9,7 @@
 use std::fs;
 use std::path::Path;
 
-use runx_contracts::{ClosureDisposition, JsonNumber, JsonObject, JsonValue};
+use runx_contracts::{ClosureDisposition, JsonNumber, JsonObject, JsonValue, ResolutionRequest};
 use runx_parser::{ActDeclaration, SkillRunnerDefinition, SkillRunnerManifest};
 use serde::Serialize;
 use thiserror::Error;
@@ -37,7 +37,8 @@ pub(crate) mod runner_manifest;
 #[cfg(feature = "cli-tool")]
 pub(crate) use self::graph::SkillRunGraphAdapter;
 pub(crate) use self::graph::graph_domain_act_receipt;
-pub(crate) use self::inline_harness::run_inline_harness_with_effects;
+#[cfg(feature = "cli-tool")]
+pub(crate) use self::inline_harness::run_package_harness_with_effects;
 
 use self::agent::execute_agent_skill_run;
 use self::graph::execute_graph_skill_run;
@@ -147,6 +148,9 @@ fn execute_skill_run_with_resolved_trust(
     runner: &SkillRunnerDefinition,
     trusted_prepared: bool,
 ) -> Result<JsonValue, SkillRunError> {
+    let mut request = request.clone();
+    apply_runner_input_defaults(&mut request.inputs, runner);
+    let request = &request;
     let raw_workspace = WorkspaceEnv::new(request.env.clone(), request.cwd.clone());
     let receipts = ReceiptServices::from_env_or_local_development(raw_workspace.env())
         .map_err(|error| SkillRunError::Invalid(error.to_string()))?;
@@ -187,13 +191,25 @@ fn execute_skill_run_with_resolved_trust(
     )
 }
 
-/// Aggregate result of running a skill's declared inline harness (the
-/// `harness.cases` in its runner manifest). Mirrors the publish-harness summary
-/// the registry publish flow records: a status, counts, the per-case assertion
-/// failures, the case names, the receipts each case sealed, and how many cases
-/// exercised a graph (the stable-maturity graph-integration signal).
+pub(super) fn apply_runner_input_defaults(
+    inputs: &mut std::collections::BTreeMap<String, JsonValue>,
+    runner: &SkillRunnerDefinition,
+) {
+    for (name, input) in &runner.inputs {
+        if !inputs.contains_key(name)
+            && let Some(default) = &input.default
+        {
+            inputs.insert(name.clone(), default.clone());
+        }
+    }
+}
+
+/// Aggregate result of running a package's inline and conventional fixture
+/// cases. Mirrors the publish-harness summary the registry records: a status,
+/// counts, per-case assertion failures, case names, sealed receipt ids, and how
+/// many cases exercised a graph.
 #[derive(Clone, Debug, Serialize)]
-pub struct InlineHarnessReport {
+pub struct PackageHarnessReport {
     pub status: &'static str,
     pub case_count: usize,
     pub assertion_error_count: usize,
@@ -203,7 +219,7 @@ pub struct InlineHarnessReport {
     pub graph_case_count: usize,
 }
 
-impl InlineHarnessReport {
+impl PackageHarnessReport {
     fn not_declared() -> Self {
         Self {
             status: "not_declared",
@@ -227,8 +243,8 @@ fn agent_invocation_source_type(
 fn agent_request(
     invocation: &SkillInvocation,
     source_type: AgentActInvocationSourceType,
-) -> Result<JsonValue, SkillRunError> {
-    contract_json_value(&agent_act_resolution_request(invocation, source_type)?)
+) -> Result<ResolutionRequest, SkillRunError> {
+    agent_act_resolution_request(invocation, source_type).map_err(Into::into)
 }
 
 fn needs_agent_output(run_id: &str, request_id: &str, request: JsonValue) -> JsonObject {
@@ -287,6 +303,7 @@ fn seal_skill_answer(
     disposition: ClosureDisposition,
     signature_config: &RuntimeReceiptSignatureConfig,
     env: &std::collections::BTreeMap<String, String>,
+    metadata: JsonObject,
 ) -> Result<runx_contracts::Receipt, SkillRunError> {
     let disposition_label = disposition.label();
     let succeeded = disposition == ClosureDisposition::Closed;
@@ -305,7 +322,7 @@ fn seal_skill_answer(
         },
         exit_code: succeeded.then_some(0),
         duration_ms: 0,
-        metadata: JsonObject::new(),
+        metadata,
     };
     seal_skill_output(
         run_id,

@@ -25,7 +25,7 @@ This is the primitive an agent reaches for when it has already decided which pag
 to read. The decision it makes easier is "can I read this page, and what did it
 actually say", with the answer backed by a digest instead of a remembered
 paraphrase. It differs from the research family: `research` and
-`deep-research-brief` decide *which* sources matter and synthesize across them,
+`deep-research` decide *which* sources matter and synthesize across them,
 while `web-fetch` retrieves exactly one source and refuses anything off the
 allowlist.
 
@@ -36,7 +36,7 @@ allowlist.
 - A research pass needs each source retrieved through a single bounded
   `net:allowlist` fetch with a complete redirect chain and byte count.
 - A review must later prove what a page said at fetch time.
-- A follow-on skill (prior-art, vuln-scan, brief) needs one source extracted as
+- A follow-on skill (prior-art, vuln-triage, brief) needs one source extracted as
   `text`, `metadata`, or `links`.
 
 ## When not to use this skill

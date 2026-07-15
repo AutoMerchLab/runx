@@ -84,16 +84,17 @@ pub fn validate_runner_manifest(
     )?;
     validate_harness_runners(&harness, &runners)?;
 
+    let catalog = validate_catalog_metadata(
+        FIELDS.optional_object(raw.document.get("catalog"), "catalog")?,
+        "catalog",
+    )?;
     Ok(SkillRunnerManifest {
         skill: FIELDS.optional_string(raw.document.get("skill"), "skill")?,
         version: FIELDS.optional_string(raw.document.get("version"), "version")?,
         runx: FIELDS.optional_object(raw.document.get("runx"), "runx")?,
         policy: raw.document.get("policy").cloned(),
         emits: raw.document.get("emits").cloned(),
-        catalog: validate_catalog_metadata(
-            FIELDS.optional_object(raw.document.get("catalog"), "catalog")?,
-            "catalog",
-        )?,
+        catalog,
         runners,
         harness,
         raw,

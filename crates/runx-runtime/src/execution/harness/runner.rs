@@ -174,7 +174,7 @@ fn fixture_runtime_options_from_env(
 ) -> Result<RuntimeOptions, HarnessReplayError> {
     Ok(RuntimeOptions {
         created_at: crate::time::DEFAULT_CREATED_AT.to_owned(),
-        ..RuntimeOptions::from_env(env)?
+        ..RuntimeOptions::from_env_or_local_development(env)?
     })
 }
 

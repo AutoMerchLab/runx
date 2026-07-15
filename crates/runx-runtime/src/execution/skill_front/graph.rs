@@ -500,8 +500,13 @@ impl crate::adapter::SkillAdapter for SkillRunGraphAdapter {
 
 #[cfg(feature = "cli-tool")]
 fn invoke_graph_cli_tool(mut request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    let credential_observation = request.credential_delivery.public_observation().cloned();
     request.credential_delivery = CredentialDelivery::none();
-    CliToolAdapter.invoke(request)
+    let mut output = CliToolAdapter.invoke(request)?;
+    if let Some(observation) = &credential_observation {
+        output.record_credential_observation(observation)?;
+    }
+    Ok(output)
 }
 
 #[cfg(feature = "catalog")]
@@ -782,6 +787,9 @@ pub(crate) fn graph_domain_act_receipt(
         frame.authority_attenuation = Some(attenuation);
     }
     let graph_name = identifier_segment(run_id);
+    let verification_metadata = step_output(act.reason_step.as_deref())
+        .map(|step| step.output.metadata.clone())
+        .unwrap_or_default();
     let receipt = domain_act_receipt(DomainActReceiptRequest {
         graph_name: &graph_name,
         step_id: "turn",
@@ -791,6 +799,7 @@ pub(crate) fn graph_domain_act_receipt(
         reason_code: "agent_act_closed".to_owned(),
         seal_summary: "governed graph turn sealed".to_owned(),
         frame,
+        verification_metadata,
         signature_policy: signature_config.signature_policy(),
     })?;
     Ok(Some(receipt))
@@ -1047,6 +1056,78 @@ mod tests {
             ),
             "unexpected unregistered graph source result: {result:?}"
         );
+    }
+
+    #[cfg(feature = "cli-tool")]
+    #[test]
+    fn graph_cli_tool_receipt_binds_credential_observation_without_secret_delivery()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let secret = "credential-secret-must-not-cross-cli-boundary";
+        let delivery = crate::credentials::CredentialDelivery::from_local_descriptor(
+            "twitter",
+            "oauth1_user",
+            "TWITTER_TOKEN",
+            "ref:twitter:primary",
+            vec!["twitter:read".to_owned()],
+            secret,
+        )?;
+        let invocation = SkillInvocation {
+            skill_name: "credential-observation".to_owned(),
+            source: SkillSource {
+                act: None,
+                source_type: SourceKind::CliTool,
+                command: Some("/bin/sh".to_owned()),
+                args: vec!["-c".to_owned(), "true".to_owned()],
+                cwd: None,
+                timeout_seconds: Some(5),
+                input_mode: None,
+                sandbox: None,
+                server: None,
+                catalog_ref: None,
+                tool: None,
+                arguments: None,
+                agent_card_url: None,
+                agent_identity: None,
+                agent: None,
+                task: None,
+                hook: None,
+                outputs: None,
+                graph: None,
+                http: None,
+                raw: JsonObject::new(),
+            },
+            inputs: JsonObject::new(),
+            resolved_inputs: JsonObject::new(),
+            current_context: Vec::new(),
+            skill_directory: std::env::current_dir()?,
+            env: std::env::vars().collect(),
+            credential_delivery: delivery,
+        };
+
+        let output = invoke_graph_cli_tool(invocation)?;
+
+        assert!(output.succeeded());
+        let metadata = serde_json::to_string(&output.metadata)?;
+        assert!(metadata.contains("credential_delivery_observations"));
+        assert!(metadata.contains("runx:credential:local:"));
+        assert!(!metadata.contains(secret));
+
+        let receipt = crate::receipts::step_receipt(
+            "credential_graph",
+            "credential_cli",
+            1,
+            &output,
+            "2026-07-15T00:00:00Z",
+        )?;
+        assert!(
+            receipt.seal.criteria[0]
+                .verification_refs
+                .iter()
+                .any(|reference| {
+                    reference.reference_type == runx_contracts::ReferenceType::Credential
+                })
+        );
+        Ok(())
     }
 
     #[cfg(feature = "external-adapter")]

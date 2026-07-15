@@ -1,5 +1,5 @@
 skill: spend
-version: "0.1.2"
+version: "0.1.3"
 catalog:
   kind: graph
   audience: operator
@@ -51,9 +51,9 @@ runners:
           scopes:
             - payment:quote
           inputs:
-            payment_signal: "{{payment_signal}}"
-            realm: "{{realm}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            payment_signal: "$input.payment_signal"
+            realm: "$input.realm"
+            idempotency_seed: "$input.idempotency_seed"
           artifacts:
             wrap_as: payment_quote_packet
             packet: runx.payment.quote.v1
@@ -65,10 +65,10 @@ runners:
           mutation: true
           idempotency_key: pay-reserve
           inputs:
-            parent_payment_authority: "{{parent_payment_authority}}"
-            spend_policy: "{{spend_policy}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            parent_payment_authority: "$input.parent_payment_authority"
+            spend_policy: "$input.spend_policy"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             payment_quote_packet: quote.payment_quote_packet.data
           artifacts:
@@ -94,9 +94,9 @@ runners:
           mutation: true
           idempotency_key: spend-mock-fulfill
           inputs:
-            payment_challenge: "{{payment_signal}}"
-            rail_profile_ref: "{{rail_profile_ref}}"
-            payment_admission: "{{payment_admission}}"
+            payment_challenge: "$input.payment_signal"
+            rail_profile_ref: "$input.rail_profile_ref"
+            payment_admission: "$input.payment_admission"
           context:
             reserved_payment_authority: reserve.payment_reservation_packet.data.reserved_payment_authority
             spend_capability_ref: reserve.payment_reservation_packet.data.spend_capability_ref
@@ -165,9 +165,9 @@ runners:
           scopes:
             - payment:quote
           inputs:
-            payment_signal: "{{payment_signal}}"
-            realm: "{{realm}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            payment_signal: "$input.payment_signal"
+            realm: "$input.realm"
+            idempotency_seed: "$input.idempotency_seed"
           artifacts:
             wrap_as: payment_quote_packet
             packet: runx.payment.quote.v1
@@ -179,10 +179,10 @@ runners:
           mutation: true
           idempotency_key: pay-reserve
           inputs:
-            parent_payment_authority: "{{requested_scope}}"
-            spend_policy: "{{spend_policy}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            parent_payment_authority: "$input.requested_scope"
+            spend_policy: "$input.spend_policy"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             payment_quote_packet: quote.payment_quote_packet.data
           artifacts:
@@ -208,9 +208,9 @@ runners:
           mutation: true
           idempotency_key: spend-accept-fulfill
           inputs:
-            payment_challenge: "{{payment_signal}}"
-            rail_profile_ref: "{{rail_profile_ref}}"
-            payment_admission: "{{payment_admission}}"
+            payment_challenge: "$input.payment_signal"
+            rail_profile_ref: "$input.rail_profile_ref"
+            payment_admission: "$input.payment_admission"
           context:
             reserved_payment_authority: reserve.payment_reservation_packet.data.reserved_payment_authority
             spend_capability_ref: reserve.payment_reservation_packet.data.spend_capability_ref
@@ -269,9 +269,9 @@ runners:
           scopes:
             - payment:quote
           inputs:
-            payment_signal: "{{payment_signal}}"
-            realm: "{{realm}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            payment_signal: "$input.payment_signal"
+            realm: "$input.realm"
+            idempotency_seed: "$input.idempotency_seed"
           artifacts:
             wrap_as: payment_quote_packet
             packet: runx.payment.quote.v1
@@ -283,10 +283,10 @@ runners:
           mutation: true
           idempotency_key: pay-reserve
           inputs:
-            parent_payment_authority: "{{parent_payment_authority}}"
-            spend_policy: "{{spend_policy}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            parent_payment_authority: "$input.parent_payment_authority"
+            spend_policy: "$input.spend_policy"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             payment_quote_packet: quote.payment_quote_packet.data
           artifacts:
@@ -312,9 +312,9 @@ runners:
           mutation: true
           idempotency_key: spend-mpp-fulfill
           inputs:
-            payment_challenge: "{{payment_signal}}"
-            rail_profile_ref: "{{rail_profile_ref}}"
-            payment_admission: "{{payment_admission}}"
+            payment_challenge: "$input.payment_signal"
+            rail_profile_ref: "$input.rail_profile_ref"
+            payment_admission: "$input.payment_admission"
           context:
             reserved_payment_authority: reserve.payment_reservation_packet.data.reserved_payment_authority
             spend_capability_ref: reserve.payment_reservation_packet.data.spend_capability_ref
@@ -373,9 +373,9 @@ runners:
           scopes:
             - payment:quote
           inputs:
-            payment_signal: "{{payment_signal}}"
-            realm: "{{realm}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            payment_signal: "$input.payment_signal"
+            realm: "$input.realm"
+            idempotency_seed: "$input.idempotency_seed"
           artifacts:
             wrap_as: payment_quote_packet
             packet: runx.payment.quote.v1
@@ -387,10 +387,10 @@ runners:
           mutation: true
           idempotency_key: pay-reserve
           inputs:
-            parent_payment_authority: "{{parent_payment_authority}}"
-            spend_policy: "{{spend_policy}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            parent_payment_authority: "$input.parent_payment_authority"
+            spend_policy: "$input.spend_policy"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             payment_quote_packet: quote.payment_quote_packet.data
           artifacts:
@@ -416,9 +416,9 @@ runners:
           mutation: true
           idempotency_key: spend-stripe-spt-fulfill
           inputs:
-            payment_challenge: "{{payment_signal}}"
-            rail_profile_ref: "{{rail_profile_ref}}"
-            payment_admission: "{{payment_admission}}"
+            payment_challenge: "$input.payment_signal"
+            rail_profile_ref: "$input.rail_profile_ref"
+            payment_admission: "$input.payment_admission"
           context:
             reserved_payment_authority: reserve.payment_reservation_packet.data.reserved_payment_authority
             spend_capability_ref: reserve.payment_reservation_packet.data.spend_capability_ref
@@ -477,9 +477,9 @@ runners:
           scopes:
             - payment:quote
           inputs:
-            payment_signal: "{{payment_signal}}"
-            realm: "{{realm}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            payment_signal: "$input.payment_signal"
+            realm: "$input.realm"
+            idempotency_seed: "$input.idempotency_seed"
           artifacts:
             wrap_as: payment_quote_packet
             packet: runx.payment.quote.v1
@@ -491,10 +491,10 @@ runners:
           mutation: true
           idempotency_key: pay-reserve
           inputs:
-            parent_payment_authority: "{{parent_payment_authority}}"
-            spend_policy: "{{spend_policy}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            parent_payment_authority: "$input.parent_payment_authority"
+            spend_policy: "$input.spend_policy"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             payment_quote_packet: quote.payment_quote_packet.data
           artifacts:
@@ -520,9 +520,9 @@ runners:
           mutation: true
           idempotency_key: idem-fulfill
           inputs:
-            payment_challenge: "{{payment_signal}}"
-            rail_profile_ref: "{{rail_profile_ref}}"
-            payment_admission: "{{payment_admission}}"
+            payment_challenge: "$input.payment_signal"
+            rail_profile_ref: "$input.rail_profile_ref"
+            payment_admission: "$input.payment_admission"
           context:
             reserved_payment_authority: reserve.payment_reservation_packet.data.reserved_payment_authority
             spend_capability_ref: reserve.payment_reservation_packet.data.spend_capability_ref

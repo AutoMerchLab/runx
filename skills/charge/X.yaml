@@ -1,5 +1,5 @@
 skill: charge
-version: "0.1.0"
+version: "0.1.1"
 catalog:
   kind: graph
   audience: operator
@@ -43,18 +43,18 @@ runners:
           scopes:
             - payment:quote
           inputs:
-            mcp_tool_call: "{{mcp_tool_call}}"
-            provider_policy: "{{provider_policy}}"
-            parent_payment_authority: "{{parent_payment_authority}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            mcp_tool_call: "$input.mcp_tool_call"
+            provider_policy: "$input.provider_policy"
+            parent_payment_authority: "$input.parent_payment_authority"
+            idempotency_seed: "$input.idempotency_seed"
         - id: challenge
           skill: graph/charge-challenge
           runner: challenge
           scopes:
             - payment:quote
           inputs:
-            provider_policy: "{{provider_policy}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            provider_policy: "$input.provider_policy"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             charge_price_packet: price.charge_price_packet.data
         - id: verify
@@ -65,8 +65,8 @@ runners:
           mutation: true
           idempotency_key: charge-verify
           inputs:
-            returned_credential: "{{returned_credential}}"
-            verify_capability_ref: "{{verify_capability_ref}}"
+            returned_credential: "$input.returned_credential"
+            verify_capability_ref: "$input.verify_capability_ref"
             settlement_family: mock
           context:
             charge_price_packet: price.charge_price_packet.data
@@ -98,7 +98,7 @@ runners:
               forwarded: boolean
               result_ref: string
           inputs:
-            operation: "{{mcp_tool_call}}"
+            operation: "$input.mcp_tool_call"
           context:
             sealed_receipt_ref: seal.charge_seal.data.receipt_ref
           artifacts:
@@ -153,18 +153,18 @@ runners:
           scopes:
             - payment:quote
           inputs:
-            mcp_tool_call: "{{mcp_tool_call}}"
-            provider_policy: "{{provider_policy}}"
-            parent_payment_authority: "{{parent_payment_authority}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            mcp_tool_call: "$input.mcp_tool_call"
+            provider_policy: "$input.provider_policy"
+            parent_payment_authority: "$input.parent_payment_authority"
+            idempotency_seed: "$input.idempotency_seed"
         - id: challenge
           skill: graph/charge-challenge
           runner: challenge
           scopes:
             - payment:quote
           inputs:
-            provider_policy: "{{provider_policy}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            provider_policy: "$input.provider_policy"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             charge_price_packet: price.charge_price_packet.data
         - id: verify
@@ -175,8 +175,8 @@ runners:
           mutation: true
           idempotency_key: charge-verify
           inputs:
-            returned_credential: "{{returned_credential}}"
-            verify_capability_ref: "{{verify_capability_ref}}"
+            returned_credential: "$input.returned_credential"
+            verify_capability_ref: "$input.verify_capability_ref"
             settlement_family: mpp
           context:
             charge_price_packet: price.charge_price_packet.data
@@ -208,7 +208,7 @@ runners:
               forwarded: boolean
               result_ref: string
           inputs:
-            operation: "{{mcp_tool_call}}"
+            operation: "$input.mcp_tool_call"
           context:
             sealed_receipt_ref: seal.charge_seal.data.receipt_ref
           artifacts:
@@ -263,18 +263,18 @@ runners:
           scopes:
             - payment:quote
           inputs:
-            mcp_tool_call: "{{mcp_tool_call}}"
-            provider_policy: "{{provider_policy}}"
-            parent_payment_authority: "{{parent_payment_authority}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            mcp_tool_call: "$input.mcp_tool_call"
+            provider_policy: "$input.provider_policy"
+            parent_payment_authority: "$input.parent_payment_authority"
+            idempotency_seed: "$input.idempotency_seed"
         - id: challenge
           skill: graph/charge-challenge
           runner: challenge
           scopes:
             - payment:quote
           inputs:
-            provider_policy: "{{provider_policy}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            provider_policy: "$input.provider_policy"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             charge_price_packet: price.charge_price_packet.data
         - id: verify
@@ -285,8 +285,8 @@ runners:
           mutation: true
           idempotency_key: charge-verify
           inputs:
-            returned_credential: "{{returned_credential}}"
-            verify_capability_ref: "{{verify_capability_ref}}"
+            returned_credential: "$input.returned_credential"
+            verify_capability_ref: "$input.verify_capability_ref"
             settlement_family: stripe
           context:
             charge_price_packet: price.charge_price_packet.data
@@ -318,7 +318,7 @@ runners:
               forwarded: boolean
               result_ref: string
           inputs:
-            operation: "{{mcp_tool_call}}"
+            operation: "$input.mcp_tool_call"
           context:
             sealed_receipt_ref: seal.charge_seal.data.receipt_ref
           artifacts:

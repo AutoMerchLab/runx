@@ -1,10 +1,14 @@
 skill: policy-author
-version: "0.1.0"
+version: "0.1.1"
 catalog:
   kind: skill
   audience: operator
   visibility: public
   role: canonical
+  execution: plan
+  completion: plan
+  requires_adapter: false
+  approval: none
 runners:
   author:
     default: true

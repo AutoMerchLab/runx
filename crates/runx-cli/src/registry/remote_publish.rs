@@ -54,15 +54,18 @@ pub(super) fn publish_remote_skill_package(
             harness,
         );
     }
-    let token = crate::public_api_token::resolve(None, env, cwd)?.ok_or_else(|| {
-        usage_error("remote registry publish requires `runx login` or RUNX_PUBLIC_API_TOKEN")
-    })?;
+    let environment =
+        crate::public_api::ApiEnvironment::resolve(Some(registry_url), None, env, cwd)
+            .map_err(|error| usage_error(error.to_string()))?;
     let transport = crate::public_api::transport(registry_private_network_allowed(env))
         .map_err(|error| internal_error(error.to_string()))?;
+    let authenticated = environment
+        .authenticate(&transport)
+        .map_err(|error| usage_error(error.to_string()))?;
     publish_remote_skill_package_with_transport(
         &transport,
-        registry_url,
-        &token,
+        authenticated.base_url(),
+        authenticated.token(),
         plan.version.as_deref(),
         package,
     )
@@ -248,7 +251,7 @@ fn parse_hosted_admin_publish_response(
 }
 
 fn registry_private_network_allowed(env: &BTreeMap<String, String>) -> bool {
-    crate::public_api::private_network_allowed(false, env, "RUNX_REGISTRY_ALLOW_LOCAL_API")
+    crate::public_api::private_network_allowed(false, env)
 }
 
 #[cfg(test)]
@@ -288,7 +291,6 @@ mod tests {
             profile_document: Some("skill: hello\nversion: \"0.1.0\"\nrunners: {}\n".to_owned()),
             harness_path: None,
             harness_temp_dir: None,
-            harness_fixture_paths: Vec::new(),
             package_files: vec![HostedSkillPackageFile {
                 path: "run.mjs".to_owned(),
                 content: "console.log('hello');\n".to_owned(),
@@ -355,7 +357,6 @@ mod tests {
             profile_document: None,
             harness_path: None,
             harness_temp_dir: None,
-            harness_fixture_paths: Vec::new(),
             package_files: Vec::new(),
         };
 
@@ -415,7 +416,6 @@ mod tests {
             profile_document: Some("skill: hello\nrunners: {}\n".to_owned()),
             harness_path: None,
             harness_temp_dir: None,
-            harness_fixture_paths: Vec::new(),
             package_files: vec![HostedSkillPackageFile {
                 path: "run.mjs".to_owned(),
                 content: "console.log('hello');\n".to_owned(),

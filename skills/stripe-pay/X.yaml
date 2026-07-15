@@ -1,5 +1,5 @@
 skill: stripe-pay
-version: "0.1.2"
+version: "0.1.3"
 catalog:
   kind: graph
   audience: operator
@@ -52,11 +52,11 @@ runners:
           skill: ../spend
           runner: stripe-spt
           inputs:
-            payment_signal: "{{payment_signal}}"
-            parent_payment_authority: "{{parent_payment_authority}}"
-            rail_profile_ref: "{{rail_profile_ref}}"
-            payment_admission: "{{payment_admission}}"
-            realm: "{{realm}}"
-            spend_policy: "{{spend_policy}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            payment_signal: "$input.payment_signal"
+            parent_payment_authority: "$input.parent_payment_authority"
+            rail_profile_ref: "$input.rail_profile_ref"
+            payment_admission: "$input.payment_admission"
+            realm: "$input.realm"
+            spend_policy: "$input.spend_policy"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"

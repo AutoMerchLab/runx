@@ -41,10 +41,11 @@ pub struct SkillPlan {
     pub approve_operator_context: Option<String>,
     pub inputs: BTreeMap<String, JsonValue>,
     /// One-shot, per-run local credential descriptor supplied via
-    /// `--credential` and `--secret-env`. The secret is read from the named
-    /// process environment variable so raw secret material never appears on
-    /// argv. Runner-specific execution validates whether that delivery channel
-    /// is supported before any child process starts.
+    /// `--credential`, repeatable `--credential-scope`, and `--secret-env`.
+    /// The secret is read from the named process environment variable so raw
+    /// secret material never appears on argv. Runner-specific execution
+    /// validates whether that delivery channel is supported before any child
+    /// process starts.
     pub local_credential: Option<LocalCredentialDescriptor>,
 }
 
@@ -351,6 +352,9 @@ fn inspect_skill(
     if let Some(version) = profile.get("version").and_then(JsonValue::as_str) {
         output.insert("version".to_owned(), JsonValue::String(version.to_owned()));
     }
+    if let Some(capabilities) = inspect_catalog_capabilities(&profile) {
+        output.insert("capabilities".to_owned(), capabilities);
+    }
     if let Some(provenance) = provenance {
         output.insert(
             "registry_provenance".to_owned(),
@@ -421,6 +425,13 @@ fn write_inspection_text(value: &JsonValue) -> ExitCode {
         if let Some(kind) = object_string(runner, "type") {
             out.push_str(&format!("type: {kind}\n"));
         }
+        if let Some(capabilities) = object.get("capabilities").and_then(JsonValue::as_object) {
+            for key in ["execution", "completion", "requires_adapter", "approval"] {
+                if let Some(value) = capabilities.get(key) {
+                    out.push_str(&format!("{key}: {}\n", display_json_scalar(value)));
+                }
+            }
+        }
         if let Some(inputs) = runner.get("inputs").and_then(JsonValue::as_array) {
             if !inputs.is_empty() {
                 out.push_str("inputs:\n");
@@ -435,6 +446,18 @@ fn write_inspection_text(value: &JsonValue) -> ExitCode {
                         let marker = if required { "required" } else { "optional" };
                         out.push_str(&format!("  - {name}: {kind} ({marker})\n"));
                     }
+                }
+            }
+        }
+        if let Some(outputs) = runner.get("outputs").and_then(JsonValue::as_array)
+            && !outputs.is_empty()
+        {
+            out.push_str("outputs:\n");
+            for output in outputs {
+                if let Some(output) = output.as_object() {
+                    let name = object_string(output, "name").unwrap_or("<unknown>");
+                    let kind = object_string(output, "type").unwrap_or("json");
+                    out.push_str(&format!("  - {name}: {kind}\n"));
                 }
             }
         }
@@ -517,11 +540,10 @@ fn insert_frontmatter_string(
 fn inspect_runner(name: &str, runner: &JsonObject) -> JsonValue {
     let mut output = JsonObject::new();
     output.insert("name".to_owned(), JsonValue::String(name.to_owned()));
-    if let Some(kind) = object_string(runner, "type") {
+    if let Some(kind) = runner_string(runner, "type") {
         output.insert("type".to_owned(), JsonValue::String(kind.to_owned()));
     }
-    let inputs = runner
-        .get("inputs")
+    let inputs = runner_value(runner, "inputs")
         .and_then(JsonValue::as_object)
         .map(|inputs| {
             inputs
@@ -531,7 +553,79 @@ fn inspect_runner(name: &str, runner: &JsonObject) -> JsonValue {
         })
         .unwrap_or_default();
     output.insert("inputs".to_owned(), JsonValue::Array(inputs));
+    let outputs = runner_value(runner, "outputs")
+        .and_then(JsonValue::as_object)
+        .map(|outputs| {
+            outputs
+                .iter()
+                .map(|(name, declaration)| inspect_output(name, declaration))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    output.insert("outputs".to_owned(), JsonValue::Array(outputs));
+    if let Some(artifacts) = runner_value(runner, "artifacts").and_then(JsonValue::as_object) {
+        output.insert("artifacts".to_owned(), JsonValue::Object(artifacts.clone()));
+    }
+    for field in ["allowed_tools", "scopes"] {
+        if let Some(value) = runner_value(runner, field) {
+            output.insert(field.to_owned(), value.clone());
+        }
+    }
+    if let Some(value) = runner_value(runner, "mutating").and_then(JsonValue::as_bool) {
+        output.insert("mutating".to_owned(), JsonValue::Bool(value));
+    }
     JsonValue::Object(output)
+}
+
+fn inspect_catalog_capabilities(profile: &JsonObject) -> Option<JsonValue> {
+    let catalog = profile.get("catalog")?.as_object()?;
+    let mut capabilities = JsonObject::new();
+    for key in ["execution", "completion", "requires_adapter", "approval"] {
+        if let Some(value) = catalog.get(key) {
+            capabilities.insert(key.to_owned(), value.clone());
+        }
+    }
+    (!capabilities.is_empty()).then_some(JsonValue::Object(capabilities))
+}
+
+fn inspect_output(name: &str, declaration: &JsonValue) -> JsonValue {
+    let mut output = JsonObject::new();
+    output.insert("name".to_owned(), JsonValue::String(name.to_owned()));
+    match declaration {
+        JsonValue::String(kind) => {
+            output.insert("type".to_owned(), JsonValue::String(kind.clone()));
+        }
+        JsonValue::Object(details) => {
+            if let Some(kind) = object_string(details, "type") {
+                output.insert("type".to_owned(), JsonValue::String(kind.to_owned()));
+            }
+            if let Some(required) = details.get("required").and_then(JsonValue::as_bool) {
+                output.insert("required".to_owned(), JsonValue::Bool(required));
+            }
+        }
+        _ => {}
+    }
+    JsonValue::Object(output)
+}
+
+fn runner_value<'a>(runner: &'a JsonObject, key: &str) -> Option<&'a JsonValue> {
+    runner.get(key).or_else(|| {
+        runner
+            .get("source")
+            .and_then(JsonValue::as_object)
+            .and_then(|source| source.get(key))
+    })
+}
+
+fn runner_string<'a>(runner: &'a JsonObject, key: &str) -> Option<&'a str> {
+    runner_value(runner, key).and_then(JsonValue::as_str)
+}
+
+fn display_json_scalar(value: &JsonValue) -> String {
+    value
+        .as_str()
+        .map(str::to_owned)
+        .unwrap_or_else(|| serde_json::to_string(value).unwrap_or_else(|_| "null".to_owned()))
 }
 
 fn inspect_input(name: &str, value: &JsonValue) -> JsonValue {
@@ -598,7 +692,7 @@ fn fixture_targets_runner(path: &Path, runner: &str) -> bool {
 
 fn runner_may_pause(runner: &JsonObject) -> bool {
     matches!(
-        object_string(runner, "type"),
+        runner_string(runner, "type"),
         Some("agent") | Some("agent-task") | Some("graph")
     )
 }

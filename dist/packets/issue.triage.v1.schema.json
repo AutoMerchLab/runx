@@ -4,6 +4,10 @@
   "x-runx-packet-id": "runx.issue.triage.v1",
   "type": "object",
   "properties": {
+    "issue_profile": { "type": "object", "additionalProperties": true },
+    "response_strategy": { "type": "object", "additionalProperties": true },
+    "response_draft": { "type": "object", "additionalProperties": true },
+    "follow_up_actions": { "type": "array" },
     "issue": { "type": "object", "additionalProperties": true },
     "decision": { "type": "object", "additionalProperties": true },
     "next_actions": { "type": "array" }

@@ -15,9 +15,9 @@ caller:
   answers:
     agent_task.vault-unseal.output:
       unseal_plan:
-        decision: ready
+        decision: ready_for_approval
         secret_ref: vault://drive/service-account
-        handle: handle://unseal/3f9c2a1b
+        purpose: Sign one Drive export request for the monthly reports job
         ttl: 10m
         scope:
           resource: drive.files
@@ -26,9 +26,10 @@ caller:
         principal: svc/report-exporter
         gates:
           human_approval_required: true
-        audit_binding:
-          receipt_ref: rx_unseal_4471
         blockers: []
+        execution:
+          requires_adapter: true
+          requires_approval: true
 expect:
   status: sealed
   receipt:

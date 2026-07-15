@@ -15,9 +15,9 @@ use runx_parser::{
 use sha2::{Digest, Sha256};
 
 use crate::RuntimeError;
-use crate::adapter::SkillInvocation;
 #[cfg(feature = "cli-tool")]
-use crate::adapter::{SkillAdapter, SkillOutput};
+use crate::adapter::SkillAdapter;
+use crate::adapter::SkillInvocation;
 #[cfg(feature = "cli-tool")]
 use crate::adapters::cli_tool::CliToolAdapter;
 use crate::execution::orchestrator::SkillRunRequest;
@@ -169,7 +169,7 @@ pub(super) fn execute_cli_tool_skill_run(
     let credential_observation = invocation.credential_delivery.public_observation().cloned();
     let mut output = CliToolAdapter.invoke(invocation)?;
     if let Some(observation) = &credential_observation {
-        record_credential_observation(&mut output, observation)?;
+        output.record_credential_observation(observation)?;
     }
     let disposition = if output.succeeded() {
         ClosureDisposition::Closed
@@ -223,28 +223,6 @@ pub(super) fn write_skill_receipt(
     receipts
         .write_local_receipt(receipt, &receipt_path)
         .map_err(Into::into)
-}
-
-/// Record the non-secret credential-delivery observation on the skill output so
-/// the sealed receipt carries an auditable trace that a credential was
-/// provisioned for the run. The observation contains no secret material.
-#[cfg(feature = "cli-tool")]
-fn record_credential_observation(
-    output: &mut SkillOutput,
-    observation: &runx_contracts::CredentialDeliveryObservation,
-) -> Result<(), SkillRunError> {
-    let value: JsonValue = serde_json::to_value(observation)
-        .and_then(serde_json::from_value)
-        .map_err(|error| {
-            SkillRunError::Invalid(format!(
-                "serializing credential delivery observation: {error}"
-            ))
-        })?;
-    output.metadata.insert(
-        crate::adapter::CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA.to_owned(),
-        JsonValue::Array(vec![value]),
-    );
-    Ok(())
 }
 
 #[cfg(feature = "cli-tool")]

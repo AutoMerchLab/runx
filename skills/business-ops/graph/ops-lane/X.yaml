@@ -18,7 +18,7 @@ runners:
       - run.mjs
     artifacts:
       named_emits:
-        lane_packet: runx.business.lane.v1
+        lane_packet: lane_packet
       packets:
         lane_packet: runx.business.lane.v1
     inputs:

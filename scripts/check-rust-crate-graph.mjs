@@ -340,8 +340,8 @@ function checkRuntimeAsyncHttpContract(crateName, manifest) {
   }
 
   const featuresBody = sectionBody(manifest, "features");
-  if (!/^async-http\s*=\s*\["dep:reqwest", "dep:tokio", "dep:rustls"\]\s*$/mu.test(featuresBody)) {
-    findings.push("runx-runtime async-http feature must be exactly [\"dep:reqwest\", \"dep:tokio\", \"dep:rustls\"]");
+  if (!/^async-http\s*=\s*\["dep:reqwest", "dep:tokio", "dep:rustls", "tokio\/rt-multi-thread"\]\s*$/mu.test(featuresBody)) {
+    findings.push("runx-runtime async-http feature must be exactly [\"dep:reqwest\", \"dep:tokio\", \"dep:rustls\", \"tokio/rt-multi-thread\"]");
   }
   if (!/^cli-tool\s*=\s*\["async-http"\]\s*$/mu.test(featuresBody)) {
     findings.push("runx-runtime cli-tool feature must imply async-http so the cargo CLI exercises reviewed HTTP");

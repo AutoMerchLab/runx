@@ -4,6 +4,12 @@
   "x-runx-packet-id": "runx.payment.recovery.v1",
   "type": "object",
   "properties": {
+    "recovery_assessment": { "type": "object" },
+    "refund_lookup": { "type": "object" },
+    "rail_lookup": { "type": "object" },
+    "proof_refs": { "type": "array" },
+    "recommended_action": { "type": "object" },
+    "open_questions": { "type": "array" },
     "payment_trace": { "type": "object" },
     "state_assessment": { "type": "object" },
     "recovery_action": { "type": "object" },

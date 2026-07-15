@@ -11,7 +11,6 @@ use runx_parser::{
     validate_runner_manifest,
 };
 
-use crate::receipts::paths::RUNX_CWD_ENV;
 use crate::registry::{
     InstallCandidate, InstallLocalSkillOptions, RegistryResolveOptions, create_file_registry_store,
     install_local_skill, materialization_cache_path, materialization_digest_marker,
@@ -115,10 +114,6 @@ fn materialize_graph_input_value(
     match value {
         JsonValue::String(value) => {
             if let Some(path) = value.strip_prefix("$input.") {
-                return resolve_graph_input_path(graph_inputs, path).cloned();
-            }
-            if value.starts_with("{{") && value.ends_with("}}") {
-                let path = value.trim_start_matches('{').trim_end_matches('}').trim();
                 return resolve_graph_input_path(graph_inputs, path).cloned();
             }
             Some(JsonValue::String(value.clone()))
@@ -424,9 +419,7 @@ fn materialize_registry_step_skill(
 }
 
 fn runtime_cwd(env: &BTreeMap<String, String>, graph_dir: &Path) -> PathBuf {
-    env.get(RUNX_CWD_ENV)
-        .map(|value| crate::resolve_path_from_user_input(value, env, graph_dir, false))
-        .unwrap_or_else(|| graph_dir.to_path_buf())
+    crate::config::resolve_runx_workspace_base(env, graph_dir)
 }
 
 fn registry_source_fingerprint(registry_dir: &str) -> String {

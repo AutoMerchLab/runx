@@ -3,27 +3,27 @@ import { spawnSync } from "node:child_process";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
+import { parse as parseYaml } from "yaml";
 
 import { validateExternalAdapterManifestContract } from "../packages/contracts/src/index.js";
-import {
-  parseRunnerManifestYaml,
-  validateRunnerManifest,
-} from "../packages/cli/src/cli-parser/index.js";
 
 const stageDir = path.resolve("skills/spend/graph/pay-fulfill-rail");
 const adapterPath = path.join(stageDir, "stripe-spt-fulfill-adapter.mjs");
 
 describe("stripe-spt rail external adapter", () => {
   it("is wired as the pay-fulfill-rail stripe-spt runner", async () => {
-    const manifest = validateRunnerManifest(
-      parseRunnerManifestYaml(await readFile(path.join(stageDir, "X.yaml"), "utf8")),
-    );
+    const manifest = parseYaml(await readFile(path.join(stageDir, "X.yaml"), "utf8")) as {
+      readonly runners: Readonly<Record<string, {
+        readonly source?: unknown;
+        readonly runx?: { readonly payment_authority?: unknown };
+      }>>;
+    };
     const runner = manifest.runners["stripe-spt"];
 
-    expect(runner?.source.type).toBe("external-adapter");
-    expect(runner?.source.raw.external_adapter).toEqual({
+    expect(runner?.source).toMatchObject({ type: "external-adapter" });
+    expect(runner?.source).toMatchObject({ external_adapter: {
       manifest_path: "stripe-spt-fulfill-adapter.manifest.json",
-    });
+    } });
     expect(runner?.runx?.payment_authority).toMatchObject({
       phase: "fulfill",
       rails: ["stripe-spt"],

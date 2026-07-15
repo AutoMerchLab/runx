@@ -138,13 +138,6 @@ struct ParserJsonEnvelope<'a> {
     result: &'a ParserEvalOutput,
 }
 
-#[derive(Serialize)]
-struct ParserJsonError<'a> {
-    status: &'static str,
-    code: &'static str,
-    message: &'a str,
-}
-
 fn read_parser_input(
     source: &ParserInputSource,
     env: &BTreeMap<String, String>,
@@ -169,31 +162,15 @@ fn resolve_parser_path(path: &Path, env: &BTreeMap<String, String>, cwd: &Path) 
     if path.is_absolute() {
         return path.to_path_buf();
     }
-    env.get("RUNX_CWD")
-        .map(PathBuf::from)
-        .or_else(|| env.get("INIT_CWD").map(PathBuf::from))
-        .unwrap_or_else(|| cwd.to_path_buf())
-        .join(path)
+    runx_runtime::resolve_runx_workspace_base(env, cwd).join(path)
 }
 
 fn write_error(error: &ParserCliError, json: bool) -> ExitCode {
     if json {
-        let message = error.to_string();
-        match serde_json::to_string_pretty(&ParserJsonError {
-            status: "error",
-            code: error.code(),
-            message: &message,
-        }) {
-            Ok(body) => {
-                return crate::cli_io::write_stdout_code(&format!("{body}\n"), error.exit_code());
-            }
-            Err(serialize_error) => {
-                let _ignored = crate::cli_io::write_stderr_code(&format!(
-                    "runx: failed to serialize parser error: {serialize_error}\n"
-                ));
-                return ExitCode::from(1);
-            }
-        }
+        return crate::cli_io::write_stdout_code(
+            &crate::cli_error::json_failure_output(&error.to_string(), error.code()),
+            error.exit_code(),
+        );
     }
 
     let _ignored = crate::cli_io::write_stderr_code(&format!("runx: {error}\n"));

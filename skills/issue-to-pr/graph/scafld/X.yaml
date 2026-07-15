@@ -32,7 +32,7 @@ runners:
     input_mode: none
     artifacts:
       named_emits:
-        result: runx.scafld.command_result.v1
+        result: result
       packets:
         result: runx.scafld.command_result.v1
     inputs:

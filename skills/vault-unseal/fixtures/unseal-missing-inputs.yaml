@@ -8,21 +8,22 @@ caller:
   answers:
     agent_task.vault-unseal.output:
       unseal_plan:
-        decision: needs_review
+        decision: needs_agent
         secret_ref: ""
-        handle: ""
+        purpose: Need a key for the export job
         ttl: ""
         scope: {}
         principal: ""
         gates:
           human_approval_required: true
-        audit_binding:
-          receipt_ref: ""
         blockers:
           - secret_ref is missing
           - ttl is missing
           - scope is missing
           - principal is missing
+        execution:
+          requires_adapter: true
+          requires_approval: true
 expect:
   status: sealed
 metadata:

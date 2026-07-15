@@ -716,11 +716,7 @@ fn resolve_referenced_local_tool(
     env: &BTreeMap<String, String>,
 ) -> Result<Option<(PathBuf, String)>, SkillRunError> {
     let options = ToolInspectOptions {
-        root: env
-            .get("RUNX_CWD")
-            .or_else(|| env.get("RUNX_PROJECT_DIR"))
-            .map(PathBuf::from)
-            .unwrap_or_else(|| skill_dir.to_path_buf()),
+        root: crate::config::resolve_runx_workspace_base(env, skill_dir),
         tool_ref: name.to_owned(),
         source: None,
         search_from_directory: skill_dir.to_path_buf(),

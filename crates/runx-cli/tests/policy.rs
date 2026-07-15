@@ -74,10 +74,13 @@ fn policy_missing_path_exits_usage() -> Result<(), Box<dyn std::error::Error>> {
         .output()?;
 
     assert_eq!(output.status.code(), Some(64));
-    assert!(
-        String::from_utf8(output.stderr)?
-            .contains("runx policy inspect|lint requires exactly one policy path",)
-    );
+    assert_eq!(String::from_utf8(output.stderr)?, "");
+    let value = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    assert_eq!(value["status"], "failure");
+    assert_eq!(value["error"]["code"], "invalid_args");
+    assert!(value["error"]["message"].as_str().is_some_and(|message| {
+        message.contains("runx policy inspect|lint requires exactly one policy path")
+    }));
     Ok(())
 }
 

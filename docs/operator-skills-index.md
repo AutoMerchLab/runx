@@ -40,12 +40,12 @@ Skills that enforce policy, audit receipts, or review skill quality.
 
 | Directory | Purpose |
 |---|---|
-| `receipt-auditor/` | Audit a sealed runx receipt for governance, comparing the authority chain to the evidence. |
-| `run-history-analyst/` | Produce a read-only report over runx's own run history, summarizing sealed runs. |
+| `audit-receipt/` | Audit a sealed runx receipt for governance, comparing the authority chain to the evidence. |
+| `run-history/` | Produce a read-only report over runx's own run history, summarizing sealed runs. |
 | `review-skill/` | Assess a skill package for capability, trust, and operator risk. |
 | `review-receipt/` | Review receipts and harness failures to propose bounded skill improvements. |
 | `improve-skill/` | Turn a failed receipt or harness outcome into a bounded skill improvement. |
-| `least-privilege-auditor/` | Compare granted scopes against the scopes a subject actually used. |
+| `least-privilege/` | Compare granted scopes against the scopes a subject actually used. |
 | `sign-receipt/` | Prepare an evidence-bound attestation of an off-runtime act. |
 | `reflect-digest/` | Aggregate projected reflect knowledge into bounded skill improvement proposals. |
 
@@ -54,8 +54,8 @@ Skills that enforce policy, audit receipts, or review skill quality.
 | Directory | Purpose |
 |---|---|
 | `content-pipeline/` | Research a topic, draft the content, and package the approved output. |
-| `draft-content/` | Turn evidence and operator intent into publication-ready drafts. |
-| `deep-research-brief/` | Produce an approved deep-research brief from bounded research. |
+| `ghostwrite/` | Turn evidence and operator intent into publication-ready drafts. |
+| `deep-research/` | Produce an approved deep-research brief from bounded research. |
 | `ecosystem-brief/` | Produce an approved ecosystem briefing from bounded research. |
 | `research/` | Produce bounded, source-backed research packets for product decisions. |
 | `brand-voice/` | Build a scoped brand voice packet from source material. |
@@ -67,9 +67,9 @@ Skills that enforce policy, audit receipts, or review skill quality.
 
 | Directory | Purpose |
 |---|---|
-| `dependency-cve-audit/` | Audit locked npm dependencies against OSV advisories and emit findings. |
-| `ecosystem-vuln-scan/` | Scan one dependency surface, draft the advisory, and package it. |
-| `vuln-scan/` | Analyze dependency or ecosystem risk and produce remediation guidance. |
+| `cve-audit/` | Audit exact npm dependency versions against OSV and emit reproducible, independently verified CVE evidence. |
+| `vuln-triage/` | Assess vulnerability risk and produce remediation guidance and an advisory draft. |
+| `vuln-disclosure/` | Publish a governed, human-approved security advisory from triaged risk. |
 | `pr-review-note/` | Govern a GitHub PR review-note lane over MCP. |
 | `sandbox-harden/` | Produce a least-privilege runtime hardening profile (seccomp, capabilities). |
 | `redact-pii/` | Scrub personal data out of content before it crosses a trust boundary. |
@@ -110,7 +110,7 @@ Skills that model, charge, pay, or refund through payment providers. The `mock-*
 |---|---|
 | `data-store/` | Govern provider-agnostic data reads and state transitions through a receipt. |
 | `github-sync/` | Plan a scoped pull or push of GitHub issues, threads, or PRs. |
-| `inbox-and-calendar-exec/` | Convert mailbox and calendar context into a reviewable execution plan. |
+| `chief-of-staff/` | Convert mailbox and calendar context into a reviewable execution plan. |
 | `n8n-handoff/` | Validate a runx execution context and hand off a governed payload to n8n. |
 | `zapier-handoff/` | Validate a runx execution context and hand off a governed payload to Zapier. |
 | `slack-notify/` | Plan a governed Slack notification under scoped egress and gating. |
@@ -122,7 +122,7 @@ Skills that model, charge, pay, or refund through payment providers. The `mock-*
 |---|---|
 | `nitrosend/` | Govern Nitrosend campaign, flow, transactional, audience, and send operations. |
 | `dispute-respond/` | Prepare a governed dispute response artifact from a linked case. |
-| `support-triage-reply/` | Classify a bounded support request and choose the safe next path. |
+| `helpdesk/` | Classify a bounded support request and choose the safe next path. |
 
 ## Weather & External Data
 
@@ -140,7 +140,7 @@ Skills that model, charge, pay, or refund through payment providers. The `mock-*
 | `skill-testing/` | Evaluate a skill, draft the trust audit, and package the approval. |
 | `write-harness/` | Draft replayable runx harness fixtures for a proposed skill. |
 | `design-skill/` | Turn a product or automation objective into a bounded runx skill design. |
-| `overlay-generator/` | Wrap a borrowed Anthropic SKILL.md under a governed runx overlay. |
+| `overlay/` | Wrap a borrowed Anthropic SKILL.md under a governed runx overlay. |
 | `evolve/` | Governed repo evolution with fixed phase semantics and bounded changes. |
 | `moltbook/` | Scan for posting opportunities and prepare governed Moltbook entries. |
 
@@ -149,7 +149,7 @@ Skills that model, charge, pay, or refund through payment providers. The `mock-*
 | Directory | Purpose |
 |---|---|
 | `sql-analyst/` | Turn a bounded data question, schema summary, and sample rows into findings. |
-| `structured-extraction/` | Extract schema-validated JSON from messy HTML or text fixtures. |
+| `extract/` | Extract schema-validated JSON from messy HTML or text fixtures. |
 
 ## Planning & Work Management
 

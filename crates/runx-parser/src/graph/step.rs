@@ -48,6 +48,7 @@ pub fn validate_step(
 
     let inputs =
         optional_object(raw_step.get("inputs"), &format!("{field}.inputs"))?.unwrap_or_default();
+    reject_legacy_input_bindings(&inputs, &format!("{field}.inputs"))?;
     reject_step_output_refs_in_inputs(&inputs, previous_step_ids, &format!("{field}.inputs"))?;
 
     let scopes = optional_string_array(raw_step.get("scopes"), &format!("{field}.scopes"))?
@@ -184,6 +185,48 @@ fn reject_step_output_refs_in_inputs(
         )?;
     }
     Ok(())
+}
+
+fn reject_legacy_input_bindings(inputs: &JsonObject, field: &str) -> Result<(), ValidationError> {
+    for (key, value) in inputs {
+        reject_legacy_input_binding_value(value, &format!("{field}.{key}"))?;
+    }
+    Ok(())
+}
+
+fn reject_legacy_input_binding_value(
+    value: &JsonValue,
+    field: &str,
+) -> Result<(), ValidationError> {
+    match value {
+        JsonValue::String(value) => legacy_input_binding_name(value).map_or(Ok(()), |name| {
+            Err(validation_error(format!(
+                "{field} uses retired graph input binding {value:?}; use \"$input.{name}\"."
+            )))
+        }),
+        JsonValue::Object(object) => {
+            for (key, value) in object {
+                reject_legacy_input_binding_value(value, &format!("{field}.{key}"))?;
+            }
+            Ok(())
+        }
+        JsonValue::Array(values) => {
+            for (index, value) in values.iter().enumerate() {
+                reject_legacy_input_binding_value(value, &format!("{field}.{index}"))?;
+            }
+            Ok(())
+        }
+        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) => Ok(()),
+    }
+}
+
+fn legacy_input_binding_name(value: &str) -> Option<&str> {
+    let name = value.strip_prefix("{{")?.strip_suffix("}}")?.trim();
+    (!name.is_empty()
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '.')))
+    .then_some(name)
 }
 
 fn reject_step_output_refs_in_input_value(

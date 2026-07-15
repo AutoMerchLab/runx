@@ -4,6 +4,10 @@
   "x-runx-packet-id": "runx.moltbook.scan.v1",
   "type": "object",
   "properties": {
+    "opportunity_report": { "type": "object" },
+    "post_outline": { "type": "object" },
+    "moderation_notes": { "type": "object" },
+    "follow_up_plan": { "type": "object" },
     "findings": { "type": "array" },
     "recommendations": { "type": "array" }
   },

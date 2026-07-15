@@ -5,6 +5,7 @@
     0,
     1,
     2,
+    3,
     64
   ],
   "commands": [
@@ -21,6 +22,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -51,6 +53,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -82,6 +85,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -111,6 +115,7 @@
         "--artifact-type",
         "--since",
         "--until",
+        "--limit",
         "--receipt-dir",
         "--json"
       ],
@@ -118,6 +123,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -151,6 +157,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -177,12 +184,16 @@
       "flags": [
         "--receipt-dir",
         "--receipt",
+        "--notary",
+        "--notary-key",
+        "--allow-local-development-signatures",
         "--json"
       ],
       "exitCodes": [
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -213,6 +224,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -244,6 +256,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -274,6 +287,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -302,6 +316,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -335,6 +350,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -352,6 +368,49 @@
       ]
     },
     {
+      "id": "connect",
+      "usage": "runx connect list|start|status|invoke|revoke ... [-j|--json]",
+      "aliases": [],
+      "requiredPositionals": [],
+      "flags": [
+        "--scope",
+        "--scope-family",
+        "--authority-kind",
+        "--target-repo",
+        "--target-locator",
+        "--binding",
+        "--grant",
+        "--operation",
+        "--input",
+        "--api-base-url",
+        "--token",
+        "--allow-local-api",
+        "--json",
+        "-j"
+      ],
+      "exitCodes": [
+        0,
+        1,
+        2,
+        3,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "none",
+        "sideEffect": "external-stub",
+        "surfaces": [
+          "public-api",
+          "connect",
+          "cli-presentation"
+        ]
+      },
+      "cases": [
+        "connect.execute"
+      ]
+    },
+    {
       "id": "policy.inspect",
       "usage": "runx policy inspect <policy.json>",
       "aliases": [],
@@ -365,6 +424,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -395,6 +455,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -428,6 +489,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -459,6 +521,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -490,6 +553,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -521,6 +585,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -549,6 +614,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -578,6 +644,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -610,6 +677,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -634,12 +702,16 @@
         "<skill-ref...>"
       ],
       "flags": [
-        "--receipt-dir"
+        "--receipt-dir",
+        "--runner",
+        "--http-listen",
+        "--http-allow-non-loopback"
       ],
       "exitCodes": [
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -664,11 +736,18 @@
         "<skill-ref|owner/name@version|skill-dir|SKILL.md>"
       ],
       "flags": [
+        "--profile",
+        "--credential-profile",
+        "--input",
+        "--input-json",
+        "--approve-operator-context",
+        "--full-operator-context",
+        "--skip-operator-context",
         "--registry",
         "--digest",
-        "--input",
         "--receipt-dir",
         "--credential",
+        "--credential-scope",
         "--secret-env",
         "--non-interactive",
         "--json"
@@ -677,6 +756,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -716,6 +796,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -734,18 +815,22 @@
     },
     {
       "id": "harness",
-      "usage": "runx harness <fixture.yaml...>",
+      "usage": "runx harness <skill-dir|fixture.yaml...>",
       "aliases": [],
       "requiredPositionals": [
-        "<fixture.yaml...>"
+        "<skill-dir|fixture.yaml...>"
       ],
       "flags": [
-        "--json"
+        "--receipt-dir",
+        "--json",
+        "--help",
+        "-h"
       ],
       "exitCodes": [
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -779,6 +864,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -810,6 +896,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -841,6 +928,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -878,6 +966,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {
@@ -914,6 +1003,7 @@
         0,
         1,
         2,
+        3,
         64
       ],
       "parity": {

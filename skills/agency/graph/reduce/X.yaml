@@ -18,7 +18,7 @@ runners:
       - run.mjs
     artifacts:
       named_emits:
-        reduction: runx.agency.reduction.v1
+        reduction: reduction
       packets:
         reduction: runx.agency.reduction.v1
     inputs:

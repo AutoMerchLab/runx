@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
@@ -8,12 +8,10 @@ import { describe, expect, it } from "vitest";
 import { parse as parseYaml } from "yaml";
 
 import {
-  parseRunnerManifestYaml,
-  validateRunnerManifest,
-  type SkillRunnerManifest,
-} from "../packages/cli/src/cli-parser/index.js";
-import { resolveRunnableSkillReference, resolveSkillReference } from "../packages/cli/src/index.js";
-import { validateSkillMarkdown } from "./parser-eval.js";
+  type ValidatedRunnerManifest as SkillRunnerManifest,
+  validateRunnerManifestYaml as validateNativeRunnerManifestYaml,
+  validateSkillMarkdown,
+} from "./parser-eval.js";
 import { resolveRunxBinary } from "./runx-binary.js";
 
 const publicSkillRequiredHeadings = [
@@ -102,9 +100,9 @@ function isPaymentRegistrySkillId(skillId: string): boolean {
 
 const harnessedShowcasePackages = [
   "content-pipeline",
-  "deep-research-brief",
-  "draft-content",
-  "ecosystem-vuln-scan",
+  "deep-research",
+  "ghostwrite",
+  "vuln-disclosure",
   "evolve",
   "issue-intake",
   "issue-triage",
@@ -123,7 +121,7 @@ const harnessedShowcasePackages = [
   "research",
   "skill-testing",
   "sourcey",
-  "vuln-scan",
+  "vuln-triage",
 ] as const;
 
 const workspaceRoot = process.cwd();
@@ -158,7 +156,7 @@ describe("official skill catalog", () => {
   it("keeps the public official catalog limited to implemented catalog skills", async () => {
     const publicSkills = officialSkillPackages().filter((skillName) => catalogVisibility(skillName) === "public");
     const entries = JSON.parse(
-      await readFile(path.resolve("packages", "cli", "src", "official-skills.lock.json"), "utf8"),
+      await readFile(path.resolve("skills", "official.lock.json"), "utf8"),
     ) as ReadonlyArray<{ readonly skill_id: string; readonly catalog_visibility?: string }>;
     const publicLockSkills = entries
       .filter((entry) => entry.catalog_visibility === "public")
@@ -234,7 +232,7 @@ describe("official skill catalog", () => {
 
   it("keeps graph stages out of the official skills catalog", async () => {
     const entries = JSON.parse(
-      await readFile(path.resolve("packages", "cli", "src", "official-skills.lock.json"), "utf8"),
+      await readFile(path.resolve("skills", "official.lock.json"), "utf8"),
     ) as ReadonlyArray<{ readonly skill_id: string }>;
     const entryIds = entries.map((entry) => entry.skill_id);
     const ids = new Set(entryIds);
@@ -395,37 +393,5 @@ function isNonEmptyString(value: unknown): value is string {
 }
 
 function validateRunnerManifestYaml(profileDocument: string): SkillRunnerManifest {
-  return validateRunnerManifest(parseRunnerManifestYaml(profileDocument));
+  return validateNativeRunnerManifestYaml(profileDocument);
 }
-
-describe("official skill resolution", () => {
-  it("prefers project-local .runx skill packages over official shorthand fallback", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-official-resolution-"));
-    const projectDir = path.join(tempDir, "project");
-    const localSkillDir = path.join(projectDir, ".runx", "skills", "sourcey");
-    const env = { ...process.env, RUNX_CWD: projectDir, RUNX_HOME: path.join(tempDir, "home") };
-
-    try {
-      await mkdir(localSkillDir, { recursive: true });
-      await writeFile(path.join(localSkillDir, "SKILL.md"), "---\nname: sourcey\ndescription: local override\nsource:\n  type: prompt\ninstructions: []\n---\n", "utf8");
-
-      expect(resolveSkillReference("sourcey", env)).toBe(localSkillDir);
-      await expect(resolveRunnableSkillReference("sourcey", env)).resolves.toBe(localSkillDir);
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
-  });
-
-  it("leaves unknown bare names for the native resolver to diagnose", async () => {
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-official-missing-"));
-
-    try {
-      const env = { ...process.env, RUNX_CWD: tempDir, RUNX_HOME: path.join(tempDir, "home") };
-      await expect(resolveRunnableSkillReference("definitely-not-a-real-skill", env)).resolves.toBe(
-        "definitely-not-a-real-skill",
-      );
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
-    }
-  });
-});

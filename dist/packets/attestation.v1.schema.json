@@ -3,21 +3,43 @@
   "$id": "https://schemas.runx.ai/runx/attestation/v1.json",
   "x-runx-packet-id": "runx.attestation.v1",
   "type": "object",
+  "required": ["attestation"],
   "properties": {
-    "action": { "type": "string" },
-    "claim": { "type": "string" },
-    "principal": { "type": "string" },
-    "evidence_refs": {
-      "type": "array",
-      "items": { "type": "string" }
-    },
-    "signed": { "type": "boolean" },
-    "attestation_id": { "type": "string" },
-    "bound_receipt_ref": { "type": "string" },
-    "scope": {
+    "attestation": {
       "type": "object",
-      "additionalProperties": true
+      "required": ["decision", "action", "claim", "principal", "evidence_refs", "gaps"],
+      "properties": {
+        "decision": {
+          "type": "string",
+          "enum": ["ready_to_seal", "needs_more_evidence", "needs_agent"]
+        },
+        "action": { "type": "string" },
+        "claim": { "type": "string" },
+        "principal": { "type": "string" },
+        "evidence_refs": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["ref", "digest", "proves"],
+            "properties": {
+              "ref": { "type": "string", "minLength": 1 },
+              "digest": { "type": "string", "minLength": 1 },
+              "proves": { "type": "string", "minLength": 1 }
+            },
+            "additionalProperties": false
+          }
+        },
+        "gaps": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "scope": {
+          "type": "object",
+          "additionalProperties": true
+        }
+      },
+      "additionalProperties": false
     }
   },
-  "additionalProperties": true
+  "additionalProperties": false
 }

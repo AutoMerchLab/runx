@@ -12,19 +12,21 @@ mod sandbox;
 mod source;
 mod types;
 
-pub use catalog::{CatalogAudience, CatalogKind, CatalogMetadata, CatalogRole, CatalogVisibility};
+pub use catalog::{
+    CatalogApproval, CatalogAudience, CatalogCompletion, CatalogExecution, CatalogKind,
+    CatalogMetadata, CatalogRole, CatalogVisibility,
+};
 pub use fixtures::{
     HarnessCallerFixture, HarnessExpectation, ReceiptExpectation, RunnerHarnessCase,
     RunnerHarnessManifest,
 };
 pub use governance::validate_skill_artifact_contract;
-pub use markdown::{extract_skill_quality_profile, parse_skill_markdown};
+pub use markdown::parse_skill_markdown;
 pub use source::validate_skill_source;
 pub use types::{
     ActDeclaration, InputMode, RawSkillIr, SkillArtifactContract, SkillHttpSource,
-    SkillIdempotencyPolicy, SkillInput, SkillMcpServer, SkillQualityProfile, SkillRetryPolicy,
-    SkillRunnerDefinition, SkillSandbox, SkillSource, SourceKind, ValidateSkillMode,
-    ValidateSkillOptions, ValidatedSkill,
+    SkillIdempotencyPolicy, SkillInput, SkillMcpServer, SkillRetryPolicy, SkillRunnerDefinition,
+    SkillSandbox, SkillSource, SourceKind, ValidateSkillMode, ValidateSkillOptions, ValidatedSkill,
 };
 
 pub(crate) use catalog::validate_catalog_metadata;
@@ -95,7 +97,6 @@ pub fn validate_skill_with_options(
         idempotency: governance.idempotency,
         mutating: governance.mutating,
         artifacts: governance.artifacts,
-        quality_profile: extract_skill_quality_profile(&raw.body),
         allowed_tools: governance.allowed_tools,
         execution: governance.execution,
         runx,

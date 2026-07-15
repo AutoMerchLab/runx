@@ -122,6 +122,25 @@ steps:
         Ok(())
     }
 
+    #[test]
+    fn inputs_reject_retired_double_brace_bindings() -> Result<(), String> {
+        let error = validate_err(
+            r#"
+name: retired-input-binding
+steps:
+  - id: review
+    run:
+      type: agent-task
+    inputs:
+      claim: "{{ claim }}"
+"#,
+        )?;
+        assert!(error.contains("steps.0.inputs.claim"));
+        assert!(error.contains("retired graph input binding"));
+        assert!(error.contains("$input.claim"));
+        Ok(())
+    }
+
     fn validate_yaml(source: &str) -> Result<crate::ExecutionGraph, String> {
         let raw = parse_graph_yaml(source).map_err(|error| error.to_string())?;
         validate_graph(raw).map_err(|error| error.to_string())

@@ -29,7 +29,7 @@ mod tests {
         assert_eq!(env.get(RUNX_CWD_ENV), Some(&"/tmp/runx-work".to_owned()));
         assert_eq!(
             env.get(RUNX_PROJECT_DIR_ENV),
-            Some(&"/tmp/runx-work".to_owned())
+            Some(&"/tmp/runx-work/.runx".to_owned())
         );
     }
 

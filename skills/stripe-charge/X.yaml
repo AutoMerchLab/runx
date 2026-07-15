@@ -1,5 +1,5 @@
 skill: stripe-charge
-version: "0.1.0"
+version: "0.1.1"
 catalog:
   kind: graph
   audience: operator
@@ -38,6 +38,15 @@ harness:
                 - stripe
             requested_payment_authority:
               authority_ref: authority:payment:charge-price-demo-001
+            price_evidence:
+              source_refs:
+                - policy:provider-demo
+                - tool-call:search.paid
+              redactions: []
+            policy_metadata:
+              provider_realm: test
+              direction: provider_charge
+            open_questions: []
           agent_task.charge-challenge.output:
             effect_required_signal:
               signal_type: effect_required
@@ -49,6 +58,7 @@ harness:
               key: charge:paid-search-001
             accepted_settlement_families:
               - stripe
+            open_questions: []
           agent_task.charge-verify.output:
             verification_result:
               status: verified
@@ -116,12 +126,12 @@ runners:
           skill: ../charge
           runner: stripe
           inputs:
-            mcp_tool_call: "{{mcp_tool_call}}"
-            provider_policy: "{{provider_policy}}"
-            returned_credential: "{{returned_credential}}"
-            parent_payment_authority: "{{parent_payment_authority}}"
-            verify_capability_ref: "{{verify_capability_ref}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            mcp_tool_call: "$input.mcp_tool_call"
+            provider_policy: "$input.provider_policy"
+            returned_credential: "$input.returned_credential"
+            parent_payment_authority: "$input.parent_payment_authority"
+            verify_capability_ref: "$input.verify_capability_ref"
+            idempotency_seed: "$input.idempotency_seed"
     runx:
       payment_authority:
         direction: provider_charge

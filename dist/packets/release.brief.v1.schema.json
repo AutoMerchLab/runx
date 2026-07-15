@@ -3,11 +3,39 @@
   "$id": "https://schemas.runx.ai/runx/release/brief/v1.json",
   "x-runx-packet-id": "runx.release.brief.v1",
   "type": "object",
+  "$defs": {
+    "release_brief": {
+      "type": "object",
+      "required": ["proposed_version", "commits", "changelog", "checks", "unresolved", "publishable", "publish_plan"],
+      "properties": {
+        "proposed_version": { "type": "string", "minLength": 1 },
+        "previous_tag": { "type": "string" },
+        "commits": { "type": "array" },
+        "changelog": { "type": "object" },
+        "checks": { "type": "object" },
+        "unresolved": { "type": "array" },
+        "publishable": { "type": "boolean" },
+        "publish_plan": { "type": "object" }
+      },
+      "additionalProperties": true
+    }
+  },
+  "anyOf": [
+    { "required": ["release_brief"] },
+    { "required": ["proposed_version", "commits", "changelog", "checks", "unresolved", "publishable", "publish_plan"] }
+  ],
   "properties": {
-    "summary": { "type": "string" },
-    "changes": { "type": "array" },
-    "checks": { "type": "array" },
-    "publish": { "type": "object", "additionalProperties": true }
+    "release_brief": {
+      "$ref": "#/$defs/release_brief"
+    },
+    "proposed_version": { "type": "string", "minLength": 1 },
+    "previous_tag": { "type": "string" },
+    "commits": { "type": "array" },
+    "changelog": { "type": "object" },
+    "checks": { "type": "object" },
+    "unresolved": { "type": "array" },
+    "publishable": { "type": "boolean" },
+    "publish_plan": { "type": "object" }
   },
   "additionalProperties": true
 }

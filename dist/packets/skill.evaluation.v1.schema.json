@@ -4,6 +4,10 @@
   "x-runx-packet-id": "runx.skill.evaluation.v1",
   "type": "object",
   "properties": {
+    "capability_profile": { "type": "object" },
+    "trust_assessment": { "type": "object" },
+    "test_matrix": { "type": "array" },
+    "recommendation_report": { "type": "object" },
     "verdict": { "type": "string" },
     "findings": { "type": "array" },
     "recommendations": { "type": "array" }

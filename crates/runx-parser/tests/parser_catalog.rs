@@ -1,6 +1,6 @@
 use runx_parser::{
-    CatalogAudience, CatalogKind, CatalogRole, CatalogVisibility, parse_runner_manifest_yaml,
-    validate_runner_manifest,
+    CatalogApproval, CatalogAudience, CatalogCompletion, CatalogExecution, CatalogKind,
+    CatalogRole, CatalogVisibility, parse_runner_manifest_yaml, validate_runner_manifest,
 };
 
 fn parse_manifest(yaml: &str) -> Result<runx_parser::SkillRunnerManifest, String> {
@@ -18,6 +18,10 @@ catalog:
   audience: builder
   visibility: internal
   role: graph-stage
+  execution: plan
+  completion: plan
+  requires_adapter: true
+  approval: required
   part_of:
     - runx/demo
 runners:
@@ -35,6 +39,10 @@ runners:
     assert_eq!(catalog.audience, CatalogAudience::Builder);
     assert_eq!(catalog.visibility, CatalogVisibility::Internal);
     assert_eq!(catalog.role, CatalogRole::GraphStage);
+    assert_eq!(catalog.execution, Some(CatalogExecution::Plan));
+    assert_eq!(catalog.completion, Some(CatalogCompletion::Plan));
+    assert_eq!(catalog.requires_adapter, Some(true));
+    assert_eq!(catalog.approval, Some(CatalogApproval::Required));
     assert_eq!(catalog.part_of, vec!["runx/demo"]);
     // Typed kinds serialize back to their original snake_case wire strings.
     assert_eq!(catalog.kind.as_str(), "graph");

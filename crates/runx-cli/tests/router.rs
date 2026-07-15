@@ -1,4 +1,6 @@
+use runx_cli::command_spec::COMMAND_SPECS;
 use runx_cli::config::{ConfigAction, ConfigPlan};
+use runx_cli::connect::{ConnectAction, ConnectPlan};
 use runx_cli::export::{ExportPlan, Target};
 use runx_cli::kernel::{KernelInputSource, KernelPlan};
 use runx_cli::login::LoginPlan;
@@ -10,8 +12,9 @@ use runx_cli::resume::ResumePlan;
 use runx_cli::router::{
     AddUrlPlan, DevPlan, DoctorMode, DoctorPlan, FilterMode, HarnessPlan, HistoryPlan, InitPlan,
     JsonErrorPlan, ListKind, ListPlan, NewPlan, RouterAction, ToolAction, ToolPlan, add_help_text,
-    help_text, history_help_text, list_help_text, login_help_text, publish_help_text,
-    registry_help_text, route_args, skill_help_text, verify_help_text,
+    command_help_text, connect_help_text, harness_help_text, help_text, history_help_text,
+    list_help_text, login_help_text, publish_help_text, registry_help_text, route_args,
+    skill_help_text, verify_help_text,
 };
 use runx_cli::skill::{SkillAction, SkillPlan};
 use std::fs;
@@ -26,7 +29,10 @@ fn top_level_help_and_version_are_native() {
     assert_eq!(plan(&[]), RouterAction::PrintHelp);
     assert_eq!(plan(&["--help"]), RouterAction::PrintHelp);
     assert_eq!(plan(&["--version"]), RouterAction::PrintVersion);
-    assert_eq!(plan(&["export", "--help"]), RouterAction::PrintHelp);
+    assert_eq!(
+        plan(&["export", "--help"]),
+        RouterAction::PrintCommandHelp("export")
+    );
 
     let help = help_text();
     assert_help_line(
@@ -35,7 +41,7 @@ fn top_level_help_and_version_are_native() {
     );
     assert_help_line(
         &help,
-        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [-j] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [--credential descriptor --secret-env NAME] [-R dir]",
+        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [-j] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [--credential descriptor --credential-scope scope --secret-env NAME] [-R dir]",
     );
     assert_help_line(
         &help,
@@ -43,7 +49,7 @@ fn top_level_help_and_version_are_native() {
     );
     assert_help_line(
         &help,
-        "runx resume <run-id> <answers.json> [-R dir] [-j|--json]",
+        "runx resume <run-id> <answers.json> [-R dir] [--non-interactive] [-j|--json]",
     );
     assert_help_line(
         &help,
@@ -63,9 +69,9 @@ fn top_level_help_and_version_are_native() {
         &help,
         "runx login [--provider github|google|gitlab] [--for default|publish] [--from-gh] [--api-base-url url] [--allow-local-api] [-j|--json]",
     );
-    assert!(
-        !help.contains("runx connect"),
-        "native OSS help must not advertise the removed connect brokerage surface"
+    assert_help_line(
+        &help,
+        "runx connect list|start|status|invoke|revoke ... [-j|--json]",
     );
     assert!(
         !help.contains("runx harness <fixture.yaml|skill-dir|SKILL.md>"),
@@ -79,30 +85,62 @@ fn top_level_help_and_version_are_native() {
 
 #[test]
 fn nested_skill_history_verify_and_publish_help_are_native() {
-    assert_eq!(plan(&["skill", "--help"]), RouterAction::PrintSkillHelp);
-    assert_eq!(plan(&["skill", "-h"]), RouterAction::PrintSkillHelp);
+    assert_eq!(
+        plan(&["skill", "--help"]),
+        RouterAction::PrintCommandHelp("skill")
+    );
+    assert_eq!(
+        plan(&["skill", "-h"]),
+        RouterAction::PrintCommandHelp("skill")
+    );
     assert_eq!(
         plan(&["skill", "SKILL.md", "--help"]),
-        RouterAction::PrintSkillHelp
+        RouterAction::PrintCommandHelp("skill")
     );
-    assert_eq!(plan(&["history", "--help"]), RouterAction::PrintHistoryHelp);
-    assert_eq!(plan(&["history", "-h"]), RouterAction::PrintHistoryHelp);
+    assert_eq!(
+        plan(&["history", "--help"]),
+        RouterAction::PrintCommandHelp("history")
+    );
+    assert_eq!(
+        plan(&["history", "-h"]),
+        RouterAction::PrintCommandHelp("history")
+    );
     assert_eq!(
         plan(&["history", "sourcey", "--help"]),
-        RouterAction::PrintHistoryHelp
+        RouterAction::PrintCommandHelp("history")
     );
-    assert_eq!(plan(&["verify", "--help"]), RouterAction::PrintVerifyHelp);
-    assert_eq!(plan(&["verify", "-h"]), RouterAction::PrintVerifyHelp);
+    assert_eq!(
+        plan(&["verify", "--help"]),
+        RouterAction::PrintCommandHelp("verify")
+    );
+    assert_eq!(
+        plan(&["verify", "-h"]),
+        RouterAction::PrintCommandHelp("verify")
+    );
     assert_eq!(
         plan(&["verify", "receipt-123", "--help"]),
-        RouterAction::PrintVerifyHelp
+        RouterAction::PrintCommandHelp("verify")
     );
-    assert_eq!(plan(&["publish", "--help"]), RouterAction::PrintPublishHelp);
-    assert_eq!(plan(&["publish", "-h"]), RouterAction::PrintPublishHelp);
+    assert_eq!(
+        plan(&["publish", "--help"]),
+        RouterAction::PrintCommandHelp("publish")
+    );
+    assert_eq!(
+        plan(&["publish", "-h"]),
+        RouterAction::PrintCommandHelp("publish")
+    );
+    assert_eq!(
+        plan(&["harness", "--help"]),
+        RouterAction::PrintCommandHelp("harness")
+    );
+    assert_eq!(
+        plan(&["harness", "-h"]),
+        RouterAction::PrintCommandHelp("harness")
+    );
 
     assert_help_line(
         &skill_help_text(),
-        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [-j] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [--credential descriptor --secret-env NAME] [-R dir]",
+        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [-j] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [--credential descriptor --credential-scope scope --secret-env NAME] [-R dir]",
     );
     assert_help_line(
         &skill_help_text(),
@@ -114,29 +152,122 @@ fn nested_skill_history_verify_and_publish_help_are_native() {
     );
     assert_help_line(
         &history_help_text(),
-        "runx history [query] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--receipt-dir dir] [--json]",
+        "runx history [query] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--limit n] [--receipt-dir dir] [--json]",
     );
     assert_help_line(
         &verify_help_text(),
         "runx verify [receipt-id] [--receipt-dir dir] [--receipt <path|->] [--notary <path|-> --notary-key trusted.pem] [-j|--json]",
     );
+    assert!(verify_help_text().contains("--allow-local-development-signatures"));
+    assert!(history_help_text().contains("--limit n"));
+    assert!(skill_help_text().contains("--credential-profile name"));
+    assert!(skill_help_text().contains("--non-interactive"));
     assert_help_line(
         &publish_help_text(),
         "runx publish <receipt.json> [--api-base-url url] [--token token] [--allow-local-api] [-j|--json]",
+    );
+    assert_help_line(
+        &harness_help_text(),
+        "runx harness <fixture.yaml...|skill-dir|SKILL.md> [-R dir] [-j|--json]",
+    );
+    assert!(harness_help_text().contains("inline harness.cases and sorted fixtures/*.yaml"));
+}
+
+#[test]
+fn json_flags_make_argument_failures_machine_readable() {
+    for args in [
+        &["config", "set", "--json"][..],
+        &["tool", "build", "--json"][..],
+        &["new", "--json"][..],
+        &["export", "nope", "--json"][..],
+        &["doctor", "registry", "extra", "-j"][..],
+    ] {
+        let action = plan(args);
+        assert!(
+            matches!(action, RouterAction::JsonError(_)),
+            "expected JSON error for {args:?}, got {action:?}"
+        );
+        if let RouterAction::JsonError(error) = action {
+            assert_eq!(error.code, "invalid_args", "{args:?}");
+            assert_eq!(error.exit_code, 64, "{args:?}");
+            assert!(!error.message.is_empty(), "{args:?}");
+        }
+    }
+}
+
+#[cfg(unix)]
+#[test]
+fn filesystem_paths_do_not_require_utf8() {
+    use std::ffi::OsString;
+    use std::os::unix::ffi::OsStringExt;
+
+    let path = OsString::from_vec(b"skill-\xff".to_vec());
+    let path_buf = PathBuf::from(path.clone());
+
+    assert_eq!(
+        route_args(vec!["mcp".into(), "serve".into(), path.clone()]),
+        RouterAction::RunMcp(McpPlan {
+            refs: vec![path_buf.clone()],
+            receipt_dir: None,
+            runner: None,
+            http_listen: None,
+            http_allow_non_loopback: false,
+        })
+    );
+    assert_eq!(
+        route_args(vec!["resume".into(), "gx_test".into(), path.clone(),]),
+        RouterAction::RunResume(ResumePlan {
+            run_id: "gx_test".to_owned(),
+            answers_path: path_buf.clone(),
+            receipt_dir: None,
+            json: false,
+        })
+    );
+    let action = route_args(vec!["skill".into(), path.clone()]);
+    assert!(matches!(action, RouterAction::RunSkill(_)));
+    if let RouterAction::RunSkill(skill) = action {
+        assert_eq!(skill.skill_path, path_buf);
+    }
+    assert_eq!(
+        route_args(vec!["tool".into(), "build".into(), path.clone()]),
+        RouterAction::RunTool(ToolPlan {
+            action: ToolAction::Build,
+            path: Some(PathBuf::from(path)),
+            ref_or_query: None,
+            all: false,
+            source: None,
+            json: false,
+        })
     );
 }
 
 #[test]
 fn documented_command_help_is_native() {
-    assert_eq!(plan(&["add", "--help"]), RouterAction::PrintAddHelp);
-    assert_eq!(plan(&["add", "-h"]), RouterAction::PrintAddHelp);
-    assert_eq!(plan(&["list", "--help"]), RouterAction::PrintListHelp);
-    assert_eq!(plan(&["login", "--help"]), RouterAction::PrintLoginHelp);
+    assert_eq!(
+        plan(&["add", "--help"]),
+        RouterAction::PrintCommandHelp("add")
+    );
+    assert_eq!(plan(&["add", "-h"]), RouterAction::PrintCommandHelp("add"));
+    assert_eq!(
+        plan(&["list", "--help"]),
+        RouterAction::PrintCommandHelp("list")
+    );
+    assert_eq!(
+        plan(&["login", "--help"]),
+        RouterAction::PrintCommandHelp("login")
+    );
+    assert_eq!(
+        plan(&["connect", "--help"]),
+        RouterAction::PrintCommandHelp("connect")
+    );
     assert_eq!(
         plan(&["registry", "--help"]),
-        RouterAction::PrintRegistryHelp
+        RouterAction::PrintCommandHelp("registry")
     );
-    assert_eq!(plan(&["registry"]), RouterAction::PrintRegistryUsageError);
+    assert_eq!(
+        plan(&["registry"]),
+        RouterAction::PrintCommandUsageError("registry")
+    );
 
     assert_help_line(
         &add_help_text(),
@@ -152,10 +283,38 @@ fn documented_command_help_is_native() {
         "runx login [--provider github|google|gitlab] [--for default|publish] [--from-gh] [--api-base-url url] [--allow-local-api] [-j|--json]",
     );
     assert_help_line(
+        &connect_help_text(),
+        "runx connect invoke --grant <grant-id> --operation <operation> [--input <json-object>] [-j|--json]",
+    );
+    assert_help_line(
         &registry_help_text(),
         "runx registry search <query> [--registry url|path] [--registry-dir dir] [--limit n] [-j|--json]",
     );
     assert!(!registry_help_text().contains("--installation-id"));
+}
+
+#[test]
+fn every_documented_command_routes_to_registry_help() {
+    for spec in COMMAND_SPECS {
+        assert_eq!(
+            plan(&[spec.name, "--help"]),
+            RouterAction::PrintCommandHelp(spec.name),
+            "--help routing drifted for {}",
+            spec.name
+        );
+        assert_eq!(
+            plan(&[spec.name, "-h"]),
+            RouterAction::PrintCommandHelp(spec.name),
+            "-h routing drifted for {}",
+            spec.name
+        );
+        let help = command_help_text(spec.name).unwrap_or_default();
+        assert!(
+            help.starts_with(&format!("runx {}\n", spec.name)),
+            "detailed help missing for {}",
+            spec.name
+        );
+    }
 }
 
 #[test]
@@ -438,10 +597,16 @@ fn rejects_legacy_skill_add_shape() {
 }
 
 #[test]
-fn connect_surface_is_removed_from_oss_router() {
+fn routes_connect_to_native_plan() {
     assert_eq!(
-        plan(&["connect", "--json"]),
-        RouterAction::Error("unknown command connect".to_owned())
+        plan(&["connect", "list", "--json"]),
+        RouterAction::RunConnect(ConnectPlan {
+            action: ConnectAction::List,
+            api_base_url: None,
+            token: None,
+            allow_local_api: false,
+            json: true,
+        })
     );
     assert_eq!(
         plan(&["url-add", "github.com/kam/skills"]),
@@ -826,10 +991,13 @@ fn native_router_argument_errors_exit_with_usage_code() -> Result<(), Box<dyn st
         .output()?;
 
     assert_eq!(output.status.code(), Some(64));
-    assert!(
-        String::from_utf8(output.stderr)?
-            .contains("runx policy inspect|lint requires exactly one policy path")
-    );
+    assert_eq!(String::from_utf8(output.stderr)?, "");
+    let value = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    assert_eq!(value["status"], "failure");
+    assert_eq!(value["error"]["code"], "invalid_args");
+    assert!(value["error"]["message"].as_str().is_some_and(|message| {
+        message.contains("runx policy inspect|lint requires exactly one policy path")
+    }));
     Ok(())
 }
 

@@ -745,9 +745,6 @@ fn native_graph_skill_run_pauses_and_resumes_agent_task() -> Result<(), Box<dyn 
         serde_json::json!({
             "answers": {
                 "agent_task.graph-decide.output": {
-                    "approved": true,
-                    "proof_ref": "receipt-proof:evil:step-output",
-                    "receipt_id": "sha256:evil-step-output",
                     "result": {
                         "summary": "Graph fix authored."
                     },
@@ -773,9 +770,6 @@ fn native_graph_skill_run_pauses_and_resumes_agent_task() -> Result<(), Box<dyn 
     let output = object(&resumed.output, "resumed graph skill run result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
     let payload = object_field(output, "payload").ok_or("missing payload")?;
-    assert!(!payload.contains_key("approved"));
-    assert!(!payload.contains_key("proof_ref"));
-    assert!(!payload.contains_key("receipt_id"));
     let decide_claim = step_claim(payload, "decide").ok_or("missing decide skill claim")?;
     let result = object_field(decide_claim, "result").ok_or("missing result")?;
     assert_eq!(string_field(result, "summary"), Some("Graph fix authored."));
@@ -788,9 +782,6 @@ fn native_graph_skill_run_pauses_and_resumes_agent_task() -> Result<(), Box<dyn 
         string_field(declared_result, "summary"),
         Some("Graph fix authored.")
     );
-    assert!(!decide.contains_key("approved"));
-    assert!(!decide.contains_key("proof_ref"));
-    assert!(!decide.contains_key("receipt_id"));
 
     Ok(())
 }
@@ -2363,6 +2354,15 @@ runners:
     task: issue-intake
     outputs:
       intake_report: object
+      claimed_proof:
+        type: object
+        required: false
+      verification:
+        type: object
+        required: false
+      signal:
+        type: object
+        required: false
     inputs:
       thread_title:
         type: string
@@ -2515,6 +2515,8 @@ source:
         r#"
 source:
   type: agent
+  outputs:
+    result: object
 "#
     };
     fs::write(

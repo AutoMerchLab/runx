@@ -11,13 +11,16 @@ caller:
   answers:
     agent_task.sign-receipt.output:
       attestation:
+        decision: needs_agent
         action: ""
         claim: ""
         principal: ""
         evidence_refs: []
-        signed: false
-        attestation_id: ""
-        bound_receipt_ref: ""
+        gaps:
+          - action is missing
+          - principal is missing
+          - claim is missing
+          - evidence is missing
 expect:
   status: sealed
   receipt:

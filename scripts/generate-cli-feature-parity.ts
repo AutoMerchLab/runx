@@ -51,20 +51,21 @@ const root = resolve(".");
 const fixturesDir = join(root, "fixtures/cli-parity");
 const casesDir = join(fixturesDir, "cases");
 
-const exitCodes = [0, 1, 2, 64] as const;
+const exitCodes = [0, 1, 2, 3, 64] as const;
 
 const commands: readonly CommandMatrixEntry[] = [
   command("cli.help", "runx --help", [], ["--help", "-h"], "none", ["cli-presentation"], ["help.top-level"]),
   command("new", "runx new <name>", [], ["--directory", "--json"], "filesystem", ["scaffold", "cli-presentation"], ["new.validate"]),
   command("init", "runx init", [], ["-g", "--global", "--prefetch", "--json"], "filesystem", ["scaffold", "official-skills"], ["init.validate"]),
-  command("history", "runx history [query]", [], ["--skill", "--status", "--source", "--actor", "--artifact-type", "--since", "--until", "--receipt-dir", "--json"], "none", ["history", "receipts"], ["history.execute"]),
+  command("history", "runx history [query]", [], ["--skill", "--status", "--source", "--actor", "--artifact-type", "--since", "--until", "--limit", "--receipt-dir", "--json"], "none", ["history", "receipts"], ["history.execute"]),
   command("resume", "runx resume <run-id> <answers.json>", [], ["--receipt-dir", "--non-interactive", "--json"], "local-runtime", ["caller-mediated-resolution", "graph-runtime", "receipts", "cli-presentation"], ["resume.validate"]),
-  command("verify", "runx verify [receipt-id]", [], ["--receipt-dir", "--receipt", "--json"], "none", ["receipts", "cli-presentation"], ["verify.validate"]),
+  command("verify", "runx verify [receipt-id]", [], ["--receipt-dir", "--receipt", "--notary", "--notary-key", "--allow-local-development-signatures", "--json"], "none", ["receipts", "cli-presentation"], ["verify.validate"]),
   command("list", "runx list [tools|skills|graphs|packets|overlays]", [], ["--ok-only", "--invalid-only", "--json"], "none", ["list", "tool-catalog"], ["list.tools.execute"]),
   command("config.set", "runx config set <key> <value>", [], ["--json"], "filesystem", ["config", "cli-presentation"], ["config.set.validate"]),
   command("config.get", "runx config get <key>", [], ["--json"], "filesystem", ["config", "cli-presentation"], ["config.get.validate"]),
   command("config.list", "runx config list", [], ["--json"], "filesystem", ["config", "cli-presentation"], ["config.list.execute"]),
   command("login", "runx login [--provider github|google|gitlab] [--for default|publish] [--from-gh] [--api-base-url url] [--allow-local-api] [--json]", [], ["--provider", "--for", "--from-gh", "--api-base-url", "--allow-local-api", "--json"], "filesystem", ["config", "cli-presentation"], ["login.validate"]),
+  command("connect", "runx connect list|start|status|invoke|revoke ... [-j|--json]", [], ["--scope", "--scope-family", "--authority-kind", "--target-repo", "--target-locator", "--binding", "--grant", "--operation", "--input", "--api-base-url", "--token", "--allow-local-api", "--json", "-j"], "external-stub", ["public-api", "connect", "cli-presentation"], ["connect.execute"]),
   command("policy.inspect", "runx policy inspect <policy.json>", [], ["--json"], "none", ["policy", "cli-presentation"], ["policy.inspect.validate"]),
   command("policy.lint", "runx policy lint <policy.json>", [], ["--json"], "none", ["policy", "cli-presentation"], ["policy.lint.validate"]),
   command("publish", "runx publish <receipt.json> [--api-base-url url] [--token token] [--allow-local-api] [--json]", [], ["--api-base-url", "--token", "--allow-local-api", "--json"], "external-stub", ["receipts", "cli-presentation"], ["publish.validate"]),
@@ -74,10 +75,10 @@ const commands: readonly CommandMatrixEntry[] = [
   command("doctor", "runx doctor [path]", [], ["--json"], "filesystem", ["doctor", "cli-presentation"], ["doctor.validate"]),
   command("dev", "runx dev [root]", [], ["--lane", "--json"], "local-runtime", ["dev", "harness", "receipts"], ["dev.validate"]),
   command("export", "runx export <claude|codex> [skill-ref...]", [], ["--project", "--json"], "filesystem", ["skill-export", "cli-presentation"], ["export.validate"]),
-  command("mcp.serve", "runx mcp serve <skill-ref...>", [], ["--receipt-dir"], "adapter", ["mcp", "adapter-mcp"], ["mcp.serve.validate"]),
-  command("skill.run", "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner]", [], ["--registry", "--digest", "--input", "--receipt-dir", "--credential", "--secret-env", "--non-interactive", "--json"], "local-runtime", ["skill-resolution", "graph-runtime", "receipts", "sandbox", "authority", "caller-mediated-resolution", "adapter-cli-tool", "adapter-a2a", "adapter-agent"], ["skill.run.validate"]),
+  command("mcp.serve", "runx mcp serve <skill-ref...>", [], ["--receipt-dir", "--runner", "--http-listen", "--http-allow-non-loopback"], "adapter", ["mcp", "adapter-mcp"], ["mcp.serve.validate"]),
+  command("skill.run", "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner]", [], ["--profile", "--credential-profile", "--input", "--input-json", "--approve-operator-context", "--full-operator-context", "--skip-operator-context", "--registry", "--digest", "--receipt-dir", "--credential", "--credential-scope", "--secret-env", "--non-interactive", "--json"], "local-runtime", ["skill-resolution", "graph-runtime", "receipts", "sandbox", "authority", "caller-mediated-resolution", "adapter-cli-tool", "adapter-a2a", "adapter-agent"], ["skill.run.validate"]),
   command("skill.inspect", "runx skill inspect <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner]", [], ["--registry", "--digest", "--json"], "filesystem", ["skill-resolution", "cli-presentation"], ["skill.inspect.validate"]),
-  command("harness", "runx harness <fixture.yaml...>", [], ["--json"], "local-runtime", ["harness", "receipts", "sandbox"], ["harness.execute"]),
+  command("harness", "runx harness <skill-dir|fixture.yaml...>", [], ["--receipt-dir", "--json", "--help", "-h"], "local-runtime", ["harness", "receipts", "sandbox"], ["harness.execute"]),
   command("tool.build", "runx tool build <tool-dir>|--all", [], ["--all", "--json"], "filesystem", ["tool-catalog", "authoring"], ["tool.build.validate"], { conditionalPositionals: ["<tool-dir>"] }),
   command("tool.search", "runx tool search <query>", [], ["--source", "--json"], "external-stub", ["tool-catalog", "adapter-catalog"], ["tool.search.validate"]),
   command("tool.inspect", "runx tool inspect <ref>", [], ["--source", "--json"], "external-stub", ["tool-catalog", "adapter-catalog"], ["tool.inspect.validate"]),
@@ -103,6 +104,8 @@ const surfaces: readonly RuntimeSurface[] = [
   surface("adapter-catalog", "runx-runtime catalog adapter", "stubbed", ["tool.search", "tool.inspect"], "Catalog adapter inputs and normalized outputs are preserved."),
   surface("adapter-agent", "runx-runtime external agent adapter", "stubbed", ["skill.run", "dev"], "Managed agent calls are represented by local stubs, not live providers."),
   surface("config", "runx-cli", "schema-exact", ["config.set", "config.get", "config.list"], "RUNX_HOME and local config file behavior are part of CLI parity."),
+  surface("public-api", "runx-cli + runx-runtime", "stubbed", ["login", "connect", "publish"], "Public API identity and HTTP transport are resolved once and exercised against deterministic local servers."),
+  surface("connect", "runx-cli + runx cloud", "stubbed", ["connect"], "Provider-neutral grant lifecycle and bounded provider operations use the native CLI against a local API fixture."),
   surface("doctor", "runx-cli + runx-runtime doctor", "semantic", ["doctor"], "Diagnostics can add ids, but the documented command surface must not disappear."),
   surface("dev", "runx-cli", "fixture-backed", ["dev"], "Development lanes run deterministic or recorded harness fixtures."),
   surface("skill-export", "runx-cli + runx-runtime", "semantic", ["export"], "Host-agent shims are generated from validated skill packages and delegate back to governed runx skill execution."),
@@ -122,6 +125,7 @@ const casesExecutedById = new Set([
   "harness.execute",
   "history.execute",
   "list.tools.execute",
+  "connect.execute",
 ]);
 
 const cases: readonly OracleCase[] = [
@@ -146,6 +150,7 @@ const cases: readonly OracleCase[] = [
     proves: ["history", "ledger", "receipts", "cli-presentation"],
   },
   execute("list.tools.execute", "list", ["list", "tools", "--json"], 0, true, [], []),
+  execute("connect.execute", "connect", ["connect", "list", "--api-base-url", "$FIXTURE_CONNECT_API", "--token", "rxk_fixture", "--allow-local-api", "--json"], 0, true, ["\"principal_id\": \"fixture-user\"", "\"grants\""], []),
   ...commands
     .filter((entry) => !entry.cases.some((caseId) => casesExecutedById.has(caseId)))
     .map((entry) => validate(`${entry.id}.validate`, entry.id, entry.parity.surfaces)),
@@ -247,7 +252,7 @@ This directory captures the canonical native Rust CLI/runtime surface. The
 matrix is generated from \`scripts/generate-cli-feature-parity.ts\` and checked
 against \`crates/runx-cli/src/router.rs\`.
 
-Required exit-code coverage: \`"exitCodes": [0, 1, 2, 64]\`.
+Required exit-code coverage: \`"exitCodes": [0, 1, 2, 3, 64]\`.
 
 ## Files
 
@@ -269,84 +274,27 @@ Required exit-code coverage: \`"exitCodes": [0, 1, 2, 64]\`.
 }
 
 function checkUsageCoverage(): void {
-  const usageCommands = extractUsageCommands(readFileSync(join(root, "crates/runx-cli/src/router.rs"), "utf8"));
-  const commandIds = new Set(commands.map((entry) => entry.id));
-  const missing = usageCommands.flatMap((usage) =>
-    helpUsageCommandIds(usage)
-      .filter((id) => !commandIds.has(id))
-      .map((id) => `${usage} -> ${id}`));
-  if (missing.length > 0) {
-    throw new Error(`CLI parity matrix is missing help usage entries:\n${missing.join("\n")}`);
+  const source = readFileSync(join(root, "crates/runx-cli/src/command_spec/catalog.rs"), "utf8");
+  const registryNames = new Set(
+    [...source.matchAll(/CommandSpec \{\s*name: "([a-z][a-z0-9-]*)"/gu)]
+      .map((match) => match[1])
+      .filter((name): name is string => name !== undefined),
+  );
+  const matrixNames = new Set(
+    commands
+      .filter((entry) => entry.id !== "cli.help")
+      .map((entry) => entry.id.split(".")[0])
+      .filter((name): name is string => name !== undefined),
+  );
+  const missingFromMatrix = [...registryNames].filter((name) => !matrixNames.has(name));
+  const missingFromRegistry = [...matrixNames].filter((name) => !registryNames.has(name));
+  if (missingFromMatrix.length > 0 || missingFromRegistry.length > 0) {
+    throw new Error([
+      "CLI command registry and parity matrix disagree.",
+      `Missing from matrix: ${missingFromMatrix.join(", ") || "none"}`,
+      `Missing from registry: ${missingFromRegistry.join(", ") || "none"}`,
+    ].join("\n"));
   }
-}
-
-function extractUsageCommands(routerSource: string): readonly string[] {
-  return extractHelpBlock(extractRustHelpText(routerSource), "Commands:");
-}
-
-function extractRustHelpText(routerSource: string): string {
-  const match = routerSource.match(/pub fn help_text\(\) -> String \{\s*"\\\n([\s\S]*?)"\s*\.to_owned\(\)\s*\}/u);
-  if (!match?.[1]) {
-    throw new Error("Could not find help_text() string in crates/runx-cli/src/router.rs");
-  }
-  return match[1];
-}
-
-function extractHelpBlock(helpText: string, label: string): readonly string[] {
-  const lines = helpText.split("\n");
-  const start = lines.findIndex((line) => line.trim() === label);
-  if (start === -1) {
-    throw new Error(`Could not find ${label} block in crates/runx-cli/src/router.rs`);
-  }
-  const entries: string[] = [];
-  for (const line of lines.slice(start + 1)) {
-    if (line.trim() === "") {
-      break;
-    }
-    const trimmed = line.trim();
-    if (trimmed.startsWith("runx ")) {
-      entries.push(trimmed);
-    }
-  }
-  return entries;
-}
-
-function helpUsageCommandIds(usage: string): readonly string[] {
-  if (usage.startsWith("runx skill <")) {
-    return ["skill.run"];
-  }
-  if (usage.startsWith("runx skill inspect ")) {
-    return ["skill.inspect"];
-  }
-  if (usage.startsWith("runx config ")) {
-    return ["config.set", "config.get", "config.list"];
-  }
-  if (usage.startsWith("runx policy inspect|lint")) {
-    return ["policy.inspect", "policy.lint"];
-  }
-  if (usage.startsWith("runx policy inspect")) {
-    return ["policy.inspect"];
-  }
-  if (usage.startsWith("runx policy lint")) {
-    return ["policy.lint"];
-  }
-  if (usage.startsWith("runx mcp serve")) {
-    return ["mcp.serve"];
-  }
-  if (usage.startsWith("runx tool search")) {
-    return ["tool.search"];
-  }
-  if (usage.startsWith("runx tool inspect")) {
-    return ["tool.inspect"];
-  }
-  if (usage.startsWith("runx tool build")) {
-    return ["tool.build"];
-  }
-  const commandName = usage.split(/\s+/)[1];
-  if (!commandName) {
-    return [];
-  }
-  return [commandName];
 }
 
 function checkCanonicalOnly(): void {

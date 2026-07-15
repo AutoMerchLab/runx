@@ -563,10 +563,7 @@ fn configured_tool_roots(env: &std::collections::BTreeMap<String, String>) -> Ve
 }
 
 fn workspace_root(env: &std::collections::BTreeMap<String, String>, fallback: &Path) -> PathBuf {
-    env.get("RUNX_CWD")
-        .or_else(|| env.get("RUNX_PROJECT_DIR"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|| fallback.to_path_buf())
+    crate::config::resolve_runx_workspace_base(env, fallback)
 }
 
 fn local_lookup_miss(error: &ToolCatalogError) -> bool {

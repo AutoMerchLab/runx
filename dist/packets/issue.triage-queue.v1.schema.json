@@ -4,6 +4,9 @@
   "x-runx-packet-id": "runx.issue.triage_queue.v1",
   "type": "object",
   "properties": {
+    "issue_candidates": { "type": "array" },
+    "selection_rationale": { "type": "object" },
+    "operator_notes": { "type": "object" },
     "queue": { "type": "array" },
     "issues": { "type": "array" }
   },

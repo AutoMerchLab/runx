@@ -12,6 +12,8 @@ use std::net::SocketAddr;
 #[cfg(any(feature = "async-http", test))]
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[cfg(feature = "async-http")]
+use std::sync::OnceLock;
+#[cfg(feature = "async-http")]
 use std::time::Duration;
 
 #[cfg(any(feature = "async-http", test))]
@@ -30,6 +32,14 @@ const DEFAULT_HTTP_REQUEST_TIMEOUT: Duration = Duration::from_secs(30);
 const DEFAULT_HTTP_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 #[cfg(feature = "async-http")]
 const MANAGED_AGENT_REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
+#[cfg(feature = "async-http")]
+const MAX_SAFE_READ_ATTEMPTS: usize = 3;
+#[cfg(feature = "async-http")]
+const DEFAULT_SAFE_READ_RETRY_DELAY: Duration = Duration::from_millis(100);
+#[cfg(feature = "async-http")]
+const MAX_SAFE_READ_RETRY_DELAY: Duration = Duration::from_secs(2);
+#[cfg(feature = "async-http")]
+static HTTP_CLIENT_RUNTIME: OnceLock<Result<tokio::runtime::Runtime, String>> = OnceLock::new();
 
 /// The default browser User-Agent the governed fetch transport presents (current
 /// stable Chrome). Overridable per run with `RUNX_HTTP_USER_AGENT`, opt-out with
@@ -135,6 +145,7 @@ impl ReqwestHttpTransport {
         Ok(Self {
             client,
             allow_private_networks,
+            request_timeout,
         })
     }
 
@@ -200,39 +211,114 @@ impl RuntimeHttpTransport for ReqwestHttpTransport {
     fn send(&self, request: RuntimeHttpRequest) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
         validate_http_url(&request.url, self.allow_private_networks)?;
         let client = self.client.clone();
+        let request_timeout = self.request_timeout;
+        let headers = reqwest_headers(&request.headers)?;
         block_on_http(async move {
-            let method = reqwest_method(request.method);
-            let mut builder = client.request(method, request.url);
-            for header in request.headers {
-                validate_header(&header)?;
-                let name = reqwest::header::HeaderName::from_bytes(header.name.trim().as_bytes())
-                    .map_err(|error| RuntimeHttpError::InvalidHeaderName {
-                    name: header.name.clone(),
-                    message: error.to_string(),
-                })?;
-                let value =
-                    reqwest::header::HeaderValue::from_str(&header.value).map_err(|error| {
-                        RuntimeHttpError::InvalidHeaderValue {
-                            name: header.name.clone(),
-                            message: error.to_string(),
-                        }
-                    })?;
-                builder = builder.header(name, value);
-            }
-            if let Some(body) = request.body {
-                builder = builder.body(body);
-            }
-            let response = builder
-                .send()
-                .await
-                .map_err(|error| RuntimeHttpError::Transport {
-                    message: transport_error_message(&error),
-                })?;
-            let status = response.status().as_u16();
-            let body = read_limited_response_body(response, MAX_HTTP_RESPONSE_BYTES).await?;
-            Ok(RuntimeHttpResponse { status, body })
+            tokio::time::timeout(
+                request_timeout,
+                send_reqwest_with_safe_read_retries(client, request, headers),
+            )
+            .await
+            .map_err(|_| RuntimeHttpError::Transport {
+                message: format!(
+                    "request deadline exceeded after {}ms",
+                    request_timeout.as_millis()
+                ),
+            })?
         })
     }
+}
+
+#[cfg(feature = "async-http")]
+fn reqwest_headers(
+    headers: &[RuntimeHttpHeader],
+) -> Result<reqwest::header::HeaderMap, RuntimeHttpError> {
+    let mut output = reqwest::header::HeaderMap::new();
+    for header in headers {
+        validate_header(header)?;
+        let name = reqwest::header::HeaderName::from_bytes(header.name.trim().as_bytes()).map_err(
+            |error| RuntimeHttpError::InvalidHeaderName {
+                name: header.name.clone(),
+                message: error.to_string(),
+            },
+        )?;
+        let value = reqwest::header::HeaderValue::from_str(&header.value).map_err(|error| {
+            RuntimeHttpError::InvalidHeaderValue {
+                name: header.name.clone(),
+                message: error.to_string(),
+            }
+        })?;
+        output.insert(name, value);
+    }
+    Ok(output)
+}
+
+#[cfg(feature = "async-http")]
+async fn send_reqwest_with_safe_read_retries(
+    client: reqwest::Client,
+    request: RuntimeHttpRequest,
+    headers: reqwest::header::HeaderMap,
+) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
+    let mut attempt = 1_usize;
+    loop {
+        let mut builder = client
+            .request(reqwest_method(request.method), &request.url)
+            .headers(headers.clone());
+        if let Some(body) = &request.body {
+            builder = builder.body(body.clone());
+        }
+        let response = builder
+            .send()
+            .await
+            .map_err(|error| RuntimeHttpError::Transport {
+                message: transport_error_message(&error),
+            })?;
+        let status = response.status().as_u16();
+        if request.method == HttpMethod::Get
+            && retryable_read_status(status)
+            && attempt < MAX_SAFE_READ_ATTEMPTS
+        {
+            let delay = safe_read_retry_delay(&response, attempt);
+            drop(response);
+            tokio::time::sleep(delay).await;
+            attempt += 1;
+            continue;
+        }
+        let body = read_limited_response_body(response, MAX_HTTP_RESPONSE_BYTES).await?;
+        return Ok(RuntimeHttpResponse { status, body });
+    }
+}
+
+#[cfg(feature = "async-http")]
+fn retryable_read_status(status: u16) -> bool {
+    matches!(status, 429 | 502 | 503 | 504)
+}
+
+#[cfg(feature = "async-http")]
+fn safe_read_retry_delay(response: &reqwest::Response, completed_attempts: usize) -> Duration {
+    response
+        .headers()
+        .get(reqwest::header::RETRY_AFTER)
+        .and_then(|value| value.to_str().ok())
+        .and_then(parse_retry_after)
+        .unwrap_or_else(|| {
+            DEFAULT_SAFE_READ_RETRY_DELAY
+                .saturating_mul(u32::try_from(completed_attempts).unwrap_or(u32::MAX))
+        })
+        .min(MAX_SAFE_READ_RETRY_DELAY)
+}
+
+#[cfg(feature = "async-http")]
+fn parse_retry_after(value: &str) -> Option<Duration> {
+    if let Ok(seconds) = value.trim().parse::<u64>() {
+        return Some(Duration::from_secs(seconds));
+    }
+    let deadline = httpdate::parse_http_date(value).ok()?;
+    Some(
+        deadline
+            .duration_since(std::time::SystemTime::now())
+            .unwrap_or(Duration::ZERO),
+    )
 }
 
 #[cfg(feature = "async-http")]
@@ -630,13 +716,24 @@ where
     if tokio::runtime::Handle::try_current().is_ok() {
         return Err(RuntimeHttpError::BlockingHttpInsideAsyncRuntime);
     }
-    let runtime = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|error| RuntimeHttpError::AsyncRuntimeUnavailable {
-            message: error.to_string(),
-        })?;
-    runtime.block_on(future)
+    http_runtime()?.block_on(future)
+}
+
+#[cfg(feature = "async-http")]
+fn http_runtime() -> Result<&'static tokio::runtime::Runtime, RuntimeHttpError> {
+    match HTTP_CLIENT_RUNTIME.get_or_init(|| {
+        tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .thread_name("runx-http")
+            .enable_all()
+            .build()
+            .map_err(|error| error.to_string())
+    }) {
+        Ok(runtime) => Ok(runtime),
+        Err(message) => Err(RuntimeHttpError::AsyncRuntimeUnavailable {
+            message: message.clone(),
+        }),
+    }
 }
 
 #[cfg(feature = "async-http")]
@@ -675,7 +772,10 @@ mod tests {
     use std::time::Duration;
 
     #[cfg(feature = "async-http")]
-    use super::{GuardedDnsResolver, MAX_HTTP_RESPONSE_BYTES, ReqwestHttpTransport, block_on_http};
+    use super::{
+        GuardedDnsResolver, MAX_HTTP_RESPONSE_BYTES, ReqwestHttpTransport, block_on_http,
+        http_runtime,
+    };
     use super::{
         HttpMethod, RuntimeHttpClient, RuntimeHttpError, RuntimeHttpHeader, RuntimeHttpRequest,
         RuntimeHttpResponse, RuntimeHttpTransport,
@@ -821,6 +921,42 @@ mod tests {
 
     #[test]
     #[cfg(feature = "async-http")]
+    fn synchronous_http_reuses_one_runtime() -> Result<(), RuntimeHttpTestError> {
+        let first = http_runtime()?;
+        let second = http_runtime()?;
+        assert!(std::ptr::eq(first, second));
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "async-http")]
+    fn shared_http_runtime_supports_concurrent_sync_callers() -> Result<(), RuntimeHttpTestError> {
+        let callers = (0..8)
+            .map(|value| {
+                std::thread::spawn(move || {
+                    block_on_http(async move {
+                        tokio::task::yield_now().await;
+                        Ok(value)
+                    })
+                })
+            })
+            .collect::<Vec<_>>();
+
+        let mut values = Vec::new();
+        for caller in callers {
+            values.push(
+                caller
+                    .join()
+                    .map_err(|_| RuntimeHttpTestError::ServerThread)??,
+            );
+        }
+        values.sort_unstable();
+        assert_eq!(values, (0..8).collect::<Vec<_>>());
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "async-http")]
     fn guarded_dns_resolver_rejects_private_resolved_addresses() -> Result<(), RuntimeHttpTestError>
     {
         let resolver = GuardedDnsResolver::new(StaticDnsResolver {
@@ -879,6 +1015,80 @@ mod tests {
 
         assert_eq!(response.status, 302);
         assert!(request.starts_with("GET /start "));
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "async-http")]
+    fn reqwest_transport_retries_bounded_safe_reads() -> Result<(), RuntimeHttpTestError> {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let address = listener.local_addr()?;
+        let server = std::thread::spawn(move || -> Result<Vec<String>, std::io::Error> {
+            let mut requests = Vec::new();
+            for attempt in 1..=3 {
+                let (mut stream, _) = listener.accept()?;
+                let mut buffer = [0_u8; 1024];
+                let bytes_read = stream.read(&mut buffer)?;
+                requests.push(String::from_utf8_lossy(&buffer[..bytes_read]).into_owned());
+                if attempt < 3 {
+                    stream.write_all(
+                        b"HTTP/1.1 503 Service Unavailable\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+                    )?;
+                } else {
+                    stream.write_all(
+                        b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok",
+                    )?;
+                }
+            }
+            Ok(requests)
+        });
+
+        let transport = ReqwestHttpTransport::with_private_network_access_for_tests()?;
+        let response = transport.send(RuntimeHttpRequest {
+            method: HttpMethod::Get,
+            url: format!("http://{address}/retry"),
+            headers: Vec::new(),
+            body: None,
+        })?;
+        let requests = server
+            .join()
+            .map_err(|_| RuntimeHttpTestError::ServerThread)??;
+
+        assert_eq!(response.status, 200);
+        assert_eq!(response.body, "ok");
+        assert_eq!(requests.len(), 3);
+        assert!(requests.iter().all(|request| request.starts_with("GET ")));
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "async-http")]
+    fn reqwest_transport_never_retries_mutations() -> Result<(), RuntimeHttpTestError> {
+        let listener = TcpListener::bind("127.0.0.1:0")?;
+        let address = listener.local_addr()?;
+        let server = std::thread::spawn(move || -> Result<String, std::io::Error> {
+            let (mut stream, _) = listener.accept()?;
+            let mut buffer = [0_u8; 1024];
+            let bytes_read = stream.read(&mut buffer)?;
+            stream.write_all(
+                b"HTTP/1.1 503 Service Unavailable\r\nRetry-After: 0\r\nContent-Length: 0\r\nConnection: close\r\n\r\n",
+            )?;
+            Ok(String::from_utf8_lossy(&buffer[..bytes_read]).into_owned())
+        });
+
+        let transport = ReqwestHttpTransport::with_private_network_access_for_tests()?;
+        let response = transport.send(RuntimeHttpRequest {
+            method: HttpMethod::Post,
+            url: format!("http://{address}/mutate"),
+            headers: Vec::new(),
+            body: Some("{}".to_owned()),
+        })?;
+        let request = server
+            .join()
+            .map_err(|_| RuntimeHttpTestError::ServerThread)??;
+
+        assert_eq!(response.status, 503);
+        assert!(request.starts_with("POST "));
         Ok(())
     }
 

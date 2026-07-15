@@ -1,5 +1,5 @@
 skill: mock-refund
-version: "0.1.0"
+version: "0.1.1"
 catalog:
   kind: graph
   audience: operator
@@ -38,6 +38,7 @@ harness:
             original_receipt_link:
               receipt_ref: receipt:charge:mock:paid-search-001
             settlement_family: mock
+            open_questions: []
           agent_task.refund-reserve.output:
             payment_decision:
               decision_id: decision_refund_demo_001
@@ -56,6 +57,7 @@ harness:
             approval:
               required: false
               status: not_required
+            open_questions: []
           agent_task.settlement.output:
             refund_closure:
               status: refunded
@@ -115,12 +117,12 @@ runners:
           skill: ../refund
           runner: mock
           inputs:
-            original_receipt_ref: "{{original_receipt_ref}}"
-            original_receipt: "{{original_receipt}}"
-            refund_request: "{{refund_request}}"
-            parent_payment_authority: "{{parent_payment_authority}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            original_receipt_ref: "$input.original_receipt_ref"
+            original_receipt: "$input.original_receipt"
+            refund_request: "$input.refund_request"
+            parent_payment_authority: "$input.parent_payment_authority"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"
     runx:
       payment_authority:
         direction: provider_refund

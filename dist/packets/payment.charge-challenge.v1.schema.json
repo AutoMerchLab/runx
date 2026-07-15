@@ -4,6 +4,9 @@
   "x-runx-packet-id": "runx.payment.charge_challenge.v1",
   "type": "object",
   "properties": {
+    "effect_required_signal": {
+      "type": "object"
+    },
     "payment_required_signal": {
       "type": "object"
     },

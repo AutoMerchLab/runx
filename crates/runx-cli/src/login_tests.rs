@@ -220,6 +220,42 @@ fn github_cli_login_exchanges_provider_token_without_serializing_it()
     Ok(())
 }
 
+#[test]
+fn github_cli_login_rejects_an_unpinned_principal() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile_dir()?;
+    let env = BTreeMap::from([("RUNX_HOME".to_owned(), temp.to_string_lossy().to_string())]);
+    let transport = StubTransport::with_responses(vec![HttpResponse {
+        status: 200,
+        body: serde_json::json!({
+            "status": "success",
+            "principal_id": " ",
+            "credential_id": "cred_from_gh",
+            "token": "rxk_from_gh"
+        })
+        .to_string(),
+    }]);
+    let Err(error) = run_provider_token_login_with_transport(
+        &LoginPlan {
+            api_base_url: Some("https://runx.test/".to_owned()),
+            provider: Some("github".to_owned()),
+            purpose: Some("publish".to_owned()),
+            from_gh: true,
+            allow_local_api: false,
+            json: true,
+        },
+        &env,
+        &temp,
+        &transport,
+        "github_cli_secret",
+    ) else {
+        return Err("login without a principal must fail closed".into());
+    };
+
+    assert!(matches!(error, LoginCliError::MissingPrincipal));
+    assert!(!temp.join("config.json").exists());
+    Ok(())
+}
+
 fn request_json_body(request: &HttpRequest) -> Result<serde_json::Value, serde_json::Error> {
     serde_json::from_str(request.body.as_deref().unwrap_or_default())
 }

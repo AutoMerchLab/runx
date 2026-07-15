@@ -274,13 +274,11 @@ impl PreparedSkillRun {
 }
 
 #[derive(Serialize)]
-struct PreparedDigestPreimage<'a> {
+struct PreparedAuthorizationPreimage<'a> {
     schema: &'static str,
     skill_path: &'a Path,
     cwd: &'a Path,
     runner: &'a str,
-    receipt_dir: Option<&'a Path>,
-    run_id: Option<&'a str>,
     answers_path: Option<&'a Path>,
     inputs: &'a BTreeMap<String, JsonValue>,
     credential: Option<PreparedCredentialSummary>,
@@ -300,15 +298,9 @@ pub fn prepare_skill_run(
     let skill_dir = resolve_skill_dir(&request.skill_path)?;
     let manifest = load_runner_manifest(&skill_dir)?;
     let runner = selected_runner(&manifest, selected_runner_name)?.clone();
+    super::skill_front::apply_runner_input_defaults(&mut request.inputs, &runner);
     let request_summary = request_summary(&request, &skill_dir, &runner.name, entry);
-    let missing = runner
-        .inputs
-        .iter()
-        .filter(|(name, input)| {
-            input.required && input.default.is_none() && !request.inputs.contains_key(*name)
-        })
-        .map(|(name, _)| name.clone())
-        .collect::<Vec<_>>();
+    let missing = missing_required_inputs(&runner, &request.inputs);
 
     let mut trace = vec![PreparedTraceEntry {
         node_path: "entry".to_owned(),
@@ -354,13 +346,14 @@ pub fn prepare_skill_run(
     };
 
     let governance = chain.as_ref().map(governance_summary).unwrap_or_default();
-    let preimage = PreparedDigestPreimage {
+    // Receipt storage and generated run identity are execution bookkeeping, not
+    // authority. Keeping them out of this preimage lets an operator approve the
+    // same semantic run contract regardless of where its evidence is written.
+    let preimage = PreparedAuthorizationPreimage {
         schema: PREPARED_SKILL_REPORT_SCHEMA,
         skill_path: &request_summary.skill_path,
         cwd: &request_summary.cwd,
         runner: &request_summary.runner,
-        receipt_dir: request_summary.receipt_dir.as_deref(),
-        run_id: request_summary.run_id.as_deref(),
         answers_path: request_summary.answers_path.as_deref(),
         inputs: &request.inputs,
         credential: request_summary.credential.clone(),
@@ -516,6 +509,23 @@ fn credential_summary(value: &LocalCredentialDescriptor) -> PreparedCredentialSu
     }
 }
 
+/// Required inputs the runner declares that are absent (and carry no default).
+/// The single source of truth for the required-input contract, shared by the
+/// prepare stage and the inline harness so both enforce it identically.
+pub(crate) fn missing_required_inputs(
+    runner: &SkillRunnerDefinition,
+    inputs: &BTreeMap<String, JsonValue>,
+) -> Vec<String> {
+    runner
+        .inputs
+        .iter()
+        .filter(|(name, input)| {
+            input.required && input.default.is_none() && !inputs.contains_key(*name)
+        })
+        .map(|(name, _)| name.clone())
+        .collect()
+}
+
 fn json_type(value: &JsonValue) -> &'static str {
     match value {
         JsonValue::Null => "null",
@@ -645,11 +655,16 @@ mod tests {
 
     fn write_skill(directory: &Path, inputs: &str, body: &str) -> Result<(), Box<dyn Error>> {
         fs::create_dir_all(directory)?;
-        fs::write(directory.join("SKILL.md"), body)?;
+        fs::write(
+            directory.join("SKILL.md"),
+            format!(
+                "---\nname: prepared\ndescription: Test skill for prepared execution.\n---\n\n{body}\n"
+            ),
+        )?;
         fs::write(
             directory.join("X.yaml"),
             format!(
-                "skill: prepared\nrunners:\n  main:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: review\n{inputs}"
+                "skill: prepared\nrunners:\n  main:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: review\n    outputs:\n      result: object\n{inputs}"
             ),
         )?;
         Ok(())
@@ -693,6 +708,56 @@ mod tests {
             .insert("prompt".to_owned(), JsonValue::String("changed".to_owned()));
         let changed = prepare_skill_run(changed, None, PreparedEntryProvenance::default())?;
         assert_ne!(first.digest(), changed.digest());
+        Ok(())
+    }
+
+    #[test]
+    fn prepared_skill_digest_ignores_receipt_storage_and_generated_run_id()
+    -> Result<(), Box<dyn Error>> {
+        let temp = tempdir()?;
+        write_skill(temp.path(), "", "# Prepared")?;
+
+        let baseline = prepare_skill_run(
+            request(temp.path()),
+            None,
+            PreparedEntryProvenance::default(),
+        )?;
+        let mut relocated = request(temp.path());
+        relocated.receipt_dir = Some(temp.path().join("other-receipts"));
+        relocated.run_id = Some("rx_other".to_owned());
+        let relocated = prepare_skill_run(relocated, None, PreparedEntryProvenance::default())?;
+
+        assert_eq!(baseline.digest(), relocated.digest());
+        assert_ne!(
+            baseline.report().request.receipt_dir,
+            relocated.report().request.receipt_dir
+        );
+        assert_ne!(
+            baseline.report().request.run_id,
+            relocated.report().request.run_id
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn prepared_skill_applies_declared_input_defaults() -> Result<(), Box<dyn Error>> {
+        let temp = tempdir()?;
+        write_skill(
+            temp.path(),
+            "    inputs:\n      data_source_ref:\n        type: string\n        required: false\n        default: local://runx/default\n",
+            "# Prepared",
+        )?;
+
+        let prepared = prepare_skill_run(
+            request(temp.path()),
+            None,
+            PreparedEntryProvenance::default(),
+        )?;
+
+        assert_eq!(
+            prepared.request().inputs.get("data_source_ref"),
+            Some(&JsonValue::String("local://runx/default".to_owned()))
+        );
         Ok(())
     }
 

@@ -1,5 +1,5 @@
 skill: refund
-version: "0.1.1"
+version: "0.1.2"
 catalog:
   kind: graph
   audience: operator
@@ -44,9 +44,9 @@ runners:
             - payment:quote
             - payment:refund
           inputs:
-            original_receipt_ref: "{{original_receipt_ref}}"
-            original_receipt: "{{original_receipt}}"
-            refund_request: "{{refund_request}}"
+            original_receipt_ref: "$input.original_receipt_ref"
+            original_receipt: "$input.original_receipt"
+            refund_request: "$input.refund_request"
         - id: reserve
           skill: graph/refund-reserve
           runner: reserve
@@ -55,9 +55,9 @@ runners:
           mutation: true
           idempotency_key: refund-reserve
           inputs:
-            parent_payment_authority: "{{parent_payment_authority}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            parent_payment_authority: "$input.parent_payment_authority"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             refund_quote_packet: quote.refund_quote_packet.data
         - id: approve-refund
@@ -89,7 +89,7 @@ runners:
             reserved_refund_authority: reserve.refund_reservation_packet.data.reserved_payment_authority
           artifacts:
             wrap_as: refund_rail_packet
-            packet: runx.effect.evidence.v1
+            packet: runx.refund.evidence.v1
       policy:
         guards:
           - step: settlement
@@ -152,9 +152,9 @@ runners:
             - payment:quote
             - payment:refund
           inputs:
-            original_receipt_ref: "{{original_receipt_ref}}"
-            original_receipt: "{{original_receipt}}"
-            refund_request: "{{refund_request}}"
+            original_receipt_ref: "$input.original_receipt_ref"
+            original_receipt: "$input.original_receipt"
+            refund_request: "$input.refund_request"
         - id: reserve
           skill: graph/refund-reserve
           runner: reserve
@@ -163,9 +163,9 @@ runners:
           mutation: true
           idempotency_key: refund-reserve
           inputs:
-            parent_payment_authority: "{{requested_scope}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            parent_payment_authority: "$input.requested_scope"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             refund_quote_packet: quote.refund_quote_packet.data
         - id: approve-refund
@@ -197,7 +197,7 @@ runners:
             reserved_refund_authority: reserve.refund_reservation_packet.data.reserved_payment_authority
           artifacts:
             wrap_as: refund_rail_packet
-            packet: runx.effect.evidence.v1
+            packet: runx.refund.evidence.v1
       policy:
         guards:
           - step: settlement
@@ -250,9 +250,9 @@ runners:
             - payment:quote
             - payment:refund
           inputs:
-            original_receipt_ref: "{{original_receipt_ref}}"
-            original_receipt: "{{original_receipt}}"
-            refund_request: "{{refund_request}}"
+            original_receipt_ref: "$input.original_receipt_ref"
+            original_receipt: "$input.original_receipt"
+            refund_request: "$input.refund_request"
         - id: reserve
           skill: graph/refund-reserve
           runner: reserve
@@ -261,9 +261,9 @@ runners:
           mutation: true
           idempotency_key: refund-reserve
           inputs:
-            parent_payment_authority: "{{parent_payment_authority}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            parent_payment_authority: "$input.parent_payment_authority"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             refund_quote_packet: quote.refund_quote_packet.data
         - id: approve-refund
@@ -295,7 +295,7 @@ runners:
             reserved_refund_authority: reserve.refund_reservation_packet.data.reserved_payment_authority
           artifacts:
             wrap_as: refund_rail_packet
-            packet: runx.effect.evidence.v1
+            packet: runx.refund.evidence.v1
       policy:
         guards:
           - step: settlement
@@ -348,9 +348,9 @@ runners:
             - payment:quote
             - payment:refund
           inputs:
-            original_receipt_ref: "{{original_receipt_ref}}"
-            original_receipt: "{{original_receipt}}"
-            refund_request: "{{refund_request}}"
+            original_receipt_ref: "$input.original_receipt_ref"
+            original_receipt: "$input.original_receipt"
+            refund_request: "$input.refund_request"
         - id: reserve
           skill: graph/refund-reserve
           runner: reserve
@@ -359,9 +359,9 @@ runners:
           mutation: true
           idempotency_key: refund-reserve
           inputs:
-            parent_payment_authority: "{{parent_payment_authority}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            parent_payment_authority: "$input.parent_payment_authority"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"
           context:
             refund_quote_packet: quote.refund_quote_packet.data
         - id: approve-refund
@@ -393,7 +393,7 @@ runners:
             reserved_refund_authority: reserve.refund_reservation_packet.data.reserved_payment_authority
           artifacts:
             wrap_as: refund_rail_packet
-            packet: runx.effect.evidence.v1
+            packet: runx.refund.evidence.v1
       policy:
         guards:
           - step: settlement

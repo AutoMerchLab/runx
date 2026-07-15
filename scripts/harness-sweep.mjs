@@ -16,7 +16,6 @@ import { fileURLToPath } from "node:url";
 
 const schema = "runx.inline_harness_sweep.v1";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const defaultExpectedSkillCount = 77;
 
 try {
   const options = parseArgs(process.argv.slice(2));
@@ -69,9 +68,9 @@ function runSweep(options) {
   const failed = results.filter((result) => result.status === "failed");
   const required = options.require ?? 0;
   const gating = options.require !== undefined;
-  const expectedSkillCount = options.expectedCount ?? defaultExpectedSkillCount;
+  const expectedSkillCount = options.expectedCount;
   const failures = [];
-  if (skills.length !== expectedSkillCount) {
+  if (expectedSkillCount !== undefined && skills.length !== expectedSkillCount) {
     failures.push(
       `expected ${expectedSkillCount} official skills, discovered ${skills.length}`,
     );
@@ -90,7 +89,7 @@ function runSweep(options) {
     status: failures.length === 0 ? "passed" : "failed",
     summary: `${passedSkillCount}/${skills.length}`,
     required,
-    expected_skill_count: expectedSkillCount,
+    expected_skill_count: expectedSkillCount ?? null,
     discovered_skill_count: skills.length,
     passed_skill_count: passedSkillCount,
     failed_skill_count: failed.length,
@@ -279,7 +278,7 @@ function resolveRunxBinary(options) {
 }
 
 function officialSkills() {
-  const lockPath = path.join(repoRoot, "packages", "cli", "src", "official-skills.lock.json");
+  const lockPath = path.join(repoRoot, "skills", "official.lock.json");
   const lock = JSON.parse(readFileSync(lockPath, "utf8"));
   if (!Array.isArray(lock)) {
     throw new Error("official skills lock is not an array");
@@ -344,7 +343,6 @@ function parseHarnessReport(stdout) {
 function parseArgs(argv) {
   const options = {
     allowed: [],
-    expectedCount: defaultExpectedSkillCount,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];

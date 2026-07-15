@@ -6,9 +6,10 @@ away, and they are what this contract targets.
 
 This file is prompt contract, not only review policy. Skill instructions
 reference it so the agent generates better work before any downstream gate
-runs. runx injects the full document into agent contexts as `voice_profile`
-and pins the VOICE.md hash in the receipt under `metadata.voice_profile` so
-later review can prove which voice contract governed the run.
+runs. Runx ships this canonical profile in the native runtime, injects the full
+document into agent contexts as `voice_profile`, and pins its hash in signed
+receipt criteria. An explicit `RUNX_VOICE_PROFILE_PATH` or a workspace profile
+can replace the bundled default for a governed run.
 
 ## Lexical Anti-Patterns
 
@@ -95,9 +96,3 @@ When the voice contract cannot be met honestly, stop rather than soften:
   draft with the mismatch named.
 - `evidence_too_thin_for_voice`: the voice contract requires claim-weight
   that the evidence cannot support. Return `needs_more_evidence`.
-
-## Reference
-
-The voice this contract targets is derived from the published 0state writing
-(essay collection, 2026). When calibration is unclear, the authoritative
-examples are the opening paragraphs of those essays, not generic style guides.

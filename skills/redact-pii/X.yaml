@@ -1,11 +1,15 @@
 skill: redact-pii
-version: "0.1.0"
+version: "0.1.1"
 
 catalog:
   kind: skill
   audience: public
   visibility: public
   role: canonical
+  execution: execute
+  completion: runtime_receipt
+  requires_adapter: false
+  approval: none
 
 runners:
   redact-pii:
@@ -17,7 +21,7 @@ runners:
       redaction_report: object
     artifacts:
       named_emits:
-        redaction_report: runx.redaction.report.v1
+        redaction_report: redaction_report
       packets:
         redaction_report: runx.redaction.report.v1
     runx:

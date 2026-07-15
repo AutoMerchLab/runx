@@ -1,5 +1,5 @@
 skill: x402-pay
-version: "0.1.0"
+version: "0.1.1"
 catalog:
   kind: graph
   audience: operator
@@ -48,10 +48,10 @@ runners:
           skill: ../spend
           runner: x402
           inputs:
-            payment_signal: "{{payment_signal}}"
-            parent_payment_authority: "{{parent_payment_authority}}"
-            rail_profile_ref: "{{rail_profile_ref}}"
-            realm: "{{realm}}"
-            spend_policy: "{{spend_policy}}"
-            approval_context: "{{approval_context}}"
-            idempotency_seed: "{{idempotency_seed}}"
+            payment_signal: "$input.payment_signal"
+            parent_payment_authority: "$input.parent_payment_authority"
+            rail_profile_ref: "$input.rail_profile_ref"
+            realm: "$input.realm"
+            spend_policy: "$input.spend_policy"
+            approval_context: "$input.approval_context"
+            idempotency_seed: "$input.idempotency_seed"

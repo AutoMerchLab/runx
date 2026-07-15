@@ -28,6 +28,7 @@ for (const required of [
   'step("readiness structural guard"',
   'step("demo inventory guard"',
   'step("release version sync"',
+  'step("catalog version drift"',
   'await runSerialGroup("rust structure checks"',
   'step("cutover:legacy-check"',
   'step("build rust binaries"',

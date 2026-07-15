@@ -28,17 +28,22 @@ pub(crate) struct SkillResumeCommand<'a> {
     pub(crate) answers_path: Option<&'a Path>,
 }
 
+// rust-style-allow: long-function - resume parsing keeps UTF-8 identifiers and native path arguments in one audited cursor.
 pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
     if args.first().and_then(|arg| arg.to_str()) != Some("resume") {
         return Err("internal error: resume dispatcher received non-resume command".to_owned());
     }
     let mut receipt_dir = None;
     let mut json = false;
-    let mut positionals = Vec::new();
+    let mut positionals = Vec::<OsString>::new();
     let mut index = 1;
     while index < args.len() {
-        let token = string_arg(args, index)?;
-        match token.as_str() {
+        let Some(token) = args[index].to_str() else {
+            positionals.push(args[index].clone());
+            index += 1;
+            continue;
+        };
+        match token {
             "--json" | "-j" => {
                 json = true;
                 index += 1;
@@ -60,14 +65,18 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
             }
             "--receipt-dir" | "--receipts" | "-R" => {
                 index += 1;
-                receipt_dir = Some(PathBuf::from(string_arg(args, index)?));
+                receipt_dir = Some(PathBuf::from(
+                    args.get(index)
+                        .ok_or_else(|| format!("{token} requires a directory"))?
+                        .clone(),
+                ));
                 index += 1;
             }
             value if value.starts_with('-') => {
                 return Err(format!("unknown runx resume option {value}"));
             }
             value => {
-                positionals.push(value.to_owned());
+                positionals.push(OsString::from(value));
                 index += 1;
             }
         }
@@ -76,7 +85,10 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
         return Err("runx resume requires <run-id> <answers.json>".to_owned());
     }
     Ok(ResumePlan {
-        run_id: positionals.remove(0),
+        run_id: positionals
+            .remove(0)
+            .into_string()
+            .map_err(|_| "runx resume run id must be UTF-8".to_owned())?,
         answers_path: PathBuf::from(positionals.remove(0)),
         receipt_dir,
         json,
@@ -186,14 +198,6 @@ fn shell_token(value: &str) -> String {
         return value.to_owned();
     }
     format!("'{}'", value.replace('\'', "'\\''"))
-}
-
-fn string_arg(args: &[OsString], index: usize) -> Result<String, String> {
-    args.get(index)
-        .ok_or_else(|| "missing value for runx resume argument".to_owned())?
-        .to_str()
-        .map(ToOwned::to_owned)
-        .ok_or_else(|| "runx resume arguments must be UTF-8".to_owned())
 }
 
 fn write_resume_failure(message: &str, json: bool, exit_code: u8) -> ExitCode {

@@ -104,6 +104,8 @@ pub struct ReqwestHttpTransport {
     pub(super) client: reqwest::Client,
     #[cfg(feature = "async-http")]
     pub(super) allow_private_networks: bool,
+    #[cfg(feature = "async-http")]
+    pub(super) request_timeout: std::time::Duration,
 }
 
 pub(super) fn sensitive_header_name(name: &str) -> bool {

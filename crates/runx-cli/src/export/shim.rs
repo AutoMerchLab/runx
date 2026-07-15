@@ -60,9 +60,9 @@ fn render_shim(
         "Runx governs this runner's execution, policy, approvals, and signed receipt. A planning runner seals a plan, not the downstream external action; only report delivery or mutation when a provider-specific governed runner returns provider evidence.\n\n",
     );
     output.push_str(
-        "Before running, the shell must provide `RUNX_RECEIPT_SIGN_KID`, \
-`RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64`, and `RUNX_RECEIPT_SIGN_ISSUER_TYPE`. \
-If they are absent, runx fails closed instead of creating an unverifiable receipt.\n\n",
+        "Runx uses its local-development receipt identity when no explicit signer is configured. \
+If any `RUNX_RECEIPT_SIGN_*` variable is present, the complete signer tuple must be present or \
+runx fails closed. Never invent, copy, or print signing keys.\n\n",
     );
     output.push_str("```bash\n");
     output.push_str(&render_command(

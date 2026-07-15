@@ -43,6 +43,18 @@ runx resume <run-id> answers.json
 For required input, pass the missing `--input` value or the corresponding
 kebab-case CLI flag.
 
+## Exit Code 3: Verification Failed
+
+The verification command completed, but the receipt, receipt tree, signature,
+or notary evidence did not verify. This is distinct from exit code 1: the
+verification machinery ran successfully and produced a verdict.
+
+Common fixes:
+
+- Read the verification findings in stdout, or re-run with `--json`.
+- Check the trusted key, receipt lineage, and body/signature digests.
+- Use exit code 1 for I/O, parsing, or runtime failures before a verdict exists.
+
 ## Exit Code 64: Usage
 
 The command shape is not supported. This usually means the first positional

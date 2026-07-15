@@ -1,7 +1,10 @@
 pub mod add;
 pub mod cli_args;
+pub mod cli_error;
 pub(crate) mod cli_io;
+pub mod command_spec;
 pub mod config;
+pub mod connect;
 pub mod dev;
 pub mod doctor;
 pub mod export;
@@ -15,7 +18,6 @@ pub mod parser;
 pub mod payment;
 pub mod policy;
 pub(crate) mod public_api;
-pub(crate) mod public_api_token;
 pub mod publish;
 pub mod registry;
 pub mod resume;

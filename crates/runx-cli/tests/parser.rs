@@ -81,10 +81,10 @@ fn parser_eval_unknown_kind_returns_structured_error() -> Result<(), Box<dyn std
     assert_eq!(output.status.code(), Some(1));
     assert_eq!(String::from_utf8(output.stderr)?, "");
     let value = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
-    assert_eq!(value["status"], "error");
-    assert_eq!(value["code"], "invalid_input");
+    assert_eq!(value["status"], "failure");
+    assert_eq!(value["error"]["code"], "invalid_input");
     assert!(
-        value["message"]
+        value["error"]["message"]
             .as_str()
             .is_some_and(|message| message.contains("unsupported parser input kind"))
     );

@@ -142,6 +142,10 @@ pub(super) fn registry_catalog(
             provider: None,
             runtime_path: None,
             part_of: Vec::new(),
+            execution: None,
+            completion: None,
+            requires_adapter: None,
+            approval: None,
         })
 }
 
@@ -361,6 +365,10 @@ pub(super) fn normalize_registry_catalog(
         provider: None,
         runtime_path: None,
         part_of: Vec::new(),
+        execution: None,
+        completion: None,
+        requires_adapter: None,
+        approval: None,
     }
 }
 
