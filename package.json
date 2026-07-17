@@ -34,7 +34,7 @@
     "docs:exit-codes": "tsx scripts/check-cli-exit-codes.ts",
     "authoring:check-package-contract": "node scripts/check-authoring-package-contract.mjs",
     "bindings:check": "node scripts/check-upstream-skill-bindings.mjs",
-    "catalog:check": "node scripts/check-skill-version-drift.mjs && node scripts/check-skill-version-drift.mjs --self-test && node scripts/check-skill-capabilities.mjs && node scripts/check-skill-capabilities.mjs --self-test",
+    "catalog:check": "node scripts/check-skill-version-drift.mjs && node scripts/check-skill-version-drift.mjs --self-test && node scripts/check-skill-capabilities.mjs && node scripts/check-skill-capabilities.mjs --self-test && node scripts/harness-sweep.mjs --self-test",
     "commands:check-drift": "node scripts/check-command-drift.mjs",
     "domains:check": "node scripts/check-public-domain-urls.mjs",
     "release:version:check": "tsx scripts/set-release-version.ts --check",

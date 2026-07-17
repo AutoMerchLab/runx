@@ -20,6 +20,16 @@ use crate::receipts::paths::safe_receipt_store_label;
 use crate::receipts::store::{LocalReceiptStore, ReceiptStoreError};
 use crate::receipts::{RuntimeReceiptProofContextProvider, RuntimeReceiptSignaturePolicy};
 
+mod inspection;
+
+pub use inspection::{
+    RECEIPT_INSPECTION_PROJECTOR_ID, RECEIPT_INSPECTION_SCHEMA, ReceiptActInspection,
+    ReceiptAuthorityInspection, ReceiptDecisionInspection, ReceiptExercisedScope,
+    ReceiptInspection, ReceiptInspectionProjection, inspect_local_receipt,
+    inspect_local_receipt_with_policy, project_receipt_inspection,
+    project_receipt_inspection_with_policy,
+};
+
 pub const JOURNAL_PROJECTION_SCHEMA: &str = "runx.journal_projection.v1";
 pub const JOURNAL_PROJECTOR_ID: &str = "runx-runtime.local-journal.v1";
 pub const HISTORY_PROJECTOR_ID: &str = "runx-runtime.local-history.v1";

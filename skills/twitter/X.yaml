@@ -1,5 +1,5 @@
 skill: twitter
-version: "0.1.2"
+version: "0.2.0"
 catalog:
   kind: skill
   audience: public
@@ -107,6 +107,38 @@ runners:
         type: string
         required: false
         description: Extra operator guardrails.
+  select:
+    type: cli-tool
+    command: node
+    args:
+      - tools/twitter/select/run.mjs
+    outputs:
+      twitter_selection: object
+    artifacts:
+      wrap_as: twitter_selection
+      packet: twitter.selection.v1
+    inputs:
+      objective:
+        type: string
+        required: true
+        description: One bounded objective for this bulk selection.
+      principal:
+        type: string
+        required: true
+        description: The account being operated, for example account:@handle.
+      archive_file:
+        type: string
+        required: true
+        description: Path to an X archive export file (tweets.js).
+      predicate:
+        type: json
+        required: true
+        description: "Typed selection predicate: rt_of, is_retweet, text_prefix, text_contains, max_likes, max_reposts, before_year, after_year. A post must satisfy every provided field."
+      max_acts:
+        type: number
+        required: false
+        default: 5000
+        description: Cap on selected acts; a larger match set is flagged truncated.
   execute:
     type: graph
     credential: twitter-user
@@ -124,12 +156,24 @@ runners:
       already_executed_act_ids:
         type: json
         required: false
-        description: Act ids confirmed executed in a prior run; skipped for idempotent re-execution.
+        description: Act ids confirmed executed in a prior run; skipped for idempotent re-execution. A driver folds these from the execution ledger.
       max_acts:
         type: number
         required: false
         default: 50
-        description: Per-execution cap on total acts.
+        description: Per-execution cap on total acts; size this to the provider rate window for a staged bulk purge.
+      data_source_ref:
+        type: string
+        required: true
+        description: Logical data source holding the execution ledger; the operator binds it to durable local SQLite.
+      expected_version:
+        type: number
+        required: true
+        description: Current version of the execution stream before this batch appends; the driver reads it from the ledger.
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for this batch append.
     graph:
       name: twitter-execute
       steps:
@@ -153,6 +197,19 @@ runners:
             plan_digest: "$input.plan_digest"
             already_executed_act_ids: "$input.already_executed_act_ids"
             max_acts: "$input.max_acts"
+        - id: persist
+          skill: ../data-store
+          runner: append_event
+          scopes:
+            - runx:data:append
+          inputs:
+            data_source_ref: "$input.data_source_ref"
+            resource: twitter_execution
+            aggregate_id: "$input.plan_digest"
+            expected_version: "$input.expected_version"
+            idempotency_key: "$input.idempotency_key"
+          context:
+            event: apply.twitter_execution.data.ledger_delta
       policy:
         guards:
           - step: apply

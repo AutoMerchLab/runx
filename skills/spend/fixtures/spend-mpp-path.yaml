@@ -15,7 +15,7 @@ inputs:
     authority_ref: authority:payment:test
   rail_profile_ref: rail-profile:mpp:test
   realm: test
-  idempotency_seed: demo-search-001
+  idempotency_seed: demo-mpp-001
 caller:
   answers:
     agent_task.pay-quote.output:
@@ -192,17 +192,17 @@ caller:
             uri: runx:harness:spend-mpp_fulfill
           act_id: act_fulfill
           reservation_decision_id: decision_payment_demo_001
-          idempotency_key: payment:demo-search-001
+          idempotency_key: payment:demo-mpp-001
           amount_minor: 125
           currency: USD
           counterparty: merchant:demo
           rail: mpp
         consumed_spend_capability_refs: []
       idempotency:
-        key: payment:demo-search-001
+        key: payment:demo-mpp-001
       spend_capability_ref:
         type: credential
-        uri: capability:payment:demo-search-001
+        uri: capability:payment:demo-mpp-001
       approval:
         required: false
         status: not_required
@@ -218,11 +218,11 @@ caller:
         amount_minor: 125
         currency: USD
       rail_proof:
-        proof_ref: receipt-proof:mpp:demo-search-001
-        idempotency_key: payment:demo-search-001
+        proof_ref: receipt-proof:mpp:demo-mpp-001
+        idempotency_key: payment:demo-mpp-001
       credential_envelope:
         form: paid_tool_credential
-        credential_ref: credential:mpp:demo-search-001
+        credential_ref: credential:mpp:demo-mpp-001
       redactions:
         - rail_session_material
       recovery_hint:

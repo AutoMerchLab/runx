@@ -1,5 +1,5 @@
 skill: review-skill
-version: "0.2.0"
+version: "0.2.1"
 
 catalog:
   kind: graph
@@ -42,6 +42,18 @@ harness:
         steps:
           - collect-evidence
           - assess
+        step_outputs:
+          collect-evidence:
+            subset:
+              native_test_evidence:
+                data:
+                  verdict: tested
+                  inspect:
+                    status: ok
+                    name: review-receipt
+                  harness:
+                    attempted: true
+                    status: passed
 
     - name: review-skill-assesses-supplied-evidence
       runner: assess

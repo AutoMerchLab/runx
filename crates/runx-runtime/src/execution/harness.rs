@@ -1,5 +1,6 @@
 mod assertions;
 pub mod fixtures;
+mod json_assertions;
 pub mod runner;
 
 pub use assertions::HarnessReplayReceipt;

@@ -71,3 +71,5 @@ is touched.
 - `project_context` (optional): product, repository, and operator constraints.
 - `receipt_id`, `receipt_summary`, `harness_output`, `failure_packet` (improve):
   bounded failure evidence, including the stable packet from `review-receipt`.
+  The inspect step validates and forwards that evidence into the authoring
+  context; it does not collapse the packet to a presence flag.

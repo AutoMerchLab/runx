@@ -61,7 +61,7 @@ pub enum HarnessReplayError {
     TargetWithoutParent { target: PathBuf },
     #[error("harness expectation mismatch at {field}: expected {expected}, actual {actual}")]
     Mismatch {
-        field: &'static str,
+        field: String,
         expected: String,
         actual: String,
     },

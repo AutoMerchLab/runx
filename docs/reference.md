@@ -404,6 +404,12 @@ policy, approvals, and resolution requests still behave the same way.
 
 Local receipts are append-only JSON files under `.runx/receipts` unless `RUNX_RECEIPT_DIR` is set. `runx history` verifies receipt signatures and surfaces `verified`, `unverified`, or `invalid` status.
 
+Graph receipt lineage is an immutable one-way DAG. The parent commits each
+child receipt ID and exact signed-body digest; a reusable child is not re-signed
+with one `lineage.parent`. This keeps receipt identity content-addressed and
+allows the same child proof to participate in more than one graph without a
+store collision.
+
 Publish a local receipt to the hosted notary with:
 
 ```bash
@@ -465,15 +471,50 @@ systems can consume governed lineage instead of raw prompt logs.
 
 ## Harness
 
-`runx harness` currently supports standalone fixture YAML files in the native
-Rust CLI:
+Run a whole skill package to execute its inline `X.yaml` cases and every
+conventional `fixtures/*.yaml` case through the native runtime:
+
+```bash
+runx harness ./skills/business-ops --json
+```
+
+Pass a fixture YAML path instead when intentionally replaying one standalone
+case:
 
 ```bash
 runx harness ./fixtures/harness/echo-skill.yaml --json
 ```
 
-Do not advertise `runx harness <skill-dir|SKILL.md>` until the Rust CLI expands
-inline `X.yaml` harness cases natively.
+Fixtures can assert the terminal status, receipt identity and lineage, exact or
+subset output, ordered graph steps, and exact or subset output for named graph
+steps. Prefer semantic subsets over complete snapshots:
+
+```yaml
+expect:
+  status: sealed
+  receipt:
+    schema: runx.receipt.v1
+    child_receipt_count: 2
+  steps:
+    - classify
+    - act
+  step_outputs:
+    act:
+      subset:
+        action_packet:
+          data:
+        status: awaiting_approval
+```
+
+Supplied `caller.answers` are semantic oracles, not inert model stubs. Native
+replay fails unless every supplied answer is observable in the root or step
+output. For stateful work, use one graph fixture to prove the transition and
+durable readback; do not depend on fixture filename order.
+
+Package replay uses a disposable project-owned workspace below `.runx/harness`
+and cleans it after the run. Receipts are durable and go to `.runx/receipts`, or
+to the directory selected by `--receipt-dir`. An explicit `RUNX_CWD` identifies
+the owning project but does not disable harness isolation.
 
 ## Doctor And Dogfood
 

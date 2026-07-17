@@ -5,7 +5,6 @@ use std::process::Command;
 
 use base64::Engine;
 use ring::signature::KeyPair;
-use runx_runtime::LocalReceiptStore;
 use serde_json::json;
 
 const TEST_MANIFEST_KEY_ID: &str = "runx-registry-skill-test-key";
@@ -13,79 +12,12 @@ const TEST_MANIFEST_SIGNER_ID: &str = "runx-registry-skill-test-signer";
 const TEST_MANIFEST_SEED: [u8; 32] = [7; 32];
 
 #[test]
-fn native_skill_pauses_and_resumes_with_run_id() -> Result<(), Box<dyn std::error::Error>> {
-    let root = crate::support::temp_root("runx-skill");
-    let skill_dir = write_agent_task_skill(&root)?;
-    let receipt_dir = root.join("receipts");
-
-    let pause = runx_command()
-        .args([
-            "skill",
-            skill_dir.to_str().ok_or("non-utf8 skill dir")?,
-            "--receipt-dir",
-            receipt_dir.to_str().ok_or("non-utf8 receipt dir")?,
-            "--json",
-            "--non-interactive",
-            "--skip-operator-context",
-            "--thread-title",
-            "Docs bug",
-        ])
-        .output()?;
-    let pause_json = assert_json(&pause, Some(2))?;
-    assert_eq!(pause_json["status"], "needs_agent");
-    assert_eq!(pause_json["run_id"], "run_agent_task-issue-intake-output");
-    assert_eq!(pause_json["requests"][0]["kind"], "agent_act");
-    let run_id = pause_json["run_id"].as_str().ok_or("missing run_id")?;
-
-    let answers_path = root.join("answers.json");
-    fs::write(
-        &answers_path,
-        serde_json::json!({
-            "answers": {
-                "agent_task.issue-intake.output": {
-                    "intake_report": {
-                        "summary": "Docs bug is bounded."
-                    }
-                }
-            }
-        })
-        .to_string(),
-    )?;
-
-    let resume = runx_command()
-        .args([
-            "resume",
-            run_id,
-            answers_path.to_str().ok_or("non-utf8 answers path")?,
-            "--receipt-dir",
-            receipt_dir.to_str().ok_or("non-utf8 receipt dir")?,
-            "--json",
-        ])
-        .output()?;
-    let resume_json = assert_json(&resume, Some(0))?;
-    assert_eq!(resume_json["status"], "sealed");
-    assert_eq!(resume_json["run_id"], run_id);
-    assert_eq!(resume_json["closure"]["disposition"], "closed");
-    assert_eq!(resume_json["receipt"]["schema"], "runx.receipt.v1");
-    let receipt_id = resume_json["receipt_id"]
-        .as_str()
-        .ok_or("missing receipt_id")?;
-    assert!(
-        LocalReceiptStore::new(&receipt_dir)
-            .receipt_path(receipt_id)?
-            .exists()
-    );
-
-    Ok(())
-}
-
-#[test]
 fn native_skill_resolves_bare_local_skill_and_documented_input_flags()
 -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::support::temp_root("runx-skill-bare-ref");
     let skills_root = root.join("skills");
     fs::create_dir_all(&skills_root)?;
-    let skill_dir = write_agent_task_skill(&skills_root)?;
+    let skill_dir = crate::support::write_agent_task_skill(&skills_root)?;
     let receipt_dir = root.join("receipts");
 
     let output = runx_command()
@@ -298,7 +230,7 @@ fn native_skill_inspect_reports_declared_credential_readiness()
 #[test]
 fn native_skill_exported_shim_resolves_to_source_skill() -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::support::temp_root("runx-skill-exported-shim");
-    let source_dir = write_agent_task_skill(&root.join("source with spaces"))?;
+    let source_dir = crate::support::write_agent_task_skill(&root.join("source with spaces"))?;
     let shim_dir = root.join("claude").join("issue-intake");
     fs::create_dir_all(&shim_dir)?;
     fs::write(
@@ -588,45 +520,9 @@ fn native_skill_json_parse_failure_uses_failure_envelope() -> Result<(), Box<dyn
 }
 
 #[test]
-fn native_skill_text_output_is_concise_for_pending_agent_request()
--> Result<(), Box<dyn std::error::Error>> {
-    let root = crate::support::temp_root("runx-skill-text-output");
-    let skill_dir = write_agent_task_skill(&root)?;
-
-    let output = runx_command()
-        .args([
-            "skill",
-            skill_dir.to_str().ok_or("non-utf8 skill dir")?,
-            "--thread-title",
-            "Docs bug",
-            "--non-interactive",
-            "--skip-operator-context",
-        ])
-        .output()?;
-
-    assert_eq!(output.status.code(), Some(2));
-    assert_eq!(String::from_utf8(output.stderr)?, "");
-    let stdout = String::from_utf8(output.stdout)?;
-    assert!(stdout.contains("status: needs_agent"));
-    assert!(stdout.contains("pending_requests: 1"));
-    assert!(stdout.contains("agent_task.issue-intake.output"));
-    assert!(stdout.contains("runx resume run_agent_task-issue-intake-output answers.json"));
-    assert!(!stdout.contains("<answers.json>"));
-    assert!(!stdout.trim_start().starts_with('{'));
-
-    Ok(())
-}
-
-#[test]
-fn native_skill_text_output_includes_copy_paste_resume_command()
--> Result<(), Box<dyn std::error::Error>> {
-    native_skill_text_output_is_concise_for_pending_agent_request()
-}
-
-#[test]
 fn native_skill_rejects_legacy_answers_flag() -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::support::temp_root("runx-skill-reject-answers");
-    let skill_dir = write_agent_task_skill(&root)?;
+    let skill_dir = crate::support::write_agent_task_skill(&root)?;
     let answers_path = root.join("answers.json");
     fs::write(&answers_path, "{}")?;
     let output = runx_command()
@@ -650,7 +546,7 @@ fn native_skill_rejects_legacy_answers_flag() -> Result<(), Box<dyn std::error::
 #[test]
 fn native_skill_rejects_legacy_run_id_flag() -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::support::temp_root("runx-skill-reject-run-id");
-    let skill_dir = write_agent_task_skill(&root)?;
+    let skill_dir = crate::support::write_agent_task_skill(&root)?;
     let output = runx_command()
         .args([
             "skill",
@@ -672,7 +568,7 @@ fn native_skill_rejects_legacy_run_id_flag() -> Result<(), Box<dyn std::error::E
 #[test]
 fn native_skill_rejects_retired_receipt_options() -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::support::temp_root("runx-skill-reject-retired-receipt");
-    let skill_dir = write_agent_task_skill(&root)?;
+    let skill_dir = crate::support::write_agent_task_skill(&root)?;
     let receipt_dir = root.join("receipts");
     let retired_receipt = format!("--{}", "receipt");
     let retired_receipt_dir = format!("--{}", ["receipt", "Dir"].concat());
@@ -761,34 +657,6 @@ fn assert_json(
     );
     assert_eq!(String::from_utf8(output.stderr.clone())?, "");
     Ok(serde_json::from_slice(&output.stdout)?)
-}
-
-fn write_agent_task_skill(root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let skill_dir = root.join("issue-intake");
-    fs::create_dir_all(&skill_dir)?;
-    fs::write(
-        skill_dir.join("SKILL.md"),
-        "---\nname: issue-intake\n---\n# Issue Intake\n",
-    )?;
-    fs::write(
-        skill_dir.join("X.yaml"),
-        r#"
-skill: issue-intake
-runners:
-  intake:
-    default: true
-    type: agent-task
-    agent: builder
-    task: issue-intake
-    outputs:
-      intake_report: object
-    inputs:
-      thread_title:
-        type: string
-        required: false
-"#,
-    )?;
-    Ok(skill_dir)
 }
 
 fn write_operator_context_skill(root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {

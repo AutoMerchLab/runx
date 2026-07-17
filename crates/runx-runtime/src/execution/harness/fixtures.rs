@@ -4,7 +4,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use runx_contracts::{ClosureDisposition, JsonObject, ReceiptSchema};
+use runx_contracts::{ClosureDisposition, JsonObject, JsonValue, ReceiptSchema};
 use serde::Deserialize;
 use thiserror::Error;
 
@@ -94,6 +94,15 @@ pub struct HarnessExpectation {
     pub status: Option<HarnessExpectedStatus>,
     pub receipt: Option<ReceiptExpectation>,
     pub steps: Vec<String>,
+    pub output: Option<HarnessJsonExpectation>,
+    pub step_outputs: BTreeMap<String, HarnessJsonExpectation>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HarnessJsonExpectation {
+    pub exact: Option<JsonValue>,
+    pub subset: Option<JsonValue>,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -109,6 +118,7 @@ pub struct ReceiptExpectation {
     pub act_ids: Vec<String>,
     pub decision_ids: Vec<String>,
     pub child_receipt_refs: Vec<String>,
+    pub child_receipt_count: Option<usize>,
     pub verification_refs: Vec<String>,
 }
 
@@ -139,6 +149,9 @@ struct RawHarnessExpectation {
     receipt: Option<RawReceiptExpectation>,
     #[serde(default)]
     steps: Vec<String>,
+    output: Option<HarnessJsonExpectation>,
+    #[serde(default)]
+    step_outputs: BTreeMap<String, HarnessJsonExpectation>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -158,6 +171,7 @@ struct RawReceiptExpectation {
     decision_ids: Vec<String>,
     #[serde(default)]
     child_receipt_refs: Vec<String>,
+    child_receipt_count: Option<usize>,
     #[serde(default)]
     verification_refs: Vec<String>,
     #[serde(flatten)]
@@ -232,7 +246,32 @@ fn validate_expectation(
             .map(validate_receipt_expectation)
             .transpose()?,
         steps: expectation.steps,
+        output: expectation
+            .output
+            .map(|expectation| validate_json_expectation(expectation, "expect.output"))
+            .transpose()?,
+        step_outputs: expectation
+            .step_outputs
+            .into_iter()
+            .map(|(step_id, expectation)| {
+                let field = format!("expect.step_outputs.{step_id}");
+                validate_json_expectation(expectation, &field)
+                    .map(|expectation| (step_id, expectation))
+            })
+            .collect::<Result<_, _>>()?,
     })
+}
+
+fn validate_json_expectation(
+    expectation: HarnessJsonExpectation,
+    field: &str,
+) -> Result<HarnessJsonExpectation, HarnessFixtureError> {
+    if expectation.exact.is_none() && expectation.subset.is_none() {
+        return Err(HarnessFixtureError::Required {
+            field: format!("{field}.exact or {field}.subset"),
+        });
+    }
+    Ok(expectation)
 }
 
 fn validate_receipt_expectation(
@@ -257,6 +296,7 @@ fn validate_receipt_expectation(
         act_ids: receipt.act_ids,
         decision_ids: receipt.decision_ids,
         child_receipt_refs: receipt.child_receipt_refs,
+        child_receipt_count: receipt.child_receipt_count,
         verification_refs: receipt.verification_refs,
     })
 }
@@ -338,6 +378,15 @@ expect:
     reason_code: harness_replay_passed
     act_ids:
       - echo
+    child_receipt_count: 2
+  output:
+    subset:
+      status: ready
+  step_outputs:
+    classify:
+      subset:
+        lane_packet:
+          status: ready
 "#,
         )?;
 
@@ -351,7 +400,29 @@ expect:
         assert_eq!(receipt.schema, ReceiptSchema::V1);
         assert_eq!(receipt.state.as_deref(), Some("sealed"));
         assert_eq!(receipt.act_ids, vec!["echo"]);
+        assert_eq!(receipt.child_receipt_count, Some(2));
+        assert!(fixture.expect.output.is_some());
+        assert!(fixture.expect.step_outputs.contains_key("classify"));
         Ok(())
+    }
+
+    #[test]
+    fn rejects_empty_json_expectation() {
+        let result = parse_harness_fixture(
+            r#"
+name: empty-output
+kind: skill
+target: ../skills/echo
+expect:
+  output: {}
+"#,
+        );
+
+        assert!(matches!(
+            result,
+            Err(HarnessFixtureError::Required { field })
+                if field == "expect.output.exact or expect.output.subset"
+        ));
     }
 
     #[test]

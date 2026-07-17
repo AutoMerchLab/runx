@@ -2,15 +2,13 @@ use std::collections::BTreeMap;
 use std::fmt;
 use std::sync::Arc;
 
-use runx_contracts::{Receipt, Reference};
+use runx_contracts::Reference;
 use runx_parser::GraphStep;
 
-use crate::adapter::SkillOutput;
-
 use super::{
-    EffectAdmission, EffectMetadataRefreshRequest, EffectOutputRequest, EffectReceiptRequest,
-    EffectReplay, EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest,
-    RuntimeEffect, RuntimeEffectError,
+    EffectAdmission, EffectOutputRequest, EffectReceiptRequest, EffectReplay,
+    EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest, RuntimeEffect,
+    RuntimeEffectError,
 };
 
 #[derive(Clone)]
@@ -125,23 +123,20 @@ impl RuntimeEffectRegistry {
         self.require_effect(family)?.validate_replay(request)
     }
 
-    pub(crate) fn refresh_output_metadata(
-        &self,
-        output: &mut SkillOutput,
-        receipt: &Receipt,
-    ) -> Result<(), RuntimeEffectError> {
-        for effect in self.families.values() {
-            effect.refresh_output_metadata(EffectMetadataRefreshRequest { output, receipt })?;
-        }
-        Ok(())
-    }
-
     pub(crate) fn authority_grant_refs(
         &self,
         admission: &EffectAdmission,
     ) -> Result<Vec<Reference>, RuntimeEffectError> {
         self.require_effect(admission.family())?
             .authority_grant_refs(admission)
+    }
+
+    pub(crate) fn authority_scope_refs(
+        &self,
+        admission: &EffectAdmission,
+    ) -> Result<Vec<Reference>, RuntimeEffectError> {
+        self.require_effect(admission.family())?
+            .authority_scope_refs(admission)
     }
 
     pub(crate) fn replay_authority_grant_refs(

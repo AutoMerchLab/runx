@@ -2,7 +2,6 @@
 
 import { spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -38,7 +37,7 @@ const packet = {
   execution: {
     managed_agent: false,
     credential_source: "isolated_none",
-    cwd: "isolated_temp_directory",
+    cwd: "project_owned_.runx_scratch",
     receipt_signer: "ephemeral_test_key",
   },
   summary: {
@@ -75,6 +74,7 @@ if (packet.summary.failed > 0 || (strict
 function trialSkill(skill) {
   const cases = uniqueProofCases(skill.proof.cases);
   const caseResults = cases.map((entry) => trialFixture(skill.skill, entry));
+  if (skill.skill === "skill-lab") caseResults.push(...trialSkillLabWritePaths());
   const localTrial = caseResults.length === 0
     ? "unproven"
     : caseResults.every((entry) => entry.status === "passed")
@@ -96,8 +96,17 @@ function trialSkill(skill) {
       : "not_proven_by_isolated_fixture"
     : "not_required";
   const operationProofRequired = archetype === "operation" && skill.execution !== "plan";
-  const operationProven = skill.proof.operation_cases > 0
-    && caseResults.some((entry) => entry.status === "passed" && entry.proof_type === "operation");
+  const operationProven = caseResults.some(
+    (entry) => entry.status === "passed"
+      && (entry.proof_type === "operation" || entry.proof_type === "operator_journey"),
+  );
+  const providerBoundaryProven = providerReadback === "passed"
+    || providerReadback === "passed_by_live_keyless_fixture"
+    || providerReadback === "passed_by_live_http_fixture";
+  const operationBoundaryProven = operationProven || providerBoundaryProven;
+  const improvementFindings = operationBoundaryProven
+    ? skill.improvements.filter((finding) => finding !== "add standalone operation-boundary proof")
+    : skill.improvements;
   return {
     skill: skill.skill,
     path: skill.path,
@@ -107,18 +116,320 @@ function trialSkill(skill) {
     managed_agent_acts: skill.managed_agent_acts,
     capabilities: skill.capabilities,
     static_findings: skill.issues,
-    improvement_findings: skill.improvements,
+    improvement_findings: improvementFindings,
     local_trial: localTrial,
-    operation_proof: operationProven ? "passed" : operationProofRequired ? "missing" : "not_required",
+    operation_proof: operationProven
+      ? "passed"
+      : providerBoundaryProven
+        ? "passed_by_provider_readback"
+        : operationProofRequired
+          ? "missing"
+          : "not_required",
     provider_readback: providerReadback,
     provider_trial: providerTrial,
     meets_full_bar: decision?.action === "keep"
       && skill.issues.length === 0
-      && skill.improvements.length === 0
+      && improvementFindings.length === 0
       && localTrial === "passed"
-      && (!operationProofRequired || operationProven)
+      && (!operationProofRequired || operationBoundaryProven)
       && !providerReadback.startsWith("not_proven"),
     cases: caseResults,
+  };
+}
+
+function trialSkillLabWritePaths() {
+  return [
+    trialSkillLabWrite({
+      name: "skill-lab-isolated-improve-write",
+      runner: "improve",
+      inputs: {
+        objective: "Add a bounded operator note to the disposable target.",
+        target_dir: "skills/trial-target",
+        failure_packet: {
+          verdict: "needs_update",
+          failure_summary: "The disposable target lacks the bounded operator note.",
+          improvement_proposals: [{
+            target: "skills/trial-target/references/operator-note.md",
+            change: "Add the bounded note.",
+            rationale: "Proves the improve write path without changing product code.",
+            risk: "The disposable target gains one documentation file.",
+          }],
+          next_harness_checks: ["The target still passes its native harness."],
+        },
+      },
+      answerKey: "agent_task.skill-lab-improve.output",
+      changeBundle: {
+        decision: "write",
+        summary: "Add the bounded operator note.",
+        non_goals: ["Do not alter execution behavior."],
+        files: [{
+          path: "references/operator-note.md",
+          contents: "# Operator note\n\nThis file proves the isolated improve write path.\n",
+        }],
+      },
+      verify({ rootDir }) {
+        return existsSync(path.join(rootDir, "skills", "trial-target", "references", "operator-note.md"))
+          ? null
+          : "improve runner did not write the bounded target file";
+      },
+    }),
+    trialSkillLabWrite({
+      name: "skill-lab-isolated-harness-write",
+      runner: "harness",
+      inputs: {
+        objective: "Add a second replayable echo case to the disposable target.",
+        target_dir: "skills/trial-target",
+      },
+      answerKey: "agent_task.skill-lab-harness.output",
+      changeBundle: {
+        decision: "write",
+        summary: "Add the second bounded echo case.",
+        non_goals: ["Do not alter target behavior."],
+        files: [{
+          path: "fixtures/echo-second.yaml",
+          contents: [
+            "name: trial-target-echo-second",
+            "kind: skill",
+            "target: ..",
+            "inputs:",
+            "  message: second",
+            "expect:",
+            "  status: sealed",
+            "  output:",
+            "    subset:",
+            "      message: second",
+            "  receipt:",
+            "    schema: runx.receipt.v1",
+            "",
+          ].join("\n"),
+        }],
+      },
+      verify({ rootDir }) {
+        return existsSync(path.join(rootDir, "skills", "trial-target", "fixtures", "echo-second.yaml"))
+          ? null
+          : "harness runner did not write the replayable fixture";
+      },
+    }),
+    trialSkillLabWrite({
+      name: "skill-lab-builds-and-runs-execute-package",
+      runner: "build",
+      inputs: {
+        objective: "Build a disposable execute-capable echo package for sandbox proof.",
+        target_dir: "skills/generated-execute",
+      },
+      answerKey: "agent_task.skill-lab-build.output",
+      changeBundle: generatedExecuteBundle(),
+      verify: verifyGeneratedExecuteTarget,
+    }),
+  ];
+}
+
+function trialSkillLabWrite({ name, runner, inputs, answerKey, changeBundle, verify }) {
+  const rootDir = makeTrialRoot("skill-lab-write");
+  const receiptDir = path.join(rootDir, "receipts");
+  try {
+    seedDisposableReadSkill(rootDir);
+    const fixturePath = path.join(rootDir, `${runner}.json`);
+    writeFileSync(fixturePath, `${JSON.stringify({
+      name,
+      kind: "skill",
+      target: path.join(root, "skills", "skill-lab"),
+      runner,
+      inputs: { ...inputs, repo_root: rootDir },
+      caller: { answers: { [answerKey]: { change_bundle: changeBundle } } },
+      expect: { status: "sealed", receipt: { schema: "runx.receipt.v1" } },
+    }, null, 2)}\n`);
+    const result = runHarness(fixturePath, receiptDir, rootDir, rootDir);
+    if (result.error || result.status !== 0) {
+      return failedSpecialCase(name, runner, boundedFailure(result.stderr || result.stdout || result.error?.message, rootDir));
+    }
+    const receipt = parseReceiptResult(result.stdout);
+    if (!receipt) return failedSpecialCase(name, runner, "write trial did not return a closed receipt");
+    const verificationError = verify({ rootDir, receiptDir });
+    if (verificationError) return failedSpecialCase(name, runner, verificationError);
+    return {
+      name,
+      path: "generated:isolated-skill-lab-write",
+      runner,
+      proof_type: "operation",
+      status: "passed",
+      receipt,
+    };
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+}
+
+function seedDisposableReadSkill(rootDir) {
+  const skillDir = path.join(rootDir, "skills", "trial-target");
+  mkdirSync(path.join(skillDir, "fixtures"), { recursive: true });
+  writeFileSync(path.join(skillDir, "SKILL.md"), [
+    "---",
+    "name: trial-target",
+    "description: Return a bounded echo packet for isolated skill-lab validation.",
+    "---",
+    "",
+    "# Trial Target",
+    "",
+    "Return one bounded local echo packet.",
+    "",
+  ].join("\n"));
+  writeFileSync(path.join(skillDir, "X.yaml"), [
+    "skill: trial-target",
+    "version: \"0.1.0\"",
+    "catalog:",
+    "  kind: skill",
+    "  audience: builder",
+    "  visibility: public",
+    "  role: context",
+    "  execution: read",
+    "  completion: runtime_receipt",
+    "  requires_adapter: false",
+    "  approval: none",
+    "runners:",
+    "  read:",
+    "    default: true",
+    "    type: cli-tool",
+    "    command: node",
+    "    args:",
+    "      - run.mjs",
+    "    inputs:",
+    "      message:",
+    "        type: string",
+    "        required: true",
+    "    outputs:",
+    "      message: string",
+    "",
+  ].join("\n"));
+  writeFileSync(
+    path.join(skillDir, "run.mjs"),
+    "const inputs = JSON.parse(process.env.RUNX_INPUTS_JSON || \"{}\");\nprocess.stdout.write(`${JSON.stringify({ message: String(inputs.message || \"\") })}\\n`);\n",
+  );
+  writeFileSync(path.join(skillDir, "fixtures", "echo.yaml"), [
+    "name: trial-target-echo",
+    "kind: skill",
+    "target: ..",
+    "inputs:",
+    "  message: hello",
+    "expect:",
+    "  status: sealed",
+    "  output:",
+    "    subset:",
+    "      message: hello",
+    "  receipt:",
+    "    schema: runx.receipt.v1",
+    "",
+  ].join("\n"));
+}
+
+function generatedExecuteBundle() {
+  return {
+    decision: "write",
+    summary: "Build the disposable execute-capable package.",
+    non_goals: ["Do not access a provider or network."],
+    files: [
+      {
+        path: "SKILL.md",
+        contents: "---\nname: generated-execute\ndescription: Return one bounded local execution packet.\n---\n\n# Generated Execute\n\nExecute one deterministic local echo.\n",
+      },
+      {
+        path: "X.yaml",
+        contents: [
+          "skill: generated-execute",
+          "version: \"0.1.0\"",
+          "catalog:",
+          "  kind: skill",
+          "  audience: builder",
+          "  visibility: public",
+          "  role: canonical",
+          "  execution: execute",
+          "  completion: runtime_receipt",
+          "  requires_adapter: false",
+          "  approval: none",
+          "runners:",
+          "  execute:",
+          "    default: true",
+          "    type: cli-tool",
+          "    command: node",
+          "    args:",
+          "      - run.mjs",
+          "    inputs:",
+          "      message:",
+          "        type: string",
+          "        required: true",
+          "    outputs:",
+          "      message: string",
+          "      executed: boolean",
+          "",
+        ].join("\n"),
+      },
+      {
+        path: "run.mjs",
+        contents: "const inputs = JSON.parse(process.env.RUNX_INPUTS_JSON || \"{}\");\nprocess.stdout.write(`${JSON.stringify({ message: String(inputs.message || \"\"), executed: true })}\\n`);\n",
+      },
+    ],
+  };
+}
+
+function verifyGeneratedExecuteTarget({ rootDir, receiptDir }) {
+  const target = path.join(rootDir, "skills", "generated-execute");
+  const result = spawnSync(
+    binary,
+    ["skill", target, "execute", "--input", "message=approved sandbox execution", "--receipt-dir", receiptDir, "--json", "--skip-operator-context"],
+    {
+      cwd: rootDir,
+      env: isolatedEnv(rootDir),
+      encoding: "utf8",
+      timeout: timeoutMs,
+      maxBuffer: 8 * 1024 * 1024,
+    },
+  );
+  if (result.error || result.status !== 0) return boundedFailure(result.stderr || result.stdout || result.error?.message, rootDir);
+  try {
+    const output = JSON.parse(result.stdout);
+    return output.status === "sealed"
+      && output.execution?.structured_output?.executed === true
+      && output.execution?.structured_output?.message === "approved sandbox execution"
+      ? null
+      : "generated execute target did not return the expected sealed output";
+  } catch (error) {
+    return `generated execute target returned invalid JSON: ${error.message}`;
+  }
+}
+
+function parseReceiptResult(value) {
+  try {
+    const receipt = JSON.parse(value);
+    const evidence = stableReceiptEvidence(receipt);
+    return evidence?.disposition === "closed" ? evidence : null;
+  } catch {
+    return null;
+  }
+}
+
+function stableReceiptEvidence(receipt) {
+  if (receipt?.schema !== "runx.receipt.v1"
+    || !/^sha256:[0-9a-f]{64}$/.test(String(receipt.id ?? ""))
+    || typeof receipt.seal?.disposition !== "string"
+    || typeof receipt.seal?.reason_code !== "string") {
+    return null;
+  }
+  return {
+    schema: receipt.schema,
+    content_addressed_id: "validated_sha256",
+    disposition: receipt.seal.disposition,
+    reason_code: receipt.seal.reason_code,
+  };
+}
+
+function failedSpecialCase(name, runner, reason) {
+  return {
+    name,
+    path: "generated:isolated-skill-lab-write",
+    runner,
+    proof_type: "operation",
+    status: "failed",
+    reason,
   };
 }
 
@@ -133,7 +444,7 @@ function uniqueProofCases(cases) {
 }
 
 function trialFixture(skill, fixture) {
-  const rootDir = mkdtempSync(path.join(os.tmpdir(), "runx-core-skill-trial-"));
+  const rootDir = makeTrialRoot("core-skill");
   const receiptDir = path.join(rootDir, "receipts");
   const fixturePath = path.join(root, fixture.path);
   try {
@@ -158,7 +469,8 @@ function trialFixture(skill, fixture) {
     } catch (error) {
       return failedCase(fixture, `invalid JSON harness result: ${error.message}`);
     }
-    if (report.schema === "runx.receipt.v1" && report.id && report.seal?.disposition) {
+    const receipt = stableReceiptEvidence(report);
+    if (receipt) {
       return {
         name: fixture.name,
         path: fixture.path,
@@ -166,12 +478,7 @@ function trialFixture(skill, fixture) {
         proof_type: fixture.proof_type,
         ...(fixture.provider_readback ? { provider_readback: fixture.provider_readback } : {}),
         status: "passed",
-        receipt: {
-          schema: report.schema,
-          id: report.id,
-          disposition: report.seal.disposition,
-          reason_code: report.seal.reason_code,
-        },
+        receipt,
       };
     }
     if (report.status === "passed" && Number.isInteger(report.case_count)) {
@@ -219,14 +526,22 @@ function failedCase(fixture, reason) {
 function isolatedEnv(rootDir) {
   const binaryDir = path.dirname(binary);
   const inheritedPath = process.env.PATH ?? "";
+  const tempDir = path.join(rootDir, "tmp");
+  mkdirSync(tempDir, { recursive: true });
   return Object.fromEntries(
     [
       ["PATH", [binaryDir, inheritedPath].filter(Boolean).join(path.delimiter)],
-      ["TMPDIR", process.env.TMPDIR ?? os.tmpdir()],
+      ["TMPDIR", tempDir],
       ["SSL_CERT_FILE", process.env.SSL_CERT_FILE],
       ["SSL_CERT_DIR", process.env.SSL_CERT_DIR],
       ["HOME", rootDir],
       ["RUNX_HOME", path.join(rootDir, "runx-home")],
+      [
+        "RUNX_TOOL_ROOTS",
+        [process.env.RUNX_TOOL_ROOTS, path.join(root, "tools")]
+          .filter(Boolean)
+          .join(path.delimiter),
+      ],
       ["RUNX_RECEIPT_SIGN_KID", "runx-core-skill-trial-key"],
       [
         "RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64",
@@ -236,6 +551,12 @@ function isolatedEnv(rootDir) {
       ["NO_COLOR", "1"],
     ].filter(([, value]) => typeof value === "string" && value.length > 0),
   );
+}
+
+function makeTrialRoot(label) {
+  const scratchRoot = path.join(root, ".runx", "core-skill-trials");
+  mkdirSync(scratchRoot, { recursive: true });
+  return mkdtempSync(path.join(scratchRoot, `${label}-`));
 }
 
 function boundedFailure(value, rootDir) {

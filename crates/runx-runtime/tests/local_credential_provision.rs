@@ -19,7 +19,6 @@ use std::time::{Duration, Instant};
 
 #[cfg(feature = "http")]
 use runx_contracts::{JsonValue, sha256_hex};
-#[cfg(feature = "http")]
 use runx_runtime::RunStatus;
 use runx_runtime::orchestrator::LocalCredentialDescriptor;
 use runx_runtime::{LocalOrchestrator, RunResult, SkillRunRequest};

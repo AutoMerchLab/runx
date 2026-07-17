@@ -8,6 +8,18 @@ inputs:
   grid_y: "71"
 expect:
   status: sealed
+  steps:
+    - forecast
+  step_outputs:
+    forecast:
+      subset:
+        skill_claim:
+          type: Feature
+          properties:
+            forecastGenerator: BaselineForecastGenerator
+            units: us
+            elevation:
+              unitCode: "wmoUnit:m"
 metadata:
   public_skill: nws-weather-forecast
   source_case: nws-forecast-washington-monument

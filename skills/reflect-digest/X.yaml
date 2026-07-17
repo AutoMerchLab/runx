@@ -1,5 +1,5 @@
 skill: reflect-digest
-version: "0.2.0"
+version: "0.2.1"
 
 catalog:
   kind: graph
@@ -98,6 +98,30 @@ harness:
                   - Do not change Sourcey publication behavior.
       expect:
         status: sealed
+        steps:
+          - read-reflect-projections
+          - load-reflect-projections
+          - group-reflect-projections
+          - draft-digest
+          - build-handoffs
+        step_outputs:
+          build-handoffs:
+            subset:
+              reflect_digest_packet:
+                data:
+                  proposals:
+                    - skill_ref: sourcey
+                      target_dir: skills/sourcey
+                      supporting_receipt_ids:
+                        - rx_sourcey_1
+                        - rx_sourcey_2
+                  skill_lab_handoffs:
+                    - skill: skill-lab
+                      runner: improve
+                      target_skill_ref: sourcey
+                      supporting_receipt_ids:
+                        - rx_sourcey_1
+                        - rx_sourcey_2
         receipt:
           schema: runx.receipt.v1
 

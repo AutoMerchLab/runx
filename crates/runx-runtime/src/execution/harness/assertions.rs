@@ -1,12 +1,17 @@
-use runx_contracts::{ClosureDisposition, Receipt, ReceiptSchema};
+use runx_contracts::{ClosureDisposition, JsonValue, Receipt, ReceiptSchema};
 use runx_receipts::{
     ReceiptProofContextProvider, canonical_receipt_body_digest, canonical_receipt_digest,
     verify_receipt_proof,
 };
 
 use crate::execution::harness::fixtures::{HarnessExpectedStatus, ReceiptExpectation};
+use crate::execution::harness::json_assertions::{assert_json_expectation, parse_json_maybe};
 use crate::execution::harness::runner::{HarnessReplayError, HarnessReplayOutput};
 use crate::receipts::{RuntimeReceiptProofContextProvider, RuntimeReceiptSignaturePolicy};
+
+mod replayed_answers;
+
+use replayed_answers::assert_caller_answers_replayed;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct HarnessReplayReceipt {
@@ -45,6 +50,30 @@ pub(super) fn assert_expectations(
             "expect.steps",
             output.fixture.expect.steps.join(","),
             actual.join(","),
+        )?;
+    }
+    assert_caller_answers_replayed(output)?;
+    if let Some(expectation) = &output.fixture.expect.output {
+        let actual = output
+            .skill_output
+            .as_ref()
+            .map_or(JsonValue::Null, |skill_output| {
+                parse_json_maybe(&skill_output.stdout)
+            });
+        assert_json_expectation(expectation, &actual, "expect.output")?;
+    }
+    for (step_id, expectation) in &output.fixture.expect.step_outputs {
+        let actual = output
+            .steps
+            .iter()
+            .find(|step| step.step_id == *step_id)
+            .map_or(JsonValue::Null, |step| {
+                JsonValue::Object(step.outputs.clone())
+            });
+        assert_json_expectation(
+            expectation,
+            &actual,
+            &format!("expect.step_outputs.{step_id}"),
         )?;
     }
     Ok(())
@@ -98,6 +127,13 @@ fn assert_receipt(
     let summary = summarize_receipt(actual);
     assert_receipt_identity(expected, &summary)?;
     assert_receipt_lists(expected, &summary)?;
+    if let Some(expected_count) = expected.child_receipt_count {
+        assert_equal(
+            "expect.receipt.child_receipt_count",
+            expected_count.to_string(),
+            summary.child_receipt_refs.len().to_string(),
+        )?;
+    }
     assert_receipt_digests(expected, actual)
 }
 
@@ -266,7 +302,7 @@ fn assert_optional_list(
 }
 
 fn assert_equal(
-    field: &'static str,
+    field: impl Into<String>,
     expected: impl AsRef<str>,
     actual: impl AsRef<str>,
 ) -> Result<(), HarnessReplayError> {
@@ -276,7 +312,7 @@ fn assert_equal(
         return Ok(());
     }
     Err(HarnessReplayError::Mismatch {
-        field,
+        field: field.into(),
         expected: expected.to_owned(),
         actual: actual.to_owned(),
     })

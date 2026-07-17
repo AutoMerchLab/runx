@@ -70,6 +70,29 @@ impl RuntimeEffect for ProviderPermissionEffect {
             &context.grant_id,
         )])
     }
+
+    fn authority_scope_refs(
+        &self,
+        admission: &EffectAdmission,
+    ) -> Result<Vec<Reference>, RuntimeEffectError> {
+        let context = admission
+            .context::<ProviderPermissionAdmission>()
+            .ok_or_else(|| RuntimeEffectError::Failed {
+                family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
+                operation: "authority scope evidence",
+                message: "provider permission admission context is missing".to_owned(),
+            })?;
+        Ok(context
+            .required_scopes
+            .iter()
+            .map(|scope| {
+                Reference::with_uri(
+                    ReferenceType::ScopeAdmission,
+                    format!("runx:scope_admission:{scope}"),
+                )
+            })
+            .collect())
+    }
 }
 
 #[derive(Debug)]
@@ -324,6 +347,12 @@ mod tests {
         assert_eq!(grant_refs.len(), 1);
         assert_eq!(grant_refs[0].reference_type, ReferenceType::Grant);
         assert_eq!(grant_refs[0].uri, "runx:grant:github-mcp-read");
+        let scope_refs = effect
+            .authority_scope_refs(&admission)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        assert_eq!(scope_refs.len(), 1);
+        assert_eq!(scope_refs[0].reference_type, ReferenceType::ScopeAdmission);
+        assert_eq!(scope_refs[0].uri, "runx:scope_admission:repo.read");
         Ok(())
     }
 

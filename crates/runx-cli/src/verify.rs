@@ -167,16 +167,17 @@ pub fn run_verify_command_with_stdin<R: Read>(
 
     let selected: Vec<&ReceiptTree> = match parsed.receipt_id.as_deref() {
         Some(receipt_id) => {
-            let tree = trees
+            let selected = trees
                 .iter()
-                .find(|tree| tree.member_ids.contains(receipt_id))
-                .ok_or_else(|| {
-                    VerifyCliError::InvalidArgs(format!(
-                        "receipt {receipt_id} was not found in {}",
-                        resolved.path.display()
-                    ))
-                })?;
-            vec![tree]
+                .filter(|tree| tree.member_ids.contains(receipt_id))
+                .collect::<Vec<_>>();
+            if selected.is_empty() {
+                return Err(VerifyCliError::InvalidArgs(format!(
+                    "receipt {receipt_id} was not found in {}",
+                    resolved.path.display()
+                )));
+            }
+            selected
         }
         None => trees.iter().collect(),
     };
@@ -985,52 +986,134 @@ fn group_trees(receipts: &[Receipt]) -> Vec<ReceiptTree> {
         .iter()
         .map(|receipt| (receipt.id.as_str(), receipt))
         .collect();
-
-    let mut trees: BTreeMap<String, ReceiptTree> = BTreeMap::new();
-    for receipt in receipts {
-        let (root_id, parent_missing) = resolve_root(receipt, &by_id);
-        let root = by_id
-            .get(root_id.as_str())
-            .copied()
-            .unwrap_or(receipt)
-            .clone();
-        let tree = trees.entry(root_id).or_insert_with(|| ReceiptTree {
-            root,
-            member_ids: BTreeSet::new(),
-            parent_missing: None,
-        });
-        tree.member_ids.insert(receipt.id.to_string());
-        if let Some(missing) = parent_missing {
-            tree.parent_missing.get_or_insert(missing);
-        }
-    }
-    trees.into_values().collect()
+    // Runtime receipts form an immutable parent -> child DAG. Keep accepting
+    // legacy child -> parent links, but never require them to discover a tree.
+    // A child may be shared by more than one root, so each root owns its own
+    // reachable member set instead of forcing every receipt into one group.
+    let (children_by_parent, parents_by_child) = receipt_tree_edges(receipts);
+    let root_ids = root_receipt_ids(receipts, &by_id, &parents_by_child);
+    let mut trees = root_ids
+        .iter()
+        .filter_map(|root_id| receipt_tree_from_root(root_id, &by_id, &children_by_parent))
+        .collect::<Vec<_>>();
+    append_uncovered_cycle_trees(receipts, &by_id, &children_by_parent, &mut trees);
+    trees.sort_by(|left, right| left.root.id.cmp(&right.root.id));
+    trees
 }
 
-/// Follow lineage parents to the highest receipt available in the store.
-/// Returns the root id plus the first missing parent id, if the chain breaks.
-fn resolve_root(receipt: &Receipt, by_id: &BTreeMap<&str, &Receipt>) -> (String, Option<String>) {
-    let mut current = receipt;
-    let mut seen = BTreeSet::new();
-    loop {
-        if !seen.insert(current.id.to_string()) {
-            // Cycles are reported by tree verification; anchor on the starting
-            // receipt so the walk terminates.
-            return (receipt.id.to_string(), None);
-        }
-        let Some(parent_id) = current
-            .lineage
-            .as_ref()
-            .and_then(|lineage| lineage.parent.as_ref())
-            .and_then(referenced_receipt_id)
-        else {
-            return (current.id.to_string(), None);
-        };
-        match by_id.get(parent_id) {
-            Some(parent) => current = parent,
-            None => return (current.id.to_string(), Some(parent_id.to_owned())),
+fn receipt_tree_edges(
+    receipts: &[Receipt],
+) -> (
+    BTreeMap<String, BTreeSet<String>>,
+    BTreeMap<String, BTreeSet<String>>,
+) {
+    let mut children_by_parent: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    let mut parents_by_child: BTreeMap<String, BTreeSet<String>> = BTreeMap::new();
+    for receipt in receipts {
+        if let Some(lineage) = &receipt.lineage {
+            for child in &lineage.children {
+                if let Some(child_id) = referenced_receipt_id(child) {
+                    children_by_parent
+                        .entry(receipt.id.to_string())
+                        .or_default()
+                        .insert(child_id.to_owned());
+                    parents_by_child
+                        .entry(child_id.to_owned())
+                        .or_default()
+                        .insert(receipt.id.to_string());
+                }
+            }
+            if let Some(parent_id) = lineage.parent.as_ref().and_then(referenced_receipt_id) {
+                children_by_parent
+                    .entry(parent_id.to_owned())
+                    .or_default()
+                    .insert(receipt.id.to_string());
+                parents_by_child
+                    .entry(receipt.id.to_string())
+                    .or_default()
+                    .insert(parent_id.to_owned());
+            }
         }
     }
+    (children_by_parent, parents_by_child)
+}
+
+fn root_receipt_ids(
+    receipts: &[Receipt],
+    by_id: &BTreeMap<&str, &Receipt>,
+    parents_by_child: &BTreeMap<String, BTreeSet<String>>,
+) -> BTreeSet<String> {
+    receipts
+        .iter()
+        .filter(|receipt| {
+            parents_by_child
+                .get(receipt.id.as_str())
+                .is_none_or(|parents| {
+                    parents
+                        .iter()
+                        .all(|parent| !by_id.contains_key(parent.as_str()))
+                })
+        })
+        .map(|receipt| receipt.id.to_string())
+        .collect()
+}
+
+fn append_uncovered_cycle_trees(
+    receipts: &[Receipt],
+    by_id: &BTreeMap<&str, &Receipt>,
+    children_by_parent: &BTreeMap<String, BTreeSet<String>>,
+    trees: &mut Vec<ReceiptTree>,
+) {
+    // Malformed cycles have no natural root. Anchor each still-uncovered
+    // component once so structural verification can report the cycle.
+    let mut covered = trees
+        .iter()
+        .flat_map(|tree| tree.member_ids.iter().cloned())
+        .collect::<BTreeSet<_>>();
+    for receipt in receipts {
+        if covered.contains(receipt.id.as_str()) {
+            continue;
+        }
+        if let Some(tree) = receipt_tree_from_root(receipt.id.as_str(), by_id, children_by_parent) {
+            covered.extend(tree.member_ids.iter().cloned());
+            trees.push(tree);
+        }
+    }
+}
+
+fn receipt_tree_from_root(
+    root_id: &str,
+    by_id: &BTreeMap<&str, &Receipt>,
+    children_by_parent: &BTreeMap<String, BTreeSet<String>>,
+) -> Option<ReceiptTree> {
+    let root = (*by_id.get(root_id)?).clone();
+    let mut member_ids = BTreeSet::new();
+    let mut pending = vec![root_id.to_owned()];
+    while let Some(receipt_id) = pending.pop() {
+        if !member_ids.insert(receipt_id.clone()) {
+            continue;
+        }
+        if let Some(children) = children_by_parent.get(&receipt_id) {
+            pending.extend(
+                children
+                    .iter()
+                    .filter(|child| by_id.contains_key(child.as_str()))
+                    .cloned(),
+            );
+        }
+    }
+    let parent_missing = root
+        .lineage
+        .as_ref()
+        .and_then(|lineage| lineage.parent.as_ref())
+        .and_then(referenced_receipt_id)
+        .filter(|parent| !by_id.contains_key(*parent))
+        .map(str::to_owned);
+    Some(ReceiptTree {
+        root,
+        member_ids,
+        parent_missing,
+    })
 }
 
 fn referenced_receipt_id(reference: &Reference) -> Option<&str> {
@@ -1236,6 +1319,36 @@ mod tests {
         let report: JsonValue = serde_json::from_str(&result.output).map_err(io::Error::other)?;
         assert_eq!(report["valid"], JsonValue::Bool(true));
         assert_eq!(report["signature_mode"], "production");
+        Ok(())
+    }
+
+    #[test]
+    fn groups_runtime_tree_from_parent_child_refs_without_child_back_links() -> Result<(), io::Error>
+    {
+        let signer = fixture_signer().map_err(io::Error::other)?;
+        let mut root = production_signed_receipt(&signer)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        let mut child = root.clone();
+        child.id = "sha256:immutable-child".into();
+        child.digest = "sha256:immutable-child-body".into();
+        child.lineage.get_or_insert_default().parent = None;
+        let mut child_ref =
+            Reference::with_uri(ReferenceType::Receipt, format!("runx:receipt:{}", child.id));
+        child_ref.locator = Some(child.digest.clone());
+        root.lineage
+            .get_or_insert_default()
+            .children
+            .push(child_ref);
+
+        let trees = group_trees(&[root.clone(), child.clone()]);
+
+        assert_eq!(trees.len(), 1);
+        assert_eq!(trees[0].root.id, root.id);
+        assert_eq!(
+            trees[0].member_ids,
+            BTreeSet::from([root.id.to_string(), child.id.to_string()])
+        );
+        assert!(trees[0].parent_missing.is_none());
         Ok(())
     }
 

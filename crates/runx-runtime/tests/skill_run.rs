@@ -578,6 +578,57 @@ fn native_skill_run_uses_runtime_receipt_path_resolution() -> Result<(), Box<dyn
 }
 
 #[test]
+#[cfg(feature = "cli-tool")]
+fn explicit_receipt_dir_is_available_to_cli_tool_subprocess()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let skill_dir = temp.path().join("receipt-env-skill");
+    let receipt_dir = temp.path().join("explicit-receipts");
+    fs::create_dir_all(&skill_dir)?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: receipt-env-skill\ndescription: Test receipt store propagation.\n---\n",
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        r#"
+skill: receipt-env-skill
+runners:
+  inspect:
+    default: true
+    type: cli-tool
+    command: /bin/sh
+    args:
+      - -c
+      - printf '{"receipt_dir":"%s"}\n' "$RUNX_RECEIPT_DIR"
+    outputs:
+      receipt_dir: string
+"#,
+    )?;
+
+    let result = run_skill(SkillRunRequest {
+        skill_path: skill_dir,
+        receipt_dir: Some(receipt_dir.clone()),
+        run_id: None,
+        answers_path: None,
+        inputs: BTreeMap::new(),
+        env: BTreeMap::new(),
+        cwd: temp.path().to_path_buf(),
+        managed_agent: Default::default(),
+        local_credential: None,
+    })?;
+
+    let output = object(&result.output, "skill run result")?;
+    let execution = object_field(output, "execution").ok_or("missing execution")?;
+    let structured = object_field(execution, "structured_output").ok_or("missing output")?;
+    assert_eq!(
+        string_field(structured, "receipt_dir"),
+        Some(receipt_dir.to_string_lossy().as_ref())
+    );
+    Ok(())
+}
+
+#[test]
 fn native_skill_run_uses_production_receipt_signing_env() -> Result<(), Box<dyn std::error::Error>>
 {
     let temp = tempdir()?;
@@ -2012,14 +2063,13 @@ fn native_graph_skill_run_executes_nested_cli_tool_skill() -> Result<(), Box<dyn
         child_refs[0].locator.as_deref(),
         Some(child_receipt.digest.as_str())
     );
-    let parent_ref = child_receipt
-        .lineage
-        .as_ref()
-        .and_then(|lineage| lineage.parent.as_ref())
-        .ok_or("nested receipt missing parent lineage")?;
-    assert_eq!(
-        parent_ref.uri.as_str(),
-        format!("runx:receipt:{root_receipt_id}")
+    assert!(
+        child_receipt
+            .lineage
+            .as_ref()
+            .and_then(|lineage| lineage.parent.as_ref())
+            .is_none(),
+        "reusable child receipts must not be rebound to one parent"
     );
 
     Ok(())

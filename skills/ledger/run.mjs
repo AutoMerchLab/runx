@@ -2,9 +2,10 @@ import fs from "node:fs";
 import { spawnSync } from "node:child_process";
 
 // In-sandbox receipt-ledger reader. Shells the shipped `runx history`/`runx
-// verify` engine (the one source of truth for the no-body projection and the
+// verify` engine (the one source of truth for the history, curated detail, and
 // tree-rooted chain verdict) and projects each matched receipt down to an
-// id-stub. A `receipts` caller-override input replays a fixed ledger without
+// id-stub. Exact-id reads also return the native redacted detail projection.
+// `receipts` and `receipt_details` caller overrides replay fixed evidence without
 // shelling out, mirroring reflect-digest's reflect_projections override, so the
 // inline harness is deterministic regardless of the receipt store or binary
 // linkage. The reader never writes and never copies a receipt body.
@@ -17,6 +18,8 @@ const receiptIdsSupplied = Object.prototype.hasOwnProperty.call(inputs, "receipt
 const receiptIds = stringArray(inputs.receipt_ids);
 const overrideRowsSupplied = Array.isArray(inputs.receipts);
 const overrideRows = overrideRowsSupplied ? inputs.receipts : undefined;
+const overrideDetailsSupplied = Array.isArray(inputs.receipt_details);
+const overrideDetails = overrideDetailsSupplied ? inputs.receipt_details : undefined;
 
 const query = {
   principal: filter.principal || "",
@@ -40,20 +43,29 @@ if (!question) {
       query,
     },
     matched_receipts: [],
+    receipt_details: [],
     chain_verification: { checked: false, intact: null, breaks: [] },
     summary: "No audit question was provided, so there is nothing to query against the ledger.",
   };
 } else {
+  const nativeDetails = !overrideRowsSupplied && receiptIdsSupplied
+    ? historyDetailsById(receiptIds)
+    : [];
   const rows = overrideRowsSupplied
     ? overrideRows
     : receiptIdsSupplied
-      ? historyRowsById(filter, receiptIds)
+      ? nativeDetails.map(detailHistoryRow)
       : historyRows(filter);
   const matched = rows
     .map(projectIdStub)
     .filter((stub) => matchesFilter(stub, filter))
     .filter((stub) => !receiptIdsSupplied || receiptIds.includes(stub.receipt_id))
     .slice(0, filter.limit);
+  const matchedIds = new Set(matched.map((receipt) => receipt.receipt_id));
+  const details = (overrideDetailsSupplied ? overrideDetails : nativeDetails)
+    .map(projectReceiptDetail)
+    .filter((detail) => matchedIds.has(detail.id))
+    .slice(0, Math.min(filter.limit, 100));
 
   let chain;
   if (!proofRequested) {
@@ -74,6 +86,7 @@ if (!question) {
       query,
     },
     matched_receipts: matched,
+    receipt_details: details,
     chain_verification: chain,
     summary: renderSummary({ decision, matched, chain, proofRequested, query }),
   };
@@ -156,14 +169,139 @@ function historyRows(filter) {
   return Array.isArray(projection.receipts) ? projection.receipts : [];
 }
 
-function historyRowsById(filter, receiptIds) {
-  const rows = new Map();
+function historyDetailsById(receiptIds) {
+  const details = new Map();
   for (const receiptId of receiptIds) {
-    for (const row of historyRows({ ...filter, query: receiptId })) {
-      rows.set(String(row.id || row.receipt_id || ""), row);
+    const projection = invokeRunxJson(["history", receiptId, "--detail", "--json"], "runx history --detail failed");
+    const detail = projectReceiptDetail(projection.receipt);
+    if (detail.id !== receiptId) {
+      throw new Error(`native receipt detail id mismatch for ${receiptId}`);
     }
+    details.set(detail.id, detail);
   }
-  return [...rows.values()];
+  return [...details.values()];
+}
+
+function detailHistoryRow(detail) {
+  return {
+    id: detail.id,
+    name: detail.subject_ref,
+    status: detail.status,
+    created_at: detail.created_at,
+    verification: detail.verification,
+  };
+}
+
+function projectReceiptDetail(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error("receipt detail must be an object");
+  }
+  const id = stringValue(value.id);
+  if (!id) throw new Error("receipt detail is missing id");
+  return {
+    id,
+    receipt_ref: stringValue(value.receipt_ref) || `runx:receipt:${id}`,
+    subject_kind: stringValue(value.subject_kind) || "",
+    subject_ref: stringValue(value.subject_ref) || "",
+    created_at: stringValue(value.created_at) || "",
+    status: stringValue(value.status) || "",
+    verification: value.verification && typeof value.verification === "object"
+      ? value.verification
+      : { status: "unknown" },
+    authority: projectAuthority(value.authority),
+    decisions: Array.isArray(value.decisions) ? value.decisions.map(projectDecision) : [],
+    acts: Array.isArray(value.acts) ? value.acts.map(projectAct) : [],
+    artifact_refs: projectStringArray(value.artifact_refs),
+    lineage_refs: projectStringArray(value.lineage_refs),
+    seal_reason_code: stringValue(value.seal_reason_code) || "",
+    seal_summary: stringValue(value.seal_summary) || "",
+  };
+}
+
+function projectAuthority(value) {
+  const authority = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    actor_ref: stringValue(authority.actor_ref) || "",
+    grant_refs: projectStringArray(authority.grant_refs),
+    scope_refs: projectStringArray(authority.scope_refs),
+    exercised_scopes: Array.isArray(authority.exercised_scopes)
+      ? authority.exercised_scopes.map((entry) => ({
+        scope: stringValue(entry?.scope) || "",
+        source: stringValue(entry?.source) || "",
+        term_id: stringValue(entry?.term_id),
+        resource_ref: stringValue(entry?.resource_ref),
+      })).filter((entry) => entry.scope)
+      : [],
+    authority_proof_refs: projectStringArray(authority.authority_proof_refs),
+    approval_refs: projectStringArray(authority.approval_refs),
+    term_count: nonNegativeInteger(authority.term_count),
+    parent_authority_ref: stringValue(authority.parent_authority_ref),
+    subset_proof_present: authority.subset_proof_present === true,
+    enforcement_profile_hash: stringValue(authority.enforcement_profile_hash) || "",
+    redaction_refs: projectStringArray(authority.redaction_refs),
+    credential_ref_count: nonNegativeInteger(authority.credential_ref_count),
+  };
+}
+
+function projectDecision(value) {
+  const decision = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    id: stringValue(decision.id) || "",
+    choice: stringValue(decision.choice) || "",
+    selected_act_id: stringValue(decision.selected_act_id),
+    summary: stringValue(decision.summary) || "",
+    evidence_refs: projectStringArray(decision.evidence_refs),
+    artifact_refs: projectStringArray(decision.artifact_refs),
+  };
+}
+
+function projectAct(value) {
+  const act = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  return {
+    id: stringValue(act.id) || "",
+    form: stringValue(act.form) || "",
+    purpose: stringValue(act.purpose) || "",
+    legitimacy: stringValue(act.legitimacy) || "",
+    summary: stringValue(act.summary) || "",
+    disposition: stringValue(act.disposition) || "",
+    reason_code: stringValue(act.reason_code) || "",
+    source_refs: projectStringArray(act.source_refs),
+    target_refs: projectStringArray(act.target_refs),
+    artifact_refs: projectStringArray(act.artifact_refs),
+    criterion_statuses: Array.isArray(act.criterion_statuses)
+      ? act.criterion_statuses.map((criterion) => ({
+        criterion_id: stringValue(criterion?.criterion_id) || "",
+        status: stringValue(criterion?.status) || "",
+        evidence_refs: projectStringArray(criterion?.evidence_refs),
+        verification_refs: projectStringArray(criterion?.verification_refs),
+      })).filter((criterion) => criterion.criterion_id)
+      : [],
+    context_ref_present: act.context_ref_present === true,
+  };
+}
+
+function nonNegativeInteger(value) {
+  return Number.isInteger(value) && value >= 0 ? value : 0;
+}
+
+function projectStringArray(value) {
+  return Array.isArray(value)
+    ? [...new Set(value.map(stringValue).filter(Boolean))].slice(0, 500)
+    : [];
+}
+
+function invokeRunxJson(args, fallbackMessage) {
+  const result = spawnSync("runx", args, { env: process.env, encoding: "utf8" });
+  let projection;
+  try {
+    projection = JSON.parse(result.stdout || "{}");
+  } catch {
+    throw new Error((result.stderr || "").trim() || fallbackMessage);
+  }
+  if (result.status !== 0) {
+    throw new Error(stringValue(projection?.error?.message) || (result.stderr || "").trim() || fallbackMessage);
+  }
+  return projection;
 }
 
 // Shell the shipped `runx verify --json`, which is TREE-grouped, not a linear

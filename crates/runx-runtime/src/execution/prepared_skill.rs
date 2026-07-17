@@ -1113,6 +1113,7 @@ mod tests {
                 projection: &projection,
                 created_at: "2026-07-12T00:00:00Z",
                 authority_grant_refs: Vec::new(),
+                authority_scope_refs: Vec::new(),
                 operator_refs: prepared_receipt_references(&env),
                 closure: Some(StepSealClosure {
                     disposition: ClosureDisposition::Closed,

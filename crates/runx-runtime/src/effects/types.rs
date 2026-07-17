@@ -72,15 +72,15 @@ pub trait RuntimeEffect: Send + Sync {
         Ok(())
     }
 
-    fn refresh_output_metadata(
+    fn authority_grant_refs(
         &self,
-        request: EffectMetadataRefreshRequest<'_>,
-    ) -> Result<(), RuntimeEffectError> {
-        let _ = request;
-        Ok(())
+        admission: &EffectAdmission,
+    ) -> Result<Vec<Reference>, RuntimeEffectError> {
+        let _ = admission;
+        Ok(Vec::new())
     }
 
-    fn authority_grant_refs(
+    fn authority_scope_refs(
         &self,
         admission: &EffectAdmission,
     ) -> Result<Vec<Reference>, RuntimeEffectError> {
@@ -134,11 +134,6 @@ pub struct EffectReplayReceiptRequest<'a> {
     pub receipt: &'a Receipt,
     pub output: &'a SkillOutput,
     pub claim: &'a JsonObject,
-}
-
-pub struct EffectMetadataRefreshRequest<'a> {
-    pub output: &'a mut SkillOutput,
-    pub receipt: &'a Receipt,
 }
 
 #[derive(Clone)]

@@ -22,7 +22,11 @@ function packet(overrides) {
     plan_digest: "",
     principal: null,
     results: [],
+    executed_act_ids: [],
     remaining_act_ids: [],
+    // Compact delta the ledger stores; a refusal carries an empty one so the
+    // persist step always has a well-formed event to append.
+    ledger_delta: { decision: "refused", executed_act_ids: [] },
     rate: { limited: false, reset_at: null },
     blockers: [],
     success_checkpoint: null,
@@ -30,24 +34,22 @@ function packet(overrides) {
   };
 }
 
-function refusal(plan, digest, blockers) {
-  return packet({
-    decision: "refused",
-    plan_digest: digest,
-    principal: plan?.principal ?? null,
-    blockers,
-  });
+// A refused batch executed nothing. It seals as a refusal packet with an empty
+// executed set, so the ledger records the attempt honestly and the driver,
+// which re-reads the stream version each turn, folds no completed acts from it
+// and simply advances.
+function refusal(digest, blockers) {
+  return packet({ decision: "refused", plan_digest: digest, blockers });
 }
 
-function validateActs(acts, maxActs) {
+function validateActs(acts) {
   const blockers = [];
   if (!Array.isArray(acts) || acts.length === 0) {
     blockers.push("plan_json.acts must be a non-empty array");
     return blockers;
   }
-  if (acts.length > maxActs) {
-    blockers.push(`plan carries ${acts.length} acts; the per-execution cap is ${maxActs}`);
-  }
+  // `max_acts` caps executions per batch, not plan size: a bulk plan is
+  // intentionally larger than one batch and is drained across staged runs.
   const engagementCount = acts.filter((act) => ACT_KINDS[act?.kind]?.engagement).length;
   if (engagementCount > DEFAULT_MAX_ENGAGEMENT_ACTS) {
     blockers.push(
@@ -186,13 +188,13 @@ async function main() {
   const inputs = readInputs();
   const rawPlan = typeof inputs.plan_json === "object" && inputs.plan_json !== null ? inputs.plan_json : null;
   if (!rawPlan) {
-    writePacket(refusal(null, "", ["plan_json is required and must be the twitter plan object"]));
+    writePacket(refusal("", ["plan_json is required and must be the twitter plan object"]));
     return;
   }
   const plan = typeof rawPlan.twitter_plan === "object" && rawPlan.twitter_plan !== null ? rawPlan.twitter_plan : rawPlan;
   const digest = canonicalDigest(plan);
   if (inputs.plan_digest && inputs.plan_digest !== digest) {
-    writePacket(refusal(plan, digest, [
+    writePacket(refusal(digest, [
       `plan_digest mismatch: expected ${inputs.plan_digest}, canonical digest of plan_json is ${digest}; refusing to execute unverified content`,
     ]));
     return;
@@ -201,7 +203,7 @@ async function main() {
   const maxActs = Number.isFinite(Number(inputs.max_acts)) && Number(inputs.max_acts) > 0
     ? Math.floor(Number(inputs.max_acts))
     : DEFAULT_MAX_ACTS;
-  const blockers = validateActs(plan.acts, maxActs);
+  const blockers = validateActs(plan.acts);
   for (const act of plan.acts ?? []) {
     if (ACT_KINDS[act?.kind] && !blockers.length) {
       const paramBlocker = actParamBlocker(act);
@@ -209,7 +211,7 @@ async function main() {
     }
   }
   if (blockers.length > 0) {
-    writePacket(refusal(plan, digest, blockers));
+    writePacket(refusal(digest, blockers));
     return;
   }
 
@@ -218,7 +220,7 @@ async function main() {
   );
   const pending = plan.acts.filter((act) => !alreadyExecuted.has(String(act.act_id)));
   if (pending.length > 0 && !userCredentials()) {
-    writePacket(refusal(plan, digest, [USER_AUTH_BLOCKER]));
+    writePacket(refusal(digest, [USER_AUTH_BLOCKER]));
     return;
   }
 
@@ -228,6 +230,7 @@ async function main() {
   let rate = { limited: false, reset_at: null };
   let stopped = false;
   let failed = 0;
+  let executedThisRun = 0;
 
   for (const act of plan.acts) {
     const consequence = ACT_KINDS[act.kind].consequence;
@@ -235,10 +238,13 @@ async function main() {
       results.push({ act_id: act.act_id, kind: act.kind, consequence, status: "skipped", provider_ref: null, detail: "already executed in a prior run" });
       continue;
     }
-    if (stopped) {
+    // Drain at most max_acts per batch; the rest are remaining for the next run.
+    if (stopped || executedThisRun >= maxActs) {
+      stopped = true;
       remaining.push(act.act_id);
       continue;
     }
+    executedThisRun += 1;
     try {
       if (act.kind === "thread") {
         const { result, createdIds } = await performThread(act, state);
@@ -264,14 +270,23 @@ async function main() {
       }
       if (result.ok) {
         const data = result.json?.data ?? {};
-        results.push({
-          act_id: act.act_id,
-          kind: act.kind,
-          consequence,
-          status: "done",
-          provider_ref: data.id ?? (act.params?.post_id ?? act.params?.target_user_id ?? null),
-          detail: null,
-        });
+        // Mutations that carry an explicit boolean outcome (delete, unfollow,
+        // mute, block, unlike) must confirm it: a 2xx with the flag false is a
+        // no-op, not a success, and must not be recorded as done.
+        const outcomeFlag = data.deleted ?? data.following ?? data.muting ?? data.blocking ?? data.liked ?? data.retweeted;
+        if (outcomeFlag === false) {
+          failed += 1;
+          results.push({ act_id: act.act_id, kind: act.kind, consequence, status: "failed", provider_ref: null, detail: "provider reported the action as a no-op" });
+        } else {
+          results.push({
+            act_id: act.act_id,
+            kind: act.kind,
+            consequence,
+            status: "done",
+            provider_ref: data.id ?? (act.params?.post_id ?? act.params?.target_user_id ?? null),
+            detail: null,
+          });
+        }
       } else {
         failed += 1;
         results.push({ act_id: act.act_id, kind: act.kind, consequence, status: "failed", provider_ref: null, detail: apiErrorDetail(result) });
@@ -290,13 +305,24 @@ async function main() {
   }
 
   const decision = stopped ? "stopped" : failed > 0 ? "partial" : "executed";
+  // Acts that reached a terminal success this run (done) or were already
+  // durable (skipped). The ledger folds these to compute what remains, so an
+  // interrupted purge resumes without re-deleting.
+  const executedActIds = results
+    .filter((r) => r.status === "done" || r.status === "skipped")
+    .map((r) => r.act_id);
   writePacket(packet({
     decision,
     plan_digest: digest,
     principal: plan.principal ?? null,
     results,
+    executed_act_ids: executedActIds,
     remaining_act_ids: remaining,
     rate,
+    // Compact delta for the durable ledger: just the batch decision and the ids
+    // that completed. The full results array stays out of the ledger so reading
+    // an accumulated stream over many batches never exceeds the tool-output cap.
+    ledger_delta: { decision, executed_act_ids: executedActIds },
     success_checkpoint: {
       milestone: decision === "executed" ? "plan_fully_executed" : "plan_partially_executed",
       description: `${results.filter((r) => r.status === "done").length} done, ${results.filter((r) => r.status === "skipped").length} skipped, ${failed} failed, ${remaining.length} remaining`,

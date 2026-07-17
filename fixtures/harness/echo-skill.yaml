@@ -5,10 +5,13 @@ inputs:
   message: hello from harness
 expect:
   status: sealed
+  output:
+    subset:
+      message: hello from harness
   receipt:
     schema: runx.receipt.v1
-    body_digest: sha256:775ca6e2de7fa09cd70e63e55719b6fa6f0574820f10c95ca2e52e37f6ca3d3d
-    receipt_digest: sha256:0924a2661f118804368828fba5e4fdf85e019e9bce8162115086495250459d03
+    body_digest: sha256:2e54dd4fca24db148ee182922eb80336e09975c9f0c6b1f0019f229ef96bbaf0
+    receipt_digest: sha256:50a7cac68e4ac216fc6114377a03da32b976cc1ef09b48ed1e3eb18ccbe3df9e
     harness_id: hrn_echo-skill_echo
     state: sealed
     disposition: closed

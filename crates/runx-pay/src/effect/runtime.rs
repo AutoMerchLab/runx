@@ -10,8 +10,7 @@ use super::admission::admit_payment_effect;
 use super::context::{is_payment_admission_key, payment_admission_field_present};
 use super::output::{
     finalize_payment_output, payment_authority_grant_refs, prepare_payment_output,
-    prepare_payment_replay_output, refresh_payment_output_metadata, replay_authority_grant_refs,
-    validate_payment_replay,
+    prepare_payment_replay_output, replay_authority_grant_refs, validate_payment_replay,
 };
 use super::replay::{find_payment_replay, recover_pending_payment};
 use super::{PAYMENT_EFFECT_FAMILY, PaymentRuntimeEffect};
@@ -85,12 +84,5 @@ impl RuntimeEffect for PaymentRuntimeEffect {
         request: EffectReplayReceiptRequest<'_>,
     ) -> Result<(), RuntimeEffectError> {
         validate_payment_replay(request)
-    }
-
-    fn refresh_output_metadata(
-        &self,
-        request: runx_runtime::EffectMetadataRefreshRequest<'_>,
-    ) -> Result<(), RuntimeEffectError> {
-        refresh_payment_output_metadata(request)
     }
 }

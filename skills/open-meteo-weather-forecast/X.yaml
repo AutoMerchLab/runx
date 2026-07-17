@@ -1,5 +1,5 @@
 skill: open-meteo-weather-forecast
-version: "0.1.1"
+version: "0.1.2"
 
 catalog:
   kind: graph
@@ -13,30 +13,6 @@ catalog:
   completion: provider_readback
   requires_adapter: true
   approval: none
-
-harness:
-  cases:
-    - name: open-meteo-shanghai
-      runner: main
-      inputs:
-        name: Shanghai
-        latitude: "31.2222"
-        longitude: "121.4581"
-        forecast_days: "3"
-      expect:
-        status: sealed
-        receipt:
-          schema: runx.receipt.v1
-    - name: open-meteo-air-quality-shanghai
-      runner: air_quality
-      inputs:
-        name: Shanghai
-        latitude: "31.2222"
-        longitude: "121.4581"
-      expect:
-        status: sealed
-        receipt:
-          schema: runx.receipt.v1
 
 runners:
   main:

@@ -51,10 +51,13 @@ A skill is a definition; a run is an act. The relationship is fixed:
 - **Acts chain.** An act records the authority it held (`Receipt.authority`,
   including the credentials it carried, as `grant_refs`) and chains by lineage:
   `lineage.previous` (this act follows the one it acts on, e.g. a review follows
-  the delivery it reviewed), `lineage.parent`/`children` (a graph turn is the
-  parent act and its steps are child acts), and `Intent.derived_from` (the acts an
-  act reasoned from). A graph is therefore a composition of chained acts, not a
-  separate kind of thing.
+  the delivery it reviewed), `lineage.children` (a graph receipt commits the
+  identity and body digest of each immutable step receipt), and
+  `Intent.derived_from` (the acts an act reasoned from). Runtime children do not
+  carry a single `lineage.parent`: the same content-addressed receipt may be
+  reused by more than one graph, so rebinding it would change its signed body.
+  A graph is therefore a composition of chained acts, not a separate kind of
+  thing.
 - **One act per run.** The discipline that keeps a receipt honest: a run produces
   one declared (or default) act, composed into chains by lineage, never a loose
   bag of acts. A standalone skill is a one-act run; a graph is a chain of acts.

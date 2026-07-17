@@ -53,13 +53,26 @@ pub fn isolated_runx_command(signing_key_id: &str) -> Result<Command, Box<dyn st
 }
 
 pub fn isolated_runx_command_with_inherited_cwd(signing_key_id: &str) -> Command {
+    let mut command = unsigned_runx_command_with_inherited_cwd();
+    apply_fixture_signing(&mut command, signing_key_id);
+    command
+}
+
+pub fn unsigned_runx_command_with_inherited_cwd() -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
     command.env_clear();
     if let Some(path) = std::env::var_os("PATH") {
         command.env("PATH", path);
     }
     command.env("NO_COLOR", "1");
-    apply_fixture_signing(&mut command, signing_key_id);
+    command
+}
+
+pub fn unsigned_runx_command_at(root: &Path) -> Command {
+    let mut command = unsigned_runx_command_with_inherited_cwd();
+    command
+        .current_dir(root)
+        .env("RUNX_HOME", root.join("home"));
     command
 }
 
@@ -107,6 +120,34 @@ pub fn governed_harness_fixture(
     let path = root.join(file_name);
     fs::write(&path, governed_harness_yaml(&source, parent)?)?;
     Ok(GovernedHarnessFixture { path, root })
+}
+
+pub fn write_agent_task_skill(root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let skill_dir = root.join("issue-intake");
+    fs::create_dir_all(&skill_dir)?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: issue-intake\n---\n# Issue Intake\n",
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        r#"
+skill: issue-intake
+runners:
+  intake:
+    default: true
+    type: agent-task
+    agent: builder
+    task: issue-intake
+    outputs:
+      intake_report: object
+    inputs:
+      thread_title:
+        type: string
+        required: false
+"#,
+    )?;
+    Ok(skill_dir)
 }
 
 fn governed_harness_yaml(

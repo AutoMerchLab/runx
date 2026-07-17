@@ -1,5 +1,5 @@
 skill: least-privilege
-version: "0.2.0"
+version: "0.3.0"
 catalog:
   kind: graph
   audience: operator
@@ -28,8 +28,8 @@ runners:
         description: Receipt ids that support the normalized usage summary.
       usage_summary:
         type: json
-        required: true
-        description: Normalized observed scopes with counts and receipt references.
+        required: false
+        description: Supplemental normalized scope observations for legacy replay when native receipt detail is unavailable.
       objective:
         type: string
         required: false
@@ -38,6 +38,10 @@ runners:
         type: json
         required: false
         description: Explicit native-projection rows for deterministic replay only.
+      receipt_details:
+        type: json
+        required: false
+        description: Explicit native redacted receipt-detail projections for deterministic replay only.
     graph:
       name: least-privilege
       steps:
@@ -51,6 +55,7 @@ runners:
             proof:
               verify_chain: true
             receipts: $input.receipt_rows
+            receipt_details: $input.receipt_details
         - id: analyze
           label: compare grant with receipt-backed usage
           inputs:

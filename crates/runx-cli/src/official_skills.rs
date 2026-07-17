@@ -17,8 +17,8 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/audit-receipt",
-        version: "sha-943454180b2f",
-        digest: "5bc0edfbb5d194d909477bfb847f5ea260152f67a5ff2828abcb206efee47e3d",
+        version: "sha-7ba88eb02c01",
+        digest: "81009b3ff93d5278fba3ce56c57439c17bae5567059c19d86cfc8be5086b2a1c",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/brand-voice",
@@ -27,7 +27,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/business-ops",
-        version: "sha-75c89270d40e",
+        version: "sha-9d0a8e6e108f",
         digest: "7801492f5b8fa34f0f6e91f9f2729396744c35fe517ae275885e07204bc52b6f",
     },
     OfficialSkillLockEntry {
@@ -117,7 +117,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/knowledge-router",
-        version: "sha-081d979f6c31",
+        version: "sha-dbcc86ca2cdd",
         digest: "bb2ab025b432cff2261b1aa5472e519281ef6f0f7eec954ed33bd0b366dcfe8b",
     },
     OfficialSkillLockEntry {
@@ -132,13 +132,13 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/least-privilege",
-        version: "sha-440e5ac75643",
-        digest: "a34b760e1211163cc380580b5572492c5a60c0fe396beee5c206fbf640385085",
+        version: "sha-5700b4a01999",
+        digest: "b5531e32914f813fbd506672b368040c5cfb64d43b28ae90d1056c7d7aa48986",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/ledger",
-        version: "sha-293759e07012",
-        digest: "bbacad2f6baeafee42f9532d08f1c840a933317b58ffdc1b8590252a17e129f0",
+        version: "sha-876721ac6502",
+        digest: "de3cfbf8a47ac65575f87cbf7027fc6dd29ad471e2641d5f0ad545695d393f70",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/messageboard",
@@ -182,7 +182,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/n8n-handoff",
-        version: "sha-f67eacd7f297",
+        version: "sha-8c9ddc3bd36e",
         digest: "599faff301adc853227ea94e7d8bd28c5383940c055c7ddaf609d0d646ab8b71",
     },
     OfficialSkillLockEntry {
@@ -197,7 +197,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/open-meteo-weather-forecast",
-        version: "sha-43ab58e4cb8a",
+        version: "sha-cb7d0ab2f5c8",
         digest: "041e0ec18fa4b646b46b72d34662eabbbfbc43ab5a3a65423b49b3e94e81d159",
     },
     OfficialSkillLockEntry {
@@ -222,7 +222,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/pr-review-note",
-        version: "sha-47ed8979fa54",
+        version: "sha-5cdbb53bf257",
         digest: "b073ec884f56c9e412d0c1039d5f28f163df0f5530eb0bee922ed4c557955c52",
     },
     OfficialSkillLockEntry {
@@ -237,8 +237,8 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/reflect-digest",
-        version: "sha-b2d1793ab89c",
-        digest: "0d94edb32b6750d9de93c6826fb03c0b26f208c2a226608c1b197062034071f3",
+        version: "sha-91a16acce845",
+        digest: "9f6a80d73c4ae252ccb55d0efc1666052f13d7eb9113d6d5b7fff0bd5a55f3a6",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/refund",
@@ -257,18 +257,18 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/review-receipt",
-        version: "sha-fcaa9d3b6e51",
-        digest: "7e9d7569fbc16f63d8e41ad32d852069b5610774a317aaf50e6203f3852e1926",
+        version: "sha-94d523eac0cf",
+        digest: "125546ddce39acf20991cb3d891eb23cf9acddb5deaa3f31810b39a86b3ea732",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/review-skill",
-        version: "sha-cce4c8aee717",
+        version: "sha-abd777e6fe70",
         digest: "0895b326f2507bd87f8eeceb52f058326f2aac1eecfb2776ac006db7a14b4611",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/run-history",
-        version: "sha-371a2fe73227",
-        digest: "928ccbca5d1ce8c1b2dfa48c14ea9fd8ed37299490f3421e8b9806340fc07a98",
+        version: "sha-352e3f84770c",
+        digest: "7906c0a6b99c5e47588ff4b4a89325e38b654453923a77b22c486045ff7abf9e",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/sandbox-harden",
@@ -292,8 +292,8 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/skill-lab",
-        version: "sha-81e20d58586c",
-        digest: "dfc4cd1b5a8199601170d127d5ad081faad3cb0d1150a7316f49739177549757",
+        version: "sha-ebd95ed5cd73",
+        digest: "993a81bd27449283e404d91db55f4beb226004fe0bc6751237cc6f389ab83ba1",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/slack-notify",
@@ -302,7 +302,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/sourcey",
-        version: "sha-0b3a90b276ec",
+        version: "sha-9999ff352740",
         digest: "30b7e7396d54f0b617dfb67d4c5c6506aaf9dd8df27cac546a9f0f51ff367670",
     },
     OfficialSkillLockEntry {
@@ -337,8 +337,8 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/twitter",
-        version: "sha-37efc70c8186",
-        digest: "380af582cee57037d1386b71ce04232bda490102c36795f7e309504f2948a2f8",
+        version: "sha-55c3a38fcafd",
+        digest: "713eb001285f04d7b82edcae447a812373db8155a803a3f3c56ad53934fa1046",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/vault-unseal",
@@ -377,7 +377,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/zapier-handoff",
-        version: "sha-72bc379aed4e",
+        version: "sha-c66aaea037e2",
         digest: "fea3dfe9c62ee6579fcde6aa6a8653efc7944eec40a7926619f9bb533f23cb54",
     },
 ];

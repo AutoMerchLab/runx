@@ -5,11 +5,11 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use runx_contracts::{Receipt, ReceiptIssuerType, ReferenceType};
+use runx_contracts::{Receipt, ReceiptIssuerType, Reference, ReferenceType};
 use runx_runtime::journal::{
     HISTORY_PROJECTOR_ID, HistoryFilter, JOURNAL_PROJECTOR_ID, JournalProjectionError,
-    PausedRunCheckpoint, RECEIPT_REF_PREFIX, exact_receipt_id, list_local_history,
-    list_local_history_with_checkpoints, list_local_history_with_policy,
+    PausedRunCheckpoint, RECEIPT_REF_PREFIX, exact_receipt_id, inspect_local_receipt,
+    list_local_history, list_local_history_with_checkpoints, list_local_history_with_policy,
     project_journal_for_receipt, project_receipt_journal, project_receipt_journal_with_policy,
     receipt_uri,
 };
@@ -135,6 +135,36 @@ fn history_display_identity_ignores_unsigned_metadata() -> Result<(), Box<dyn st
     assert_eq!(history.receipts[0].harness_id, SIGNED_RUNTIME_SUBJECT);
     assert_eq!(history.receipts[0].source_type.as_deref(), Some("local"));
     assert_eq!(history.receipts[0].actors, vec![SIGNED_LOCAL_ACTOR]);
+    Ok(())
+}
+
+#[test]
+fn receipt_inspection_projects_signed_governance_without_execution_bodies()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let workspace = temp.path().join("workspace");
+    let project_runx_dir = workspace.join(".runx");
+    let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
+    let mut receipt = generated_runtime_receipt()?;
+    receipt.authority.scope_refs.push(Reference::with_uri(
+        ReferenceType::ScopeAdmission,
+        "runx:scope_admission:repo.read",
+    ));
+    reseal_receipt(&mut receipt)?;
+    store.write_receipt(&receipt)?;
+
+    let inspection =
+        inspect_local_receipt(&store, &workspace, &project_runx_dir, receipt.id.as_str())?;
+    assert_eq!(inspection.receipt.id, receipt.id.to_string());
+    assert_eq!(
+        inspection.receipt.authority.exercised_scopes[0].scope,
+        "repo:read"
+    );
+    assert!(!inspection.receipt.acts.is_empty());
+    let serialized = serde_json::to_string(&inspection)?;
+    assert!(!serialized.contains("structured_output"));
+    assert!(!serialized.contains("stderr"));
+    assert_no_local_paths(&serialized);
     Ok(())
 }
 

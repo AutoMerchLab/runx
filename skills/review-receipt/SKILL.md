@@ -10,12 +10,13 @@ runx:
 Diagnose what went wrong in a skill or graph execution and propose the
 smallest change that fixes it.
 
-Resolve `receipt_id` through the native `ledger read` runner, then combine that
-receipt's status and verification posture with the supplied failure summary or
-harness output. Identify what was attempted, what succeeded, and where it
-broke. Do not claim the native history projection contains hydrated step output,
-stderr, or receipt bodies; those details must come from the supplied bounded
-failure evidence.
+Resolve `receipt_id` through the native `ledger read` runner, then combine its
+redacted receipt detail with the supplied failure summary or harness output.
+The native detail is authoritative for status, verification, authority, acts,
+decisions, criterion status, references, and seal posture. It deliberately
+excludes hydrated step output, stdout, stderr, credential values, context
+bodies, and local paths; those details must come from supplied bounded failure
+evidence when they are necessary.
 
 Distinguish root cause from symptoms. A graph may report failure at step 4,
 but the root cause may be bad output from step 2 that propagated through
@@ -43,7 +44,7 @@ Classify the failure:
 
 ## Agent-mediated suspension is not a failure
 
-A receipt with status `needs_agent` denotes a healthy
+A receipt sealed with reason `needs_agent`, or whose graph status is `deferred`, denotes a healthy
 agent-mediated suspension, not a defect. The runtime yielded to the
 caller for missing agent or human input.
 This is a normal part of graph execution, not one of the failure
@@ -81,6 +82,8 @@ Supply whichever evidence is available:
 
 - `receipt_id`: receipt id to inspect.
 - `receipt_summary`: sanitized receipt or harness summary.
+- `receipt_details`: native redacted receipt projections for deterministic
+  replay only; live runs resolve them from `receipt_id`.
 - `harness_output`: failed harness output or assertion text.
 - `skill_path`: path to the skill being improved.
 - `receipt_rows`: native-projection rows for deterministic replay only; live

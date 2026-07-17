@@ -27,6 +27,7 @@ const catalogSkills = fs.readdirSync(catalogRoot, { withFileTypes: true })
 const targetFiles = targetRoot && fs.existsSync(targetRoot)
   ? listFiles(targetRoot, targetRoot, 200)
   : [];
+const improvementEvidence = buildImprovementEvidence(inputs);
 
 process.stdout.write(`${JSON.stringify({
   authoring_context: {
@@ -37,13 +38,9 @@ process.stdout.write(`${JSON.stringify({
     target_files: targetFiles,
     catalog_root: path.relative(repoRoot, catalogRoot) || ".",
     catalog_skills: catalogSkills,
-    objective: stringValue(inputs.objective),
-    failure_evidence_present: Boolean(
-      stringValue(inputs.receipt_id)
-      || stringValue(inputs.receipt_summary)
-      || stringValue(inputs.harness_output)
-      || isRecord(inputs.failure_packet),
-    ),
+    objective: boundedString(inputs.objective, "objective", 10_000),
+    failure_evidence_present: improvementEvidence !== null,
+    improvement_evidence: improvementEvidence,
   },
 }, null, 2)}\n`);
 
@@ -94,4 +91,71 @@ function stringValue(value) {
 
 function isRecord(value) {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+function buildImprovementEvidence(inputs) {
+  const receiptId = boundedString(inputs.receipt_id, "receipt_id", 500);
+  const receiptSummary = boundedString(inputs.receipt_summary, "receipt_summary", 10_000);
+  const harnessOutput = boundedString(inputs.harness_output, "harness_output", 20_000);
+  const failurePacket = inputs.failure_packet === undefined || inputs.failure_packet === null
+    ? null
+    : validateFailurePacket(inputs.failure_packet);
+  if (!receiptId && !receiptSummary && !harnessOutput && !failurePacket) return null;
+  return {
+    receipt_id: receiptId,
+    receipt_summary: receiptSummary,
+    harness_output: harnessOutput,
+    failure_packet: failurePacket,
+  };
+}
+
+function validateFailurePacket(value) {
+  if (!isRecord(value)) throw new Error("failure_packet must be a runx.review.receipt.v1 object");
+  const verdict = requiredEnum(value.verdict, "failure_packet.verdict", ["pass", "needs_update", "blocked"]);
+  const failureSummary = requiredBoundedString(value.failure_summary, "failure_packet.failure_summary", 10_000);
+  const proposals = boundedArray(value.improvement_proposals, "failure_packet.improvement_proposals", 3)
+    .map((proposal, index) => {
+      if (!isRecord(proposal)) throw new Error(`failure_packet.improvement_proposals[${index}] must be an object`);
+      return {
+        target: requiredBoundedString(proposal.target, `failure_packet.improvement_proposals[${index}].target`, 1_000),
+        change: requiredBoundedString(proposal.change, `failure_packet.improvement_proposals[${index}].change`, 5_000),
+        rationale: requiredBoundedString(proposal.rationale, `failure_packet.improvement_proposals[${index}].rationale`, 5_000),
+        risk: requiredBoundedString(proposal.risk, `failure_packet.improvement_proposals[${index}].risk`, 5_000),
+      };
+    });
+  const checks = boundedArray(value.next_harness_checks, "failure_packet.next_harness_checks", 20)
+    .map((check, index) => requiredBoundedString(check, `failure_packet.next_harness_checks[${index}]`, 2_000));
+  if (verdict === "pass" && proposals.length > 0) {
+    throw new Error("failure_packet with verdict pass must not propose package changes");
+  }
+  return {
+    verdict,
+    failure_summary: failureSummary,
+    improvement_proposals: proposals,
+    next_harness_checks: checks,
+  };
+}
+
+function boundedArray(value, field, limit) {
+  if (!Array.isArray(value)) throw new Error(`${field} must be an array`);
+  if (value.length > limit) throw new Error(`${field} may contain at most ${limit} entries`);
+  return value;
+}
+
+function boundedString(value, field, maxLength) {
+  const text = stringValue(value);
+  if (text && text.length > maxLength) throw new Error(`${field} exceeds ${maxLength} characters`);
+  return text;
+}
+
+function requiredBoundedString(value, field, maxLength) {
+  const text = boundedString(value, field, maxLength);
+  if (!text) throw new Error(`${field} must be a non-empty string`);
+  return text;
+}
+
+function requiredEnum(value, field, allowed) {
+  const text = requiredBoundedString(value, field, 100);
+  if (!allowed.includes(text)) throw new Error(`${field} must be one of: ${allowed.join(", ")}`);
+  return text;
 }

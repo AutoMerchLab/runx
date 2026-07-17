@@ -175,6 +175,15 @@ impl LocalReceiptStore {
         Ok(receipts)
     }
 
+    pub(crate) fn read_exact_without_proof_for_history(
+        &self,
+        receipt_id: &str,
+    ) -> Result<Receipt, ReceiptStoreError> {
+        let file_path = self.receipt_path(receipt_id)?;
+        self.ensure_store_dir()?;
+        read_receipt_file_without_proof(&file_path, receipt_id)
+    }
+
     pub fn load_index(&self) -> Result<ReceiptStoreIndex, ReceiptStoreError> {
         self.load_index_with_policy(RuntimeReceiptSignaturePolicy::local_development())
     }

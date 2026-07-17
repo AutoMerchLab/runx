@@ -1,7 +1,7 @@
 use runx_contracts::{JsonNumber, JsonObject, JsonValue, Reference};
 use runx_runtime::{
-    EffectAdmission, EffectMetadataRefreshRequest, EffectOutputRequest, EffectReceiptRequest,
-    EffectReplay, EffectReplayOutputRequest, EffectReplayReceiptRequest, RuntimeEffectError,
+    EffectAdmission, EffectOutputRequest, EffectReceiptRequest, EffectReplay,
+    EffectReplayOutputRequest, EffectReplayReceiptRequest, RuntimeEffectError,
     insert_effect_verification_ref,
 };
 
@@ -19,8 +19,7 @@ use crate::supervisor::{
     PaymentSupervisorVerificationInput, insert_payment_supervisor_proof_metadata,
     payment_supervisor_evidence_from_payload, payment_supervisor_evidence_metadata_value,
     payment_supervisor_evidence_reference, payment_supervisor_proof_reference,
-    rebind_supervisor_proof_to_receipt, validate_payment_supervisor_proof,
-    verify_payment_rail_supervisor_proof,
+    validate_payment_supervisor_proof, verify_payment_rail_supervisor_proof,
 };
 
 pub(super) fn prepare_payment_output(
@@ -216,13 +215,6 @@ pub(super) fn validate_payment_replay(
             "sealed payment replay supervisor proof mismatch: {source}"
         ))
     })
-}
-
-pub(super) fn refresh_payment_output_metadata(
-    request: EffectMetadataRefreshRequest<'_>,
-) -> Result<(), RuntimeEffectError> {
-    rebind_supervisor_proof_to_receipt(&mut request.output.metadata, request.receipt)
-        .map_err(|source| failed("refreshing supervisor proof metadata", source))
 }
 
 fn supervisor_request<'a>(

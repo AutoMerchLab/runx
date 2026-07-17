@@ -8,8 +8,8 @@
     },
     {
       "path": "skills/business-ops",
-      "proof": "One business signal is classified, persisted through the governed data plane, read back, and sealed.",
-      "command": "runx harness skills/business-ops/fixtures/route-and-append-sqlite.yaml"
+      "proof": "Launch routing stops sends and spend at their gates, requires provider evidence, persists a route, and proves idempotent replay.",
+      "command": "runx harness skills/business-ops"
     },
     {
       "path": "skills/data-store",

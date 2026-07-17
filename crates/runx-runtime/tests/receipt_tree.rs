@@ -33,9 +33,8 @@ fn runtime_resolver_verifies_graph_receipt_with_children() -> Result<(), Box<dyn
         child
             .lineage
             .as_ref()
-            .and_then(|l| l.parent.as_ref())
-            .map(|r| r.uri.as_str())
-            == Some(format!("runx:receipt:{}", root.id).as_str())
+            .and_then(|lineage| lineage.parent.as_ref())
+            .is_none()
     }));
     assert!(
         runx_receipts::validate_receipt_tree_with_resolver(
@@ -217,18 +216,14 @@ fn runtime_tree_rejects_child_ref_without_digest_locator() -> Result<(), Box<dyn
 }
 
 #[test]
-fn runtime_tree_rejects_child_without_parent_link() -> Result<(), Box<dyn std::error::Error>> {
-    let (root, mut children) = graph_with_steps("tree_runtime_missing_parent", &["child"])?;
-    children[0].lineage.as_mut().unwrap().parent = None;
-    refresh_local_digest_and_signature(&mut children[0])?;
+fn runtime_tree_accepts_reusable_child_without_parent_link()
+-> Result<(), Box<dyn std::error::Error>> {
+    let (root, children) = graph_with_steps("tree_runtime_reusable_child", &["child"])?;
 
     assert!(runx_receipts::verify_receipt_tree(&root, &children).valid);
-    let verification = verify_runtime_receipt_tree(&root, children, ReceiptTreeConfig::default());
-
-    assert_finding(
-        &verification,
-        ReceiptFindingCode::ChildReceiptParentMismatch,
-        "lineage.children[0].lineage.parent",
+    assert!(
+        verify_runtime_receipt_tree(&root, children, ReceiptTreeConfig::default()).valid,
+        "the parent id+digest edge is sufficient for an immutable receipt DAG"
     );
     Ok(())
 }

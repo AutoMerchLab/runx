@@ -1,5 +1,5 @@
 skill: ledger
-version: "0.3.0"
+version: "0.4.1"
 catalog:
   kind: skill
   audience: operator
@@ -19,6 +19,7 @@ runners:
     outputs:
       ledger_answer: object
       matched_receipts: array
+      receipt_details: array
       chain_verification: object
       summary: string
     artifacts:
@@ -45,3 +46,7 @@ runners:
         type: json
         required: false
         description: Explicit native-projection rows for replay; live reads use runx history.
+      receipt_details:
+        type: json
+        required: false
+        description: Explicit native redacted receipt-detail projections for deterministic replay only.

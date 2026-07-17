@@ -219,7 +219,10 @@ fn receipt_positions<'a>(
 }
 
 fn runtime_receipt_tree_config(mut config: ReceiptTreeConfig) -> ReceiptTreeConfig {
-    config.require_parent_links = true;
+    // Parent-to-child id+digest links are the immutable DAG edge. A sealed
+    // child can be reused by multiple parents, so no parent back-link is
+    // required on the child itself.
+    config.require_parent_links = false;
     config
 }
 

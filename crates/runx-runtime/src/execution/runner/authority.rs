@@ -218,4 +218,15 @@ impl StepAuthorityContext {
                 message: source.to_string(),
             })
     }
+
+    pub(super) fn authority_scope_refs(
+        &self,
+        effects: &RuntimeEffectRegistry,
+    ) -> Result<Vec<runx_contracts::Reference>, RuntimeError> {
+        effects
+            .authority_scope_refs(&self.admission)
+            .map_err(|source| RuntimeError::ReceiptInvalid {
+                message: source.to_string(),
+            })
+    }
 }

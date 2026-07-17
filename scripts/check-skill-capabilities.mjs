@@ -27,6 +27,9 @@ function admissionFindings(skills, decisions) {
     const findings = skill.issues.map((issue) => `${skill.path}: ${issue}`);
     const decision = decisions.recommendations?.[skill.skill];
     if (!decision?.archetype) findings.push(`${skill.path}: missing product archetype review`);
+    if (decision?.action === "keep" && skill.proof.semantic_cases === 0) {
+      findings.push(`${skill.path}: a kept public skill needs at least one semantic output oracle`);
+    }
     return findings;
   });
 }

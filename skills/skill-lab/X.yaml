@@ -1,5 +1,5 @@
 skill: skill-lab
-version: "0.2.1"
+version: "0.3.0"
 
 catalog:
   kind: graph
@@ -334,8 +334,10 @@ runners:
             outputs:
               change_bundle: object
           instructions: >
-            Diagnose the supplied receipt or harness evidence against the current
-            package, then return one bounded correction. Distinguish contract,
+            Diagnose authoring_context.improvement_evidence against the current
+            package, then return one bounded correction. The evidence has been
+            schema-checked and bounded by the inspect step; do not replace it
+            with an invented diagnosis. Distinguish contract,
             implementation, fixture, environment, and operator failures. Return
             no_change with an empty files array when the evidence does not justify
             a package change. Otherwise return change_bundle with decision write,

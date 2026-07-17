@@ -1,5 +1,5 @@
 skill: pr-review-note
-version: "0.1.1"
+version: "0.1.2"
 
 catalog:
   kind: graph
@@ -27,6 +27,15 @@ harness:
           schema: runx.receipt.v1
           state: sealed
           disposition: closed
+        steps:
+          - review_note
+        step_outputs:
+          review_note:
+            subset:
+              skill_claim:
+                repository: runxhq/runx
+                number: "42"
+                review_note_id: pr-review-note-fixture-001
     - name: pr-review-note-merge-refused
       runner: merge-refused
       env:

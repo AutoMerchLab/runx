@@ -18,7 +18,7 @@ export RUNX_RECEIPT_SIGN_ISSUER_TYPE=hosted
 | Demo | Proof | Run | Gate |
 | --- | --- | --- | --- |
 | `examples/hello-world` | Native CLI top-level skill and harness baseline. | `runx harness examples/hello-world` | harness |
-| `skills/business-ops` | One business signal is classified, persisted through the governed data plane, read back, and sealed. | `runx harness skills/business-ops/fixtures/route-and-append-sqlite.yaml` | harness |
+| `skills/business-ops` | Launch routing stops sends and spend at their gates, requires provider evidence, persists a route, and proves idempotent replay. | `runx harness skills/business-ops` | harness |
 | `skills/data-store` | A provider-agnostic data operation appends and reads durable SQLite state through a governed adapter envelope. | `runx harness skills/data-store/fixtures/append-read-sqlite-event.yaml` | harness |
 | `examples/github-mcp-hero` | GitHub MCP repo read succeeds, out-of-scope write is refused, and the denial receipt verifies offline. | `sh examples/github-mcp-hero/run.sh` | harness |
 | `examples/http-graph` | A graph step uses the governed HTTP front against a local fixture and seals a receipt tree. | `sh examples/http-graph/run.sh` | harness |

@@ -3,8 +3,7 @@ use super::{
 };
 
 use std::collections::BTreeMap;
-use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 use runx_contracts::{JsonObject, JsonValue};
 use runx_parser::{HarnessCallerFixture, RunnerHarnessCase, SkillRunnerManifest};
@@ -16,90 +15,9 @@ use crate::execution::prepared_skill::missing_required_inputs;
 
 use super::runner_manifest::{load_runner_manifest, resolve_skill_dir, selected_runner};
 
-/// Run every harness case owned by a skill package: inline `harness.cases`
-/// plus conventional `fixtures/*.yaml` files. Discovery is deterministic and
-/// this is the single package entry point used by both the CLI and publishing.
-#[cfg(feature = "cli-tool")]
-pub(crate) fn run_package_harness_with_effects(
-    skill_path: &Path,
-    receipt_dir: Option<&Path>,
-    env: Option<&BTreeMap<String, String>>,
-    effects: &RuntimeEffectRegistry,
-) -> Result<PackageHarnessReport, SkillRunError> {
-    let skill_dir = resolve_skill_dir(skill_path)?;
-    let mut report = run_inline_harness_with_effects(&skill_dir, receipt_dir, env, effects)?;
-    let fixture_paths = conventional_fixture_paths(&skill_dir)?;
-    if fixture_paths.is_empty() {
-        return Ok(report);
-    }
+mod package;
 
-    let mut options = crate::execution::runner::RuntimeOptions::from_env_or_local_development(
-        env.cloned()
-            .unwrap_or_else(crate::services::process_env_snapshot),
-    )?;
-    options.created_at = crate::time::DEFAULT_CREATED_AT.to_owned();
-    options.effects = effects.clone();
-    for fixture_path in fixture_paths {
-        report.case_count += 1;
-        match crate::execution::harness::run_harness_fixture_with_adapter(
-            &fixture_path,
-            super::SkillRunGraphAdapter::default(),
-            options.clone(),
-        ) {
-            Ok(output) => {
-                if matches!(
-                    output.fixture.kind,
-                    crate::execution::harness::HarnessFixtureKind::Graph
-                ) {
-                    report.graph_case_count += 1;
-                }
-                report.case_names.push(output.fixture.name);
-                report.receipt_ids.push(output.receipt.id.to_string());
-            }
-            Err(error) => report
-                .assertion_errors
-                .push(format!("{}: {error}", fixture_path.display())),
-        }
-    }
-    report.assertion_error_count = report.assertion_errors.len();
-    report.status = if report.assertion_errors.is_empty() {
-        "passed"
-    } else {
-        "failed"
-    };
-    Ok(report)
-}
-
-#[cfg(feature = "cli-tool")]
-fn conventional_fixture_paths(skill_dir: &Path) -> Result<Vec<PathBuf>, SkillRunError> {
-    let fixtures_dir = skill_dir.join("fixtures");
-    let entries = match fs::read_dir(&fixtures_dir) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
-        Err(source) => {
-            return Err(
-                RuntimeError::io(format!("reading {}", fixtures_dir.display()), source).into(),
-            );
-        }
-    };
-    let mut paths = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|source| {
-            RuntimeError::io(format!("reading {}", fixtures_dir.display()), source)
-        })?;
-        let path = entry.path();
-        if path.is_file()
-            && path
-                .extension()
-                .and_then(|extension| extension.to_str())
-                .is_some_and(|extension| matches!(extension, "yaml" | "yml"))
-        {
-            paths.push(path);
-        }
-    }
-    paths.sort();
-    Ok(paths)
-}
+pub(crate) use package::run_package_harness_with_effects;
 
 /// Run a skill's declared inline harness and summarize it. Each declared case is
 /// run through the same path as `runx skill` (so a graph that blocks on an agent

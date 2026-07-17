@@ -13,9 +13,8 @@ pub use provider_permission::{
 };
 pub use registry::RuntimeEffectRegistry;
 pub use types::{
-    EffectAdmission, EffectMetadataRefreshRequest, EffectOutputRequest, EffectReceiptRequest,
-    EffectReplay, EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest,
-    RuntimeEffect,
+    EffectAdmission, EffectOutputRequest, EffectReceiptRequest, EffectReplay,
+    EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest, RuntimeEffect,
 };
 
 #[cfg(test)]

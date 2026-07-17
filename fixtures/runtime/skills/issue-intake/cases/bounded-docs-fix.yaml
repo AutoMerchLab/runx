@@ -150,7 +150,7 @@ expect:
   status: "sealed"
   receipt:
     schema: "runx.receipt.v1"
-    receipt_id: "sha256:fb749ac931e315509093eb3414816097271e33ed5f4b38c5c05888fc5df5c26a"
+    receipt_id: "sha256:affd2cff3b2690d887ce56f9a1b0373de3e18936bb2476c2f202ca240dbef259"
     harness_id: "hrn_bounded-docs-fix_bounded-docs-fix"
     state: "sealed"
     disposition: "closed"

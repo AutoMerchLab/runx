@@ -97,6 +97,11 @@ export function auditSummary(skills) {
       (skill) => skill.managed_agent_acts > 0 && skill.capability_boundaries.length === 0,
     ).length,
     no_operation_proof_count: skills.filter((skill) => skill.proof.operation_cases === 0).length,
+    no_semantic_proof_count: skills.filter((skill) => skill.proof.semantic_cases === 0).length,
+    operator_journey_count: skills.reduce(
+      (count, skill) => count + skill.proof.operator_journey_cases,
+      0,
+    ),
     no_contract_proof_count: skills.filter((skill) => skill.proof.total_cases === 0).length,
     pending_decision_count: skills.filter((skill) => skill.decision_status === "pending_review").length,
     dispositions: byDisposition,
@@ -113,6 +118,8 @@ export function reviewSummary(skills, decisions, trials) {
     managed_agent_count: audit.managed_agent_count,
     agent_only_default_count: audit.agent_only_default_count,
     no_operation_proof_count: audit.no_operation_proof_count,
+    no_semantic_proof_count: audit.no_semantic_proof_count,
+    operator_journey_count: audit.operator_journey_count,
     no_contract_proof_count: audit.no_contract_proof_count,
     locally_proven_count: trials.summary.locally_proven,
     locally_failed_count: trials.summary.failed,
@@ -187,6 +194,8 @@ export function reviewDocument(skills, decisions, trials) {
     `- Packages containing agent work: ${summary.managed_agent_count}`,
     `- Agent-only default closures: ${summary.agent_only_default_count}`,
     `- Packages without operation proof: ${summary.no_operation_proof_count}`,
+    `- Packages without semantic output proof: ${summary.no_semantic_proof_count}`,
+    `- Replayable multi-step operator journeys: ${summary.operator_journey_count}`,
     `- Packages without any replayable contract proof: ${summary.no_contract_proof_count}`,
     `- Public harness trials: ${summary.locally_proven_count} passed, ${summary.locally_failed_count} failed, ${summary.locally_unproven_count} unproven`,
     `- Public packages currently meeting their complete archetype bar: ${summary.full_bar_count}`,
@@ -245,6 +254,7 @@ function trialEvidence(skill, trial) {
   const parts = [`harness ${trial.local_trial}`, `${trial.static_findings.length} blocking finding(s)`];
   if (skill.proof.operation_cases > 0) parts.push(`${skill.proof.operation_cases} operation proof(s)`);
   if (skill.proof.agent_contract_cases > 0) parts.push(`${skill.proof.agent_contract_cases} agent-contract proof(s)`);
+  if (skill.proof.operator_journey_cases > 0) parts.push(`${skill.proof.operator_journey_cases} operator journey(s)`);
   if (trial.provider_readback === "passed") parts.push("provider readback passed");
   else if (trial.provider_readback === "not_proven_by_isolated_fixture") {
     parts.push("provider readback unproven");
@@ -459,6 +469,9 @@ function catalogImprovements(catalog, traversal, capabilityBoundaries, proof) {
   if (traversal.agentActs > 0 && proof.agent_contract_cases === 0) {
     improvements.push("add replayable agent-artifact contract proof");
   }
+  if (proof.semantic_cases === 0) {
+    improvements.push("replace status-only smoke coverage with a semantic output oracle");
+  }
   return [...new Set(improvements)].sort();
 }
 
@@ -488,6 +501,9 @@ function skillDisposition({ catalog, traversal, capabilityBoundaries, proof, inc
   if (traversal.agentActs > 0 && proof.agent_contract_cases === 0) {
     return { value: "improve", rationale: "Agent-authored artifact lacks replayable contract proof." };
   }
+  if (proof.semantic_cases === 0) {
+    return { value: "improve", rationale: "Status-only replay does not prove the operator-visible result." };
+  }
   return { value: "keep", rationale: "Declared closure has matching replayable proof." };
 }
 
@@ -497,17 +513,23 @@ function skillProof(root, skillDir, profilePath, profile, profiles) {
   let standaloneCases = 0;
   let operationCases = 0;
   let agentContractCases = 0;
+  let semanticCases = 0;
+  let operatorJourneyCases = 0;
   let rejectedCases = 0;
   const cases = [];
   for (const fixturePath of fixtureFiles) {
     if (!/\.(json|ya?ml)$/u.test(fixturePath)) continue;
     try {
       const fixture = parseDocument(fixturePath);
-      const proofCase = executableSkillCase(fixture, profilePath, profile, profiles);
+      const proofCase = executableSkillCase(fixture, profilePath, profile, profiles, {
+        casePath: fixturePath,
+      });
       if (proofCase) {
         standaloneCases += 1;
-        if (proofCase.proof_type === "operation") operationCases += 1;
-        if (proofCase.proof_type === "agent_contract") agentContractCases += 1;
+        if (proofCase.operation) operationCases += 1;
+        if (proofCase.agent_contract) agentContractCases += 1;
+        if (proofCase.semantic) semanticCases += 1;
+        if (proofCase.operator_journey) operatorJourneyCases += 1;
         cases.push({
           kind: "fixture",
           name: fixture.name ?? path.basename(fixturePath),
@@ -528,8 +550,10 @@ function skillProof(root, skillDir, profilePath, profile, profiles) {
     const proofCase = executableSkillCase(entry, profilePath, profile, profiles, { embedded: true });
     if (!proofCase) continue;
     inlineCases += 1;
-    if (proofCase.proof_type === "operation") operationCases += 1;
-    if (proofCase.proof_type === "agent_contract") agentContractCases += 1;
+    if (proofCase.operation) operationCases += 1;
+    if (proofCase.agent_contract) agentContractCases += 1;
+    if (proofCase.semantic) semanticCases += 1;
+    if (proofCase.operator_journey) operatorJourneyCases += 1;
     cases.push({
       kind: "inline",
       name: entry.name ?? "unnamed-inline-case",
@@ -544,29 +568,75 @@ function skillProof(root, skillDir, profilePath, profile, profiles) {
     supplied_answer_cases: suppliedAnswerCases,
     operation_cases: operationCases,
     agent_contract_cases: agentContractCases,
+    semantic_cases: semanticCases,
+    operator_journey_cases: operatorJourneyCases,
     total_cases: standaloneCases + inlineCases,
     rejected_cases: rejectedCases + harnessCases.length - inlineCases,
-    real_cases: operationCases,
+    real_cases: semanticCases,
     cases,
   };
 }
 
 function executableSkillCase(value, profilePath, profile, profiles, options = {}) {
   if (!value || typeof value !== "object") return null;
-  if (!options.embedded && value.kind !== "skill") return null;
+  if (!options.embedded && value.kind !== "skill" && value.kind !== "graph") return null;
   if (!value.expect || typeof value.expect.status !== "string") return null;
-  const traversal = analyzeRunner(profilePath, profile, value.runner, profiles, []);
+  const traversal = proofCaseTraversal(value, profilePath, profile, profiles, options);
   if (traversal.errors.size > 0) return null;
   const suppliedAnswers = hasCallerAnswers(value);
-  const operation = traversal.agentActs === 0
+  const explicitSemanticOracle = Boolean(
+    value.expect.output
+    || (value.expect.step_outputs && Object.keys(value.expect.step_outputs).length > 0),
+  );
+  const semantic = suppliedAnswers || explicitSemanticOracle;
+  const operatorJourney = traversal.graphSteps > 1
+    && Array.isArray(value.expect.steps)
+    && value.expect.steps.length > 1
+    && explicitSemanticOracle;
+  const agentContract = traversal.agentActs > 0 && suppliedAnswers;
+  const operation = semantic
+    && (traversal.agentActs === 0 || operatorJourney)
     && [...traversal.terminals].some((type) => TERMINAL_CAPABILITIES.has(type));
   return {
-    proof_type: operation ? "operation" : traversal.agentActs > 0 ? "agent_contract" : "structural",
+    proof_type: operatorJourney
+      ? "operator_journey"
+      : operation
+        ? "operation"
+        : agentContract
+          ? "agent_contract"
+          : "structural",
     supplied_answers: suppliedAnswers,
+    semantic,
+    operation,
+    agent_contract: agentContract,
+    operator_journey: operatorJourney,
     provider_readback: value.metadata?.source_case === "live-keyless-read"
       ? "live-keyless-read"
       : null,
   };
+}
+
+function proofCaseTraversal(value, profilePath, profile, profiles, options) {
+  if (value.kind !== "graph" || typeof value.target !== "string" || !options.casePath) {
+    return analyzeRunner(profilePath, profile, value.runner, profiles, []);
+  }
+  const graphPath = path.resolve(path.dirname(options.casePath), value.target);
+  if (!existsSync(graphPath)) {
+    const traversal = emptyTraversal("fixture-graph");
+    traversal.errors.add(`graph fixture target does not resolve: ${relative(process.cwd(), graphPath)}`);
+    return traversal;
+  }
+  const graph = parseDocument(graphPath);
+  const fixtureProfile = {
+    runners: {
+      fixture: {
+        default: true,
+        type: "graph",
+        graph,
+      },
+    },
+  };
+  return analyzeRunner(graphPath, fixtureProfile, "fixture", profiles, []);
 }
 
 function collectTopLevelReferences(profilePath, profile, roots, references) {

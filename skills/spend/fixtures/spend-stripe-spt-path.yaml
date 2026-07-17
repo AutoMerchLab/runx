@@ -25,7 +25,7 @@ inputs:
       currency: USD
       counterparty: merchant:demo
   realm: test
-  idempotency_seed: demo-search-001
+  idempotency_seed: demo-stripe-spt-001
 caller:
   answers:
     agent_task.pay-quote.output:
@@ -202,17 +202,17 @@ caller:
             uri: runx:harness:spend-stripe-spt_fulfill
           act_id: act_fulfill
           reservation_decision_id: decision_payment_demo_001
-          idempotency_key: payment:demo-search-001
+          idempotency_key: payment:demo-stripe-spt-001
           amount_minor: 125
           currency: USD
           counterparty: merchant:demo
           rail: stripe-spt
         consumed_spend_capability_refs: []
       idempotency:
-        key: payment:demo-search-001
+        key: payment:demo-stripe-spt-001
       spend_capability_ref:
         type: credential
-        uri: capability:payment:demo-search-001
+        uri: capability:payment:demo-stripe-spt-001
       approval:
         required: false
         status: not_required
@@ -221,26 +221,6 @@ caller:
         - reserve_before_rail
         - receipt_before_success
       open_questions: []
-    agent_task.pay-fulfill-rail-stripe-spt.output:
-      rail_result:
-        status: fulfilled
-        rail: stripe-spt
-        amount_minor: 125
-        currency: USD
-        payment_intent_id: pi_test_demo_search_001
-        charge_id: ch_test_demo_search_001
-        event_id: evt_test_demo_search_001
-      rail_proof:
-        proof_ref: ch_test_demo_search_001
-        provider_event_ref: evt_test_demo_search_001
-        idempotency_key: payment:demo-search-001
-      credential_envelope:
-        form: stripe_spt_scoped_token
-        credential_ref: spt_test_demo_search_001
-      redactions:
-        - rail_session_material
-      recovery_hint:
-        status: sealed
   approvals:
     spend.stripe-spt.approval: true
 expect:

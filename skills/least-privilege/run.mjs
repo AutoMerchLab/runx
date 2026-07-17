@@ -8,7 +8,10 @@ const receiptIds = optionalStringArray(inputs.receipt_ids);
 const ledgerEvidence = readLedgerEvidence(inputs.ledger_evidence);
 const matchedReceiptIds = new Set(ledgerEvidence.matched_receipts.map((entry) => stringValue(entry?.receipt_id)).filter(Boolean));
 const missingReceiptIds = receiptIds.filter((receiptId) => !matchedReceiptIds.has(receiptId));
-const observed = collectObservedUsage(usageSummary);
+const nativeObserved = collectNativeObservedUsage(ledgerEvidence.receipt_details);
+const suppliedObserved = collectObservedUsage(usageSummary);
+const observed = nativeObserved.size > 0 ? nativeObserved : suppliedObserved;
+const observationSource = nativeObserved.size > 0 ? "native_receipt_detail" : suppliedObserved.size > 0 ? "supplied_replay" : "none";
 const evidenceReady = receiptIds.length > 0 && missingReceiptIds.length === 0 && observed.size > 0;
 const scopeDiff = evidenceReady
   ? grantedScopes.map((scope) => classifyScope(scope, observed))
@@ -33,10 +36,10 @@ if (missingReceiptIds.length > 0) {
   limitations.push(`Native ledger evidence did not resolve ${missingReceiptIds.length} supplied receipt id(s).`);
 }
 if (observed.size === 0) {
-  limitations.push("No observed scope usage was provided; the grant cannot be safely narrowed.");
+  limitations.push("No exercised scope was present in native receipt detail; the grant cannot be safely narrowed from this evidence window.");
 }
-if (evidenceReady) {
-  limitations.push("Native history proves the receipt references and statuses; normalized scope observations remain caller-supplied because history does not expose hydrated receipt bodies.");
+if (observationSource === "supplied_replay") {
+  limitations.push("Scope observations came from the explicit replay supplement because native receipt detail was unavailable.");
 }
 
 const status = !evidenceReady
@@ -53,6 +56,7 @@ const packet = {
     matched_receipt_ids: [...matchedReceiptIds],
     missing_receipt_ids: missingReceiptIds,
     chain_verification: ledgerEvidence.chain_verification,
+    observation_source: observationSource,
     receipt_window: stringValue(usageSummary.receipt_window) || null,
     grant_source: stringValue(inputs.grant_source) || null,
     limitations,
@@ -105,21 +109,41 @@ function readInputs() {
 
 function readUsageSummary(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("usage_summary must be an object with receipt_ids and observed usage");
+    return {};
   }
   return value;
 }
 
 function readLedgerEvidence(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return { matched_receipts: [], chain_verification: { checked: false, intact: null, breaks: [] } };
+    return { matched_receipts: [], receipt_details: [], chain_verification: { checked: false, intact: null, breaks: [] } };
   }
   return {
     matched_receipts: Array.isArray(value.matched_receipts) ? value.matched_receipts : [],
+    receipt_details: Array.isArray(value.receipt_details) ? value.receipt_details : [],
     chain_verification: value.chain_verification && typeof value.chain_verification === "object"
       ? value.chain_verification
       : { checked: false, intact: null, breaks: [] },
   };
+}
+
+function collectNativeObservedUsage(details) {
+  const observed = new Map();
+  for (const detail of details) {
+    if (!detail || typeof detail !== "object") continue;
+    const receiptId = stringValue(detail.id);
+    const scopes = Array.isArray(detail.authority?.exercised_scopes)
+      ? detail.authority.exercised_scopes
+      : [];
+    const uniqueScopes = new Set(scopes.map((entry) => stringValue(entry?.scope)).filter(Boolean));
+    for (const scope of uniqueScopes) {
+      const current = observed.get(scope) || { count: 0, refs: [] };
+      current.count += 1;
+      if (receiptId) current.refs.push(receiptId);
+      observed.set(scope, current);
+    }
+  }
+  return observed;
 }
 
 function stringArray(value, field) {
@@ -155,7 +179,18 @@ function collectObservedUsage(summary) {
 }
 
 function classifyScope(scope, observed) {
-  const normalized = normalizeScope(scope);
+  const parsed = parseScope(scope);
+  const normalized = parsed.normalized;
+  if (!parsed.valid) {
+    return diffEntry({
+      scope,
+      normalized,
+      observedUse: { count: 0, receipt_refs: [] },
+      classification: "defer",
+      proposal: null,
+      rationale: "The scope does not match Runx's resource:verb policy syntax, so it cannot be narrowed automatically.",
+    });
+  }
   const exact = observed.get(scope);
   if (exact && exact.count > 0) {
     return diffEntry({
@@ -216,12 +251,20 @@ function observedNarrowerScope(scope, observed) {
 }
 
 function normalizeScope(scope) {
-  const [verbPart, ...resourceParts] = scope.split(":");
-  const resource = resourceParts.join(":") || null;
+  return parseScope(scope).normalized;
+}
+
+function parseScope(scope) {
+  const parts = scope.split(":");
+  const valid = parts.length === 2 && parts.every((part) => part.length > 0);
+  const [resourcePart, verbPart] = valid ? parts : [null, null];
   return {
-    verb: verbPart || null,
-    resource,
-    conditions: null,
+    valid,
+    normalized: {
+      verb: verbPart,
+      resource: resourcePart,
+      conditions: null,
+    },
   };
 }
 

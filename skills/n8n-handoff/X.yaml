@@ -1,5 +1,5 @@
 skill: n8n-handoff
-version: "0.1.2"
+version: "0.1.3"
 catalog:
   kind: graph
   audience: operator
@@ -37,6 +37,23 @@ harness:
           disposition: closed
         steps:
           - build-handoff-context
+        step_outputs:
+          build-handoff-context:
+            subset:
+              handoff_context:
+                data:
+                  platform: n8n
+                  event_id: evt_n8n_demo_001
+                  status: ready
+                  idempotency:
+                    key: evt_n8n_demo_001
+                    receiver_should_dedupe: true
+                  receiver_validation:
+                    require_scope: orchestrator.n8n.workflow.invoke
+                    require_audience: n8n:workflow:runx-governed-effect
+                  receipt_expectations:
+                    outbound_effect_must_be_receipted: true
+                    receiver_response_must_be_captured: true
 runners:
   preflight:
     default: false

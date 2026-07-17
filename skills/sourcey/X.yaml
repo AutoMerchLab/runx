@@ -1,5 +1,5 @@
 skill: sourcey
-version: "0.1.2"
+version: "0.1.3"
 
 catalog:
   kind: skill
@@ -184,6 +184,8 @@ runners:
           scopes:
             - fs.write
           mutation: true
+          inputs:
+            repo_root: $input.repo_root
           context:
             files: author.doc_bundle.data.files
         - id: build
@@ -191,6 +193,10 @@ runners:
           tool: sourcey.build
           scopes:
             - sourcey.build
+          inputs:
+            project: $input.project
+            sourcey_bin: $input.sourcey_bin
+            output_dir: $input.output_dir
           context:
             homepage_url: discover.discovery_report.data.discovered.homepage_url
             brand_name: discover.discovery_report.data.discovered.brand_name
@@ -276,6 +282,8 @@ runners:
           scopes:
             - fs.write
           mutation: true
+          inputs:
+            repo_root: $input.repo_root
           context:
             files: revise.revision_bundle.data.files
         - id: rebuild
@@ -283,6 +291,10 @@ runners:
           tool: sourcey.build
           scopes:
             - sourcey.build
+          inputs:
+            project: $input.project
+            sourcey_bin: $input.sourcey_bin
+            output_dir: $input.output_dir
           context:
             homepage_url: discover.discovery_report.data.discovered.homepage_url
             brand_name: discover.discovery_report.data.discovered.brand_name
@@ -301,6 +313,8 @@ runners:
           tool: sourcey.package
           scopes:
             - sourcey.verify
+          inputs:
+            project_brief: $input.project_brief
           context:
             discovery_report: discover.discovery_report.data
             doc_bundle: author.doc_bundle.data

@@ -104,8 +104,8 @@ pub use dev::{
 };
 pub use doctor::{DoctorOptions, default_doctor_options, run_doctor};
 pub use effects::{
-    EffectAdmission, EffectMetadataRefreshRequest, EffectOutputRequest, EffectReceiptRequest,
-    EffectReplay, EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest,
+    EffectAdmission, EffectOutputRequest, EffectReceiptRequest, EffectReplay,
+    EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest,
     PROVIDER_PERMISSION_EFFECT_FAMILY, PROVIDER_PERMISSION_GRANT_ID_ENV,
     PROVIDER_PERMISSION_GRANTED_SCOPES_ENV, ProviderPermissionAdmission, ProviderPermissionEffect,
     RuntimeEffect, RuntimeEffectError, RuntimeEffectRegistry, insert_effect_verification_ref,

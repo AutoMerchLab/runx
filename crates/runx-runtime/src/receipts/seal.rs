@@ -25,7 +25,7 @@ use runx_contracts::{
 use runx_receipts::{
     ReceiptProofContext, ReceiptProofContextProvider, ReceiptSignature, ReceiptTreeConfig,
     SignatureVerificationFailure, SignatureVerifier, canonical_receipt_body_digest,
-    content_addressed_receipt_id,
+    canonical_stable_json, content_addressed_receipt_id,
 };
 
 use super::act::{ActOutcome, RuntimeAct};
@@ -80,6 +80,7 @@ pub fn step_receipt_with_authority_grant_refs(
         ),
         &projection,
         authority_grant_refs,
+        Vec::new(),
         RuntimeReceiptSignaturePolicy::local_development(),
     )
 }
@@ -134,6 +135,7 @@ pub(crate) fn step_receipt_with_disposition_and_policy(
         params,
         &projection,
         Vec::new(),
+        Vec::new(),
         signature_policy,
     )
 }
@@ -142,6 +144,7 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
     params: StepReceiptWithDisposition<'_>,
     projection: &StepOutputProjection,
     authority_grant_refs: Vec<Reference>,
+    authority_scope_refs: Vec<Reference>,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<Receipt, RuntimeError> {
     let StepReceiptWithDisposition {
@@ -188,9 +191,11 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
         sync_points: Vec::new(),
         signals: output_refs.signal_refs,
         authority_grant_refs,
+        authority_scope_refs,
         authority_override: None,
         previous: None,
     });
+    bind_step_output_identity(&mut receipt, output)?;
     seal_receipt_unvalidated(&mut receipt, signature_policy)?;
     Ok(receipt)
 }
@@ -209,6 +214,7 @@ pub(crate) struct StepSeal<'a> {
     pub(crate) projection: &'a StepOutputProjection,
     pub(crate) created_at: &'a str,
     pub(crate) authority_grant_refs: Vec<Reference>,
+    pub(crate) authority_scope_refs: Vec<Reference>,
     pub(crate) operator_refs: Vec<Reference>,
     pub(crate) closure: Option<StepSealClosure>,
 }
@@ -247,6 +253,7 @@ pub(crate) fn seal_step(
         projection,
         created_at,
         authority_grant_refs,
+        authority_scope_refs,
         operator_refs,
         closure,
     } = params;
@@ -282,6 +289,7 @@ pub(crate) fn seal_step(
         },
         &projection,
         authority_grant_refs,
+        authority_scope_refs,
         signature_policy,
     )
 }
@@ -585,35 +593,18 @@ pub(crate) fn graph_receipt_with_disposition_and_policy(
     sync_points: Vec<FanoutReceiptSyncPoint>,
     created_at: &str,
     closure: GraphClosure,
-    effects: RuntimeEffectRegistry,
+    _effects: RuntimeEffectRegistry,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<Receipt, RuntimeError> {
-    // Pass 1: learn the stable content-addressed id. The final pass below is
-    // the only graph body digest/signature/proof seal this path needs.
-    let mut receipt =
-        build_graph_receipt(graph_name, Vec::new(), &sync_points, created_at, &closure);
-    bind_graph_operator_refs(&mut receipt, steps);
-    content_address_receipt(&mut receipt, signature_policy)?;
-    let parent_ref = Reference::runx(ReferenceType::Receipt, &receipt.id);
-
-    // Attach the parent link only to the terminal receipt for each step and
-    // re-seal those children. Earlier retry attempts remain in the run history,
-    // but they are superseded audit receipts, not active graph children.
     let current_child_indexes = current_step_indexes(steps);
-    attach_parent_to_child_receipts(
-        steps,
-        &current_child_indexes,
-        &parent_ref,
-        &effects,
-        signature_policy,
-    )?;
     let child_refs = current_child_indexes
         .iter()
         .map(|index| child_receipt_reference(&steps[*index].receipt))
         .collect::<Vec<_>>();
 
-    // Pass 2: re-seal the graph with the final child refs. The content address
-    // is unchanged (lineage excluded); only the full digest commits the children.
+    // A receipt graph is a DAG: the parent commits each active child's exact
+    // id and signed-body digest. Children stay immutable and reusable instead
+    // of acquiring one post-hoc parent link.
     let mut receipt =
         build_graph_receipt(graph_name, child_refs, &sync_points, created_at, &closure);
     bind_graph_operator_refs(&mut receipt, steps);
@@ -683,7 +674,8 @@ fn build_graph_receipt(
     created_at: &str,
     closure: &GraphClosure,
 ) -> Receipt {
-    build_receipt(BuildReceipt {
+    let child_identity = graph_child_identity(&children);
+    let mut receipt = build_receipt(BuildReceipt {
         id: format!("hrn_rcpt_{graph_name}"),
         graph_name,
         node_id: "graph",
@@ -702,9 +694,46 @@ fn build_graph_receipt(
         sync_points: sync_points.to_vec(),
         signals: Vec::new(),
         authority_grant_refs: Vec::new(),
+        authority_scope_refs: Vec::new(),
         authority_override: None,
         previous: None,
-    })
+    });
+    receipt.subject.reference.locator = Some(child_identity.into());
+    receipt
+}
+
+fn bind_step_output_identity(
+    receipt: &mut Receipt,
+    output: &SkillOutput,
+) -> Result<(), RuntimeError> {
+    let stdout = match serde_json::from_str::<JsonValue>(&output.stdout) {
+        Ok(value) => {
+            canonical_stable_json(&value).map_err(|error| RuntimeError::ReceiptInvalid {
+                message: error.to_string(),
+            })?
+        }
+        Err(_) => output.stdout.clone(),
+    };
+    let material = format!(
+        "exit_code={:?}\nstdout_bytes={}\n{}\nstderr_bytes={}\n{}",
+        output.exit_code,
+        stdout.len(),
+        stdout,
+        output.stderr.len(),
+        output.stderr,
+    );
+    receipt.subject.reference.locator =
+        Some(format!("sha256:{}", sha256_hex(material.as_bytes())).into());
+    Ok(())
+}
+
+fn graph_child_identity(children: &[Reference]) -> String {
+    let child_ids = children
+        .iter()
+        .map(|reference| reference.uri.as_str())
+        .collect::<Vec<_>>();
+    let canonical = serde_json::to_vec(&child_ids).unwrap_or_default();
+    format!("sha256:{}", sha256_hex(&canonical))
 }
 
 fn validate_receipt_tree_with_policy<'a>(
@@ -756,6 +785,7 @@ struct BuildReceipt<'a> {
     sync_points: Vec<FanoutReceiptSyncPoint>,
     signals: Vec<Reference>,
     authority_grant_refs: Vec<Reference>,
+    authority_scope_refs: Vec<Reference>,
     /// Fully-built authority for a domain act seal. When `None`, the generic
     /// `local_runtime` authority is used (unchanged for every existing caller).
     authority_override: Option<ReceiptAuthority>,
@@ -778,6 +808,7 @@ fn build_receipt(parts: BuildReceipt<'_>) -> Receipt {
         sync_points,
         signals,
         authority_grant_refs,
+        authority_scope_refs,
         authority_override,
         previous,
     } = parts;
@@ -798,7 +829,8 @@ fn build_receipt(parts: BuildReceipt<'_>) -> Receipt {
         digest: "sha256:runtime-skeleton".into(),
         idempotency: idempotency(graph_name, node_id),
         subject: subject(graph_name, node_id, kind),
-        authority: authority_override.unwrap_or_else(|| authority(authority_grant_refs)),
+        authority: authority_override
+            .unwrap_or_else(|| authority(authority_grant_refs, authority_scope_refs)),
         signals,
         decisions,
         acts,
@@ -896,7 +928,7 @@ fn enforcement_profile_hash(
     format!("sha256:{}", sha256_hex(&canonical)).into()
 }
 
-fn authority(grant_refs: Vec<Reference>) -> ReceiptAuthority {
+fn authority(grant_refs: Vec<Reference>, scope_refs: Vec<Reference>) -> ReceiptAuthority {
     let redaction_refs = Vec::new();
     let setup_refs = Vec::new();
     let teardown_refs = Vec::new();
@@ -904,7 +936,7 @@ fn authority(grant_refs: Vec<Reference>) -> ReceiptAuthority {
         actor_ref: Reference::runx(ReferenceType::Principal, "local_runtime"),
         authority_proof_refs: Vec::new(),
         grant_refs,
-        scope_refs: Vec::new(),
+        scope_refs,
         terms: Vec::new(),
         attenuation: AuthorityAttenuation {
             parent_authority_ref: None,
@@ -1083,6 +1115,7 @@ pub(crate) fn domain_act_receipt(
         sync_points: Vec::new(),
         signals: Vec::new(),
         authority_grant_refs: Vec::new(),
+        authority_scope_refs: Vec::new(),
         authority_override: Some(authority),
         previous: frame.previous,
     });
@@ -1191,33 +1224,6 @@ fn current_step_indexes(steps: &[StepRun]) -> Vec<usize> {
                 .then_some(index)
         })
         .collect()
-}
-
-fn attach_parent_to_child_receipts(
-    steps: &mut [StepRun],
-    current_child_indexes: &[usize],
-    parent_ref: &Reference,
-    effects: &RuntimeEffectRegistry,
-    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
-) -> Result<(), RuntimeError> {
-    for index in current_child_indexes {
-        let step = steps
-            .get_mut(*index)
-            .ok_or_else(|| RuntimeError::ReceiptInvalid {
-                message: format!("graph child receipt index {index} is out of range"),
-            })?;
-        step.receipt
-            .lineage
-            .get_or_insert_with(Lineage::default)
-            .parent = Some(parent_ref.clone());
-        seal_receipt_unvalidated(&mut step.receipt, signature_policy)?;
-        effects
-            .refresh_output_metadata(&mut step.output, &step.receipt)
-            .map_err(|error| RuntimeError::ReceiptInvalid {
-                message: error.to_string(),
-            })?;
-    }
-    Ok(())
 }
 
 fn placeholder_signature() -> ReceiptSignature {
@@ -1665,6 +1671,72 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn step_receipt_identity_commits_semantic_output() -> Result<(), TestError> {
+        let first = step_receipt(
+            "identity_graph",
+            "identity_step",
+            1,
+            &successful_output("{\"a\":1,\"b\":2}"),
+            "2026-05-28T00:00:00Z",
+        )?;
+        let reordered = step_receipt(
+            "identity_graph",
+            "identity_step",
+            1,
+            &successful_output("{\"b\":2,\"a\":1}"),
+            "2026-05-28T00:00:00Z",
+        )?;
+        let changed = step_receipt(
+            "identity_graph",
+            "identity_step",
+            1,
+            &successful_output("{\"a\":1,\"b\":3}"),
+            "2026-05-28T00:00:00Z",
+        )?;
+
+        assert_eq!(first.id, reordered.id);
+        assert_eq!(
+            first.subject.reference.locator,
+            reordered.subject.reference.locator
+        );
+        assert_ne!(first.id, changed.id);
+        assert_ne!(
+            first.subject.reference.locator,
+            changed.subject.reference.locator
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn graph_child_identity_commits_child_receipt_ids_not_lineage_digests() {
+        let mut first = Reference::runx(ReferenceType::Receipt, "sha256:first");
+        first.locator = Some("sha256:first-digest".into());
+        let mut same_id_new_digest = first.clone();
+        same_id_new_digest.locator = Some("sha256:updated-digest".into());
+        let second = Reference::runx(ReferenceType::Receipt, "sha256:second");
+
+        assert_eq!(
+            graph_child_identity(&[first.clone()]),
+            graph_child_identity(&[same_id_new_digest])
+        );
+        assert_ne!(
+            graph_child_identity(&[first]),
+            graph_child_identity(&[second])
+        );
+    }
+
+    fn successful_output(stdout: &str) -> SkillOutput {
+        SkillOutput {
+            status: InvocationStatus::Success,
+            stdout: stdout.to_owned(),
+            stderr: String::new(),
+            exit_code: Some(0),
+            duration_ms: 1,
+            metadata: JsonObject::new(),
+        }
     }
 
     fn credential_output() -> Result<SkillOutput, TestError> {

@@ -9,7 +9,7 @@ use runx_core::policy::{SandboxProfile, is_reserved_runx_sandbox_env_name};
 use runx_parser::SkillSandbox;
 
 use crate::RuntimeError;
-use crate::receipts::paths::RUNX_CWD_ENV;
+use crate::receipts::paths::{RUNX_CWD_ENV, RUNX_RECEIPT_DIR_ENV};
 
 use super::backend::SandboxRuntime;
 use super::policy::{sandbox_violation, workspace_cwd};
@@ -70,6 +70,9 @@ pub(super) fn child_base_env(
         RUNX_CWD_ENV.to_owned(),
         workspace_root(base_env)?.to_string_lossy().into_owned(),
     );
+    if let Some(receipt_dir) = base_env.get(RUNX_RECEIPT_DIR_ENV) {
+        env.insert(RUNX_RECEIPT_DIR_ENV.to_owned(), receipt_dir.clone());
+    }
     Ok(env)
 }
 

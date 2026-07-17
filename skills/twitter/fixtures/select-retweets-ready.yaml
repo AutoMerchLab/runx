@@ -1,0 +1,19 @@
+name: select-retweets-ready
+kind: skill
+target: ..
+runner: select
+inputs:
+  objective: Delete all reposts of the BetaList account.
+  principal: account:@example
+  archive_file: fixtures/data/archive-tweets.js
+  predicate:
+    is_retweet: true
+    rt_of: BetaList
+expect:
+  status: sealed
+  receipt:
+    schema: runx.receipt.v1
+metadata:
+  public_skill: twitter
+  source_case: select-retweets-ready
+  source: skills-fixture

@@ -1,5 +1,5 @@
 skill: audit-receipt
-version: "0.2.0"
+version: "0.3.1"
 catalog:
   kind: graph
   audience: operator
@@ -25,7 +25,7 @@ runners:
       granted_scopes:
         type: json
         required: false
-        description: Granted authority when it is not present in the bounded summary.
+        description: Operator grant baseline to compare with the receipt's native exercised authority.
       objective:
         type: string
         required: false
@@ -34,6 +34,10 @@ runners:
         type: json
         required: false
         description: Explicit native-projection rows for deterministic replay only.
+      receipt_details:
+        type: json
+        required: false
+        description: Explicit native redacted receipt details for deterministic replay only.
     graph:
       name: audit-receipt
       steps:
@@ -48,6 +52,7 @@ runners:
             proof:
               verify_chain: true
             receipts: $input.receipt_rows
+            receipt_details: $input.receipt_details
         - id: audit
           label: audit authority against bounded receipt evidence
           run:
@@ -59,12 +64,12 @@ runners:
           instructions: >
             Audit one run for authority over-reach, ungated mutation,
             unrecorded refusal, or exposed material. Native ledger evidence
-            proves receipt identity, status, and verification posture; detailed
-            authority and act claims must be grounded in the supplied bounded
-            receipt_summary and granted_scopes. If a receipt id is supplied but
-            not resolved, or the detailed evidence is insufficient, return
-            needs_more_evidence rather than clean. Do not repair the skill or
-            mutate the ledger.
+            proves receipt identity, verification posture, signed authority,
+            decisions, acts, artifacts, and lineage through its redacted detail
+            projection. Treat receipt_summary and granted_scopes as supplemental
+            operator context only. If a receipt id is not resolved, or native
+            detail is insufficient, return needs_more_evidence rather than clean.
+            Do not repair the skill or mutate the ledger.
           context:
             receipt_evidence: evidence.ledger_answer_packet.data
           artifacts:

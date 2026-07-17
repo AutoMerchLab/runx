@@ -6,7 +6,12 @@ inputs:
   objective: Decide whether weak evidence warrants a package change
   repo_root: .
   target_dir: skills/not-present
-  receipt_summary: A caller reported a failure without a receipt or reproducible output.
+  failure_packet:
+    verdict: blocked
+    failure_summary: The report has no receipt or reproducible harness output.
+    improvement_proposals: []
+    next_harness_checks:
+      - Reproduce the report with a sealed receipt before changing the package.
 caller:
   answers:
     agent_task.skill-lab-improve.output:

@@ -484,6 +484,11 @@ where
         .map(|authority| authority.authority_grant_refs(&context.runtime.options.effects))
         .transpose()?
         .unwrap_or_default();
+    let authority_scope_refs = context
+        .authority
+        .map(|authority| authority.authority_scope_refs(&context.runtime.options.effects))
+        .transpose()?
+        .unwrap_or_default();
     let receipt = seal_step(
         StepSeal {
             graph_name: context.graph_name,
@@ -493,6 +498,7 @@ where
             projection: &projection,
             created_at: &context.runtime.options.created_at,
             authority_grant_refs,
+            authority_scope_refs,
             operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
                 &context.runtime.options.env,
             ),
@@ -660,6 +666,7 @@ fn run_replayed_effect_step(
             projection: &projection,
             created_at: replay.receipt_created_at(),
             authority_grant_refs,
+            authority_scope_refs: Vec::new(),
             operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
                 &runtime.options.env,
             ),
@@ -996,6 +1003,7 @@ fn seal_agent_act_step<A>(
             projection: &projection,
             created_at: &runtime.options.created_at,
             authority_grant_refs: Vec::new(),
+            authority_scope_refs: Vec::new(),
             operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
                 &runtime.options.env,
             ),
@@ -1290,6 +1298,11 @@ where
             .map(|authority| authority.authority_grant_refs(&runtime.options.effects))
             .transpose()?
             .unwrap_or_default();
+        let authority_scope_refs = authority
+            .as_ref()
+            .map(|authority| authority.authority_scope_refs(&runtime.options.effects))
+            .transpose()?
+            .unwrap_or_default();
         let receipt = seal_step(
             StepSeal {
                 graph_name,
@@ -1299,6 +1312,7 @@ where
                 projection: &projection,
                 created_at: &runtime.options.created_at,
                 authority_grant_refs,
+                authority_scope_refs,
                 operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
                     &runtime.options.env,
                 ),
@@ -1461,6 +1475,7 @@ where
             projection: &projection,
             created_at: &runtime.options.created_at,
             authority_grant_refs: Vec::new(),
+            authority_scope_refs: Vec::new(),
             operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
                 &runtime.options.env,
             ),
@@ -1648,6 +1663,7 @@ where
             projection: &projection,
             created_at: &runtime.options.created_at,
             authority_grant_refs: Vec::new(),
+            authority_scope_refs: Vec::new(),
             operator_refs: crate::execution::prepared_skill::prepared_receipt_references(
                 &runtime.options.env,
             ),

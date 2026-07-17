@@ -89,8 +89,8 @@ fn parses_harness_graph_fixture_contract() -> Result<(), HarnessFixtureError> {
     assert_eq!(
         receipt.child_receipt_refs,
         vec![
-            "runx:receipt:sha256:4bf91309813b3b409c340168892c6b3803602772010b4e8b47d9f7a3153f5da7",
-            "runx:receipt:sha256:a94a3b142e795c9c448bf43046eb6c0b9d47b5d4858f483f1bd1bb91bf5dc863"
+            "runx:receipt:sha256:d4d66ce0fa4a07b26eae620565cf53de38b6974951383d6d164376cdb4b10d56",
+            "runx:receipt:sha256:339f70640c6bda14bff46d4981be6ca1357419d3f9f44217e09257b8f062adef"
         ]
     );
     Ok(())

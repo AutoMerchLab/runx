@@ -51,6 +51,48 @@ Workspace lints deny unsafe code and common escape hatches such as unwrap,
 expect, panic, todo, unimplemented, dbg, and print macros. Do not work around
 these with broad allows.
 
+## Tests
+
+The default test for operator-visible behavior is an operator journey through
+the outermost stable interface. For the CLI, spawn the native `runx` binary and
+exercise the coherent lifecycle an operator actually follows: discover,
+inspect, run or pause, resume when needed, seal, verify, and read history. Keep
+human output, JSON output, exit codes, persisted state, and receipt evidence in
+the same journey when they belong to the same promise.
+
+Use focused unit or boundary tests when they prove a distinct invariant that a
+journey should not enumerate: pure algorithms, parser diagnostics, security
+rejections, wire compatibility, fault injection, and hard-to-reach platform
+edges. Do not add a narrow test merely to repeat an assertion already owned by
+a journey. When a journey absorbs existing coverage, delete the superseded
+test only after the replacement proves the same behavior at a stronger
+boundary.
+
+For skill behavior, the default is a replayable operator-story fixture through
+the skill's public runner. Composite-skill harnesses own the business scenario
+matrix: routing decisions, authority attenuation, approval and refusal stops,
+downstream handoffs, provider-evidence requirements, receipt lineage, durable
+readback, and replay or recovery. Use fixture agents and local or fake adapters;
+live-provider smoke tests are separate and opt-in. CLI journeys prove that Runx
+can drive a representative composite flow, but must not duplicate the skill's
+full scenario matrix.
+
+A sealed status is engine coverage, not operator-value proof. Every kept public
+skill must have at least one semantic oracle through `expect.output`,
+`expect.step_outputs`, or replayed `caller.answers`. Stateful workflows put the
+whole transition and readback in one graph fixture. Individual fixtures must be
+independent: never share hidden state through filename order or reuse a
+single-use idempotency or capability key across cases.
+
+Harness scratch state is project-owned under `.runx/harness` and is removed
+after the run. Durable receipts remain under `.runx/receipts` or the explicit
+receipt directory. Catalog sweeps and core-skill trials likewise isolate
+disposable work under `.runx`; `/tmp` is reserved for an outer test framework
+that deliberately supplies a disposable project root.
+
+Rust integration modules remain consolidated into one test binary per crate.
+Adding more files must not create additional Cargo integration binaries.
+
 ## Specs
 
 Scafld specs are execution contracts, not notes. A spec that is stale against

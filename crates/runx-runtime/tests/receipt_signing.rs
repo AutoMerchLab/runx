@@ -47,7 +47,8 @@ fn production_step_receipt_uses_real_ed25519_signature() -> Result<(), Box<dyn E
 }
 
 #[test]
-fn production_graph_receipt_resigns_children_and_verifies_tree() -> Result<(), Box<dyn Error>> {
+fn production_graph_receipt_commits_immutable_children_and_verifies_tree()
+-> Result<(), Box<dyn Error>> {
     let signer = fixture_signer()?;
     let verifier = fixture_verifier(&signer);
     let mut steps = vec![production_step_run(
@@ -71,13 +72,13 @@ fn production_graph_receipt_resigns_children_and_verifies_tree() -> Result<(), B
 
     assert!(graph.signature.value.starts_with("base64:"));
     assert!(children[0].signature.value.starts_with("base64:"));
-    assert_eq!(
+    assert!(
         children[0]
             .lineage
             .as_ref()
-            .and_then(|l| l.parent.as_ref())
-            .map(|r| r.uri.clone()),
-        Some(format!("runx:receipt:{}", graph.id).into())
+            .and_then(|lineage| lineage.parent.as_ref())
+            .is_none(),
+        "content-addressed children must remain reusable across graph parents"
     );
     assert!(
         runx_runtime::receipts::tree::validate_runtime_receipt_tree_with_policy(

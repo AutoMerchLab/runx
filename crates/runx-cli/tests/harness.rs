@@ -4,67 +4,6 @@ use std::process::Command;
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
 #[test]
-fn scaffolded_next_steps_run_without_signer_env() -> TestResult {
-    let root = crate::support::temp_root("runx-new-next-steps");
-    fs::create_dir_all(&root)?;
-    let skill_dir = root.join("receipt-demo");
-
-    let scaffold = unsigned_runx_command()?
-        .current_dir(&root)
-        .args([
-            "new",
-            "receipt-demo",
-            "--directory",
-            skill_dir.to_str().ok_or("non-utf8 skill dir")?,
-            "--json",
-        ])
-        .output()?;
-    assert_eq!(
-        scaffold.status.code(),
-        Some(0),
-        "{}",
-        String::from_utf8_lossy(&scaffold.stderr)
-    );
-
-    let harness = unsigned_runx_command()?
-        .current_dir(&skill_dir)
-        .args(["harness", ".", "--json"])
-        .output()?;
-    assert_eq!(
-        harness.status.code(),
-        Some(0),
-        "stdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&harness.stdout),
-        String::from_utf8_lossy(&harness.stderr)
-    );
-    let harness_json = serde_json::from_slice::<serde_json::Value>(&harness.stdout)?;
-    assert_eq!(harness_json["status"], "passed");
-
-    let skill = unsigned_runx_command()?
-        .current_dir(&skill_dir)
-        .args([
-            "skill",
-            ".",
-            "--input",
-            "message=hello",
-            "--json",
-            "--skip-operator-context",
-        ])
-        .output()?;
-    assert_eq!(
-        skill.status.code(),
-        Some(0),
-        "stdout:\n{}\nstderr:\n{}",
-        String::from_utf8_lossy(&skill.stdout),
-        String::from_utf8_lossy(&skill.stderr)
-    );
-    let skill_json = serde_json::from_slice::<serde_json::Value>(&skill.stdout)?;
-    assert_eq!(skill_json["status"], "sealed");
-
-    Ok(())
-}
-
-#[test]
 fn package_mode_runs_inline_and_conventional_fixture_cases() -> TestResult {
     let root = crate::support::temp_root("runx-package-harness-union");
     let skill_dir = root.join("skill");
@@ -80,6 +19,9 @@ target: ..
 runner: default
 expect:
   status: sealed
+  output:
+    subset:
+      ok: true
 "#,
     )?;
 
@@ -109,20 +51,19 @@ expect:
         .ok_or("missing case_names")?;
     assert!(names.contains(&serde_json::Value::String("smoke".to_owned())));
     assert!(names.contains(&serde_json::Value::String("conventional".to_owned())));
-    Ok(())
-}
-
-#[test]
-fn harness_help_is_native() -> TestResult {
-    let output = unsigned_runx_command()?
-        .args(["harness", "--help"])
-        .output()?;
-
-    assert_eq!(output.status.code(), Some(0));
-    let stdout = String::from_utf8(output.stdout)?;
-    assert!(stdout.contains("runx harness"));
-    assert!(stdout.contains("fixtures/*.yaml"));
-    assert!(output.stderr.is_empty());
+    let stored_receipts = fs::read_dir(&receipt_dir)?
+        .filter_map(Result::ok)
+        .filter(|entry| {
+            entry
+                .file_name()
+                .to_str()
+                .is_some_and(|name| name.starts_with("sha256-") && name.ends_with(".json"))
+        })
+        .count();
+    assert_eq!(
+        stored_receipts, 2,
+        "inline and conventional receipts persist"
+    );
     Ok(())
 }
 

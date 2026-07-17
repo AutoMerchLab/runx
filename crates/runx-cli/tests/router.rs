@@ -152,7 +152,7 @@ fn nested_skill_history_verify_and_publish_help_are_native() {
     );
     assert_help_line(
         &history_help_text(),
-        "runx history [query] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--limit n] [--receipt-dir dir] [--json]",
+        "runx history [query] [--detail] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--limit n] [--receipt-dir dir] [--json]",
     );
     assert_help_line(
         &verify_help_text(),

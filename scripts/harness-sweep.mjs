@@ -4,12 +4,10 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
 } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
 import { fileURLToPath } from "node:url";
@@ -19,6 +17,11 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), ".."
 
 try {
   const options = parseArgs(process.argv.slice(2));
+  if (options.selfTest) {
+    runSelfTests();
+    process.stdout.write("harness-sweep self-test passed\n");
+    process.exit(0);
+  }
   const report = runSweep(options);
   const json = `${JSON.stringify(report, null, 2)}\n`;
   if (options.output) {
@@ -41,7 +44,9 @@ function runSweep(options) {
   const runxBin = resolveRunxBinary(options);
   const skills = officialSkills();
   const allowed = new Set(options.allowed);
-  const tempRoot = mkdtempSync(path.join(os.tmpdir(), "runx-harness-sweep-"));
+  const scratchRoot = path.join(repoRoot, ".runx", "harness-sweep");
+  mkdirSync(scratchRoot, { recursive: true });
+  const tempRoot = mkdtempSync(path.join(scratchRoot, "run-"));
   const workspaceDir = path.join(tempRoot, "workspace");
   mkdirSync(workspaceDir, { recursive: true });
   const results = [];
@@ -69,20 +74,14 @@ function runSweep(options) {
   const required = options.require ?? 0;
   const gating = options.require !== undefined;
   const expectedSkillCount = options.expectedCount;
-  const failures = [];
-  if (expectedSkillCount !== undefined && skills.length !== expectedSkillCount) {
-    failures.push(
-      `expected ${expectedSkillCount} official skills, discovered ${skills.length}`,
-    );
-  }
-  if (gating && passedSkillCount < required) {
-    failures.push(`required ${required} passing skills, got ${passedSkillCount}`);
-  }
-  if (gating && failed.length > 0) {
-    failures.push(
-      `unallowed harness failures: ${failed.map((result) => result.skill).join(", ")}`,
-    );
-  }
+  const failures = sweepFailures({
+    discoveredSkillCount: skills.length,
+    expectedSkillCount,
+    failed,
+    gating,
+    passedSkillCount,
+    required,
+  });
 
   return {
     schema,
@@ -103,6 +102,67 @@ function runSweep(options) {
   };
 }
 
+function sweepFailures({
+  discoveredSkillCount,
+  expectedSkillCount,
+  failed,
+  gating,
+  passedSkillCount,
+  required,
+}) {
+  const failures = [];
+  if (expectedSkillCount !== undefined && discoveredSkillCount !== expectedSkillCount) {
+    failures.push(
+      `expected ${expectedSkillCount} official skills, discovered ${discoveredSkillCount}`,
+    );
+  }
+  if (gating && passedSkillCount < required) {
+    failures.push(`required ${required} passing skills, got ${passedSkillCount}`);
+  }
+  if (failed.length > 0) {
+    failures.push(
+      `unallowed harness failures: ${failed.map((result) => result.skill).join(", ")}`,
+    );
+  }
+  return failures;
+}
+
+function runSelfTests() {
+  const defaults = {
+    discoveredSkillCount: 2,
+    expectedSkillCount: undefined,
+    gating: false,
+    passedSkillCount: 1,
+    required: 0,
+  };
+  assertFailures(
+    sweepFailures({ ...defaults, failed: [{ skill: "broken" }] }),
+    ["unallowed harness failures: broken"],
+    "an unallowed failure must fail an ungated sweep",
+  );
+  assertFailures(
+    sweepFailures({ ...defaults, failed: [] }),
+    [],
+    "a clean ungated sweep must pass",
+  );
+  assertFailures(
+    sweepFailures({ ...defaults, failed: [], gating: true, required: 2 }),
+    ["required 2 passing skills, got 1"],
+    "--require must enforce the minimum passing count",
+  );
+  assertFailures(
+    sweepFailures({ ...defaults, failed: [], expectedSkillCount: 3 }),
+    ["expected 3 official skills, discovered 2"],
+    "--expected-count must catch catalog drift",
+  );
+}
+
+function assertFailures(actual, expected, message) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(`${message}: expected ${JSON.stringify(expected)}, got ${JSON.stringify(actual)}`);
+  }
+}
+
 function runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed) {
   const started = performance.now();
   const skillDir = path.join(repoRoot, "skills", skill.name);
@@ -117,11 +177,6 @@ function runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed) {
   if (!existsSync(path.join(skillDir, "X.yaml"))) {
     return failedSkill(skill.name, started, "missing X.yaml");
   }
-  const fixtureFiles = standaloneFixtureFiles(skillDir);
-  if (fixtureFiles.length > 0) {
-    return runStandaloneFixtureHarness(skill, fixtureFiles, runxBin, tempRoot, receiptDir, started, skillWorkspaceDir, allowed);
-  }
-
   const result = spawnSync(
     runxBin,
     ["harness", skillDir, "--json", "--receipt-dir", receiptDir],
@@ -136,8 +191,8 @@ function runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed) {
   const report = parseHarnessReport(result.stdout);
   const error = result.error
     ? result.error.message
-    : report.parse_error
-      ?? nonEmpty(result.stderr)
+    : nonEmpty(result.stderr)
+      ?? report.parse_error
       ?? (result.status === 0 ? undefined : `runx exited ${result.status ?? "with signal"}`);
   const passed = result.status === 0 && report.status === "passed";
   const allowedFailure = !passed && allowed.has(skill.name);
@@ -154,67 +209,6 @@ function runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed) {
     receipt_count: Array.isArray(report.receipt_ids) ? report.receipt_ids.length : 0,
     error: passed ? undefined : error,
   };
-}
-
-function runStandaloneFixtureHarness(skill, fixtureFiles, runxBin, tempRoot, receiptDir, started, workspaceDir, allowed) {
-  const assertionErrors = [];
-  const caseNames = [];
-  let receiptCount = 0;
-  let exitStatus = 0;
-  for (const fixturePath of fixtureFiles) {
-    const caseName = path.basename(fixturePath).replace(/\.ya?ml$/u, "");
-    const fixtureWorkspaceDir = path.join(workspaceDir, caseName);
-    mkdirSync(fixtureWorkspaceDir, { recursive: true });
-    caseNames.push(caseName);
-    const result = spawnSync(
-      runxBin,
-      ["harness", fixturePath, "--json", "--receipt-dir", receiptDir],
-      {
-        cwd: fixtureWorkspaceDir,
-        encoding: "utf8",
-        maxBuffer: 64 * 1024 * 1024,
-        env: harnessEnv(runxBin, tempRoot, fixtureWorkspaceDir),
-      },
-    );
-    if (result.status !== 0 && exitStatus === 0) {
-      exitStatus = result.status ?? 1;
-    }
-    const output = parseHarnessReport(result.stdout);
-    if (result.status === 0 && output.schema === "runx.receipt.v1") {
-      receiptCount += 1;
-      continue;
-    }
-    assertionErrors.push(
-      `${caseName}: ${nonEmpty(result.stderr) ?? output.parse_error ?? `runx exited ${result.status ?? "with signal"}`}`,
-    );
-  }
-  const elapsedMs = Math.round(performance.now() - started);
-  const passed = assertionErrors.length === 0;
-  const allowedFailure = !passed && allowed.has(skill.name);
-  return {
-    skill: skill.name,
-    status: passed ? "passed" : allowedFailure ? "allowed_failure" : "failed",
-    elapsed_ms: elapsedMs,
-    exit_status: passed ? 0 : exitStatus,
-    case_count: fixtureFiles.length,
-    graph_case_count: 0,
-    assertion_error_count: assertionErrors.length,
-    assertion_errors: assertionErrors,
-    case_names: caseNames,
-    receipt_count: receiptCount,
-    error: passed ? undefined : assertionErrors.join("; "),
-  };
-}
-
-function standaloneFixtureFiles(skillDir) {
-  const fixturesDir = path.join(skillDir, "fixtures");
-  if (!existsSync(fixturesDir)) {
-    return [];
-  }
-  return readdirSync(fixturesDir)
-    .filter((entry) => entry.endsWith(".yaml") || entry.endsWith(".yml"))
-    .sort()
-    .map((entry) => path.join(fixturesDir, entry));
 }
 
 function failedSkill(skill, started, error) {
@@ -360,8 +354,10 @@ function parseArgs(argv) {
       options.noBuild = true;
     } else if (arg === "--keep-temp") {
       options.keepTemp = true;
+    } else if (arg === "--self-test") {
+      options.selfTest = true;
     } else if (arg === "--help" || arg === "-h") {
-      throw new Error("usage: node scripts/harness-sweep.mjs [--require n] [--allow skill[,skill]] [--expected-count n] [--output path] [--runx-bin path] [--no-build] [--keep-temp]");
+      throw new Error("usage: node scripts/harness-sweep.mjs [--require n] [--allow skill[,skill]] [--expected-count n] [--output path] [--runx-bin path] [--no-build] [--keep-temp] [--self-test]");
     } else {
       throw new Error(`unknown argument '${arg}'`);
     }

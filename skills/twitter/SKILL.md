@@ -28,23 +28,46 @@ name missing evidence as a blocker.
 
 ## What this skill does
 
-Three runners:
+Four runners:
 
 - `read`: collect account evidence from the live API or, preferred for bulk
   history, an X archive export file (`tweets.js`, `following.js`). Queries:
   `snapshot`, `posts`, `mentions`, `search`, `following`, `followers`. Emits
   `twitter.evidence.v1`. Read-only; no gate.
 - `plan`: turn one bounded objective plus evidence into `twitter.plan.v1`, an
-  explicit list of typed acts with rationale. A plan is a draft; it delivers
-  nothing.
+  explicit list of typed acts with rationale, using agent judgment. This is the
+  curated lane, for dozens of acts that each deserve a reason. A plan is a
+  draft; it delivers nothing.
+- `select`: the bulk lane. Apply a deterministic predicate to an archive export
+  and emit a compact plan of delete acts, no agent judgment. Use it when the
+  criterion is mechanical (an author, a date range, an engagement threshold)
+  and the match set runs to thousands, where a per-item rationale would be
+  wrong and would exceed the runtime output limit. Emits `twitter.selection.v1`
+  carrying a digest-bound `twitter_plan`.
 - `execute`: run an approved plan through the X API behind an approval gate,
-  act by act, sealing per-act provider evidence into `twitter.execution.v1`.
-  Rate-limit stops are clean: the packet names the remaining act ids and a
-  re-run with `already_executed_act_ids` skips completed work.
+  act by act, sealing per-act provider evidence into `twitter.execution.v1` and
+  appending the batch outcome to a durable execution ledger. Rate-limit and
+  batch stops are clean: the packet names the remaining act ids, and the ledger
+  holds what completed.
+
+### Resume and the execution ledger
+
+`execute` is stateless per turn; the state lives in the ledger, not the
+process. Each turn appends a `twitter_execution` event (its `executed_act_ids`)
+to a `data-store` stream keyed by the plan digest, under optimistic-concurrency
+version control. A bulk purge of thousands of posts is therefore many gated
+batches sized to the provider rate window, advanced by an external driver: the
+driver reads the ledger, folds the executed set and the stream version, calls
+`execute` for one batch, and repeats until the plan is empty. Resume is
+automatic, an interrupted purge continues from the ledger with no manual
+bookkeeping, because rerunning the driver re-reads the same durable state. The
+driver is a caller's concern, not part of this skill. The operator binds
+`data_source_ref` to durable local SQLite (the default `data-store` adapter);
+no state is invented in the skill.
 
 Each runner emits exactly one packet for its lane: typed evidence with
-provenance and a content digest, a bounded act plan with rationales and gates,
-or provider outcomes bound to the executed plan digest.
+provenance and a content digest, a curated or bulk act plan bound by digest, or
+provider outcomes bound to the executed plan digest and appended to the ledger.
 
 The act vocabulary, with its consequence class:
 
@@ -128,8 +151,9 @@ For the `plan` runner, build `twitter_plan` this way:
   with `stop_conditions: ["rate_limited"]` and the reset time.
 - **Rate limit during execute:** the execution packet lists
   `remaining_act_ids`; re-run with `already_executed_act_ids` after the reset.
-- **Plan digest mismatch on execute:** the execution refuses with a named
-  blocker; nothing runs, and the sealed receipt proves the refusal.
+- **Plan digest mismatch on execute:** the apply step refuses and executes
+  nothing; the ledger records a no-op refusal event, and the driver, which
+  re-reads the stream version each turn, folds no completed acts and advances.
 - **Approval missing or denied:** the execute graph stops at the gate.
 - **Credentials missing:** clean `needs_input` stop naming the environment
   variables; never a half-configured call.
@@ -147,9 +171,15 @@ For the `plan` runner, build `twitter_plan` this way:
   `consequence`, `rationale`), `gates`
   (`human_approval_required`, `approval_ref`), `evidence_refs[]`,
   `open_questions[]`, `blockers[]`, `success_checkpoint`.
+- `twitter.selection.v1`: `decision`, `objective`, `principal`, `predicate`,
+  `matched`, `scanned`, `truncated`, `twitter_plan` (a `twitter.plan.v1`),
+  `plan_digest`, `blockers[]`. The `twitter_plan` is what a driver hands to
+  `execute`, and `plan_digest` is bound so the approved and executed bytes are
+  provably identical.
 - `twitter.execution.v1`: `decision` (`executed`, `partial`, `stopped`,
   `refused`), `plan_digest`, `principal`, `results[]` (`act_id`, `kind`,
-  `consequence`, `status`, `provider_ref`, `detail`), `remaining_act_ids[]`,
+  `consequence`, `status`, `provider_ref`, `detail`), `executed_act_ids[]`
+  (folded by the ledger to compute what remains), `remaining_act_ids[]`,
   `rate`, `blockers[]`, `success_checkpoint`.
 
 ## Worked example
@@ -171,8 +201,14 @@ confirmed.
 - `read`: `query` (required), `params`, `archive_file`, `max_items`, `auth`.
 - `plan`: `objective` (required), `principal` (required), `evidence_json`,
   `operator_policy`, `brand_context`, `operator_context`.
-- `execute`: `plan_json` (required), `plan_digest`,
-  `already_executed_act_ids`, `max_acts`.
+- `select`: `objective` (required), `principal` (required), `archive_file`
+  (required), `predicate` (required: `rt_of`, `is_retweet`, `text_prefix`,
+  `text_contains`, `max_likes`, `max_reposts`, `before_year`, `after_year`),
+  `max_acts`.
+- `execute`: `plan_json` (required), `plan_digest`, `data_source_ref`
+  (required), `expected_version` (required), `idempotency_key` (required),
+  `already_executed_act_ids`, `max_acts`. The driver supplies the ledger inputs
+  per turn.
 
 ## Credentials and cost
 

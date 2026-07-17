@@ -21,6 +21,7 @@ use crate::effects::RuntimeEffectRegistry;
 use crate::execution::disposition::agent_answer_disposition_or_closed;
 use crate::execution::orchestrator::SkillRunRequest;
 use crate::execution::output_projection::project_step_output;
+use crate::receipts::paths::RUNX_RECEIPT_DIR_ENV;
 use crate::receipts::signing::strip_receipt_signing_env;
 use crate::receipts::store::ReceiptStoreError;
 use crate::receipts::{
@@ -158,6 +159,12 @@ fn execute_skill_run_with_resolved_trust(
     let receipts = ReceiptServices::from_env_or_local_development(raw_workspace.env())
         .map_err(|error| SkillRunError::Invalid(error.to_string()))?;
     let mut runtime_env = request.env.clone();
+    let resolved_receipt_path =
+        receipts.resolve_path(&raw_workspace, request.receipt_dir.as_deref(), None);
+    runtime_env.insert(
+        RUNX_RECEIPT_DIR_ENV.to_owned(),
+        resolved_receipt_path.path.to_string_lossy().into_owned(),
+    );
     strip_receipt_signing_env(&mut runtime_env);
     if !trusted_prepared {
         super::prepared_skill::strip_untrusted_prepared_env(&mut runtime_env);
@@ -651,6 +658,7 @@ fn seal_skill_output(
             projection: &projection,
             created_at: &crate::time::now_iso8601(),
             authority_grant_refs: Vec::new(),
+            authority_scope_refs: Vec::new(),
             operator_refs: super::prepared_skill::prepared_receipt_references(env),
             closure: Some(closure),
         },

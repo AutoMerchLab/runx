@@ -1,0 +1,49 @@
+name: execute-ledger-append-sqlite
+kind: skill
+target: ..
+runner: execute
+env:
+  RUNX_DATA_SOURCES: '{"data_sources":{"tenant://twitter/sqlite-execute":{"adapter":"data.sqlite","database_path":".runx/data/twitter-execute.sqlite","resources":{"twitter_execution":{"kind":"event_stream","partition_key":"aggregate_id"}}}}}'
+inputs:
+  plan_json:
+    decision: ready
+    objective: Delete two zero-engagement reposts.
+    principal: account:@example
+    acts:
+      - act_id: del-2001
+        kind: delete_post
+        params: { post_id: "2001" }
+        consequence: live_mutation
+        rationale: Matched the operator predicate.
+      - act_id: del-2002
+        kind: delete_post
+        params: { post_id: "2002" }
+        consequence: live_mutation
+        rationale: Matched the operator predicate.
+    gates:
+      human_approval_required: true
+      approval_ref: approval:granted
+  plan_digest: sha256:dc94fd0ca7c69d191c419f3789e5f6cf1a9ae06c1d453920f4114d8bbc4e9fa5
+  already_executed_act_ids:
+    - del-2001
+    - del-2002
+  data_source_ref: tenant://twitter/sqlite-execute
+  expected_version: 0
+  idempotency_key: batch-0
+caller:
+  approvals:
+    twitter.execute.approval: true
+expect:
+  status: sealed
+  receipt:
+    schema: runx.receipt.v1
+  steps:
+    - approve
+    - apply
+    - persist
+metadata:
+  public_skill: twitter
+  source_case: execute-ledger-append-sqlite
+  source: skills-fixture
+  runner_kind: graph
+  graph_shape: durable_execute

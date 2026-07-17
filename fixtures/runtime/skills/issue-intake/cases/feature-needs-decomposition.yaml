@@ -118,7 +118,7 @@ expect:
   status: "sealed"
   receipt:
     schema: "runx.receipt.v1"
-    receipt_id: "sha256:5a58d180690cad12b5380f4ced36f7008d67e68e77f9835caddf1fb57c802724"
+    receipt_id: "sha256:6e2dfebd38cbf0560078014fc1696d9f33ca3cd2409339c663bfd67f72cfbc08"
     harness_id: "hrn_feature-needs-decomposition_feature-needs-decomposition"
     state: "sealed"
     disposition: "closed"
