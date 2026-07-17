@@ -9,8 +9,9 @@ use runx_runtime::journal::{
     inspect_local_receipt_with_policy, list_local_history, list_local_history_with_policy,
 };
 use runx_runtime::{
-    Ed25519ReceiptVerifier, LocalReceiptStore, ReceiptPathInputs, ResolvedReceiptPath,
-    RuntimeReceiptConfig, RuntimeReceiptSignaturePolicy, resolve_receipt_path,
+    Ed25519ReceiptVerifier, LocalReceiptStore, RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
+    RUNX_RECEIPT_VERIFY_KID_ENV, ReceiptPathInputs, ResolvedReceiptPath, RuntimeReceiptConfig,
+    RuntimeReceiptSignaturePolicy, resolve_receipt_path,
 };
 
 // rust-style-allow: large-file because the native history CLI slice keeps
@@ -159,10 +160,6 @@ fn successful_result(output: String) -> HistoryCliResult {
         error_is_usage: false,
     }
 }
-
-pub(crate) const RUNX_RECEIPT_VERIFY_KID_ENV: &str = "RUNX_RECEIPT_VERIFY_KID";
-pub(crate) const RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV: &str =
-    "RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64";
 
 fn history_production_verifier(
     env: &BTreeMap<String, String>,

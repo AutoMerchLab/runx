@@ -15,8 +15,9 @@ use runx_runtime::registry::{
     IngestSkillOptions, create_file_registry_store, ingest_skill_markdown,
 };
 use runx_runtime::{
-    LocalOrchestrator, LocalReceiptStore, RUNX_RECEIPT_DIR_ENV, RunResult, RuntimeOptions,
-    SkillRunRequest,
+    LocalOrchestrator, LocalReceiptStore, RUNX_RECEIPT_DIR_ENV,
+    RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV, RUNX_RECEIPT_VERIFY_KID_ENV, RunResult,
+    RuntimeOptions, SkillRunRequest,
 };
 use tempfile::tempdir;
 
@@ -600,7 +601,7 @@ runners:
     command: /bin/sh
     args:
       - -c
-      - printf '{"receipt_dir":"%s"}\n' "$RUNX_RECEIPT_DIR"
+      - printf '{"receipt_dir":"%s","verify_kid":"%s","verify_key":"%s"}\n' "$RUNX_RECEIPT_DIR" "$RUNX_RECEIPT_VERIFY_KID" "$RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64"
     outputs:
       receipt_dir: string
 "#,
@@ -612,7 +613,18 @@ runners:
         run_id: None,
         answers_path: None,
         inputs: BTreeMap::new(),
-        env: BTreeMap::new(),
+        env: [
+            (
+                RUNX_RECEIPT_VERIFY_KID_ENV.to_owned(),
+                "receipt-verifier".to_owned(),
+            ),
+            (
+                RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV.to_owned(),
+                "public-key-material".to_owned(),
+            ),
+        ]
+        .into_iter()
+        .collect(),
         cwd: temp.path().to_path_buf(),
         managed_agent: Default::default(),
         local_credential: None,
@@ -624,6 +636,14 @@ runners:
     assert_eq!(
         string_field(structured, "receipt_dir"),
         Some(receipt_dir.to_string_lossy().as_ref())
+    );
+    assert_eq!(
+        string_field(structured, "verify_kid"),
+        Some("receipt-verifier")
+    );
+    assert_eq!(
+        string_field(structured, "verify_key"),
+        Some("public-key-material")
     );
     Ok(())
 }

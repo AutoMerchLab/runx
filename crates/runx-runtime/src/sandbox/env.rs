@@ -10,6 +10,9 @@ use runx_parser::SkillSandbox;
 
 use crate::RuntimeError;
 use crate::receipts::paths::{RUNX_CWD_ENV, RUNX_RECEIPT_DIR_ENV};
+use crate::receipts::signing::{
+    RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV, RUNX_RECEIPT_VERIFY_KID_ENV,
+};
 
 use super::backend::SandboxRuntime;
 use super::policy::{sandbox_violation, workspace_cwd};
@@ -72,6 +75,14 @@ pub(super) fn child_base_env(
     );
     if let Some(receipt_dir) = base_env.get(RUNX_RECEIPT_DIR_ENV) {
         env.insert(RUNX_RECEIPT_DIR_ENV.to_owned(), receipt_dir.clone());
+    }
+    for key in [
+        RUNX_RECEIPT_VERIFY_KID_ENV,
+        RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
+    ] {
+        if let Some(value) = base_env.get(key) {
+            env.insert(key.to_owned(), value.clone());
+        }
     }
     Ok(env)
 }

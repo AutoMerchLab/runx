@@ -15,14 +15,11 @@ use runx_receipts::{
     SignatureVerificationFailure, SignatureVerifier, verify_receipt_document_verdict,
 };
 use runx_runtime::{
-    Ed25519ReceiptVerifier, ReceiptPathInputs, ReceiptTreeConfig, RuntimeReceiptConfig,
+    Ed25519ReceiptVerifier, RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
+    RUNX_RECEIPT_VERIFY_KID_ENV, ReceiptPathInputs, ReceiptTreeConfig, RuntimeReceiptConfig,
     RuntimeReceiptSignaturePolicy, resolve_receipt_path, verify_runtime_receipt_tree_with_policy,
 };
 use serde::Serialize;
-
-use crate::history::{
-    RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV, RUNX_RECEIPT_VERIFY_KID_ENV,
-};
 
 const RECEIPT_REFERENCE_PREFIX: &str = "runx:receipt:";
 const SINGLE_RECEIPT_MAX_BYTES: usize = 10 * 1024 * 1024;

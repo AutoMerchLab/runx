@@ -21,16 +21,22 @@ const write = process.argv.includes("--write");
 const check = process.argv.includes("--check");
 const json = process.argv.includes("--json");
 const strict = process.argv.includes("--strict");
+const requestedSkill = stringFlag("--skill");
 
 if (process.argv.includes("--managed-agent")) {
   throw new Error("core-skill trials forbid managed-agent execution");
 }
 if (write && check) throw new Error("choose either --write or --check");
+if (requestedSkill && (write || check)) throw new Error("--skill is a focused trial and cannot read or write aggregate results");
 if (!existsSync(binary)) {
   throw new Error(`runx binary is missing at ${binary}; build runx-cli first or set RUNX_BIN`);
 }
 
-const skills = auditOfficialSkills(root).filter((skill) => skill.visibility === "public");
+const publicSkills = auditOfficialSkills(root).filter((skill) => skill.visibility === "public");
+const skills = requestedSkill
+  ? publicSkills.filter((skill) => skill.skill === requestedSkill)
+  : publicSkills;
+if (requestedSkill && skills.length === 0) throw new Error(`unknown public skill: ${requestedSkill}`);
 const results = skills.map(trialSkill);
 const packet = {
   schema: "runx.core_skill_trials.v1",
@@ -74,6 +80,7 @@ if (packet.summary.failed > 0 || (strict
 function trialSkill(skill) {
   const cases = uniqueProofCases(skill.proof.cases);
   const caseResults = cases.map((entry) => trialFixture(skill.skill, entry));
+  if (skill.skill === "ledger") caseResults.push(...trialLedgerNativeEdges());
   if (skill.skill === "skill-lab") caseResults.push(...trialSkillLabWritePaths());
   const localTrial = caseResults.length === 0
     ? "unproven"
@@ -134,6 +141,159 @@ function trialSkill(skill) {
       && (!operationProofRequired || operationBoundaryProven)
       && !providerReadback.startsWith("not_proven"),
     cases: caseResults,
+  };
+}
+
+function trialLedgerNativeEdges() {
+  return [
+    trialLedgerNativeEdge("ledger-native-bounded-pagination", ({ receiptDir, rootDir }) => {
+      const output = invokeLedger(rootDir, receiptDir, [
+        "--input", "question=Return a bounded native history slice.",
+        "--input-json", 'filter={"limit":2}',
+      ]);
+      const matched = output.execution?.structured_output?.matched_receipts;
+      if (!Array.isArray(matched) || matched.length !== 2) {
+        return "native ledger pagination did not return exactly the requested two receipts";
+      }
+      if (matched.some((receipt) => receipt.verification_status !== "verified")) {
+        return "native ledger pagination did not preserve production verification status";
+      }
+      return null;
+    }),
+    trialLedgerNativeEdge("ledger-native-broken-chain", ({ receiptDir, rootDir, rootReceiptId }) => {
+      removeFirstChildReceipt(receiptDir, rootReceiptId);
+      const output = invokeLedger(rootDir, receiptDir, [
+        "--input", "question=Verify this exact receipt tree.",
+        "--input-json", `receipt_ids=${JSON.stringify([rootReceiptId])}`,
+        "--input-json", 'proof={"verify_chain":true}',
+      ]);
+      const chain = output.execution?.structured_output?.chain_verification;
+      if (chain?.checked !== true || chain?.intact !== false || !Array.isArray(chain.breaks) || chain.breaks.length === 0) {
+        return "native ledger verification did not surface the deleted child as a broken chain";
+      }
+      return null;
+    }),
+  ];
+}
+
+function trialLedgerNativeEdge(name, verify) {
+  const rootDir = makeTrialRoot("ledger-native");
+  const receiptDir = path.join(rootDir, "receipts");
+  try {
+    const sourceSkill = writeLedgerSourceSkill(rootDir);
+    const sourceRun = spawnSync(
+      binary,
+      ["skill", sourceSkill, "generate", "--receipt-dir", receiptDir, "--json", "--skip-operator-context"],
+      {
+        cwd: rootDir,
+        env: isolatedEnv(rootDir),
+        encoding: "utf8",
+        timeout: timeoutMs,
+        maxBuffer: 8 * 1024 * 1024,
+      },
+    );
+    if (sourceRun.error || sourceRun.status !== 0) {
+      return failedGeneratedCase(name, "ledger", "read", boundedFailure(sourceRun.stderr || sourceRun.stdout || sourceRun.error?.message, rootDir));
+    }
+    const sourceOutput = JSON.parse(sourceRun.stdout);
+    const rootReceiptId = sourceOutput.receipt_id;
+    if (!/^sha256:[0-9a-f]{64}$/u.test(String(rootReceiptId ?? ""))) {
+      return failedGeneratedCase(name, "ledger", "read", "source graph did not return a content-addressed root receipt");
+    }
+    const error = verify({ receiptDir, rootDir, rootReceiptId });
+    return error
+      ? failedGeneratedCase(name, "ledger", "read", error)
+      : {
+        name,
+        path: "generated:native-ledger-edge",
+        runner: "read",
+        proof_type: "operation",
+        status: "passed",
+        receipt: {
+          schema: "runx.receipt.v1",
+          content_addressed_id: "validated_sha256",
+          disposition: "closed",
+          reason_code: "native_ledger_edge_proven",
+        },
+      };
+  } catch (error) {
+    return failedGeneratedCase(name, "ledger", "read", boundedFailure(error.message, rootDir));
+  } finally {
+    rmSync(rootDir, { recursive: true, force: true });
+  }
+}
+
+function writeLedgerSourceSkill(rootDir) {
+  const skillDir = path.join(rootDir, "skills", "ledger-source");
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(path.join(skillDir, "SKILL.md"), "---\nname: ledger-source\ndescription: Generate a small receipt tree for native ledger trials.\n---\n", "utf8");
+  writeFileSync(path.join(skillDir, "X.yaml"), [
+    "skill: ledger-source",
+    "runners:",
+    "  generate:",
+    "    default: true",
+    "    type: graph",
+    "    graph:",
+    "      name: ledger-source",
+    "      steps:",
+    "        - id: first",
+    "          run:",
+    "            type: cli-tool",
+    "            command: node",
+    "            args: [\"-e\", \"process.stdout.write(JSON.stringify({value:'first'}))\"]",
+    "          outputs: { value: string }",
+    "        - id: second",
+    "          run:",
+    "            type: cli-tool",
+    "            command: node",
+    "            args: [\"-e\", \"process.stdout.write(JSON.stringify({value:'second'}))\"]",
+    "          outputs: { value: string }",
+    "        - id: third",
+    "          run:",
+    "            type: cli-tool",
+    "            command: node",
+    "            args: [\"-e\", \"process.stdout.write(JSON.stringify({value:'third'}))\"]",
+    "          outputs: { value: string }",
+    "",
+  ].join("\n"), "utf8");
+  return skillDir;
+}
+
+function invokeLedger(rootDir, receiptDir, inputArgs) {
+  const result = spawnSync(
+    binary,
+    ["skill", path.join(root, "skills", "ledger"), "read", ...inputArgs, "--receipt-dir", receiptDir, "--json", "--skip-operator-context"],
+    {
+      cwd: rootDir,
+      env: isolatedEnv(rootDir),
+      encoding: "utf8",
+      timeout: timeoutMs,
+      maxBuffer: 8 * 1024 * 1024,
+    },
+  );
+  if (result.error || result.status !== 0) {
+    throw new Error(boundedFailure(result.stderr || result.stdout || result.error?.message, rootDir));
+  }
+  return JSON.parse(result.stdout);
+}
+
+function removeFirstChildReceipt(receiptDir, rootReceiptId) {
+  const rootPath = path.join(receiptDir, `sha256-${rootReceiptId.slice("sha256:".length)}.json`);
+  const receipt = JSON.parse(readFileSync(rootPath, "utf8"));
+  const childRef = receipt.lineage?.children?.[0]?.uri;
+  const childId = typeof childRef === "string" ? childRef.replace(/^runx:receipt:/u, "") : "";
+  if (!/^sha256:[0-9a-f]{64}$/u.test(childId)) throw new Error("source graph root has no content-addressed child receipt");
+  rmSync(path.join(receiptDir, `sha256-${childId.slice("sha256:".length)}.json`));
+}
+
+function failedGeneratedCase(name, skill, runner, reason) {
+  return {
+    name,
+    path: `generated:${skill}-edge`,
+    runner,
+    proof_type: "operation",
+    status: "failed",
+    reason,
   };
 }
 
@@ -548,6 +708,11 @@ function isolatedEnv(rootDir) {
         "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
       ],
       ["RUNX_RECEIPT_SIGN_ISSUER_TYPE", "hosted"],
+      ["RUNX_RECEIPT_VERIFY_KID", "runx-core-skill-trial-key"],
+      [
+        "RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64",
+        "IVL40Zt5HSRFMkLhXy6rbLfP+ntqXtMAl5YOBpiB2xI=",
+      ],
       ["NO_COLOR", "1"],
     ].filter(([, value]) => typeof value === "string" && value.length > 0),
   );
@@ -573,6 +738,15 @@ function integerFlag(name, fallback) {
   if (!value) return fallback;
   const parsed = Number(value.slice(prefix.length));
   if (!Number.isInteger(parsed) || parsed < 1) throw new Error(`${name} expects a positive integer`);
+  return parsed;
+}
+
+function stringFlag(name) {
+  const prefix = `${name}=`;
+  const value = process.argv.find((entry) => entry.startsWith(prefix));
+  if (!value) return null;
+  const parsed = value.slice(prefix.length).trim();
+  if (!parsed) throw new Error(`${name} expects a non-empty value`);
   return parsed;
 }
 

@@ -12,6 +12,7 @@ export default defineConfig({
       "tests/kernel-parity-fixtures.test.ts",
       "tests/payment-finality-adapters.test.ts",
       "tests/least-privilege-scope.test.ts",
+      "tests/policy-author-validation.test.ts",
       "tests/skill-lab-evidence.test.ts",
       "tests/stripe-spt-rail-adapter.test.ts",
     ],

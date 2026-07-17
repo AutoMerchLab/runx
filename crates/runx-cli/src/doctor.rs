@@ -20,11 +20,11 @@ use runx_runtime::{
     resolve_runx_home_dir, run_doctor,
 };
 
-use crate::history::{
-    RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV, RUNX_RECEIPT_VERIFY_KID_ENV,
-};
 use crate::registry::{self, RegistryAction, RegistryPlan};
 use crate::router::{DoctorMode, DoctorPlan};
+use runx_runtime::{
+    RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV, RUNX_RECEIPT_VERIFY_KID_ENV,
+};
 
 const OFFICIAL_SKILLS_DIR_ENV: &str = "RUNX_OFFICIAL_SKILLS_DIR";
 
