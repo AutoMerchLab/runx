@@ -344,6 +344,7 @@ describe("GitHub thread helper", () => {
       },
     });
     const body = JSON.parse((frame.payload as { body: string }).body);
+    expect(body.provider_readback).toBe("mutation_only");
     expect(body.thread).toMatchObject({
       adapter: {
         adapter_ref: "auscaster/frantic-board#issue/7",
@@ -956,6 +957,68 @@ describe("GitHub thread helper", () => {
         },
       },
     });
+  });
+
+  it("uses mutation-only provider frames without redundant GraphQL thread reads", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-frantic-github-"));
+    const ghBin = path.join(tempDir, "fake-gh.mjs");
+    const logPath = path.join(tempDir, "gh.log");
+    const thread = {
+      schema_version: 1,
+      provider: "github",
+      target_repo: "auscaster/frantic-board",
+      identity_key: "frantic:bounty:7",
+      thread_locator: "github://auscaster/frantic-board/issues/7",
+      title: "Frantic bounty #7",
+      body: "Frantic is the source of truth.",
+      labels: ["bounty", "funded", "available"],
+      managed_labels: ["bounty", "funded", "available", "paid", "closed"],
+      state: "open",
+      comments: [],
+    };
+    const frame = buildMessageFrame(
+      thread,
+      {
+        entry_id: "github:payout-1:thread.comment",
+        body: "Frantic paid one accepted claim.",
+        receipt_ref: "frantic:receipt:payout:7",
+      },
+      thread.thread_locator,
+      { sourceId: "frantic" },
+    );
+
+    try {
+      await writeFile(ghBin, fakeGhScript(logPath));
+      await chmod(ghBin, 0o700);
+      const result = spawnSync("node", ["tools/thread/thread_outbox_provider/github-provider.mjs"], {
+        cwd: process.cwd(),
+        input: `${JSON.stringify(frame)}\n`,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          RUNX_GH_BIN: ghBin,
+          GH_FAKE_LOG: logPath,
+        },
+      });
+
+      expect(result.status, result.stderr || result.stdout).toBe(0);
+      const calls = JSON.parse(await readFile(logPath, "utf8"));
+      expect(calls.map((call: { args: string[] }) => call.args.slice(0, 2).join(" "))).toEqual([
+        "issue comment",
+      ]);
+      const output = JSON.parse(result.stdout);
+      expect(output).toMatchObject({
+        observation: { status: "accepted" },
+        output: {
+          push: {
+            status: "pushed",
+          },
+        },
+      });
+      expect(output.output.thread).toBeUndefined();
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   });
 });
 
