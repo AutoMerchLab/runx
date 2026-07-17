@@ -101,18 +101,7 @@ fn write_inputs_file(
     base_env: &BTreeMap<String, String>,
     serialized: &str,
 ) -> Result<(String, PathBuf), RuntimeError> {
-    let temp_root = base_env
-        .get("TMPDIR")
-        .or_else(|| base_env.get("TMP"))
-        .or_else(|| base_env.get("TEMP"))
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir);
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_nanos());
-    let dir = temp_root.join(format!("runx-cli-inputs-{}-{nanos}", std::process::id()));
-    fs::create_dir_all(&dir)
-        .map_err(|source| RuntimeError::io("creating inputs temp dir", source))?;
+    let dir = create_workspace_tmp(base_env, "cli-inputs", "creating inputs temp dir")?;
     let path = dir.join("inputs.json");
     let mut file = fs::File::create(&path)
         .map_err(|source| RuntimeError::io("creating inputs temp file", source))?;
@@ -159,7 +148,7 @@ pub(super) fn prepare_sandbox_tmp_env(
     if !sandbox_private_tmp_enabled(sandbox, runtime.as_ref()) {
         return Ok(());
     }
-    let private_tmp = create_private_tmp()?;
+    let private_tmp = create_workspace_tmp(env, "sandbox", "creating sandbox private temp dir")?;
     let private_tmp_str = private_tmp.to_string_lossy().into_owned();
     env.insert("TMPDIR".to_owned(), private_tmp_str.clone());
     env.insert("TMP".to_owned(), private_tmp_str.clone());
@@ -176,14 +165,19 @@ pub(super) fn sandbox_private_tmp_enabled(
         && !matches!(runtime, Some(SandboxRuntime::Direct))
 }
 
-fn create_private_tmp() -> Result<PathBuf, RuntimeError> {
+fn create_workspace_tmp(
+    base_env: &BTreeMap<String, String>,
+    label: &str,
+    operation: &'static str,
+) -> Result<PathBuf, RuntimeError> {
     let nanos = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0, |duration| duration.as_nanos());
-    let path =
-        std::env::temp_dir().join(format!("runx-local-sandbox-{}-{nanos}", std::process::id()));
-    fs::create_dir_all(&path)
-        .map_err(|source| RuntimeError::io("creating sandbox private temp dir", source))?;
+    let path = workspace_root(base_env)?
+        .join(".runx")
+        .join("tmp")
+        .join(format!("{label}-{}-{nanos}", std::process::id()));
+    fs::create_dir_all(&path).map_err(|source| RuntimeError::io(operation, source))?;
     Ok(path)
 }
 

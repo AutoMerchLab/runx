@@ -137,7 +137,6 @@ Skills that model, charge, pay, or refund through payment providers. The `mock-*
 |---|---|
 | `skill-lab/` | Design, build, improve, and add validated harness coverage to Runx skills. |
 | `overlay/` | Wrap a borrowed Anthropic SKILL.md under a governed runx overlay. |
-| `evolve/` | Governed repo evolution with fixed phase semantics and bounded changes. |
 | `moltbook/` | Scan for posting opportunities and prepare governed Moltbook entries. |
 
 ## SQL & Structured Data

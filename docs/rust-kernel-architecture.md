@@ -552,7 +552,7 @@ present them as canonical.
 
 The one-to-one CLI matrix belongs in `fixtures/cli-parity/` and is governed by
 the `rust-cli-feature-parity-matrix` spec. The matrix is intentionally broader
-than kernel parity. It includes `skill`, `evolve`, `resume`, `replay`, `diff`,
+than kernel parity. It includes `skill`, `resume`, `replay`, `diff`,
 `search`, `add`, `inspect`, `history`, `knowledge show`,
 `connect`, `config`, `new`, `init`, `harness`, `list`, `doctor`, `dev`,
 `mcp serve`, `tool search`, `tool inspect`, and `tool build`, plus any

@@ -96,6 +96,10 @@ impl GovernedHarnessFixture {
             .to_str()
             .ok_or_else(|| "non-utf8 governed harness path".into())
     }
+
+    pub fn receipt_dir(&self) -> PathBuf {
+        self.root.join(".runx").join("receipts")
+    }
 }
 
 impl Drop for GovernedHarnessFixture {

@@ -80,6 +80,13 @@ pub(super) fn execute_graph_skill_run(
         credential_delivery: credential_delivery.clone(),
         policy: request.managed_agent.clone(),
     };
+    let development_auto_approve = receipts
+        .signature_config()
+        .signature_policy()
+        .allows_local_pseudo_signatures()
+        && env
+            .get(crate::config::RUNX_DEVELOPMENT_AUTO_APPROVE_ENV)
+            .is_some_and(|value| matches!(value.trim(), "true" | "1"));
     let created_at = crate::time::now_iso8601();
     let runtime = Runtime::new(
         SkillRunGraphAdapter::default(),
@@ -133,7 +140,8 @@ pub(super) fn execute_graph_skill_run(
         )));
     }
     let graph = materialize_graph_inputs(graph, &graph_inputs);
-    let mut host = SkillRunGraphHost::with_inline(answers, inline_resolver);
+    let mut host =
+        SkillRunGraphHost::with_inline(answers, inline_resolver, development_auto_approve);
     let mut checkpoint = if let Some(state) = resumed_state.take() {
         state.checkpoint
     } else {
@@ -611,6 +619,7 @@ struct SkillRunGraphHost {
     answers: JsonObject,
     pending: Vec<(String, JsonValue)>,
     inline: Option<InlineResolver>,
+    development_auto_approve: bool,
 }
 
 impl SkillRunGraphHost {
@@ -619,14 +628,20 @@ impl SkillRunGraphHost {
             answers,
             pending: Vec::new(),
             inline: None,
+            development_auto_approve: false,
         }
     }
 
-    fn with_inline(answers: JsonObject, inline: InlineResolver) -> Self {
+    fn with_inline(
+        answers: JsonObject,
+        inline: InlineResolver,
+        development_auto_approve: bool,
+    ) -> Self {
         Self {
             answers,
             pending: Vec::new(),
             inline: Some(inline),
+            development_auto_approve,
         }
     }
 
@@ -651,6 +666,18 @@ impl Host for SkillRunGraphHost {
             return Ok(Some(ResolutionResponse {
                 actor: ResolutionResponseActor::Agent,
                 payload: answer.clone(),
+            }));
+        }
+        if self.development_auto_approve && matches!(&request, ResolutionRequest::Approval { .. }) {
+            return Ok(Some(ResolutionResponse {
+                actor: ResolutionResponseActor::Human,
+                payload: JsonValue::Object(JsonObject::from([
+                    ("approved".to_owned(), JsonValue::Bool(true)),
+                    (
+                        "reason".to_owned(),
+                        JsonValue::String("development_auto_approve".to_owned()),
+                    ),
+                ])),
             }));
         }
         // An agent step with no seeded answer runs the configured provider inline

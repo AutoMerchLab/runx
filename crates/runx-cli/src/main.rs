@@ -8,8 +8,8 @@ use std::process::ExitCode;
 
 use runx_cli::router::{HarnessPlan, RouterAction, command_help_text, help_text};
 
-const PACKAGE_HARNESS_SIGNING_HINT: &str = "runx: hint: package harnesses seal signed receipts; set RUNX_RECEIPT_SIGN_KID, RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64, and RUNX_RECEIPT_SIGN_ISSUER_TYPE together, or unset all three to use local-development receipts.";
-const PACKAGE_HARNESS_STALE_RECEIPT_STORE_HINT: &str = "runx: hint: the receipt store contains entries that do not verify with the current issuer; retry with --receipt-dir \"$(mktemp -d)\" for an isolated harness run.";
+const HARNESS_SIGNING_HINT: &str = "runx: hint: harnesses seal signed receipts; set RUNX_RECEIPT_SIGN_KID, RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64, and RUNX_RECEIPT_SIGN_ISSUER_TYPE together, or unset all three to use local-development receipts.";
+const HARNESS_STALE_RECEIPT_STORE_HINT: &str = "runx: hint: the receipt store contains entries that do not verify with the current issuer; retry with --receipt-dir .runx/harness-receipts for an isolated project-local harness run.";
 
 fn main() -> ExitCode {
     let args: Vec<OsString> = env::args_os().skip(1).collect();
@@ -271,15 +271,17 @@ fn run_native_harness(plan: HarnessPlan) -> ExitCode {
         };
         return run_package_harness(Path::new(target), plan.receipt_dir.as_ref());
     }
-    run_standalone_harness(plan.fixture_paths)
+    run_standalone_harness(plan.fixture_paths, plan.receipt_dir)
 }
 
-fn run_standalone_harness(fixture_paths: Vec<OsString>) -> ExitCode {
+fn run_standalone_harness(fixture_paths: Vec<OsString>, receipt_dir: Option<OsString>) -> ExitCode {
     let mut outputs = Vec::new();
     let orchestrator = runx_cli::runtime::local_orchestrator();
     for fixture_path in fixture_paths {
         let request = runx_runtime::HarnessRunRequest {
             fixture_path: PathBuf::from(fixture_path),
+            receipt_dir: receipt_dir.as_ref().map(PathBuf::from),
+            env: None,
         };
         match orchestrator.run_harness_fixture(&request) {
             Ok(output) => {
@@ -304,10 +306,14 @@ fn run_standalone_harness(fixture_paths: Vec<OsString>) -> ExitCode {
                 );
             }
             Err(error) => {
+                let error_message = error.to_string();
                 let _ignored = write_stderr_line(&format!(
-                    "runx: native harness replay failed for {}: {error}",
+                    "runx: native harness replay failed for {}: {error_message}",
                     request.fixture_path.display()
                 ));
+                if let Some(hint) = harness_failure_hint(&error_message) {
+                    let _ignored = write_stderr_line(hint);
+                }
                 return ExitCode::from(1);
             }
         }
@@ -364,7 +370,7 @@ fn run_package_harness(skill_path: &Path, receipt_dir: Option<&OsString>) -> Exi
                 "runx: package harness failed for {}: {error_message}",
                 skill_path.display()
             ));
-            if let Some(hint) = package_harness_failure_hint(&error_message) {
+            if let Some(hint) = harness_failure_hint(&error_message) {
                 let _ignored = write_stderr_line(hint);
             }
             return ExitCode::from(1);
@@ -394,9 +400,9 @@ fn run_package_harness(skill_path: &Path, receipt_dir: Option<&OsString>) -> Exi
     }
 }
 
-fn package_harness_failure_hint(message: &str) -> Option<&'static str> {
+fn harness_failure_hint(message: &str) -> Option<&'static str> {
     if is_receipt_signing_error(message) {
-        return Some(PACKAGE_HARNESS_SIGNING_HINT);
+        return Some(HARNESS_SIGNING_HINT);
     }
     None
 }
@@ -409,14 +415,14 @@ fn package_harness_report_hint(
         .iter()
         .any(|error| is_receipt_signing_error(error))
     {
-        return Some(PACKAGE_HARNESS_SIGNING_HINT);
+        return Some(HARNESS_SIGNING_HINT);
     }
     if report
         .assertion_errors
         .iter()
         .any(|error| error.contains("receipt store index is stale"))
     {
-        return Some(PACKAGE_HARNESS_STALE_RECEIPT_STORE_HINT);
+        return Some(HARNESS_STALE_RECEIPT_STORE_HINT);
     }
     None
 }
@@ -476,7 +482,7 @@ mod tests {
 
         assert_eq!(
             package_harness_report_hint(&report),
-            Some(PACKAGE_HARNESS_SIGNING_HINT)
+            Some(HARNESS_SIGNING_HINT)
         );
     }
 
@@ -488,7 +494,7 @@ mod tests {
 
         assert_eq!(
             package_harness_report_hint(&report),
-            Some(PACKAGE_HARNESS_STALE_RECEIPT_STORE_HINT)
+            Some(HARNESS_STALE_RECEIPT_STORE_HINT)
         );
     }
 

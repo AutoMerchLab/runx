@@ -1,6 +1,6 @@
 import { generateKeyPairSync, sign, type KeyObject } from "node:crypto";
 import { existsSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, stat } from "node:fs/promises";
 import { spawnSync } from "node:child_process";
 import os from "node:os";
 import path from "node:path";
@@ -32,6 +32,8 @@ describe("registry skill native fetch", () => {
         skillRef,
         "--registry",
         registryDir,
+        "--input",
+        `project=${projectDir}`,
         "--json",
         "--non-interactive",
       ]);
@@ -45,6 +47,8 @@ describe("registry skill native fetch", () => {
         skillRef,
         "--registry",
         registryDir,
+        "--input",
+        `project=${projectDir}`,
         "--json",
         "--non-interactive",
       ]);
@@ -65,20 +69,10 @@ describe("registry skill native fetch", () => {
     try {
       await mkdir(projectDir, { recursive: true });
       const registryDir = path.join(tempDir, "registry");
-      const wrongSkillDir = path.join(tempDir, "wrong-sourcey");
-      const wrongSkillPath = path.join(wrongSkillDir, "SKILL.md");
-      const originalMarkdown = await readFile(path.resolve("skills/sourcey/SKILL.md"), "utf8");
-      await writeTestFile(
-        wrongSkillPath,
-        originalMarkdown.replace(
-          "description: Generate documentation for a project using Sourcey.",
-          "description: Generate different documentation for a project using Sourcey.",
-        ),
-      );
       const sourceyLock = await officialSkillLock("runx/sourcey");
       publishLocalRegistrySkill({
         registryDir,
-        subject: wrongSkillPath,
+        subject: path.resolve("skills/sourcey/SKILL.md"),
         profile: path.resolve("skills/sourcey/X.yaml"),
         owner: "acme",
         version: sourceyLock.version,
@@ -90,7 +84,7 @@ describe("registry skill native fetch", () => {
         "--registry",
         registryDir,
         "--digest",
-        sourceyLock.digest,
+        `sha256:${"0".repeat(64)}`,
         "--input",
         `project=${projectDir}`,
         "--json",
@@ -129,14 +123,14 @@ describe("registry skill native fetch", () => {
       });
 
       const result = runNativeSkill(env, [
+        "inspect",
         `acme/spend@${lockEntry.version}`,
         "--registry",
         registryDir,
         "--json",
-        "--non-interactive",
       ]);
-      const output = parseJsonOutput(result, 2);
-      expect((output as { status?: string }).status).toBe("needs_agent");
+      const output = parseJsonOutput(result, 0);
+      expect((output as { status?: string }).status).toBe("ok");
       const skillPath = findRegistrySkillCachePath(globalHomeDir, "acme/spend");
       for (const stage of ["pay-quote", "pay-reserve", "pay-fulfill-rail"]) {
         expect(
@@ -214,11 +208,12 @@ function testEnv(projectDir: string, globalHomeDir: string): NodeJS.ProcessEnv {
     RUNX_CWD: projectDir,
     RUNX_HOME: globalHomeDir,
     RUNX_DEV_RUST_CLI_BIN: nativeRunxBinaryForTest(),
-    RUNX_RECEIPT_SIGN_KID: process.env.RUNX_RECEIPT_SIGN_KID ?? "official-skill-native-fetch-test-key",
-    RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64:
-      process.env.RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64 ?? "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
-    RUNX_RECEIPT_SIGN_ISSUER_TYPE: process.env.RUNX_RECEIPT_SIGN_ISSUER_TYPE ?? "hosted",
+    RUNX_DEVELOPMENT_AUTO_APPROVE: "true",
+    RUNX_TOOL_ROOTS: path.resolve("tools"),
   };
+  delete env.RUNX_RECEIPT_SIGN_KID;
+  delete env.RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64;
+  delete env.RUNX_RECEIPT_SIGN_ISSUER_TYPE;
   delete env.RUNX_REGISTRY_DIR;
   delete env.RUNX_REGISTRY_URL;
   delete env.RUNX_REGISTRY_SOURCE_AUTHORITY;
@@ -270,7 +265,9 @@ function parseJsonOutput(result: {
   readonly stderr: string;
 }, expectedStatus: number): unknown {
   expect(result.status, `stderr=${result.stderr}\nstdout=${result.stdout}`).toBe(expectedStatus);
-  expect(result.stderr).toBe("");
+  if (result.stderr) {
+    expect(result.stderr).toContain("Prepared run");
+  }
   return JSON.parse(result.stdout);
 }
 
@@ -433,12 +430,6 @@ function findSingleRegistryEntry(root: string): string {
     throw new Error(`expected one registry fixture entry, found ${matches.length}`);
   }
   return matches[0];
-}
-
-async function writeTestFile(filePath: string, contents: string): Promise<void> {
-  await rm(path.dirname(filePath), { recursive: true, force: true });
-  await mkdir(path.dirname(filePath), { recursive: true });
-  await writeFile(filePath, contents, "utf8");
 }
 
 function nativeRunxBinaryForTest(): string {

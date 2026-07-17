@@ -92,7 +92,6 @@ const harnessedShowcasePackages = [
   "deep-research",
   "ghostwrite",
   "vuln-disclosure",
-  "evolve",
   "issue-intake",
   "issue-triage",
   "ecosystem-brief",
@@ -181,8 +180,22 @@ describe("official skill catalog", () => {
       const inlineCases = manifest.harness?.cases ?? [];
 
       expect(fixtures.length + inlineCases.length, `${skillName} needs executable proof`).toBeGreaterThan(0);
-      expect(fixtures.every((entry) => entry.kind === "skill"), `${skillName} fixtures must target the skill`).toBe(true);
-      expect(fixtures.every((entry) => entry.target === ".."), `${skillName} fixtures must target their parent skill`).toBe(true);
+      expect(
+        fixtures.every((entry) => entry.kind === "skill" || entry.kind === "graph"),
+        `${skillName} fixtures must target a skill or operator journey`,
+      ).toBe(true);
+      expect(
+        fixtures
+          .filter((entry) => entry.kind === "skill")
+          .every((entry) => entry.target === ".." || entry.target?.startsWith("../graph/") === true),
+        `${skillName} skill fixtures must stay within their package`,
+      ).toBe(true);
+      expect(
+        fixtures
+          .filter((entry) => entry.kind === "graph")
+          .every((entry) => entry.target?.startsWith("../harness/") === true),
+        `${skillName} journey fixtures must target their package harness`,
+      ).toBe(true);
     }
   });
 

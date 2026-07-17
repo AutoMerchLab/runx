@@ -68,7 +68,7 @@ describe("CLI feature parity matrix", () => {
       casesByCommand.set(testCase.commandId, cases);
     }
 
-    expect(matrix.exitCodes).toEqual([0, 1, 2, 64]);
+    expect(matrix.exitCodes).toEqual([0, 1, 2, 3, 64]);
     for (const command of matrix.commands) {
       expect(command.exitCodes).toEqual(matrix.exitCodes);
       expect(command.parity.surfaces.length).toBeGreaterThan(0);

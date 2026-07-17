@@ -36,14 +36,14 @@ describe("hello-world example", () => {
         },
       );
 
-      expect(stderr).toBe("");
+      expect(stderr).toContain("Prepared run");
       const result = JSON.parse(stdout) as {
         readonly status: string;
         readonly execution?: { readonly stdout?: string };
         readonly receipt?: { readonly schema?: string; readonly seal?: { readonly disposition?: string } };
       };
       expect(result.status).toBe("sealed");
-      expect(result.execution?.stdout).toBe("hello from docs\n");
+      expect(JSON.parse(result.execution?.stdout ?? "null")).toEqual({ message: "hello from docs" });
       expect(result.receipt?.schema).toBe("runx.receipt.v1");
       expect(result.receipt?.seal?.disposition).toBe("closed");
     } finally {

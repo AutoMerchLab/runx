@@ -23,6 +23,8 @@ pub struct RunxConfigFile {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub agent: Option<RunxAgentConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub development: Option<RunxDevelopmentConfig>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub public: Option<RunxPublicConfig>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credentials: Option<RunxCredentialsConfig>,
@@ -58,6 +60,13 @@ pub struct RunxAgentConfig {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
+pub struct RunxDevelopmentConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub auto_approve: Option<bool>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct RunxPublicConfig {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub api_base_url: Option<String>,
@@ -72,8 +81,11 @@ pub enum ConfigKey {
     AgentProvider,
     AgentModel,
     AgentApiKey,
+    DevelopmentAutoApprove,
     PublicApiToken,
 }
+
+pub const RUNX_DEVELOPMENT_AUTO_APPROVE_ENV: &str = "RUNX_DEVELOPMENT_AUTO_APPROVE";
 
 /// Canonical managed agent provider identifiers. The wire form on
 /// `ManagedAgentConfig::provider` is an open `NonEmptyString`; this module is
@@ -117,6 +129,8 @@ pub enum ConfigError {
     NonObjectJson { path: PathBuf },
     #[error("unsupported runx config key {key}")]
     UnsupportedKey { key: String },
+    #[error("runx config key {key} expects true or false, got {value}")]
+    InvalidBooleanValue { key: String, value: String },
     #[error("runx local agent key corrupted or unreadable at {path}{suffix}")]
     LocalAgentKeyCorrupt { path: PathBuf, suffix: String },
     #[error("Skill profile state is not valid JSON: {path}")]
@@ -151,6 +165,7 @@ pub fn parse_config_key(key: &str) -> Result<ConfigKey, ConfigError> {
         "agent.provider" => Ok(ConfigKey::AgentProvider),
         "agent.model" => Ok(ConfigKey::AgentModel),
         "agent.api_key" => Ok(ConfigKey::AgentApiKey),
+        "development.auto_approve" => Ok(ConfigKey::DevelopmentAutoApprove),
         "public.api_token" => Ok(ConfigKey::PublicApiToken),
         _ => Err(ConfigError::UnsupportedKey {
             key: key.to_owned(),
@@ -252,6 +267,12 @@ pub fn update_runx_config_value(
             agent.api_key_ref = Some(store_local_agent_api_key(config_dir, value)?);
             config.agent = Some(agent);
         }
+        ConfigKey::DevelopmentAutoApprove => {
+            let mut development = config.development.unwrap_or_default();
+            development.auto_approve =
+                Some(parse_boolean_value("development.auto_approve", value)?);
+            config.development = Some(development);
+        }
         ConfigKey::PublicApiToken => {
             let mut public = config.public.unwrap_or_default();
             public.api_token_ref = Some(store_local_public_api_token(config_dir, value)?);
@@ -271,12 +292,42 @@ pub fn lookup_runx_config_value(config: &RunxConfigFile, key: ConfigKey) -> Opti
             .api_key_ref
             .as_ref()
             .map(|_| "[encrypted]".to_owned()),
+        ConfigKey::DevelopmentAutoApprove => config
+            .development
+            .as_ref()?
+            .auto_approve
+            .map(|value| value.to_string()),
         ConfigKey::PublicApiToken => config
             .public
             .as_ref()?
             .api_token_ref
             .as_ref()
             .map(|_| "[encrypted]".to_owned()),
+    }
+}
+
+pub fn development_auto_approve_requested(
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+) -> Result<bool, ConfigError> {
+    if let Some(value) = env.get(RUNX_DEVELOPMENT_AUTO_APPROVE_ENV) {
+        return parse_boolean_value(RUNX_DEVELOPMENT_AUTO_APPROVE_ENV, value);
+    }
+    let config_path = resolve_runx_home_dir(env, cwd).join("config.json");
+    Ok(load_runx_config_file(&config_path)?
+        .development
+        .and_then(|development| development.auto_approve)
+        .unwrap_or(false))
+}
+
+fn parse_boolean_value(key: &str, value: &str) -> Result<bool, ConfigError> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err(ConfigError::InvalidBooleanValue {
+            key: key.to_owned(),
+            value: value.to_owned(),
+        }),
     }
 }
 

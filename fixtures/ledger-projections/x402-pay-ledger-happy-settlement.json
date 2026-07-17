@@ -13,12 +13,12 @@
   "disposition": "settled",
   "evidence_refs": [
     "hrn_x402-pay-paid-echo_fulfill",
-    "runx:receipt:sha256:81221b79e458cfe99e8d161b6c607747cff239b8cc5fe5c200cb9fa7d5a97b5e",
+    "runx:receipt:sha256:2bebaa51b8159b1eecec8a468987ae1956415b253fceed4a40db341570a80507",
     "runx:payment-capability:paid-echo-spend-1"
   ],
   "payment_profile": "x402-pay",
   "refusal": null,
   "scenario_id": "P1.5",
   "schema_version": "runx.payment_ledger_projection.v1",
-  "source_receipt_id": "runx:receipt:sha256:845f260a6aedccd8ddb67a522bb5b9d30f57254fd74bb545b02bd4938f11a013"
+  "source_receipt_id": "runx:receipt:sha256:96582cb5711be74d3037989f9b610f8a0b5c1bfc6ab325b058473c70880a55bf"
 }

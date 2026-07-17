@@ -74,6 +74,8 @@ fn native_cli_smoke_runs_without_node_or_typescript_env() -> Result<(), Box<dyn 
             harness_fixture
                 .to_str()
                 .ok_or("non-utf8 harness fixture path")?,
+            "--receipt-dir",
+            receipt_dir.to_str().ok_or("non-utf8 receipt dir")?,
             "--json",
         ])
         .output()?;

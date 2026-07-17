@@ -20,10 +20,11 @@ use crate::credentials::CredentialDelivery;
 use crate::execution::output_projection::data_envelope;
 use crate::json_render::json_number_string;
 use crate::tool_catalogs::search::{FixtureTool, fixture_tool};
-use crate::tool_catalogs::{ToolCatalogError, ToolInspectOptions, resolve_local_tool};
+use crate::tool_catalogs::{
+    DATA_SOURCE_ROUTER_TOOL_REF, ToolCatalogError, ToolInspectOptions, resolve_local_tool,
+};
 
 const MISSING_CATALOG_REF: &str = "Catalog source requires source.catalog_ref metadata.";
-const DATA_SOURCE_ROUTER_TOOL_REF: &str = "data.source";
 const RUNX_DATA_SOURCES_ENV: &str = "RUNX_DATA_SOURCES";
 const PROJECT_DATA_SOURCES_PATH: &str = ".runx/data-sources.json";
 

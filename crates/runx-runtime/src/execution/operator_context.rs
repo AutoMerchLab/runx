@@ -14,7 +14,9 @@ use serde::{Deserialize, Serialize};
 
 use crate::RuntimeError;
 use crate::services::{WorkspaceEnv, merge_inferred_tool_roots};
-use crate::tool_catalogs::{ToolCatalogError, ToolInspectOptions, resolve_local_tool};
+use crate::tool_catalogs::{
+    DATA_SOURCE_ROUTER_TOOL_REF, ToolCatalogError, ToolInspectOptions, resolve_local_tool,
+};
 
 use super::graph::{
     LoadedStepSkill, LoadedStepSkillDefinition, LoadedStepSkillRegistryProvenance,
@@ -540,8 +542,17 @@ impl ExpansionState {
         }
         names
             .iter()
-            .map(
-                |name| match resolve_referenced_local_tool(skill_dir, name, env)? {
+            .map(|name| {
+                if name == DATA_SOURCE_ROUTER_TOOL_REF {
+                    return Ok(SkillOperatorContextTool {
+                        name: name.clone(),
+                        source: "runtime-router".to_owned(),
+                        path: None,
+                        sha256: None,
+                        content: None,
+                    });
+                }
+                match resolve_referenced_local_tool(skill_dir, name, env)? {
                     Some((path, content)) => {
                         self.add_bytes(content.len())?;
                         Ok(SkillOperatorContextTool {
@@ -555,8 +566,8 @@ impl ExpansionState {
                     None => Err(blocked(format!(
                         "operator context could not resolve required local tool '{name}'"
                     ))),
-                },
-            )
+                }
+            })
             .collect()
     }
 
@@ -1179,6 +1190,31 @@ runners:
                 .as_deref()
                 .is_some_and(|content| content.contains("cli-tool"))
         );
+        Ok(())
+    }
+
+    #[test]
+    fn operator_context_surfaces_runtime_data_source_router_without_manifest()
+    -> Result<(), Box<dyn Error>> {
+        let temp = tempdir()?;
+        let entry = temp.path().join("entry");
+        write_skill(&entry, "entry", "# Entry")?;
+        write_file(
+            &entry.join("X.yaml"),
+            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      steps:\n        - id: append\n          tool: data.source\n",
+        )?;
+
+        let chain = load_skill_operator_context_chain(
+            &entry,
+            None,
+            SkillOperatorContextOptions::new(BTreeMap::new(), temp.path().to_path_buf()),
+        )?;
+
+        assert_eq!(chain.entry.tools.len(), 1);
+        assert_eq!(chain.entry.tools[0].name, DATA_SOURCE_ROUTER_TOOL_REF);
+        assert_eq!(chain.entry.tools[0].source, "runtime-router");
+        assert!(chain.entry.tools[0].path.is_none());
+        assert!(chain.entry.tools[0].content.is_none());
         Ok(())
     }
 

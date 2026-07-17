@@ -1,7 +1,7 @@
 use runx_contracts::{JsonNumber, JsonObject, JsonValue, Reference};
 use runx_runtime::{
     EffectAdmission, EffectOutputRequest, EffectReceiptRequest, EffectReplay,
-    EffectReplayOutputRequest, EffectReplayReceiptRequest, RuntimeEffectError,
+    EffectReplayOutputRequest, EffectReplayReceiptRequest, RuntimeEffectError, SkillOutput,
     insert_effect_verification_ref,
 };
 
@@ -13,7 +13,9 @@ use super::errors::{denied, failed};
 use super::finality::{PaymentFinalitySupervisor, PaymentFinalitySupervisorRequest};
 use super::replay::receipt_has_payment_rail_proof;
 use crate::effect_state::{EffectStepStateInput, persist_effect_step_state};
-use crate::packets::{PaymentRailProof, read_effect_evidence_packet};
+use crate::packets::{
+    PaymentRailProof, read_effect_evidence_packet, redact_payment_transient_material,
+};
 use crate::supervisor::{
     PAYMENT_RAIL_SUPERVISOR_EVIDENCE_METADATA, PaymentSupervisorProofMatch,
     PaymentSupervisorVerificationInput, insert_payment_supervisor_proof_metadata,
@@ -77,6 +79,7 @@ pub(super) fn prepare_payment_output(
         &mut request.output.metadata,
         payment_supervisor_evidence_reference(&evidence),
     )?;
+    redact_transient_payment_output(request.output)?;
     Ok(())
 }
 
@@ -215,6 +218,18 @@ pub(super) fn validate_payment_replay(
             "sealed payment replay supervisor proof mismatch: {source}"
         ))
     })
+}
+
+fn redact_transient_payment_output(output: &mut SkillOutput) -> Result<(), RuntimeEffectError> {
+    let Ok(JsonValue::Object(mut payload)) = serde_json::from_str(&output.stdout) else {
+        return Ok(());
+    };
+    if !redact_payment_transient_material(&mut payload) {
+        return Ok(());
+    }
+    output.stdout = serde_json::to_string(&JsonValue::Object(payload))
+        .map_err(|source| failed("redacting transient payment output", source))?;
+    Ok(())
 }
 
 fn supervisor_request<'a>(

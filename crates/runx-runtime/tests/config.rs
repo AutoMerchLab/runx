@@ -3,8 +3,9 @@ use std::fs;
 use std::path::Path;
 
 use runx_runtime::{
-    ConfigError, ConfigKey, LocalProfileSource, ManagedAgentConfig, RunxAgentConfig,
-    RunxConfigFile, SecretString, load_local_agent_api_key, load_local_public_api_token,
+    ConfigError, ConfigKey, LocalProfileSource, ManagedAgentConfig,
+    RUNX_DEVELOPMENT_AUTO_APPROVE_ENV, RunxAgentConfig, RunxConfigFile, SecretString,
+    development_auto_approve_requested, load_local_agent_api_key, load_local_public_api_token,
     load_managed_agent_config, load_runx_config_file, lookup_runx_config_value,
     managed_agent_provider, mask_runx_config_file, resolve_local_skill_profile,
     resolve_runx_global_home_dir, resolve_runx_workspace_base, update_runx_config_value,
@@ -125,6 +126,7 @@ fn config_loads_and_writes_supported_keys_only() -> Result<(), Box<dyn std::erro
             model: Some("gpt-test".to_owned()),
             api_key_ref: None,
         }),
+        development: None,
         public: None,
         credentials: None,
     };
@@ -139,6 +141,46 @@ fn config_loads_and_writes_supported_keys_only() -> Result<(), Box<dyn std::erro
     assert!(matches!(
         runx_runtime::parse_config_key("agent.unknown"),
         Err(ConfigError::UnsupportedKey { .. })
+    ));
+    Ok(())
+}
+
+#[test]
+fn development_auto_approve_is_typed_and_env_can_disable_global_config()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let config = update_runx_config_value(
+        RunxConfigFile::default(),
+        ConfigKey::DevelopmentAutoApprove,
+        "true",
+        temp.path(),
+    )?;
+    write_runx_config_file(&temp.path().join("config.json"), &config)?;
+    let env = env_map([("RUNX_HOME", temp.path().to_str().unwrap_or_default())]);
+
+    assert_eq!(
+        lookup_runx_config_value(&config, ConfigKey::DevelopmentAutoApprove),
+        Some("true".to_owned())
+    );
+    assert!(development_auto_approve_requested(&env, temp.path())?);
+
+    let mut disabled_env = env;
+    disabled_env.insert(
+        RUNX_DEVELOPMENT_AUTO_APPROVE_ENV.to_owned(),
+        "false".to_owned(),
+    );
+    assert!(!development_auto_approve_requested(
+        &disabled_env,
+        temp.path()
+    )?);
+    assert!(matches!(
+        update_runx_config_value(
+            RunxConfigFile::default(),
+            ConfigKey::DevelopmentAutoApprove,
+            "sometimes",
+            temp.path(),
+        ),
+        Err(ConfigError::InvalidBooleanValue { .. })
     ));
     Ok(())
 }
@@ -217,6 +259,7 @@ fn config_loads_managed_agent_env_precedence_and_local_key_fallback()
                 model: Some("claude-test".to_owned()),
                 api_key_ref: None,
             }),
+            development: None,
             public: None,
             credentials: None,
         },
@@ -259,6 +302,7 @@ fn config_matches_blank_env_overlay_edges() -> Result<(), Box<dyn std::error::Er
                 model: Some("claude-file".to_owned()),
                 api_key_ref: None,
             }),
+            development: None,
             public: None,
             credentials: None,
         },

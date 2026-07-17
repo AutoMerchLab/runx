@@ -157,6 +157,94 @@ fn native_mutating_skill_requires_digest_bound_operator_approval()
 }
 
 #[test]
+fn development_auto_approve_covers_prepared_and_graph_gates_but_not_production_signing()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = crate::support::temp_root("runx-development-auto-approve");
+    fs::create_dir_all(&root)?;
+    let receipt_dir = root.join(".runx/receipts");
+    let approval_skill = write_approval_graph_skill(&root)?;
+
+    let configured = crate::support::unsigned_runx_command_at(&root)
+        .args([
+            "config",
+            "set",
+            "development.auto_approve",
+            "true",
+            "--json",
+        ])
+        .output()?;
+    assert_json(&configured, Some(0))?;
+
+    let graph_run = crate::support::unsigned_runx_command_at(&root)
+        .args([
+            "skill",
+            approval_skill
+                .to_str()
+                .ok_or("non-utf8 approval skill dir")?,
+            "--receipt-dir",
+            receipt_dir.to_str().ok_or("non-utf8 receipt dir")?,
+            "--json",
+            "--non-interactive",
+        ])
+        .output()?;
+    assert_eq!(graph_run.status.code(), Some(0));
+    let graph_json = serde_json::from_slice::<serde_json::Value>(&graph_run.stdout)?;
+    assert_eq!(graph_json["status"], "sealed");
+    assert!(String::from_utf8(graph_run.stdout)?.contains("development_auto_approve"));
+
+    let mutating_skill = write_operator_context_skill(&root.join("mutating"))?;
+    let child_profile = mutating_skill.join("nested-review/X.yaml");
+    let profile = fs::read_to_string(&child_profile)?;
+    fs::write(
+        &child_profile,
+        profile.replace(
+            "          tool: example.record\n",
+            "          tool: example.record\n          mutation: true\n",
+        ),
+    )?;
+    let prepared_run = crate::support::unsigned_runx_command_at(&root)
+        .args([
+            "skill",
+            mutating_skill
+                .to_str()
+                .ok_or("non-utf8 mutating skill dir")?,
+            "--receipt-dir",
+            receipt_dir.to_str().ok_or("non-utf8 receipt dir")?,
+            "--json",
+            "--non-interactive",
+        ])
+        .output()?;
+    assert_eq!(prepared_run.status.code(), Some(2));
+    let prepared_json = serde_json::from_slice::<serde_json::Value>(&prepared_run.stdout)?;
+    assert_eq!(prepared_json["status"], "needs_agent");
+    assert!(
+        String::from_utf8(prepared_run.stderr)?
+            .contains("Development override: operator context auto-approved")
+    );
+
+    let production_run = runx_command()
+        .current_dir(&root)
+        .env("RUNX_HOME", root.join("home"))
+        .args([
+            "skill",
+            approval_skill
+                .to_str()
+                .ok_or("non-utf8 approval skill dir")?,
+            "--receipt-dir",
+            receipt_dir.to_str().ok_or("non-utf8 receipt dir")?,
+            "--json",
+            "--non-interactive",
+        ])
+        .output()?;
+    assert_eq!(production_run.status.code(), Some(2));
+    let production_json = serde_json::from_slice::<serde_json::Value>(&production_run.stdout)?;
+    assert_eq!(production_json["status"], "needs_agent");
+    assert_eq!(production_json["requests"][0]["kind"], "approval");
+
+    Ok(())
+}
+
+#[test]
 fn native_skill_positional_runner_selects_non_default_runner()
 -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::support::temp_root("runx-skill-positional-runner");
@@ -741,6 +829,38 @@ runners:
           tool: example.record
           context:
             decision: verdict.decision
+"#,
+    )?;
+    Ok(skill_dir)
+}
+
+fn write_approval_graph_skill(root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let skill_dir = root.join("approval-graph");
+    fs::create_dir_all(&skill_dir)?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: approval-graph\n---\n# Approval Graph\n",
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        r#"
+skill: approval-graph
+runners:
+  approval-graph:
+    default: true
+    type: graph
+    graph:
+      name: approval-graph
+      steps:
+        - id: approve
+          run:
+            type: approval
+          inputs:
+            gate_id: approval-graph.local-development
+            reason: approve the local development fixture
+          artifacts:
+            wrap_as: approval_decision
+            packet: runx.approval.decision.v1
 "#,
     )?;
     Ok(skill_dir)

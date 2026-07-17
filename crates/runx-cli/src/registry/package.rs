@@ -115,10 +115,14 @@ fn append_declared_packet_schemas(
         return Ok(());
     }
     let workspace = runx_runtime::resolve_runx_workspace_base(env, cwd);
-    let search_dirs = [
+    let mut search_dirs = BTreeSet::from([
         skill_dir.join("packets"),
         workspace.join("dist").join("packets"),
-    ];
+    ]);
+    for ancestor in skill_dir.ancestors() {
+        search_dirs.insert(ancestor.join("dist").join("packets"));
+    }
+    let search_dirs = search_dirs.into_iter().collect::<Vec<_>>();
     let mut schemas = discover_packet_schemas(&packet_ids, &search_dirs)?;
     for packet_id in packet_ids {
         let Some((file_name, content)) = schemas.remove(&packet_id) else {
@@ -457,9 +461,20 @@ fn is_standalone_publish_fixture(path: &Path) -> bool {
     if !path.is_file() {
         return false;
     }
-    path.extension()
+    let supported = path
+        .extension()
         .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| matches!(extension, "yaml" | "yml"))
+        .is_some_and(|extension| matches!(extension, "yaml" | "yml"));
+    if !supported {
+        return false;
+    }
+    let Ok(document) = fs::read_to_string(path) else {
+        return true;
+    };
+    let Ok(JsonValue::Object(fixture)) = serde_norway::from_str(&document) else {
+        return true;
+    };
+    !matches!(fixture.get("kind"), Some(JsonValue::String(kind)) if kind == "graph")
 }
 
 fn write_publish_harness_file(path: &Path, content: &str) -> Result<(), std::io::Error> {
@@ -507,12 +522,13 @@ fn collect_publish_package_files(
             markdown_path.display()
         ))
     })?;
-    let consumed_root_scripts = consumed_root_scripts_from_profile(profile_path.as_ref())?;
+    let mut consumed_package_files = consumed_root_scripts_from_profile(profile_path.as_ref())?;
+    collect_external_adapter_sidecars(&package_dir, &package_dir, &mut consumed_package_files)?;
     collect_allowed_publish_package_files(
         &package_dir,
         &markdown_path,
         profile_path.as_ref(),
-        &consumed_root_scripts,
+        &consumed_package_files,
     )
 }
 
@@ -665,7 +681,7 @@ fn collect_allowed_publish_package_files(
     package_dir: &Path,
     markdown_path: &Path,
     profile_path: Option<&PathBuf>,
-    consumed_root_scripts: &BTreeSet<String>,
+    consumed_package_files: &BTreeSet<String>,
 ) -> Result<Vec<HostedSkillPackageFile>, RegistryCliError> {
     let mut files = Vec::new();
     let mut total_bytes = 0u64;
@@ -674,7 +690,7 @@ fn collect_allowed_publish_package_files(
         package_dir,
         markdown_path,
         profile_path,
-        consumed_root_scripts,
+        consumed_package_files,
         &mut files,
         &mut total_bytes,
     )?;
@@ -690,7 +706,7 @@ fn collect_allowed_publish_package_files_from_dir(
     current_dir: &Path,
     markdown_path: &Path,
     profile_path: Option<&PathBuf>,
-    consumed_root_scripts: &BTreeSet<String>,
+    consumed_package_files: &BTreeSet<String>,
     files: &mut Vec<HostedSkillPackageFile>,
     total_bytes: &mut u64,
 ) -> Result<(), RegistryCliError> {
@@ -721,14 +737,14 @@ fn collect_allowed_publish_package_files_from_dir(
                     &candidate,
                     markdown_path,
                     profile_path,
-                    consumed_root_scripts,
+                    consumed_package_files,
                     files,
                     total_bytes,
                 )?;
             }
             continue;
         }
-        if !is_allowed_remote_publish_package_file(&relative, consumed_root_scripts) {
+        if !is_allowed_remote_publish_package_file(&relative, consumed_package_files) {
             continue;
         }
         if !metadata.file_type().is_file() {
@@ -817,7 +833,7 @@ fn should_descend_remote_publish_dir(relative: &str) -> bool {
 
 fn is_allowed_remote_publish_package_file(
     relative: &str,
-    consumed_root_scripts: &BTreeSet<String>,
+    consumed_package_files: &BTreeSet<String>,
 ) -> bool {
     if relative.is_empty()
         || relative
@@ -834,9 +850,12 @@ fn is_allowed_remote_publish_package_file(
     }) {
         return false;
     }
+    if consumed_package_files.contains(relative) {
+        return true;
+    }
     let file_name = relative.rsplit('/').next().unwrap_or(relative);
     if !relative.contains('/') && (file_name.ends_with(".mjs") || file_name.ends_with(".js")) {
-        return consumed_root_scripts.contains(relative);
+        return false;
     }
     if relative.contains("/references/") || relative.starts_with("references/") {
         return file_name.ends_with(".md");
@@ -846,6 +865,179 @@ fn is_allowed_remote_publish_package_file(
             file_name,
             "run.mjs" | "run.js" | "harness.mjs" | "harness.js"
         )
+}
+
+fn collect_external_adapter_sidecars(
+    package_dir: &Path,
+    current_dir: &Path,
+    files: &mut BTreeSet<String>,
+) -> Result<(), RegistryCliError> {
+    for entry in fs::read_dir(current_dir).map_err(|error| {
+        internal_error(format!(
+            "failed to inspect external adapter sidecars in {}: {error}",
+            current_dir.display()
+        ))
+    })? {
+        let entry = entry.map_err(|error| {
+            internal_error(format!(
+                "failed to inspect external adapter sidecar entry in {}: {error}",
+                current_dir.display()
+            ))
+        })?;
+        let path = entry.path();
+        let metadata = fs::symlink_metadata(&path).map_err(|error| {
+            internal_error(format!(
+                "failed to inspect external adapter sidecar {}: {error}",
+                path.display()
+            ))
+        })?;
+        if metadata.file_type().is_dir() {
+            let relative = publish_relative_path(package_dir, &path)?;
+            if should_descend_remote_publish_dir(&relative) {
+                collect_external_adapter_sidecars(package_dir, &path, files)?;
+            }
+            continue;
+        }
+        if path.file_name().and_then(|name| name.to_str()) != Some("X.yaml") {
+            continue;
+        }
+        collect_external_adapter_profile_sidecars(package_dir, &path, files)?;
+    }
+    Ok(())
+}
+
+fn collect_external_adapter_profile_sidecars(
+    package_dir: &Path,
+    profile_path: &Path,
+    files: &mut BTreeSet<String>,
+) -> Result<(), RegistryCliError> {
+    let document = fs::read_to_string(profile_path).map_err(|error| {
+        internal_error(format!(
+            "failed to read profile while selecting external adapter sidecars {}: {error}",
+            profile_path.display()
+        ))
+    })?;
+    let profile = serde_norway::from_str::<JsonValue>(&document).map_err(|error| {
+        internal_error(format!(
+            "failed to parse profile while selecting external adapter sidecars {}: {error}",
+            profile_path.display()
+        ))
+    })?;
+    let profile_dir = profile_path
+        .parent()
+        .ok_or_else(|| internal_error("skill profile has no parent directory"))?;
+    let mut manifest_refs = Vec::new();
+    collect_keyed_string_values(&profile, "manifest_path", &mut manifest_refs);
+    for manifest_ref in manifest_refs {
+        collect_external_adapter_manifest_sidecars(package_dir, profile_dir, manifest_ref, files)?;
+    }
+    Ok(())
+}
+
+fn collect_external_adapter_manifest_sidecars(
+    package_dir: &Path,
+    profile_dir: &Path,
+    manifest_ref: &str,
+    files: &mut BTreeSet<String>,
+) -> Result<(), RegistryCliError> {
+    let manifest = resolve_consumed_sidecar(package_dir, profile_dir, manifest_ref)?;
+    files.insert(publish_relative_path(package_dir, &manifest)?);
+    let manifest_document = fs::read_to_string(&manifest).map_err(|error| {
+        internal_error(format!(
+            "failed to read external adapter manifest {}: {error}",
+            manifest.display()
+        ))
+    })?;
+    let manifest_value =
+        serde_json::from_str::<JsonValue>(&manifest_document).map_err(|error| {
+            internal_error(format!(
+                "failed to parse external adapter manifest {}: {error}",
+                manifest.display()
+            ))
+        })?;
+    let manifest_dir = manifest
+        .parent()
+        .ok_or_else(|| internal_error("external adapter manifest has no parent directory"))?;
+    let mut script_refs = Vec::new();
+    collect_script_string_values(&manifest_value, &mut script_refs);
+    for script_ref in script_refs {
+        let script = resolve_consumed_sidecar(package_dir, manifest_dir, script_ref)?;
+        files.insert(publish_relative_path(package_dir, &script)?);
+    }
+    Ok(())
+}
+
+fn collect_keyed_string_values<'a>(value: &'a JsonValue, key: &str, values: &mut Vec<&'a str>) {
+    match value {
+        JsonValue::Object(object) => {
+            if let Some(JsonValue::String(value)) = object.get(key) {
+                values.push(value);
+            }
+            for value in object.values() {
+                collect_keyed_string_values(value, key, values);
+            }
+        }
+        JsonValue::Array(array) => {
+            for value in array {
+                collect_keyed_string_values(value, key, values);
+            }
+        }
+        JsonValue::Bool(_) | JsonValue::Null | JsonValue::Number(_) | JsonValue::String(_) => {}
+    }
+}
+
+fn collect_script_string_values<'a>(value: &'a JsonValue, values: &mut Vec<&'a str>) {
+    match value {
+        JsonValue::String(value) if value.ends_with(".mjs") || value.ends_with(".js") => {
+            values.push(value);
+        }
+        JsonValue::Object(object) => {
+            for value in object.values() {
+                collect_script_string_values(value, values);
+            }
+        }
+        JsonValue::Array(array) => {
+            for value in array {
+                collect_script_string_values(value, values);
+            }
+        }
+        JsonValue::Bool(_) | JsonValue::Null | JsonValue::Number(_) | JsonValue::String(_) => {}
+    }
+}
+
+fn resolve_consumed_sidecar(
+    package_dir: &Path,
+    base_dir: &Path,
+    reference: &str,
+) -> Result<PathBuf, RegistryCliError> {
+    let reference = reference
+        .trim()
+        .strip_prefix("./")
+        .unwrap_or(reference.trim());
+    let path = Path::new(reference);
+    if reference.is_empty()
+        || path.is_absolute()
+        || path
+            .components()
+            .any(|component| !matches!(component, std::path::Component::Normal(_)))
+    {
+        return Err(internal_error(format!(
+            "external adapter sidecar path '{reference}' is not package-relative"
+        )));
+    }
+    let candidate = fs::canonicalize(base_dir.join(path)).map_err(|error| {
+        internal_error(format!(
+            "failed to resolve external adapter sidecar {}: {error}",
+            base_dir.join(path).display()
+        ))
+    })?;
+    if !candidate.starts_with(package_dir) {
+        return Err(internal_error(format!(
+            "external adapter sidecar {} escapes the skill package",
+            candidate.display()
+        )));
+    }
+    Ok(candidate)
 }
 
 fn consumed_root_scripts_from_profile(
@@ -1266,6 +1458,67 @@ runners:
     }
 
     #[test]
+    fn remote_publish_finds_repo_packet_schema_from_absolute_skill_path()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let repo = unique_temp_dir("runx-publish-repo-packet-schema-test")?;
+        let skill_dir = repo.join("skills/packet-skill");
+        let caller_dir = repo.join("caller-workspace");
+        fs::create_dir_all(&skill_dir)?;
+        fs::create_dir_all(repo.join("dist/packets"))?;
+        fs::create_dir_all(&caller_dir)?;
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: packet-skill\ndescription: Packet skill\n---\n# Packet skill\n",
+        )?;
+        fs::write(
+            skill_dir.join("X.yaml"),
+            r#"skill: packet-skill
+runners:
+  main:
+    default: true
+    type: cli-tool
+    command: node
+    args: [run.mjs]
+    outputs:
+      plan: object
+    artifacts:
+      wrap_as: packet
+      packet: runx.test.repo-publish.v1
+"#,
+        )?;
+        fs::write(
+            skill_dir.join("run.mjs"),
+            "console.log(JSON.stringify({plan: {}}))\n",
+        )?;
+        fs::write(
+            repo.join("dist/packets/repo-publish.schema.json"),
+            r#"{"x-runx-packet-id":"runx.test.repo-publish.v1","type":"object"}
+"#,
+        )?;
+        let env = [(
+            "RUNX_CWD".to_owned(),
+            caller_dir.to_string_lossy().into_owned(),
+        )]
+        .into_iter()
+        .collect();
+
+        let skill_path = skill_dir.to_str().ok_or("skill path is not UTF-8")?;
+        let package = read_skill_package(skill_path, None, &env, &caller_dir, true)?;
+
+        assert!(
+            package
+                .package_files
+                .iter()
+                .any(|file| file.path == "packets/repo-publish.schema.json")
+        );
+        if let Some(temp_dir) = package.harness_temp_dir {
+            let _ignored = fs::remove_dir_all(temp_dir);
+        }
+        let _ignored = fs::remove_dir_all(repo);
+        Ok(())
+    }
+
+    #[test]
     fn remote_publish_rejects_declared_packet_without_schema()
     -> Result<(), Box<dyn std::error::Error>> {
         let dir = unique_temp_dir("runx-publish-missing-packet-schema-test")?;
@@ -1374,8 +1627,20 @@ runners:
             dir.join("graph/quote/SKILL.md"),
             "---\nname: quote-stage\n---\n# Quote\n",
         )?;
-        fs::write(dir.join("graph/quote/X.yaml"), "skill: quote-stage\n")?;
+        fs::write(
+            dir.join("graph/quote/X.yaml"),
+            "skill: quote-stage\nrunners:\n  adapter:\n    default: true\n    type: external-adapter\n    external_adapter:\n      manifest_path: quote-adapter.manifest.json\n",
+        )?;
         fs::write(dir.join("graph/quote/run.mjs"), "console.log('stage')\n")?;
+        fs::write(
+            dir.join("graph/quote/quote-adapter.manifest.json"),
+            r#"{"transport":{"kind":"process","command":"node","args":["quote-adapter.mjs"]}}
+"#,
+        )?;
+        fs::write(
+            dir.join("graph/quote/quote-adapter.mjs"),
+            "console.log('adapter')\n",
+        )?;
 
         fs::create_dir_all(dir.join("push-outbox"))?;
         fs::write(
@@ -1403,6 +1668,8 @@ runners:
         assert!(paths.contains(&"graph/quote/SKILL.md".to_owned()));
         assert!(paths.contains(&"graph/quote/X.yaml".to_owned()));
         assert!(paths.contains(&"graph/quote/run.mjs".to_owned()));
+        assert!(paths.contains(&"graph/quote/quote-adapter.manifest.json".to_owned()));
+        assert!(paths.contains(&"graph/quote/quote-adapter.mjs".to_owned()));
         assert!(paths.contains(&"push-outbox/SKILL.md".to_owned()));
         assert!(paths.contains(&"push-outbox/manifest.json".to_owned()));
         assert!(!paths.contains(&"notes.txt".to_owned()));

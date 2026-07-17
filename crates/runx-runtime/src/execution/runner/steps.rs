@@ -456,14 +456,18 @@ where
 {
     let mut output = runtime.adapter.invoke(invocation)?;
     route_external_adapter_host_resolution(step, host, &mut output)?;
-    let projection = build_step_output_projection(step, &output, extra_artifacts)?;
+    let provisional_projection = build_step_output_projection(step, &output, extra_artifacts)?;
     prepare_effect_output_before_gate(
         step,
         authority,
-        &projection.claim,
+        &provisional_projection.claim,
         &mut output,
         &runtime.options.effects,
     )?;
+    // An effect may remove transient provider material before sealing. Rebuild
+    // the projection so receipts, durable replay state, and downstream context
+    // all observe the same public output.
+    let projection = build_step_output_projection(step, &output, extra_artifacts)?;
     Ok(RegularSkillStepOutput { output, projection })
 }
 

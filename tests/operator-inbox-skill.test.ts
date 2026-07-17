@@ -149,7 +149,8 @@ describe("operator-inbox skill", () => {
   it("composes graph writes through the default local SQLite data source", () => {
     const workspace = mkdtempSync(path.join(os.tmpdir(), "runx-operator-inbox-"));
     try {
-      const result = spawnSync(nativeRunxBinaryForTest(), ["harness", SKILL_PATH, "--json"], {
+      const journey = path.join(SKILL_PATH, "fixtures", "action-lifecycle.yaml");
+      const result = spawnSync(nativeRunxBinaryForTest(), ["harness", journey, "--json"], {
         cwd: workspace,
         encoding: "utf8",
         env: {
@@ -161,9 +162,12 @@ describe("operator-inbox skill", () => {
         },
       });
       expect(result.status, result.stderr).toBe(0);
-      expect(JSON.parse(result.stdout)).toMatchObject({ status: "passed", case_count: 1 });
-      const dataDir = path.join(workspace, ".runx", "data", "local-sources");
-      expect(readdirSync(dataDir).some((entry) => entry.endsWith(".sqlite"))).toBe(true);
+      expect(JSON.parse(result.stdout)).toMatchObject({
+        schema: "runx.receipt.v1",
+        seal: { disposition: "closed" },
+      });
+      const dataDir = path.join(workspace, ".runx", "data");
+      expect(readdirSync(dataDir)).toContain("operator-inbox-action-lifecycle.sqlite");
     } finally {
       rmSync(workspace, { recursive: true, force: true });
     }

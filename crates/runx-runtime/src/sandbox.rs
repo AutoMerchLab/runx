@@ -252,11 +252,15 @@ mod tests {
 
     #[test]
     fn sandbox_exec_runtime_gets_private_writable_tmp_env() -> Result<(), String> {
+        let workspace = tempfile::tempdir().map_err(|source| source.to_string())?;
         let sandbox = readonly_sandbox();
         let runtime = Some(SandboxRuntime::SandboxExec {
             path: PathBuf::from("/usr/bin/sandbox-exec"),
         });
-        let mut env = BTreeMap::new();
+        let mut env = BTreeMap::from([(
+            crate::receipts::paths::RUNX_CWD_ENV.to_owned(),
+            workspace.path().to_string_lossy().into_owned(),
+        )]);
         let mut cleanup_paths = Vec::new();
         prepare_sandbox_tmp_env(Some(&sandbox), &runtime, &mut env, &mut cleanup_paths)
             .map_err(|source| source.to_string())?;
@@ -268,6 +272,7 @@ mod tests {
         assert_eq!(env.get("TEMP"), Some(tmpdir));
         assert_eq!(cleanup_paths, vec![PathBuf::from(tmpdir)]);
         assert!(Path::new(tmpdir).is_dir());
+        assert!(Path::new(tmpdir).starts_with(workspace.path().join(".runx").join("tmp")));
 
         let profile =
             sandbox_exec_profile(Path::new("/workspace"), &[], true, Some(Path::new(tmpdir)));
@@ -310,11 +315,15 @@ mod tests {
 
     #[test]
     fn declared_policy_runtime_gets_private_tmp_env() -> Result<(), String> {
+        let workspace = tempfile::tempdir().map_err(|source| source.to_string())?;
         let sandbox = readonly_sandbox();
         let runtime = Some(SandboxRuntime::DeclaredPolicyOnly {
             reason: "missing test backend".to_owned(),
         });
-        let mut env = BTreeMap::new();
+        let mut env = BTreeMap::from([(
+            crate::receipts::paths::RUNX_CWD_ENV.to_owned(),
+            workspace.path().to_string_lossy().into_owned(),
+        )]);
         let mut cleanup_paths = Vec::new();
         prepare_sandbox_tmp_env(Some(&sandbox), &runtime, &mut env, &mut cleanup_paths)
             .map_err(|source| source.to_string())?;
@@ -326,6 +335,7 @@ mod tests {
         assert_eq!(env.get("TEMP"), Some(tmpdir));
         assert_eq!(cleanup_paths, vec![PathBuf::from(tmpdir)]);
         assert!(Path::new(tmpdir).is_dir());
+        assert!(Path::new(tmpdir).starts_with(workspace.path().join(".runx").join("tmp")));
 
         cleanup_paths_quietly(&cleanup_paths);
         Ok(())

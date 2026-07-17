@@ -57,6 +57,19 @@ pub enum PaymentPacketError {
     InvalidField { field: &'static str },
 }
 
+pub(crate) fn redact_payment_transient_material(payload: &mut JsonObject) -> bool {
+    let Some(JsonValue::Object(packet)) = payload.get_mut("effect_evidence_packet") else {
+        return false;
+    };
+    let Some(JsonValue::Object(data)) = packet.get_mut("data") else {
+        return false;
+    };
+    let Some(JsonValue::Object(proof)) = data.get_mut("rail_proof") else {
+        return false;
+    };
+    proof.remove("rail_session_material_ref").is_some()
+}
+
 // rust-style-allow: long-function because reservation packets may derive fields
 // from either the authority envelope or the spend-capability binding while the
 // payment execution boundary is still being factored.

@@ -117,7 +117,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "config",
         top_level_usage: &[
-            "runx config set|get|list [provider|model|api-key|public-token] [value] [-j|--json]",
+            "runx config set|get|list [provider|model|api-key|public-token|auto-approve] [value] [-j|--json]",
         ],
         usage: &[
             "runx config set <key> <value> [-j|--json]",
@@ -126,7 +126,8 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
             "runx config list [-j|--json]",
         ],
         notes: &[
-            "Short keys: provider, model, api-key, and public-token. Fully qualified config keys are also accepted. Secret values are accepted only on stdin.",
+            "Short keys: provider, model, api-key, public-token, and auto-approve. Fully qualified config keys are also accepted. Secret values are accepted only on stdin.",
+            "development.auto_approve applies only to local-development receipt runs and is recorded in approval evidence.",
         ],
         options: &["--from-stdin", "-j, --json"],
     },

@@ -72,7 +72,7 @@ describe("scafld issue-to-PR skill contract", () => {
         task: "issue-to-pr-author-spec",
       },
       context: {
-        spec_path: "scafld-plan.result.path",
+        spec_path: "scafld-plan.result.data.path",
       },
     });
     expect(graph.steps.find((step) => step.id === "author-spec")?.instructions).toContain("scafld 2.4-compatible markdown spec");
@@ -93,14 +93,14 @@ describe("scafld issue-to-PR skill contract", () => {
     expect(graph.steps.find((step) => step.id === "write-spec")).toMatchObject({
       tool: "fs.write",
       context: {
-        path: "scafld-plan.result.path",
-        contents: "normalize-spec.normalized_spec.data.data.contents",
+        path: "scafld-plan.result.data.path",
+        contents: "normalize-spec.normalized_spec.data.contents",
       },
     });
     expect(graph.steps.find((step) => step.id === "read-approved-spec")).toMatchObject({
       tool: "fs.read",
       context: {
-        path: "scafld-approve.result.path",
+        path: "scafld-approve.result.data.path",
       },
     });
     expect(graph.steps.find((step) => step.id === "read-declared-files")).toMatchObject({
@@ -109,7 +109,7 @@ describe("scafld issue-to-PR skill contract", () => {
         extra_files: "$input.repo_snapshot.recommended_files",
       },
       context: {
-        spec_contents: "read-approved-spec.file_read.data.data.contents",
+        spec_contents: "read-approved-spec.file_read.data.contents",
       },
     });
     expect(graph.steps.find((step) => step.id === "author-fix")).toMatchObject({
@@ -118,8 +118,8 @@ describe("scafld issue-to-PR skill contract", () => {
         task: "issue-to-pr-apply-fix",
       },
       context: {
-        spec_path: "scafld-approve.result.path",
-        declared_file_context: "read-declared-files.declared_file_context.data.data",
+        spec_path: "scafld-approve.result.data.path",
+        declared_file_context: "read-declared-files.declared_file_context.data",
       },
     });
     expect(graph.steps.find((step) => step.id === "author-fix")?.instructions).toContain("fix_bundle.status: blocked");
@@ -135,12 +135,12 @@ describe("scafld issue-to-PR skill contract", () => {
     expect(graph.steps.find((step) => step.id === "package-pull-request")).toMatchObject({
       tool: "outbox.build_pull_request",
       context: {
-        harness_context: "capture-harness-context.harness_context",
-        handoff_markdown: "scafld-handoff.stdout",
-        build_result: "scafld-build.result",
-        review_result: "scafld-review.result",
-        completion_result: "scafld-complete.result",
-        status_snapshot: "scafld-final-status.result",
+        harness_context: "capture-harness-context.harness_context.data",
+        handoff_markdown: "scafld-handoff.result.data.markdown",
+        build_result: "scafld-build.result.data",
+        review_result: "scafld-review.result.data",
+        completion_result: "scafld-complete.result.data",
+        status_snapshot: "scafld-final-status.result.data",
         current_branch: "read-current-branch.git_branch.data",
         fix_bundle: "author-fix.fix_bundle.data",
       },
@@ -167,11 +167,11 @@ describe("scafld issue-to-PR skill contract", () => {
     expect(graph.steps.find((step) => step.id === "package-feed-entry")).toMatchObject({
       tool: "outbox.build_feed_entry",
       context: {
-        harness_context: "capture-harness-context.harness_context",
-        build_result: "scafld-build.result",
-        review_result: "scafld-review.result",
-        completion_result: "scafld-complete.result",
-        status_snapshot: "scafld-final-status.result",
+        harness_context: "capture-harness-context.harness_context.data",
+        build_result: "scafld-build.result.data",
+        review_result: "scafld-review.result.data",
+        completion_result: "scafld-complete.result.data",
+        status_snapshot: "scafld-final-status.result.data",
         draft_pull_request: "package-pull-request.draft_pull_request.data",
         pull_request_outbox_entry: "push-pull-request.outbox_entry",
         push_result: "push-pull-request.push",

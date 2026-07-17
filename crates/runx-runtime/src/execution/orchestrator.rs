@@ -134,6 +134,8 @@ pub struct GraphRunRequest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HarnessRunRequest {
     pub fixture_path: PathBuf,
+    pub receipt_dir: Option<PathBuf>,
+    pub env: Option<BTreeMap<String, String>>,
 }
 
 /// Request to run every harness case owned by a skill package. `skill_path` is
@@ -185,6 +187,8 @@ pub enum OrchestratorError {
     Runtime(#[from] crate::RuntimeError),
     #[error(transparent)]
     Harness(#[from] HarnessReplayError),
+    #[error(transparent)]
+    ReceiptStore(#[from] crate::receipts::store::ReceiptStoreError),
     #[error(
         "native graph orchestration is unavailable because runx-runtime was built without the cli-tool feature"
     )]
@@ -316,14 +320,16 @@ impl LocalOrchestrator {
         &self,
         request: &HarnessRunRequest,
     ) -> Result<HarnessReplayOutput, OrchestratorError> {
-        let mut options = super::runner::RuntimeOptions::from_process_env()?;
+        let (mut options, receipt_dir) = standalone_harness_options(request)?;
         options.created_at = crate::time::DEFAULT_CREATED_AT.to_owned();
         options.effects = self.effects.clone();
-        Ok(super::harness::run_harness_fixture_with_adapter(
+        let output = super::harness::run_harness_fixture_with_adapter(
             &request.fixture_path,
             super::skill_front::SkillRunGraphAdapter::default(),
-            options,
-        )?)
+            options.clone(),
+        )?;
+        persist_harness_receipts(&output, &options, &receipt_dir)?;
+        Ok(output)
     }
 
     #[cfg(not(feature = "cli-tool"))]
@@ -335,6 +341,52 @@ impl LocalOrchestrator {
         let _ = request;
         Err(OrchestratorError::CliToolFeatureDisabled)
     }
+}
+
+#[cfg(feature = "cli-tool")]
+fn standalone_harness_options(
+    request: &HarnessRunRequest,
+) -> Result<(super::runner::RuntimeOptions, PathBuf), OrchestratorError> {
+    use crate::receipts::paths::RUNX_RECEIPT_DIR_ENV;
+
+    let mut env = request
+        .env
+        .clone()
+        .unwrap_or_else(crate::services::process_env_snapshot);
+    let cwd = std::env::current_dir()
+        .map_err(|source| crate::RuntimeError::io("resolving standalone harness cwd", source))?;
+    let workspace = crate::config::resolve_runx_workspace_base(&env, &cwd);
+    let configured = request
+        .receipt_dir
+        .clone()
+        .or_else(|| env.get(RUNX_RECEIPT_DIR_ENV).map(PathBuf::from))
+        .unwrap_or_else(|| workspace.join(".runx").join("receipts"));
+    let receipt_dir = if configured.is_absolute() {
+        configured
+    } else {
+        workspace.join(configured)
+    };
+    env.insert(
+        RUNX_RECEIPT_DIR_ENV.to_owned(),
+        receipt_dir.to_string_lossy().into_owned(),
+    );
+    let options = super::runner::RuntimeOptions::from_env_or_local_development(env)?;
+    Ok((options, receipt_dir))
+}
+
+#[cfg(feature = "cli-tool")]
+fn persist_harness_receipts(
+    output: &HarnessReplayOutput,
+    options: &super::runner::RuntimeOptions,
+    receipt_dir: &std::path::Path,
+) -> Result<(), OrchestratorError> {
+    let store = crate::receipts::store::LocalReceiptStore::new(receipt_dir);
+    let policy = options.receipt_signature.signature_policy();
+    for receipt in &output.step_receipts {
+        store.write_receipt_with_policy(receipt, policy)?;
+    }
+    store.write_receipt_with_policy(&output.receipt, policy)?;
+    Ok(())
 }
 
 fn skill_result(output: JsonValue) -> RunResult {

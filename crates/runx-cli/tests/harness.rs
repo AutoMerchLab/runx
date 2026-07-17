@@ -91,9 +91,63 @@ fn package_harness_partial_signer_config_prints_actionable_hint() -> TestResult 
     let report = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
     assert_eq!(report["status"], "failed");
     let stderr = String::from_utf8(output.stderr)?;
-    assert!(stderr.contains("package harnesses seal signed receipts"));
+    assert!(stderr.contains("harnesses seal signed receipts"));
     assert!(stderr.contains("RUNX_RECEIPT_SIGN_KID"));
 
+    Ok(())
+}
+
+#[test]
+fn standalone_fixture_uses_local_signing_and_persists_to_requested_store() -> TestResult {
+    let root = crate::support::temp_root("runx-standalone-harness-receipts");
+    let skill_dir = root.join("skill");
+    let receipt_dir = root.join(".runx/receipts");
+    fs::create_dir_all(skill_dir.join("fixtures"))?;
+    write_cli_tool_skill(&skill_dir)?;
+    let fixture_path = skill_dir.join("fixtures/standalone.yaml");
+    fs::write(
+        &fixture_path,
+        r#"
+name: standalone
+kind: skill
+target: ..
+runner: default
+expect:
+  status: sealed
+  output:
+    subset:
+      ok: true
+"#,
+    )?;
+
+    let output = unsigned_runx_command()?
+        .env("RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY", "local")
+        .args([
+            "harness",
+            fixture_path.to_str().ok_or("non-utf8 fixture path")?,
+            "--receipt-dir",
+            receipt_dir.to_str().ok_or("non-utf8 receipt dir")?,
+            "--json",
+        ])
+        .output()?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let receipt = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    let receipt_id = receipt["id"].as_str().ok_or("missing receipt id")?;
+    let receipt_path = receipt_dir.join(format!(
+        "sha256-{}.json",
+        receipt_id
+            .strip_prefix("sha256:")
+            .ok_or("invalid receipt id")?
+    ));
+    assert!(receipt_path.is_file());
+    assert!(receipt_dir.join("index.json").is_file());
     Ok(())
 }
 

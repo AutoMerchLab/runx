@@ -120,6 +120,19 @@ With `agent.provider`, `agent.model`, and `agent.api_key` configured, the CLI
 can now resolve managed agent work directly. Deterministic tools, approvals,
 and required human inputs keep their existing local behavior.
 
+For a local development loop, approval prompts can be disabled globally:
+
+```bash
+runx config set development.auto_approve true
+```
+
+The short key `auto-approve` is equivalent. The override covers prepared
+operator-context approval and approval steps inside skill graphs. It is ignored
+when production receipt signing is configured, explicit gate answers still take
+precedence, and receipts identify the decision as `development_auto_approve`.
+Disable it with `runx config set development.auto_approve false`. For an
+ephemeral override, set `RUNX_DEVELOPMENT_AUTO_APPROVE=true`.
+
 Provider-backed skills declare requirements in `X.yaml`; configure them with
 `runx credential` or an ignored workspace `.env`. See
 [Credential Resolution](credentials.md) for the exact precedence and storage
@@ -292,8 +305,8 @@ for the package belong in `SKILL.md`; external guides belong under `docs/`.
 
 See `../docs/skill-profile-model.md` for resolution rules, publication modes, trust tiers, MCP export, and composite skill behavior.
 
-See `../docs/evolution-model.md` for the evolve lane, the skill/tool boundary,
-and the canonical composite execution geometry.
+Use `work-plan` for bounded change planning, `skill-lab` for skill-package
+design and improvement, and the named downstream execution lane for mutation.
 
 ## Tool Authoring
 
@@ -324,7 +337,7 @@ authored source. Do not hand-edit generated `manifest.json` or `run.mjs`.
 
 The official catalog is explicit about why each package is public:
 
-- canonical governed skills: `charge`, `dispute-respond`, `evolve`,
+- canonical governed skills: `charge`, `dispute-respond`,
   `skill-lab`, `review-skill`, `least-privilege`, `overlay`,
   `policy-author`, `audit-receipt`, `refund`, `ops-desk`, `send-as`, `spend`,
   `weather-forecast`

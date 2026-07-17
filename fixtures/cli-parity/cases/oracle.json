@@ -130,17 +130,15 @@
         "connect",
         "list",
         "--api-base-url",
-        "$FIXTURE_CONNECT_API",
+        "http://127.0.0.1:9",
         "--token",
         "rxk_fixture",
-        "--allow-local-api",
         "--json"
       ],
-      "expectedExitCode": 0,
+      "expectedExitCode": 1,
       "expectJson": true,
       "stdoutIncludes": [
-        "\"principal_id\": \"fixture-user\"",
-        "\"grants\""
+        "not publicly routable"
       ],
       "stderrIncludes": [],
       "proves": [

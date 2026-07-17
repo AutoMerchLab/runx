@@ -10,8 +10,10 @@ use runx_runtime::skill_front::{
     PreparedEntryProvenance, PreparedSkillRunApproval, PreparedSkillRunStatus,
 };
 use runx_runtime::{
-    ManagedAgentPolicy, SkillCredentialContext, SkillRunRequest, WorkspaceEnv,
-    resolve_skill_credential_for_path,
+    ManagedAgentPolicy, RUNX_DEVELOPMENT_AUTO_APPROVE_ENV,
+    RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV, RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
+    RUNX_RECEIPT_SIGN_KID_ENV, SkillCredentialContext, SkillRunRequest, WorkspaceEnv,
+    development_auto_approve_requested, resolve_skill_credential_for_path,
 };
 
 mod credential;
@@ -72,7 +74,21 @@ pub fn run_native_skill(plan: SkillPlan) -> ExitCode {
 // rust-style-allow: long-function - the top-level command path owns resolve/inspect/run/failure presentation in one explicit dispatch.
 pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv) -> ExitCode {
     let cwd = workspace.cwd().to_path_buf();
-    let env = workspace.env().clone();
+    let mut env = workspace.env().clone();
+    let development_auto_approve = match development_auto_approve_requested(&env, &cwd) {
+        Ok(requested) => requested && !production_receipt_signing_configured(&env),
+        Err(error) => {
+            return write_skill_failure(&error.to_string(), plan.json, "config_error", 1, None);
+        }
+    };
+    if development_auto_approve {
+        env.insert(
+            RUNX_DEVELOPMENT_AUTO_APPROVE_ENV.to_owned(),
+            "true".to_owned(),
+        );
+    } else {
+        env.remove(RUNX_DEVELOPMENT_AUTO_APPROVE_ENV);
+    }
     let resume_skill_ref = plan.skill_path.to_string_lossy().into_owned();
     let resolved = match resolve_skill_ref_details(
         &plan.skill_path,
@@ -196,13 +212,28 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
             }
             orchestrator.run_prepared_skill(&prepared)
         } else {
-            match authorize_operator_context(&plan, prepared.digest(), &resume_skill_ref) {
+            match authorize_operator_context(
+                &plan,
+                prepared.digest(),
+                &resume_skill_ref,
+                development_auto_approve,
+            ) {
                 OperatorAuthorization::Approved(mode) => {
-                    let actor = workspace
-                        .env()
-                        .get("USER")
-                        .cloned()
-                        .unwrap_or_else(|| "local_operator".to_owned());
+                    let actor = if mode == "development_auto_approve" {
+                        "local_development_override".to_owned()
+                    } else {
+                        workspace
+                            .env()
+                            .get("USER")
+                            .cloned()
+                            .unwrap_or_else(|| "local_operator".to_owned())
+                    };
+                    if mode == "development_auto_approve" {
+                        let _ignored = writeln!(
+                            io::stderr(),
+                            "Development override: operator context auto-approved"
+                        );
+                    }
                     if let Err(error) = prepared.approve(PreparedSkillRunApproval::now(actor, mode))
                     {
                         return write_skill_failure(
@@ -256,6 +287,7 @@ fn authorize_operator_context(
     plan: &SkillPlan,
     digest: &str,
     skill_ref: &str,
+    development_auto_approve: bool,
 ) -> OperatorAuthorization {
     if let Some(approved) = plan.approve_operator_context.as_deref() {
         if approved == digest {
@@ -267,6 +299,9 @@ fn authorize_operator_context(
             ),
             code: "operator_context_approval_mismatch",
         };
+    }
+    if development_auto_approve {
+        return OperatorAuthorization::Approved("development_auto_approve");
     }
     if plan.non_interactive || !io::stdin().is_terminal() || !io::stderr().is_terminal() {
         return OperatorAuthorization::NeedsApproval;
@@ -287,6 +322,16 @@ fn authorize_operator_context(
             code: "operator_context_approval_error",
         },
     }
+}
+
+fn production_receipt_signing_configured(env: &BTreeMap<String, String>) -> bool {
+    [
+        RUNX_RECEIPT_SIGN_KID_ENV,
+        RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
+        RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
+    ]
+    .iter()
+    .any(|name| env.get(*name).is_some_and(|value| !value.trim().is_empty()))
 }
 
 fn write_operator_approval_required(digest: &str, json: bool) -> ExitCode {

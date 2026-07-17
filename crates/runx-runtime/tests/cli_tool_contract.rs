@@ -237,7 +237,10 @@ fn oversized_inputs_spill_to_path_and_omit_inline_json() -> Result<(), Box<dyn s
         &[("message".to_owned(), JsonValue::String(large.clone()))]
             .into_iter()
             .collect(),
-        &env_with_local_sandbox_fallback_and([("TMPDIR".to_owned(), path_string(&temp_dir)?)]),
+        &env_with_local_sandbox_fallback_and([
+            ("TMPDIR".to_owned(), path_string(&temp_dir)?),
+            (RUNX_CWD_ENV.to_owned(), path_string(temp.path())?),
+        ]),
     )?;
 
     assert!(!plan.env.contains_key("RUNX_INPUTS_JSON"));
@@ -253,10 +256,8 @@ fn oversized_inputs_spill_to_path_and_omit_inline_json() -> Result<(), Box<dyn s
         .find(|path| inputs_path.starts_with(path))
         .cloned()
         .ok_or("missing input temp cleanup path")?;
-    assert!(
-        !inputs_path.starts_with(&temp_dir),
-        "enforced sandboxes must spill inputs into a private temp directory"
-    );
+    assert!(inputs_path.starts_with(temp.path().join(".runx").join("tmp")));
+    assert!(!inputs_path.starts_with(&temp_dir));
     let parsed: JsonObject = serde_json::from_str(&fs::read_to_string(inputs_path)?)?;
     assert_eq!(parsed.get("message"), Some(&JsonValue::String(large)));
     assert!(input_dir.exists());

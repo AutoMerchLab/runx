@@ -277,7 +277,9 @@ fn run_harness_fixture(
     denied_fragments: &[&str],
 ) -> Result<Value, Box<dyn std::error::Error>> {
     let fixture = crate::support::governed_harness_fixture(fixture)?;
+    let receipt_dir = fixture.receipt_dir();
     let output = native_command()?
+        .env("RUNX_RECEIPT_DIR", receipt_dir)
         .args(["harness", fixture.path_str()?, "--json"])
         .output()?;
     assert_success(&output)?;

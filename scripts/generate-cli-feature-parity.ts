@@ -151,7 +151,7 @@ const cases: readonly OracleCase[] = [
     proves: ["history", "ledger", "receipts", "cli-presentation"],
   },
   execute("list.tools.execute", "list", ["list", "tools", "--json"], 0, true, [], []),
-  execute("connect.execute", "connect", ["connect", "list", "--api-base-url", "$FIXTURE_CONNECT_API", "--token", "rxk_fixture", "--allow-local-api", "--json"], 0, true, ["\"principal_id\": \"fixture-user\"", "\"grants\""], []),
+  execute("connect.execute", "connect", ["connect", "list", "--api-base-url", "http://127.0.0.1:9", "--token", "rxk_fixture", "--json"], 1, true, ["not publicly routable"], []),
   ...commands
     .filter((entry) => !entry.cases.some((caseId) => casesExecutedById.has(caseId)))
     .map((entry) => validate(`${entry.id}.validate`, entry.id, entry.parity.surfaces)),

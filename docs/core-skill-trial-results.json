@@ -7,11 +7,11 @@
     "receipt_signer": "ephemeral_test_key"
   },
   "summary": {
-    "public_skills": 66,
-    "locally_proven": 66,
+    "public_skills": 65,
+    "locally_proven": 65,
     "failed": 0,
     "unproven": 0,
-    "meets_full_bar": 22
+    "meets_full_bar": 28
   },
   "skills": [
     {
@@ -612,54 +612,6 @@
       ]
     },
     {
-      "skill": "evolve",
-      "path": "skills/evolve/X.yaml",
-      "archetype": "builder",
-      "decision_status": "pending_review",
-      "preliminary_route": "improve",
-      "managed_agent_acts": 2,
-      "capabilities": [
-        "cli-tool:node"
-      ],
-      "static_findings": [],
-      "improvement_findings": [
-        "add standalone operation-boundary proof"
-      ],
-      "local_trial": "passed",
-      "operation_proof": "not_required",
-      "provider_readback": "not_required",
-      "provider_trial": null,
-      "meets_full_bar": false,
-      "cases": [
-        {
-          "name": "evolve-introspect",
-          "path": "skills/evolve/fixtures/evolve-introspect.yaml",
-          "runner": "introspect",
-          "proof_type": "agent_contract",
-          "status": "passed",
-          "receipt": {
-            "schema": "runx.receipt.v1",
-            "content_addressed_id": "validated_sha256",
-            "disposition": "closed",
-            "reason_code": "graph_closed"
-          }
-        },
-        {
-          "name": "evolve-plan-spec",
-          "path": "skills/evolve/fixtures/evolve-plan-spec.yaml",
-          "runner": "evolve",
-          "proof_type": "agent_contract",
-          "status": "passed",
-          "receipt": {
-            "schema": "runx.receipt.v1",
-            "content_addressed_id": "validated_sha256",
-            "disposition": "closed",
-            "reason_code": "graph_closed"
-          }
-        }
-      ]
-    },
-    {
       "skill": "extract",
       "path": "skills/extract/X.yaml",
       "archetype": "operation",
@@ -813,30 +765,28 @@
       "path": "skills/governed-outbound/X.yaml",
       "archetype": "workflow",
       "decision_status": "pending_review",
-      "preliminary_route": "improve",
-      "managed_agent_acts": 3,
+      "preliminary_route": "keep",
+      "managed_agent_acts": 2,
       "capabilities": [
         "cli-tool:node"
       ],
       "static_findings": [],
-      "improvement_findings": [
-        "add standalone operation-boundary proof"
-      ],
+      "improvement_findings": [],
       "local_trial": "passed",
-      "operation_proof": "not_required",
+      "operation_proof": "passed",
       "provider_readback": "not_required",
       "provider_trial": null,
-      "meets_full_bar": false,
+      "meets_full_bar": true,
       "cases": [
         {
           "name": "governed-outbound-approved-plan",
           "path": "skills/governed-outbound",
           "runner": null,
-          "proof_type": "agent_contract",
+          "proof_type": "operator_journey",
           "status": "passed",
           "harness": {
             "status": "passed",
-            "case_count": 2
+            "case_count": 3
           }
         }
       ]
@@ -1169,7 +1119,7 @@
       "operation_proof": "passed",
       "provider_readback": "not_required",
       "provider_trial": null,
-      "meets_full_bar": false,
+      "meets_full_bar": true,
       "cases": [
         {
           "name": "ledger-answer-with-chain-proof",
@@ -1221,6 +1171,32 @@
             "content_addressed_id": "validated_sha256",
             "disposition": "closed",
             "reason_code": "process_closed"
+          }
+        },
+        {
+          "name": "ledger-native-bounded-pagination",
+          "path": "generated:native-ledger-edge",
+          "runner": "read",
+          "proof_type": "operation",
+          "status": "passed",
+          "receipt": {
+            "schema": "runx.receipt.v1",
+            "content_addressed_id": "validated_sha256",
+            "disposition": "closed",
+            "reason_code": "native_ledger_edge_proven"
+          }
+        },
+        {
+          "name": "ledger-native-broken-chain",
+          "path": "generated:native-ledger-edge",
+          "runner": "read",
+          "proof_type": "operation",
+          "status": "passed",
+          "receipt": {
+            "schema": "runx.receipt.v1",
+            "content_addressed_id": "validated_sha256",
+            "disposition": "closed",
+            "reason_code": "native_ledger_edge_proven"
           }
         }
       ]
@@ -2110,52 +2086,54 @@
       "decision_status": "pending_review",
       "preliminary_route": "keep",
       "managed_agent_acts": 1,
-      "capabilities": [],
+      "capabilities": [
+        "cli-tool:node"
+      ],
       "static_findings": [],
       "improvement_findings": [],
       "local_trial": "passed",
-      "operation_proof": "not_required",
+      "operation_proof": "passed",
       "provider_readback": "not_required",
       "provider_trial": null,
-      "meets_full_bar": false,
+      "meets_full_bar": true,
       "cases": [
         {
           "name": "issue-flow-policy-from-brief",
           "path": "skills/policy-author/fixtures/issue-flow-policy-from-brief.yaml",
           "runner": "author",
-          "proof_type": "agent_contract",
+          "proof_type": "operator_journey",
           "status": "passed",
           "receipt": {
             "schema": "runx.receipt.v1",
             "content_addressed_id": "validated_sha256",
             "disposition": "closed",
-            "reason_code": "agent_act_closed"
+            "reason_code": "graph_closed"
           }
         },
         {
           "name": "tighten-existing-policy",
           "path": "skills/policy-author/fixtures/tighten-existing-policy.yaml",
           "runner": "author",
-          "proof_type": "agent_contract",
+          "proof_type": "operator_journey",
           "status": "passed",
           "receipt": {
             "schema": "runx.receipt.v1",
             "content_addressed_id": "validated_sha256",
             "disposition": "closed",
-            "reason_code": "agent_act_closed"
+            "reason_code": "graph_closed"
           }
         },
         {
           "name": "vague-brief-needs-input",
           "path": "skills/policy-author/fixtures/vague-brief-needs-input.yaml",
           "runner": "author",
-          "proof_type": "agent_contract",
+          "proof_type": "operator_journey",
           "status": "passed",
           "receipt": {
             "schema": "runx.receipt.v1",
             "content_addressed_id": "validated_sha256",
             "disposition": "closed",
-            "reason_code": "agent_act_closed"
+            "reason_code": "graph_closed"
           }
         }
       ]
@@ -2228,52 +2206,106 @@
       "decision_status": "pending_review",
       "preliminary_route": "keep",
       "managed_agent_acts": 1,
-      "capabilities": [],
+      "capabilities": [
+        "cli-tool:node"
+      ],
       "static_findings": [],
       "improvement_findings": [],
       "local_trial": "passed",
-      "operation_proof": "missing",
+      "operation_proof": "passed",
       "provider_readback": "not_required",
       "provider_trial": null,
-      "meets_full_bar": false,
+      "meets_full_bar": true,
       "cases": [
         {
-          "name": "redact-pii-blocked",
-          "path": "skills/redact-pii/fixtures/redact-pii-blocked.yaml",
+          "name": "ambiguous-name-needs-review",
+          "path": "skills/redact-pii/fixtures/ambiguous-name-needs-review.yaml",
           "runner": "redact-pii",
-          "proof_type": "agent_contract",
+          "proof_type": "operator_journey",
           "status": "passed",
           "receipt": {
             "schema": "runx.receipt.v1",
             "content_addressed_id": "validated_sha256",
             "disposition": "closed",
-            "reason_code": "agent_act_closed"
+            "reason_code": "graph_closed"
+          }
+        },
+        {
+          "name": "direct-leakage-stops",
+          "path": "skills/redact-pii/fixtures/direct-leakage-stops.yaml",
+          "runner": "redact-pii",
+          "proof_type": "operator_journey",
+          "status": "passed",
+          "receipt": {
+            "schema": "runx.receipt.v1",
+            "content_addressed_id": "validated_sha256",
+            "disposition": "closed",
+            "reason_code": "graph_closed"
+          }
+        },
+        {
+          "name": "obfuscated-email-stops",
+          "path": "skills/redact-pii/fixtures/obfuscated-email-stops.yaml",
+          "runner": "redact-pii",
+          "proof_type": "operator_journey",
+          "status": "passed",
+          "receipt": {
+            "schema": "runx.receipt.v1",
+            "content_addressed_id": "validated_sha256",
+            "disposition": "closed",
+            "reason_code": "graph_closed"
+          }
+        },
+        {
+          "name": "redact-pii-blocked",
+          "path": "skills/redact-pii/fixtures/redact-pii-blocked.yaml",
+          "runner": "redact-pii",
+          "proof_type": "operator_journey",
+          "status": "passed",
+          "receipt": {
+            "schema": "runx.receipt.v1",
+            "content_addressed_id": "validated_sha256",
+            "disposition": "closed",
+            "reason_code": "graph_closed"
           }
         },
         {
           "name": "redact-pii-needs-content",
           "path": "skills/redact-pii/fixtures/redact-pii-needs-content.yaml",
           "runner": "redact-pii",
-          "proof_type": "structural",
+          "proof_type": "operator_journey",
           "status": "passed",
           "receipt": {
             "schema": "runx.receipt.v1",
             "content_addressed_id": "validated_sha256",
-            "disposition": "deferred",
-            "reason_code": "agent_act_deferred"
+            "disposition": "closed",
+            "reason_code": "graph_closed"
           }
         },
         {
           "name": "redact-pii-ready",
           "path": "skills/redact-pii/fixtures/redact-pii-ready.yaml",
           "runner": "redact-pii",
-          "proof_type": "agent_contract",
+          "proof_type": "operator_journey",
           "status": "passed",
           "receipt": {
             "schema": "runx.receipt.v1",
             "content_addressed_id": "validated_sha256",
             "disposition": "closed",
-            "reason_code": "agent_act_closed"
+            "reason_code": "graph_closed"
+          }
+        },
+        {
+          "name": "tokenize-stable-placeholders",
+          "path": "skills/redact-pii/fixtures/tokenize-stable-placeholders.yaml",
+          "runner": "redact-pii",
+          "proof_type": "operator_journey",
+          "status": "passed",
+          "receipt": {
+            "schema": "runx.receipt.v1",
+            "content_addressed_id": "validated_sha256",
+            "disposition": "closed",
+            "reason_code": "graph_closed"
           }
         }
       ]
@@ -2589,7 +2621,7 @@
       "operation_proof": "not_required",
       "provider_readback": "not_required",
       "provider_trial": null,
-      "meets_full_bar": false,
+      "meets_full_bar": true,
       "cases": [
         {
           "name": "approval-bypass-is-refused",
@@ -3356,39 +3388,67 @@
       "decision_status": "pending_review",
       "preliminary_route": "keep",
       "managed_agent_acts": 1,
-      "capabilities": [],
+      "capabilities": [
+        "cli-tool:node"
+      ],
       "static_findings": [],
       "improvement_findings": [],
       "local_trial": "passed",
-      "operation_proof": "not_required",
+      "operation_proof": "passed",
       "provider_readback": "not_required",
       "provider_trial": null,
-      "meets_full_bar": false,
+      "meets_full_bar": true,
       "cases": [
         {
-          "name": "missing-evidence-needs-agent",
-          "path": "skills/weather-forecast/fixtures/missing-evidence-needs-agent.yaml",
+          "name": "invented-period-stops",
+          "path": "skills/weather-forecast/fixtures/invented-period-fails.yaml",
           "runner": "normalize",
-          "proof_type": "structural",
+          "proof_type": "operator_journey",
           "status": "passed",
           "receipt": {
             "schema": "runx.receipt.v1",
             "content_addressed_id": "validated_sha256",
-            "disposition": "deferred",
-            "reason_code": "agent_act_deferred"
+            "disposition": "closed",
+            "reason_code": "graph_closed"
+          }
+        },
+        {
+          "name": "life-safety-refused",
+          "path": "skills/weather-forecast/fixtures/life-safety-refused.yaml",
+          "runner": "normalize",
+          "proof_type": "operator_journey",
+          "status": "passed",
+          "receipt": {
+            "schema": "runx.receipt.v1",
+            "content_addressed_id": "validated_sha256",
+            "disposition": "closed",
+            "reason_code": "graph_closed"
+          }
+        },
+        {
+          "name": "missing-evidence-needs-agent",
+          "path": "skills/weather-forecast/fixtures/missing-evidence-needs-agent.yaml",
+          "runner": "normalize",
+          "proof_type": "operator_journey",
+          "status": "passed",
+          "receipt": {
+            "schema": "runx.receipt.v1",
+            "content_addressed_id": "validated_sha256",
+            "disposition": "closed",
+            "reason_code": "graph_closed"
           }
         },
         {
           "name": "weather-forecast-packet",
           "path": "skills/weather-forecast/fixtures/weather-forecast-packet.yaml",
           "runner": "normalize",
-          "proof_type": "agent_contract",
+          "proof_type": "operator_journey",
           "status": "passed",
           "receipt": {
             "schema": "runx.receipt.v1",
             "content_addressed_id": "validated_sha256",
             "disposition": "closed",
-            "reason_code": "agent_act_closed"
+            "reason_code": "graph_closed"
           }
         }
       ]

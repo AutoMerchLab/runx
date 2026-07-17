@@ -517,6 +517,11 @@ fn x402_paid_echo_replays_sealed_idempotency_without_second_rail()
     let mut first_host = ApprovalHost::approved(true);
     let first = runtime.run_graph_file_with_host(fixture.graph_path(), &mut first_host)?;
     assert_eq!(first.state.status, GraphStatus::Succeeded);
+    let first_fulfill = serde_json::to_string(&step_run(&first.steps, "fulfill")?.outputs)?;
+    assert!(
+        !first_fulfill.contains(PAID_ECHO_RAIL_SESSION_MATERIAL_REF),
+        "transient rail session material must be removed before output projection and sealing"
+    );
 
     let mut second_host = ApprovalHost::approved(true);
     let second = runtime.run_graph_file_with_host(fixture.graph_path(), &mut second_host)?;

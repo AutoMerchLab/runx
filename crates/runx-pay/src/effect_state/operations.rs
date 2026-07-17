@@ -3,7 +3,7 @@ use std::path::Path;
 
 use runx_contracts::{JsonObject, JsonValue};
 
-use crate::packets::read_effect_evidence_packet;
+use crate::packets::{read_effect_evidence_packet, redact_payment_transient_material};
 use crate::supervisor::{
     PaymentSupervisorProof, PaymentSupervisorProofMatch, validate_payment_supervisor_proof,
 };
@@ -297,13 +297,13 @@ fn validate_sealed_supervisor_proof<'a>(
 
 fn replay_safe_outputs(outputs: &JsonObject) -> Result<JsonObject, EffectStateError> {
     let mut safe_outputs = outputs.clone();
-    sanitize_replay_payload(&mut safe_outputs);
+    redact_payment_transient_material(&mut safe_outputs);
 
     let mut stdout_payload = safe_outputs.clone();
     stdout_payload.remove("stdout");
     stdout_payload.remove("stderr");
     stdout_payload.remove("status");
-    sanitize_replay_payload(&mut stdout_payload);
+    redact_payment_transient_material(&mut stdout_payload);
 
     let stdout = serde_json::to_string(&JsonValue::Object(stdout_payload))
         .map_err(|source| EffectStateError::ReplayOutputSerialize { source })?;
@@ -315,16 +315,4 @@ fn replay_safe_outputs(outputs: &JsonObject) -> Result<JsonObject, EffectStateEr
         .entry("status".to_owned())
         .or_insert_with(|| JsonValue::String("success".to_owned()));
     Ok(safe_outputs)
-}
-
-fn sanitize_replay_payload(payload: &mut JsonObject) {
-    let Some(JsonValue::Object(packet)) = payload.get_mut("effect_evidence_packet") else {
-        return;
-    };
-    let Some(JsonValue::Object(data)) = packet.get_mut("data") else {
-        return;
-    };
-    if let Some(JsonValue::Object(proof)) = data.get_mut("rail_proof") {
-        proof.remove("rail_session_material_ref");
-    }
 }

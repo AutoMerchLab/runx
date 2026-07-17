@@ -12,7 +12,7 @@ import {
   canonicalStoryEntryIdForRefresh,
   renderFeedStoryMarkdown,
   storyMilestoneRefreshesPublishedEntry,
-} from "../../story.js";
+} from "../../story.ts";
 
 export default defineTool({
   name: "outbox.build_feed_entry",
