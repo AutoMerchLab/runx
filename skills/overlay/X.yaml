@@ -1,7 +1,7 @@
 skill: overlay
-version: "0.1.2"
+version: "0.2.0"
 catalog:
-  kind: skill
+  kind: graph
   audience: builder
   visibility: public
   role: canonical
@@ -12,28 +12,129 @@ catalog:
 runners:
   generate:
     default: true
-    type: agent-task
-    agent: builder
-    task: overlay
-    outputs:
-      overlay_proposal: object
-    artifacts:
-      wrap_as: overlay_packet
-      packet: runx.skill_overlay.v1
+    type: graph
     inputs:
-      skill_ref:
-        type: string
-        required: false
-        description: Registry ref of the skill to wrap, e.g. vendor/research@1.2.0.
       skill_path:
         type: string
-        required: false
-        description: Local path to a borrowed SKILL.md to wrap.
-      scope_intent:
-        type: string
-        required: false
-        description: What the wrapped skill should be allowed to do, in prose.
+        required: true
+        description: Workspace-relative path to the pinned upstream SKILL.md.
+      upstream:
+        type: json
+        required: true
+        description: Pinned upstream host, owner, repo, path, commit, blob SHA, URLs, and source-of-truth evidence.
+      registry:
+        type: json
+        required: true
+        description: Registry owner, trust tier, and immutable version for the materialized package.
       objective:
         type: string
         required: false
-        description: Operator intent that focuses the bound.
+        description: Operator goal for the bounded upstream skill profile.
+      scope_intent:
+        type: string
+        required: false
+        description: Intended authority boundary for the profile.
+      tags:
+        type: json
+        required: false
+        description: Catalog tags to preserve in binding metadata.
+      publication:
+        type: json
+        required: false
+        description: Current publication state; this skill never advances it.
+    graph:
+      name: overlay-native-binding
+      steps:
+        - id: inspect
+          label: inspect and pin upstream skill
+          inputs:
+            skill_path: $input.skill_path
+            upstream: $input.upstream
+            registry: $input.registry
+            tags: $input.tags
+            publication: $input.publication
+          run:
+            type: cli-tool
+            command: node
+            args:
+              - ./inspect_source.mjs
+            outputs:
+              source_evidence: object
+          artifacts:
+            named_emits:
+              source_evidence: source_evidence
+        - id: reject
+          label: seal rejected binding evidence
+          when:
+            field: inspect.source_evidence.data.decision
+            equals: reject
+          inputs:
+            skill_path: $input.skill_path
+          context:
+            source_evidence: inspect.source_evidence.data
+          run:
+            type: cli-tool
+            command: node
+            args:
+              - ./finalize_binding.mjs
+            outputs:
+              binding_bundle: object
+          artifacts:
+            named_emits:
+              binding_bundle: binding_bundle
+            packets:
+              binding_bundle: runx.skill_overlay.v1
+        - id: profile
+          label: design bounded binding profile
+          when:
+            field: inspect.source_evidence.data.decision
+            equals: ready
+          run:
+            type: agent-task
+            agent: builder
+            task: overlay-binding-profile
+            outputs:
+              profile_draft: object
+          inputs:
+            objective: $input.objective
+            scope_intent: $input.scope_intent
+          context:
+            source_evidence: inspect.source_evidence.data
+          instructions: >
+            Read the bounded upstream SKILL.md identified by source_evidence.
+            Return profile_draft with decision, runner, harness_cases,
+            rationale, and blockers. The runner must contain name, agent, task,
+            inputs, outputs, scopes, allowed_tools, sandbox, category, and tags.
+            Use one agent-task runner only; do not add shell, provider, network,
+            or filesystem execution stages. Declare the least authority and an
+            explicit allowed_tools array. Add at least two mocked harness cases
+            that exercise the useful path and a missing-input, refusal, or
+            boundary path. Do not author binding provenance or publication
+            claims; deterministic code owns them.
+          allowed_tools:
+            - fs.read
+          artifacts:
+            named_emits:
+              profile_draft: profile_draft
+        - id: finalize
+          label: build and prove native binding bundle
+          when:
+            field: inspect.source_evidence.data.decision
+            equals: ready
+          inputs:
+            skill_path: $input.skill_path
+          context:
+            source_evidence: inspect.source_evidence.data
+            profile_draft: profile.profile_draft.data
+          run:
+            type: cli-tool
+            command: node
+            args:
+              - ./finalize_binding.mjs
+            outputs:
+              binding_bundle: object
+          artifacts:
+            named_emits:
+              binding_bundle: binding_bundle
+            packets:
+              binding_bundle: runx.skill_overlay.v1

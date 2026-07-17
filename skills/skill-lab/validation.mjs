@@ -1,4 +1,6 @@
 import { spawnSync } from "node:child_process";
+import fs from "node:fs";
+import path from "node:path";
 
 export function validatePackage({ repoRoot, target, targetDir, runx = process.env.RUNX_BIN || "runx" }) {
   const env = { ...process.env };
@@ -15,16 +17,27 @@ export function validatePackage({ repoRoot, target, targetDir, runx = process.en
   if (inspection.ok) {
     const execution = inspection.data?.capabilities?.execution;
     if (execution === "read" || execution === "plan") {
-      const result = invoke({ runx, args: ["harness", target, "--json"], cwd: repoRoot, env, timeout: 120_000 });
-      harness = {
-        attempted: true,
-        status: result.data?.status || (result.ok ? "passed" : "failed"),
-        reason: result.ok ? null : "native_harness_failed",
-        case_count: numberValue(result.data?.case_count),
-        assertion_error_count: numberValue(result.data?.assertion_error_count),
-        case_names: stringArray(result.data?.case_names),
-        error: result.ok ? null : result.error,
-      };
+      const receiptDir = isolatedReceiptDir(repoRoot);
+      try {
+        const result = invoke({
+          runx,
+          args: ["harness", target, "--receipt-dir", receiptDir, "--json"],
+          cwd: repoRoot,
+          env,
+          timeout: 120_000,
+        });
+        harness = {
+          attempted: true,
+          status: result.data?.status || (result.ok ? "passed" : "failed"),
+          reason: result.ok ? null : "native_harness_failed",
+          case_count: numberValue(result.data?.case_count),
+          assertion_error_count: numberValue(result.data?.assertion_error_count),
+          case_names: stringArray(result.data?.case_names),
+          error: result.ok ? null : result.error,
+        };
+      } finally {
+        fs.rmSync(receiptDir, { recursive: true, force: true });
+      }
     } else {
       harness = {
         attempted: false,
@@ -60,6 +73,12 @@ export function validatePackage({ repoRoot, target, targetDir, runx = process.en
     },
     harness,
   };
+}
+
+function isolatedReceiptDir(repoRoot) {
+  const root = path.join(repoRoot, ".runx", "skill-lab", "validation");
+  fs.mkdirSync(root, { recursive: true });
+  return fs.mkdtempSync(path.join(root, "receipts-"));
 }
 
 function invoke({ runx, args, cwd, env, timeout }) {

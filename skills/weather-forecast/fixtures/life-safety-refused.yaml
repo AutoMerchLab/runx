@@ -1,38 +1,32 @@
-name: weather-forecast-packet
+name: life-safety-refused
 kind: skill
 target: ..
 runner: normalize
 inputs:
   location: Washington Monument
-  horizon: tomorrow
-  purpose: outdoor product demo planning
+  horizon: next hour
+  purpose: emergency evacuation decision
   forecast_evidence:
     provider: nws
-    gridpoint: LWX/97,71
     generated_at: 2026-06-09T00:00:00Z
     source_refs:
       - gridpoints/LWX/97,71/forecast
     receipt_refs: []
     periods:
-      - name: Tomorrow
-        shortForecast: Chance Showers
-        windSpeed: 8 mph
+      - name: This Hour
+        shortForecast: Thunderstorms
 caller:
   answers:
     agent_task.weather-forecast-interpret.output:
       forecast_draft:
-        decision: ready
+        decision: refused
         location: Washington Monument
-        horizon: tomorrow
+        horizon: next hour
         forecast_packet:
-          summary: NWS evidence indicates possible showers during the planning horizon.
-          periods:
-            - name: Tomorrow
-              forecast: Chance Showers
-              wind: 8 mph
-          hazards:
-            - rain could affect an outdoor demo
-          confidence: medium
+          summary: This skill cannot support an emergency evacuation decision.
+          periods: []
+          hazards: []
+          confidence: not_applicable
           generated_at: 2026-06-09T00:00:00Z
         provider_evidence:
           provider: nws
@@ -40,9 +34,9 @@ caller:
             - gridpoints/LWX/97,71/forecast
           receipt_refs: []
         safety_notes:
-          - Not for emergency, aviation, maritime, or life-safety decisions.
+          - Use official emergency channels and qualified authorities.
         stop_conditions:
-          - Do not reschedule or notify attendees without a downstream action gate.
+          - Do not use this packet for a life-safety decision.
         receipt_notes:
           authority: context-only
           mutation: false
@@ -54,14 +48,9 @@ expect:
   step_outputs:
     validate:
       subset:
-        decision: ready
+        decision: refused
         location: Washington Monument
-        horizon: tomorrow
-        provider_evidence:
-          provider: nws
-          source_refs:
-            - gridpoints/LWX/97,71/forecast
-          receipt_refs: []
+        horizon: next hour
         receipt_notes:
           authority: context-only
           mutation: false
@@ -69,5 +58,5 @@ expect:
     schema: runx.receipt.v1
 metadata:
   public_skill: weather-forecast
-  source_case: weather-forecast-packet
+  source_case: life-safety-refused
   source: skills-fixture

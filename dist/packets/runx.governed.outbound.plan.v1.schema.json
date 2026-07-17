@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.runx.ai/runx/governed_outbound/plan/v1.json",
+  "x-runx-packet-id": "runx.governed_outbound.plan.v1",
+  "x-runx-generated-from": "skills/governed-outbound/X.yaml#root.runners.governed-outbound.graph.steps.4",
+  "type": "object",
+  "required": [
+    "outbound_plan"
+  ],
+  "properties": {
+    "outbound_plan": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

@@ -1,4 +1,4 @@
-name: weather-forecast-packet
+name: invented-period-stops
 kind: skill
 target: ..
 runner: normalize
@@ -8,7 +8,6 @@ inputs:
   purpose: outdoor product demo planning
   forecast_evidence:
     provider: nws
-    gridpoint: LWX/97,71
     generated_at: 2026-06-09T00:00:00Z
     source_refs:
       - gridpoints/LWX/97,71/forecast
@@ -16,7 +15,6 @@ inputs:
     periods:
       - name: Tomorrow
         shortForecast: Chance Showers
-        windSpeed: 8 mph
 caller:
   answers:
     agent_task.weather-forecast-interpret.output:
@@ -25,24 +23,20 @@ caller:
         location: Washington Monument
         horizon: tomorrow
         forecast_packet:
-          summary: NWS evidence indicates possible showers during the planning horizon.
+          summary: The following week will be sunny.
           periods:
-            - name: Tomorrow
-              forecast: Chance Showers
-              wind: 8 mph
-          hazards:
-            - rain could affect an outdoor demo
-          confidence: medium
+            - name: Next Week
+              forecast: Sunny
+          hazards: []
+          confidence: high
           generated_at: 2026-06-09T00:00:00Z
         provider_evidence:
           provider: nws
           source_refs:
             - gridpoints/LWX/97,71/forecast
           receipt_refs: []
-        safety_notes:
-          - Not for emergency, aviation, maritime, or life-safety decisions.
-        stop_conditions:
-          - Do not reschedule or notify attendees without a downstream action gate.
+        safety_notes: []
+        stop_conditions: []
         receipt_notes:
           authority: context-only
           mutation: false
@@ -54,9 +48,12 @@ expect:
   step_outputs:
     validate:
       subset:
-        decision: ready
+        decision: needs_more_evidence
         location: Washington Monument
         horizon: tomorrow
+        forecast_packet:
+          periods: []
+          confidence: not_available
         provider_evidence:
           provider: nws
           source_refs:
@@ -69,5 +66,5 @@ expect:
     schema: runx.receipt.v1
 metadata:
   public_skill: weather-forecast
-  source_case: weather-forecast-packet
+  source_case: invented-period-stops
   source: skills-fixture
