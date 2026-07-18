@@ -1,0 +1,91 @@
+{
+  "note": "Snapshot of the first 12 rows of the U.S. Treasury DTS operating-cash statement for 2026-07-16, the real source the clean harness case fetches live at runtime. Offline reference only; the skill fetches the full live statement.",
+  "source": "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/deposits_withdrawals_operating_cash",
+  "record_date": "2026-07-16",
+  "rows": [
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Withdrawals",
+      "transaction_catg": "DHS - Customs & Border Protection (CBP)",
+      "transaction_today_amt": "317"
+    },
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Deposits",
+      "transaction_catg": "DHS - Customs Duties, Taxes, and Fees",
+      "transaction_today_amt": "310"
+    },
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Deposits",
+      "transaction_catg": "DHS - Fed Emergency Mgmt Agency (FEMA)",
+      "transaction_today_amt": "15"
+    },
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Withdrawals",
+      "transaction_catg": "DHS - Fed Emergency Mgmt Agency (FEMA)",
+      "transaction_today_amt": "298"
+    },
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Deposits",
+      "transaction_catg": "DHS - Seized Assets",
+      "transaction_today_amt": "1"
+    },
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Deposits",
+      "transaction_catg": "DHS - Transportation Security Admn (TSA)",
+      "transaction_today_amt": "2"
+    },
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Withdrawals",
+      "transaction_catg": "DHS - Transportation Security Admn (TSA)",
+      "transaction_today_amt": "3"
+    },
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Deposits",
+      "transaction_catg": "DOI - Fish and Wildlife and Parks",
+      "transaction_today_amt": "5"
+    },
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Withdrawals",
+      "transaction_catg": "DOI - Fish and Wildlife and Parks",
+      "transaction_today_amt": "18"
+    },
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Deposits",
+      "transaction_catg": "DOI - Gas and Oil Lease Sales Proceeds",
+      "transaction_today_amt": "8"
+    },
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Deposits",
+      "transaction_catg": "DOI - Land and Minerals Management",
+      "transaction_today_amt": "57"
+    },
+    {
+      "record_date": "2026-07-16",
+      "account_type": "Treasury General Account (TGA)",
+      "transaction_type": "Withdrawals",
+      "transaction_catg": "DOI - Land and Minerals Management",
+      "transaction_today_amt": "22"
+    }
+  ]
+}

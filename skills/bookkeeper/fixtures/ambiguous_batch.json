@@ -1,0 +1,6 @@
+[
+  {"description": "Miscellaneous vendor settlement 4471", "type": "withdrawal", "amount": 120},
+  {"description": "Unknown counterparty adjustment", "type": "deposit", "amount": 90},
+  {"description": "Sundry clearing entry", "type": "withdrawal", "amount": 55},
+  {"description": "Unreconciled suspense item", "type": "deposit", "amount": 210}
+]

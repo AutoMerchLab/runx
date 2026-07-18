@@ -1,0 +1,17 @@
+{
+  "status": "passed",
+  "case_count": 3,
+  "assertion_error_count": 0,
+  "assertion_errors": [],
+  "case_names": [
+    "bookkeeper-clean-batch-sealed",
+    "bookkeeper-ambiguous-needs-review",
+    "bookkeeper-booking-refused"
+  ],
+  "receipt_ids": [
+    "sha256:78b3cb9a11f831b13904332e3e72105b03735608a3bd1875b0d80f770850f199",
+    "sha256:d82a2bb5f466926fa2063ee84483ad6e99c4a4601b789ba5699b233b6ea05e1d",
+    "sha256:7e98b644330e4c7b61fe89a29aafae4ccfb43649ecff863b99145535a815fc73"
+  ],
+  "graph_case_count": 1
+}

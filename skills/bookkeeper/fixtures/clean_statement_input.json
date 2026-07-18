@@ -1,0 +1,5 @@
+{
+  "statement_url": "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/deposits_withdrawals_operating_cash?fields=record_date,account_type,transaction_type,transaction_catg,transaction_today_amt&sort=transaction_catg&page[size]=500",
+  "statement_date": "2026-07-16",
+  "prior_period": { "opening_balance": 800000, "prior_net": 12000 }
+}
