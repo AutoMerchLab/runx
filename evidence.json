@@ -1,0 +1,336 @@
+{
+  "summary": "Evidence packet for the runx bookkeeper skill (automerchlab/bookkeeper@1.0.2). The skill reads a transaction statement from a REAL source at runtime (a live HTTPS web-fetch of the U.S. Treasury Fiscal Data DTS operating-cash statement for 2026-07-16), categorizes every transaction to an existing account in chart_of_accounts with a confidence and a reason and never invents a GL account, flags anomalies, and emits a read-only reconciliation{matched, unmatched} which it seals as an append_event audit record (bookkeeping_reconciliation aggregate) - real source read AND a consumed governed effect in one run. A post-publish dogfood of the PUBLISHED graph package (registry_source=remote, version=1.0.2) read 180 live statement lines, categorized 173 to GL accounts and left 7 as flagged anomalies (never booked to an invented account), reconciled matched count=173 amount=569963 against unmatched count=7, and sealed event 8f9ccb1edfef121df79aa70ac9a3ed25a8d3729564f9e7bbca1b529c4238f464; the sealed runx.receipt.v1 passes runx verify with a production signature. source_url, X.yaml, SKILL.md and verification.json resolve at a single source revision (commit a8b7a396d13251261589fb510f8e279ae29b3342); this evidence packet and report are its direct child. The committed skill files are the files published as automerchlab/bookkeeper@1.0.2, and the dogfood ran that published package from the remote registry, not a local path. It books nothing to a live ledger (ledger_mutation_performed=false).",
+  "dogfood": {
+    "package": "automerchlab/bookkeeper@1.0.2",
+    "input": {
+      "statement_url": "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/deposits_withdrawals_operating_cash?fields=record_date,account_type,transaction_type,transaction_catg,transaction_today_amt&sort=transaction_catg&page[size]=500",
+      "statement_date": "2026-07-16",
+      "prior_period": {
+        "opening_balance": 800000,
+        "prior_net": 12000
+      }
+    },
+    "command": "runx skill automerchlab/bookkeeper@1.0.2 bookkeep --registry https://api.runx.ai -j -i \"statement_url=https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/deposits_withdrawals_operating_cash?fields=record_date,account_type,transaction_type,transaction_catg,transaction_today_amt&sort=transaction_catg&page[size]=500\" -i statement_date=2026-07-16 --input-json prior_period='{\"opening_balance\": 800000, \"prior_net\": 12000}' -R ./receipts",
+    "receipt_ref": "runx:receipt:sha256:4f70d13a66e231ebcff413498d74d667de8728dda2fe69351123991c25e78ce7",
+    "verify_verdict": "valid",
+    "output": {
+      "verdict": "reconciled_with_exceptions",
+      "statement_date": "2026-07-16",
+      "source_read": {
+        "ref": "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/deposits_withdrawals_operating_cash?fields=record_date,account_type,transaction_type,transaction_catg,transaction_today_amt&sort=transaction_catg&page[size]=500&filter=record_date:eq:2026-07-16",
+        "kind": "runtime-web-fetch",
+        "records_read": 180
+      },
+      "transactions_read": 180,
+      "categorized_count": 173,
+      "categorized_sample": [
+        {
+          "line": 0,
+          "date": "2026-07-16",
+          "description": "DHS - Customs & Border Protection (CBP)",
+          "amount": 317,
+          "direction": "debit",
+          "account": {
+            "code": "5020",
+            "name": "Agency Operating Payments",
+            "type": "expense"
+          },
+          "confidence": 0.74,
+          "reason": "matched keyword \"dhs\" in \"DHS - Customs & Border Protection (CBP)\" -> 5020 Agency Operating Payments (debit)"
+        },
+        {
+          "line": 1,
+          "date": "2026-07-16",
+          "description": "DHS - Customs Duties, Taxes, and Fees",
+          "amount": 310,
+          "direction": "credit",
+          "account": {
+            "code": "4015",
+            "name": "Customs & Border Receipts",
+            "type": "revenue"
+          },
+          "confidence": 0.84,
+          "reason": "matched keyword \"customs duties\" in \"DHS - Customs Duties, Taxes, and Fees\" -> 4015 Customs & Border Receipts (credit)"
+        },
+        {
+          "line": 2,
+          "date": "2026-07-16",
+          "description": "DHS - Fed Emergency Mgmt Agency (FEMA)",
+          "amount": 15,
+          "direction": "credit",
+          "account": {
+            "code": "4020",
+            "name": "Agency Program Receipts",
+            "type": "revenue"
+          },
+          "confidence": 0.98,
+          "reason": "matched keyword \"emergency mgmt\" in \"DHS - Fed Emergency Mgmt Agency (FEMA)\" -> 4020 Agency Program Receipts (credit)"
+        }
+      ],
+      "anomalies": [
+        {
+          "type": "unmapped",
+          "line": 15,
+          "description": "DOL - Pension Benefit Guaranty Corp.",
+          "direction": "debit",
+          "reason": "no chart_of_accounts account on the matching balance side has a keyword for this line; left unmatched rather than booked to an invented account"
+        },
+        {
+          "type": "unmapped",
+          "line": 126,
+          "description": "RRB - Unemployment Insurance",
+          "direction": "credit",
+          "reason": "no chart_of_accounts account on the matching balance side has a keyword for this line; left unmatched rather than booked to an invented account"
+        },
+        {
+          "type": "unmapped",
+          "line": 129,
+          "description": "SSA - Supplemental Security Income",
+          "direction": "credit",
+          "reason": "no chart_of_accounts account on the matching balance side has a keyword for this line; left unmatched rather than booked to an invented account"
+        },
+        {
+          "type": "unmapped",
+          "line": 173,
+          "description": "Unclassified",
+          "direction": "debit",
+          "reason": "no chart_of_accounts account on the matching balance side has a keyword for this line; left unmatched rather than booked to an invented account"
+        },
+        {
+          "type": "unmapped",
+          "line": 174,
+          "description": "Unclassified - Deposits",
+          "direction": "credit",
+          "reason": "no chart_of_accounts account on the matching balance side has a keyword for this line; left unmatched rather than booked to an invented account"
+        },
+        {
+          "type": "unmapped",
+          "line": 178,
+          "description": "null",
+          "direction": "credit",
+          "reason": "no chart_of_accounts account on the matching balance side has a keyword for this line; left unmatched rather than booked to an invented account"
+        },
+        {
+          "type": "unmapped",
+          "line": 179,
+          "description": "null",
+          "direction": "debit",
+          "reason": "no chart_of_accounts account on the matching balance side has a keyword for this line; left unmatched rather than booked to an invented account"
+        }
+      ],
+      "reconciliation": {
+        "matched": {
+          "count": 173,
+          "amount": 569963,
+          "credits": 298513,
+          "debits": 271450
+        },
+        "unmatched": {
+          "count": 7,
+          "amount": 571053,
+          "lines": [
+            15,
+            126,
+            129,
+            173,
+            174,
+            178,
+            179
+          ]
+        },
+        "net_cash_movement": 27063,
+        "prior_period": {
+          "opening_balance": 800000,
+          "prior_net": 12000,
+          "variance_vs_prior_net": 15063,
+          "closing_balance": 827063
+        },
+        "balanced": false
+      },
+      "append_event": {
+        "verdict": "reconciled_with_exceptions",
+        "appended": true,
+        "sealed_event_id": "8f9ccb1edfef121df79aa70ac9a3ed25a8d3729564f9e7bbca1b529c4238f464",
+        "aggregate": "bookkeeping_reconciliation",
+        "transport": "data-store append_event (bookkeeping_reconciliation)",
+        "ledger_mutation_performed": false
+      }
+    },
+    "harness_cases": [
+      {
+        "name": "bookkeeper-clean-batch-sealed",
+        "status": "sealed"
+      },
+      {
+        "name": "bookkeeper-ambiguous-needs-review",
+        "status": "needs_review (sealed refusal)"
+      },
+      {
+        "name": "bookkeeper-booking-refused",
+        "status": "refused (sealed refusal)"
+      }
+    ]
+  },
+  "observations": [
+    {
+      "type": "runx_version",
+      "value": "runx-cli 0.6.14",
+      "detail": "Exact runx --version output; publish/install/dogfood/verify were run with this binary (>= 0.6.14 floor)."
+    },
+    {
+      "type": "publisher_owner",
+      "value": "automerchlab",
+      "detail": "Publisher owner of the skill; the verified claimant GitHub account, which stars runxhq/runx."
+    },
+    {
+      "type": "package_name",
+      "value": "bookkeeper",
+      "detail": "Exact published package name (no near-name or rename)."
+    },
+    {
+      "type": "version",
+      "value": "1.0.2",
+      "detail": "Published package version; X.yaml declares the same version (asserted by the build script)."
+    },
+    {
+      "type": "registry_ref",
+      "value": "automerchlab/bookkeeper@1.0.2",
+      "detail": "Fully qualified registry reference; runx registry read automerchlab/bookkeeper@1.0.2 --json resolves the published metadata and digests."
+    },
+    {
+      "type": "public_url",
+      "value": "https://runx.ai/x/automerchlab/bookkeeper@1.0.2",
+      "detail": "Live registry listing / canonical adoption page."
+    },
+    {
+      "type": "pr_url",
+      "value": "https://github.com/runxhq/runx/pull/346",
+      "detail": "Public PR against runxhq/runx containing the full package: X.yaml, SKILL.md, src/ runners, build_x.py, fixtures, harness evidence, and post-publish dogfood receipts."
+    },
+    {
+      "type": "source_url",
+      "value": "https://github.com/automerchlab/runx/tree/a8b7a396d13251261589fb510f8e279ae29b3342",
+      "detail": "Public source/provenance revision (single source revision)."
+    },
+    {
+      "type": "raw_x_yaml",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/a8b7a396d13251261589fb510f8e279ae29b3342/skills/bookkeeper/X.yaml",
+      "detail": "Raw X.yaml at the source revision (PR head lineage)."
+    },
+    {
+      "type": "raw_skill_md",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/a8b7a396d13251261589fb510f8e279ae29b3342/skills/bookkeeper/SKILL.md",
+      "detail": "Raw SKILL.md at the source revision (PR head lineage)."
+    },
+    {
+      "type": "verification_json",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/a8b7a396d13251261589fb510f8e279ae29b3342/verification.json",
+      "detail": "Raw runx verify verdict at the source revision."
+    },
+    {
+      "type": "publish_method",
+      "value": "runx login --provider github --for publish, then runx registry publish ./skills/bookkeeper/SKILL.md --registry https://api.runx.ai --version 1.0.2",
+      "detail": "Authenticate and publish commands (purpose-scoped publish credential; no tokens or secrets appear in any artifact)."
+    },
+    {
+      "type": "install_command",
+      "value": "runx add automerchlab/bookkeeper@1.0.2 --registry https://api.runx.ai",
+      "detail": "Clean install (verified: source=remote, status=installed, digest sha256:0be65d28c3fed29d4c18b71d799cb5b27bc5e12fcbd56cee2aa7875a676081b4)."
+    },
+    {
+      "type": "harness_case_names",
+      "value": "bookkeeper-clean-batch-sealed (sealed), bookkeeper-ambiguous-needs-review (needs_review (sealed refusal)), bookkeeper-booking-refused (refused (sealed refusal))",
+      "detail": "Harness case names with status: one sealed case where a clean transactions[] batch yields categorized[], anomalies[], and reconciliation, sealed with an append_event (deterministic and egress-free so it seals identically wherever the harness runs; the live web-fetch of the real Treasury statement is exercised by the dogfood); one needs_review case where an unmappable batch exceeds the review threshold (sealed refusal); one refused case where book=true engages the read-only refusal."
+    },
+    {
+      "type": "hosted_harness_status",
+      "value": "WSL Linux local `runx harness ./skills/bookkeeper` passed 3/3 cases with 0 assertion errors (bookkeeper-clean-batch-sealed (sealed), bookkeeper-ambiguous-needs-review (needs_review (sealed refusal)), bookkeeper-booking-refused (refused (sealed refusal))). All three harness cases are deterministic and egress-free (the clean case categorizes an inline transactions[] batch; the live web-fetch is exercised only by the dogfood), so they seal identically wherever the harness runs. The committed skill files are the files that were published (same content digest sha256:0be65d28c3fed29d4c18b71d799cb5b27bc5e12fcbd56cee2aa7875a676081b4), so the reviewer's hosted registry harness runs the same cases. Environment: WSL Linux local + remote registry install.",
+      "detail": "Harness status with explicit environment labeling (WSL local; published digest identical to the reviewer's hosted target)."
+    },
+    {
+      "type": "dogfood_command",
+      "value": "runx skill automerchlab/bookkeeper@1.0.2 bookkeep --registry https://api.runx.ai -j -i \"statement_url=https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/deposits_withdrawals_operating_cash?fields=record_date,account_type,transaction_type,transaction_catg,transaction_today_amt&sort=transaction_catg&page[size]=500\" -i statement_date=2026-07-16 --input-json prior_period='{\"opening_balance\": 800000, \"prior_net\": 12000}' -R ./receipts",
+      "detail": "Exact post-publish dogfood command (published package from the remote registry, not a local path)."
+    },
+    {
+      "type": "receipt_ref",
+      "value": "runx:receipt:sha256:4f70d13a66e231ebcff413498d74d667de8728dda2fe69351123991c25e78ce7",
+      "detail": "Sealed graph receipt id from the post-publish dogfood run of automerchlab/bookkeeper@1.0.2 - not a harness fixture seal (harness receipts are separate, under skills/bookkeeper/harness/receipts/)."
+    },
+    {
+      "type": "runx_verify_verdict",
+      "value": "valid=True, signature_mode=production, signature_status=valid, digest=valid, content_address=valid",
+      "detail": "runx verify --receipt dogfood_receipt.json --json verdict for the dogfood graph receipt."
+    },
+    {
+      "type": "registry_provenance",
+      "value": "registry_source=remote https://api.runx.ai, skill_id=automerchlab/bookkeeper, version=1.0.2, digest=sha256:0be65d28c3fed29d4c18b71d799cb5b27bc5e12fcbd56cee2aa7875a676081b4, trust_state=trusted, trust_tier=community",
+      "detail": "Receipt registry provenance: the dogfood resolved the PUBLISHED package from the remote registry at the exact published version (same published package version)."
+    },
+    {
+      "type": "source_read",
+      "value": "https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/deposits_withdrawals_operating_cash?fields=record_date,account_type,transaction_type,transaction_catg,transaction_today_amt&sort=transaction_catg&page[size]=500&filter=record_date:eq:2026-07-16 (kind=runtime-web-fetch, records_read=180)",
+      "detail": "The statement was read from a real source at runtime via a live HTTPS web-fetch of the U.S. Treasury DTS operating-cash statement, not a hand-pasted fixture."
+    },
+    {
+      "type": "verdict",
+      "value": "reconciled_with_exceptions",
+      "detail": "Reconciliation verdict for the dogfood statement (reconciled_with_exceptions = clean reconciliation with flagged anomalies)."
+    },
+    {
+      "type": "statement_date",
+      "value": "2026-07-16",
+      "detail": "Immutable statement date pinned for the dogfood, so the run reconciles reproducibly."
+    },
+    {
+      "type": "categorized_count",
+      "value": "173",
+      "detail": "Transactions categorized to an existing GL account, each with a confidence and a reason naming the matched keyword and account; a receipt is credit, a payment is debit."
+    },
+    {
+      "type": "anomaly_count",
+      "value": "7",
+      "detail": "Anomalies flagged (unmapped lines with no chart_of_accounts keyword on the matching side, e.g. Unclassified / null total rows); these are left unmatched rather than booked to an invented account: [{\"type\": \"unmapped\", \"description\": \"DOL - Pension Benefit Guaranty Corp.\"}, {\"type\": \"unmapped\", \"description\": \"RRB - Unemployment Insurance\"}, {\"type\": \"unmapped\", \"description\": \"SSA - Supplemental Security Income\"}, {\"type\": \"unmapped\", \"description\": \"Unclassified\"}, {\"type\": \"unmapped\", \"description\": \"Unclassified - Deposits\"}, {\"type\": \"unmapped\", \"description\": \"null\"}, {\"type\": \"unmapped\", \"description\": \"null\"}]"
+    },
+    {
+      "type": "reconciliation_totals",
+      "value": "matched: count=173 amount=569963 credits=298513 debits=271450; unmatched: count=7 amount=571053 lines=[15, 126, 129, 173, 174, 178, 179]; net_cash_movement=27063; balanced=False",
+      "detail": "Read-only reconciliation of matched vs unmatched; no balance is posted."
+    },
+    {
+      "type": "prior_period_reconciliation",
+      "value": "{\"opening_balance\": 800000, \"prior_net\": 12000, \"variance_vs_prior_net\": 15063, \"closing_balance\": 827063}",
+      "detail": "Prior-period reconciliation against the supplied baseline: variance vs prior_net and closing_balance; read-only, no posting."
+    },
+    {
+      "type": "needs_review_reason",
+      "value": "The bookkeeper-ambiguous-needs-review harness case supplies 4 unmappable lines (Miscellaneous vendor settlement, Unknown counterparty adjustment, Sundry clearing entry, Unreconciled suspense item); the ambiguous share (100%) exceeds review_threshold (40%) so the skill refuses with verdict needs_review and returns a review_queue instead of guessing accounts.",
+      "detail": "The needs_review path is driven by genuinely ambiguous/unmappable transactions, sealed as a refusal receipt."
+    },
+    {
+      "type": "append_event",
+      "value": "appended=True, sealed_event_id=8f9ccb1edfef121df79aa70ac9a3ed25a8d3729564f9e7bbca1b529c4238f464, aggregate=bookkeeping_reconciliation, transport=data-store append_event (bookkeeping_reconciliation), ledger_mutation_performed=False",
+      "detail": "The transport step consumed the reconciliation and sealed it as one append_event onto a governed audit aggregate - a real consumed effect, not a console echo; no live general-ledger balance was posted (read-only contract)."
+    },
+    {
+      "type": "ledger_mutation_performed",
+      "value": "false",
+      "detail": "The reconciliation is a read-only artifact; the skill performs no ledger mutation (confirmed in both the reconcile output and the append_event audit record)."
+    },
+    {
+      "type": "step_receipts",
+      "value": "[\"sha256:57c16c439ec200a16e608f877e880b66fcf151c0e15d7f4af7ccfb284d58fa2c\", \"sha256:1801e58788997941abb8c2d20738502aa35f2b97791bd14bfab35545b18c071a\"]",
+      "detail": "The graph sealed two child step receipts (reconcile, transport) linked from the parent graph receipt sha256:4f70d13a66e231ebcff413498d74d667de8728dda2fe69351123991c25e78ce7."
+    },
+    {
+      "type": "receipt_id",
+      "value": "sha256:4f70d13a66e231ebcff413498d74d667de8728dda2fe69351123991c25e78ce7",
+      "detail": "Sealed graph receipt id of the post-publish dogfood run (same id as receipt_ref)."
+    },
+    {
+      "type": "how_to_use",
+      "value": "Install: runx add automerchlab/bookkeeper@1.0.2 --registry https://api.runx.ai. Run: runx skill automerchlab/bookkeeper@1.0.2 bookkeep --registry https://api.runx.ai -j -i \"statement_url=https://api.fiscaldata.treasury.gov/services/api/fiscal_service/v1/accounting/dts/deposits_withdrawals_operating_cash?fields=record_date,account_type,transaction_type,transaction_catg,transaction_today_amt&sort=transaction_catg&page[size]=500\" -i statement_date=2026-07-16 --input-json prior_period='{\"opening_balance\": 800000, \"prior_net\": 12000}' -R ./receipts. Verify: runx verify --receipt-dir ./receipts --json (expects valid=true, signature_mode=production). No private context: the skill is public on the registry, the source is public in the PR, the statement source is a public U.S. Treasury API, and all inputs are documented in SKILL.md.",
+      "detail": "End-to-end install/run/verify for a new user without private context."
+    }
+  ]
+}
