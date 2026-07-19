@@ -291,6 +291,35 @@ fn exports_default_runner_inputs_when_skill_frontmatter_has_none()
 }
 
 #[test]
+fn exports_multi_runner_skill_without_default_with_explicit_selection()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = ExportFixture::new("runx-export-multi-runner-selection")?;
+    fixture.write_multi_runner_skill_without_default("frantic-operator")?;
+
+    run_export_command(
+        &ExportPlan {
+            target: Target::Codex,
+            refs: Vec::new(),
+            project: false,
+            json: false,
+        },
+        &fixture.project,
+        &fixture.env,
+    )?;
+
+    let shim = fixture.read_home_file(".codex/skills/frantic-operator/SKILL.md")?;
+    assert!(shim.contains("This skill has no generic default action."));
+    assert!(shim.contains("- `payments`"));
+    assert!(shim.contains("- `payout_preflight`"));
+    assert!(shim.contains("skill inspect"));
+    assert!(shim.contains("\"<runner>\""));
+    assert!(shim.contains("Use the local launcher required by the owning `SKILL.md`"));
+    assert!(!shim.contains("\n+  --json"));
+    assert!(!shim.contains("Inputs: none."));
+    Ok(())
+}
+
+#[test]
 fn explicit_ref_exports_official_source_skill() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = ExportFixture::new("runx-export-official-ref")?;
     let official_root = fixture.write_official_skill_with_runner_inputs("send-as")?;
@@ -545,6 +574,27 @@ impl ExportFixture {
     fn write_skill_with_runner_inputs(&self, name: &str) -> Result<(), Box<dyn std::error::Error>> {
         let dir = self.project.join("skills").join(name);
         Self::write_runner_input_skill_at(&dir, name)
+    }
+
+    fn write_multi_runner_skill_without_default(
+        &self,
+        name: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let dir = self.project.join("skills").join(name);
+        fs::create_dir_all(&dir)?;
+        fs::write(
+            dir.join("SKILL.md"),
+            format!(
+                "---\nname: {name}\ndescription: Operate one bounded board action.\n---\n# {name}\n"
+            ),
+        )?;
+        fs::write(
+            dir.join("X.yaml"),
+            format!(
+                "skill: {name}\ncatalog:\n  kind: skill\n  audience: operator\n  visibility: public\n  role: canonical\nrunners:\n  payments:\n    type: graph\n    graph:\n      name: payments\n      steps:\n        - id: read\n          tool: data.compare\n  payout_preflight:\n    type: graph\n    inputs:\n      claim:\n        type: string\n        required: true\n    graph:\n      name: payout-preflight\n      steps:\n        - id: read\n          tool: data.compare\n"
+            ),
+        )?;
+        Ok(())
     }
 
     fn write_namespaced_skill(

@@ -67,14 +67,22 @@ fn render_shim(
 If any `RUNX_RECEIPT_SIGN_*` variable is present, the complete signer tuple must be present or \
 runx fails closed. Never invent, copy, or print signing keys.\n\n",
     );
-    output.push_str("```bash\n");
-    output.push_str(&render_command(
-        command_target,
-        &skill.inputs,
-        &display_path(runx_bin),
-    ));
-    output.push_str("\n```\n\n");
-    output.push_str(&render_inputs(&skill.inputs));
+    if skill.requires_runner_selection {
+        output.push_str(&render_runner_selection(
+            command_target,
+            &skill.runner_names,
+            &display_path(runx_bin),
+        ));
+    } else {
+        output.push_str("```bash\n");
+        output.push_str(&render_command(
+            command_target,
+            &skill.inputs,
+            &display_path(runx_bin),
+        ));
+        output.push_str("\n```\n\n");
+        output.push_str(&render_inputs(&skill.inputs));
+    }
     output.push('\n');
     output.push_str(&render_continuation(&display_path(runx_bin)));
     output.push_str(&format!(
@@ -148,6 +156,25 @@ fn render_inputs(inputs: &BTreeMap<String, RunxExportSkillInput>) -> String {
         lines.push(format!("- {name} ({requirement}) - {description}"));
     }
     format!("{}\n", lines.join("\n"))
+}
+
+fn render_runner_selection(
+    command_target: &str,
+    runner_names: &[String],
+    runx_bin: &str,
+) -> String {
+    let runners = runner_names
+        .iter()
+        .map(|name| format!("- `{name}`"))
+        .collect::<Vec<_>>()
+        .join("\n");
+    format!(
+        "This skill has no generic default action. Select the one runner that owns the request; never substitute another skill or guess a mutation. Available runners:\n\n{runners}\n\nRead the owning `SKILL.md`, then inspect the selected runner's exact typed contract before execution:\n\n```bash\n{} skill inspect {} \"<runner>\" --json\n```\n\nUse the local launcher required by the owning `SKILL.md`; it may load signer and credential context that raw runx does not. Only when the source skill declares no launcher, run the exact runner directly with its declared inputs:\n\n```bash\n{} skill {} \"<runner>\" \\\n  --json\n```\n\nRunner inputs come from the inspect result; do not infer missing targets, approvals, credentials, or payment references.\n",
+        shell_quote(runx_bin),
+        shell_quote(command_target),
+        shell_quote(runx_bin),
+        shell_quote(command_target),
+    )
 }
 
 fn render_continuation(runx_bin: &str) -> String {

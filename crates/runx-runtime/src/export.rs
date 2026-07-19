@@ -16,6 +16,8 @@ pub struct RunxExportSkill {
     pub name: String,
     pub description: String,
     pub inputs: BTreeMap<String, RunxExportSkillInput>,
+    pub runner_names: Vec<String>,
+    pub requires_runner_selection: bool,
     pub abs_dir: PathBuf,
     pub mode: RunxExportMode,
 }
@@ -94,6 +96,13 @@ pub fn load_export_skills_with_options(
         let skill = read_validated_skill(&skill_dir)?;
         let mode = export_mode(&skill);
         let inputs = export_skill_inputs(&skill, manifest.as_ref());
+        let runner_names = manifest
+            .as_ref()
+            .map(|manifest| manifest.runners.keys().cloned().collect::<Vec<_>>())
+            .unwrap_or_default();
+        let requires_runner_selection = manifest.as_ref().is_some_and(|manifest| {
+            manifest.runners.len() > 1 && default_runner(Some(manifest)).is_none()
+        });
         let export_name = export_skill_name(&skill.name)?;
         validate_export_skill_inputs(&inputs)?;
         skills.push(RunxExportSkill {
@@ -113,6 +122,8 @@ pub fn load_export_skills_with_options(
                     )
                 })
                 .collect(),
+            runner_names,
+            requires_runner_selection,
             abs_dir: skill_dir,
             mode,
         });
