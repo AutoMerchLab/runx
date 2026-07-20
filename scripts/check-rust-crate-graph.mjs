@@ -252,8 +252,8 @@ function checkPublishingReadiness(crateName, manifest) {
       findings.push(`${crateName}/Cargo.toml must remain publishable so the crates.io package can be reserved or updated`);
     }
   }
-  if (crateName === "runx-cli" && hasPublishFalse) {
-    findings.push("runx-cli should remain publishable because it is the usable launcher package");
+  if (crateName === "runx-cli" && !hasPublishFalse) {
+    findings.push("runx-cli must remain unpublished until its internal Rust dependencies have a coordinated library release");
   }
 }
 

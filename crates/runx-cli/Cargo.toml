@@ -6,9 +6,10 @@ name = "runx-cli"
 # Kept in lockstep with packages/cli/package.json (the npm distribution line).
 # The release workflow stamps this from the npm manifest before building.
 version = "0.7.2"
+publish = false
 edition.workspace = true
 rust-version.workspace = true
-description = "Cargo-installed launcher for the runx governed agent workflow CLI."
+description = "Native launcher for the runx governed agent workflow CLI."
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true

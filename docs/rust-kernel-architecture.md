@@ -574,8 +574,10 @@ canonical graph skills; legacy `payment-*` aliases are not restored.
 Cargo placeholders are also a crates.io name reservation strategy. The policy
 is explicit:
 
-- `runx-cli` publishes as the launcher package because it installs a useful
-  `runx` binary today. It is live at `0.1.0`.
+- `runx-cli` was reserved at `0.1.0`, but current CLI releases do not publish it.
+  It depends on the internal Rust graph and may return to crates.io only through
+  a coordinated library release; npm and GitHub archives are the supported CLI
+  channels today.
 - Placeholder crates publish as explicit reservation releases at `0.0.1`.
   `runx-contracts`, `runx-receipts`, `runx-runtime`, and `runx-sdk` are live
   at `0.0.1`.
@@ -594,8 +596,8 @@ is explicit:
 - Placeholder publishing is governed by `rust-placeholder-crates-publish`.
 - The publish order must follow dependency direction: `runx-contracts`,
   `runx-parser`, `runx-receipts`, `runx-runtime`, `runx-sdk`, with
-  `runx-core` versioned independently as parity lands and `runx-cli`
-  independent as the usable launcher package.
+  `runx-core` versioned independently as parity lands. `runx-cli` follows only
+  after the internal versions it consumes are available from the registry.
 - The first non-placeholder release of each crate requires its own
   fixture-backed parity spec.
 

@@ -23,8 +23,10 @@ with a warning instead of blocking the npm/GitHub release.
 - npm: `@runxhq/cli@X.Y.Z` (+ `@runxhq/cli-<platform>@X.Y.Z`)
 - Homebrew, Scoop, winget, AUR, Docker (GHCR): `X.Y.Z` when their channel
   credentials are configured
-- crates.io: `runx-cli X.Y.Z` (`cargo install runx-cli`) when the crate channel
-  is configured
+
+The crates.io package is not a CLI release channel. `runx-cli` depends on the
+internal Rust crate graph, whose versions move under a separate, explicit
+library release. A CLI tag must not publish those libraries implicitly.
 
 `runx --version` reports `CARGO_PKG_VERSION`, so the crate and npm versions are
 stamped from the tag at build time and the number is truthful regardless of how
@@ -45,10 +47,9 @@ pnpm exec tsx scripts/set-release-version.ts --check X.Y.Z  # CI drift guard
 
 It accepts a raw `cli-vX.Y.Z` / `vX.Y.Z` tag and strips the prefix.
 
-Cargo publishing is CLI-only. The release job publishes `runx-cli` and does not
-stamp or publish internal Rust crates (`runx-core`, `runx-runtime`,
-`runx-parser`, `runx-contracts`, `runx-pay`, `runx-receipts`, `runx-sdk`, or
-`runx-contracts-derive`) unless the operator explicitly requests a separate
+CLI releases do not publish Cargo packages. `runx-cli` is stamped so the native
+binary reports the same truthful version as the npm distribution, but its
+internal Rust dependencies may be published only through a separately approved
 library-crate release. Never cut a new patch just to repair a package-manager
 manifest; repair the existing release asset, channel manifest, or workflow in
 place.
@@ -74,16 +75,15 @@ channel that downloads its archives):
    publish the Release with all archives. This is the hub.
 5. **publish-npm** — verify + publish the selector and native packages with npm
    provenance (`skip-existing`).
-6. **publish-crates** — publish `runx-cli` only.
-7. **package-managers** — build the channel input from the published checksums
+6. **package-managers** — build the channel input from the published checksums
    (`build-channel-input.mjs`), render Homebrew / Scoop / winget / AUR manifests
    (`gen-channel-manifests.ts`), verify them against the actual release archive
    contents (`check-channel-manifests.mjs`), and attach them to the Release.
-8. **publish-{homebrew,scoop,winget,aur}** — push to the owned registries when
+7. **publish-{homebrew,scoop,winget,aur}** — push to the owned registries when
    their credentials are configured; otherwise skipped with a warning. winget
    submits the validated `channels/winget/` manifest set directly; it must not
    use a generator that guesses archive nesting.
-9. **publish-docker** — multi-arch GHCR image (pulls the musl archive from the
+8. **publish-docker** — multi-arch GHCR image (pulls the musl archive from the
    Release; no Rust toolchain in the image build).
 
 GitHub Actions is deliberately disabled on the `winget-pkgs` fork. The fork only
@@ -128,7 +128,6 @@ gain channels as credentials land.
 | Secret | Channel | Required for |
 | --- | --- | --- |
 | `NPM_TOKEN` | npm | selector + native packages |
-| `CARGO_REGISTRY_TOKEN` | crates.io | `cargo install runx-cli` |
 | `HOMEBREW_TAP_TOKEN` | Homebrew | push to `runxhq/homebrew-tap` |
 | `SCOOP_BUCKET_TOKEN` | Scoop | push to `runxhq/scoop-bucket` |
 | `WINGET_TOKEN` | winget | PR to `microsoft/winget-pkgs` |
