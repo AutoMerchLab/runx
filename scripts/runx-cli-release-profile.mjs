@@ -46,7 +46,7 @@ function prepare() {
 
   run("pnpm", ["install", "--frozen-lockfile"], { timeout: 300_000 });
   run("pnpm", ["exec", "tsx", "scripts/set-release-version.ts", "--check", version]);
-  run("pnpm", ["verify:fast"], { timeout: 840_000 });
+  run("pnpm", ["verify:fast"], { cleanRunxEnvironment: true, timeout: 840_000 });
   assertCleanCheckout();
 
   emit({
@@ -230,6 +230,7 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: process.cwd(),
     encoding: "utf8",
+    env: options.cleanRunxEnvironment ? withoutRunxEnvironment() : process.env,
     maxBuffer: 16 * 1024 * 1024,
     timeout: options.timeout ?? 120_000,
   });
@@ -239,6 +240,10 @@ function run(command, args, options = {}) {
     throw new Error(`${command} ${args.join(" ")} failed${detail ? `: ${detail}` : ""}`);
   }
   return result.stdout.trim();
+}
+
+function withoutRunxEnvironment() {
+  return Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith("RUNX_")));
 }
 
 function tryRun(command, args) {
