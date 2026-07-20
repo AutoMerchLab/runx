@@ -1,14 +1,14 @@
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use runx_parser::{
     CatalogVisibility, SkillInput, SkillRunnerDefinition, SkillRunnerManifest, ValidatedSkill,
-    parse_runner_manifest_yaml, parse_skill_markdown, validate_runner_manifest, validate_skill,
 };
 
+mod discover;
 mod resolve;
 
+use discover::{discover_skill_paths, read_optional_runner_manifest, read_validated_skill};
 use resolve::resolve_skill_ref;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -93,41 +93,52 @@ pub fn load_export_skills_with_options(
         if !explicit && manifest_visibility(&manifest) == Some(CatalogVisibility::Internal) {
             continue;
         }
-        let skill = read_validated_skill(&skill_dir)?;
-        let mode = export_mode(&skill);
-        let inputs = export_skill_inputs(&skill, manifest.as_ref());
-        let runner_names = manifest
-            .as_ref()
-            .map(|manifest| manifest.runners.keys().cloned().collect::<Vec<_>>())
-            .unwrap_or_default();
-        let requires_runner_selection = manifest.as_ref().is_some_and(|manifest| {
-            manifest.runners.len() > 1 && default_runner(Some(manifest)).is_none()
-        });
-        let export_name = export_skill_name(&skill.name)?;
-        validate_export_skill_inputs(&inputs)?;
-        skills.push(RunxExportSkill {
-            name: export_name,
-            description: skill
-                .description
-                .unwrap_or_else(|| "Run this skill through runx governance.".to_owned()),
-            inputs: inputs
-                .into_iter()
-                .map(|(name, input)| {
-                    (
-                        name,
-                        RunxExportSkillInput {
-                            required: input.required,
-                            description: input.description,
-                        },
-                    )
-                })
-                .collect(),
-            runner_names,
-            requires_runner_selection,
-            abs_dir: skill_dir,
-            mode,
-        });
+        skills.push(load_export_skill(skill_dir, manifest)?);
     }
+    validate_unique_export_names(&mut skills)?;
+    Ok(skills)
+}
+
+fn load_export_skill(
+    skill_dir: PathBuf,
+    manifest: Option<SkillRunnerManifest>,
+) -> Result<RunxExportSkill, RunxExportLoadError> {
+    let skill = read_validated_skill(&skill_dir)?;
+    let mode = export_mode(&skill);
+    let inputs = export_skill_inputs(&skill, manifest.as_ref());
+    validate_export_skill_inputs(&inputs)?;
+    let runner_names = manifest
+        .as_ref()
+        .map(|manifest| manifest.runners.keys().cloned().collect())
+        .unwrap_or_default();
+    let requires_runner_selection = manifest.as_ref().is_some_and(|manifest| {
+        manifest.runners.len() > 1 && default_runner(Some(manifest)).is_none()
+    });
+    Ok(RunxExportSkill {
+        name: export_skill_name(&skill.name)?,
+        description: skill
+            .description
+            .unwrap_or_else(|| "Run this skill through runx governance.".to_owned()),
+        inputs: inputs
+            .into_iter()
+            .map(|(name, input)| {
+                (
+                    name,
+                    RunxExportSkillInput {
+                        required: input.required,
+                        description: input.description,
+                    },
+                )
+            })
+            .collect(),
+        runner_names,
+        requires_runner_selection,
+        abs_dir: skill_dir,
+        mode,
+    })
+}
+
+fn validate_unique_export_names(skills: &mut [RunxExportSkill]) -> Result<(), RunxExportLoadError> {
     skills.sort_by(|left, right| left.name.cmp(&right.name));
     for pair in skills.windows(2) {
         if pair[0].name == pair[1].name {
@@ -137,7 +148,7 @@ pub fn load_export_skills_with_options(
             )));
         }
     }
-    Ok(skills)
+    Ok(())
 }
 
 fn export_mode(skill: &ValidatedSkill) -> RunxExportMode {
@@ -242,91 +253,6 @@ fn is_reserved_skill_flag(name: &str) -> bool {
     )
 }
 
-fn discover_skill_paths(root: &Path) -> Result<Vec<PathBuf>, RunxExportLoadError> {
-    let mut paths = Vec::new();
-    if root.join("SKILL.md").exists() {
-        paths.push(canonicalize(root, "canonicalizing root skill")?);
-    }
-    let skills_root = root.join("skills");
-    discover_skill_paths_below(&skills_root, &mut paths)?;
-    paths.sort();
-    Ok(paths)
-}
-
-fn discover_skill_paths_below(
-    directory: &Path,
-    paths: &mut Vec<PathBuf>,
-) -> Result<(), RunxExportLoadError> {
-    let entries = match fs::read_dir(directory) {
-        Ok(entries) => entries,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(source) => {
-            return Err(RunxExportLoadError::Io {
-                context: format!("reading {}", display_path(directory)),
-                source,
-            });
-        }
-    };
-    let mut directories = Vec::new();
-    for entry in entries {
-        let entry = entry.map_err(|source| RunxExportLoadError::Io {
-            context: format!("reading {}", display_path(directory)),
-            source,
-        })?;
-        let file_type = entry
-            .file_type()
-            .map_err(|source| RunxExportLoadError::Io {
-                context: format!("reading file type {}", display_path(&entry.path())),
-                source,
-            })?;
-        if file_type.is_dir()
-            && !matches!(
-                entry.file_name().to_string_lossy().as_ref(),
-                ".git" | "node_modules" | "target"
-            )
-        {
-            directories.push(entry.path());
-        }
-    }
-    directories.sort();
-    for candidate in directories {
-        if candidate.join("SKILL.md").exists() {
-            paths.push(canonicalize(&candidate, "canonicalizing skill directory")?);
-        }
-        discover_skill_paths_below(&candidate, paths)?;
-    }
-    Ok(())
-}
-
-fn read_validated_skill(
-    skill_dir: &Path,
-) -> Result<runx_parser::ValidatedSkill, RunxExportLoadError> {
-    let path = skill_dir.join("SKILL.md");
-    let source = read_to_string(&path)?;
-    let raw = parse_skill_markdown(&source).map_err(|error| {
-        RunxExportLoadError::Parse(format!("parsing {}: {error}", display_path(&path)))
-    })?;
-    validate_skill(raw).map_err(|error| {
-        RunxExportLoadError::Parse(format!("validating {}: {error}", display_path(&path)))
-    })
-}
-
-fn read_optional_runner_manifest(
-    skill_dir: &Path,
-) -> Result<Option<runx_parser::SkillRunnerManifest>, RunxExportLoadError> {
-    let path = skill_dir.join("X.yaml");
-    if !path.exists() {
-        return Ok(None);
-    }
-    let source = read_to_string(&path)?;
-    let raw = parse_runner_manifest_yaml(&source).map_err(|error| {
-        RunxExportLoadError::Parse(format!("parsing {}: {error}", display_path(&path)))
-    })?;
-    validate_runner_manifest(raw).map(Some).map_err(|error| {
-        RunxExportLoadError::Parse(format!("validating {}: {error}", display_path(&path)))
-    })
-}
-
 fn manifest_visibility(
     manifest: &Option<runx_parser::SkillRunnerManifest>,
 ) -> Option<CatalogVisibility> {
@@ -334,22 +260,4 @@ fn manifest_visibility(
         .as_ref()
         .and_then(|manifest| manifest.catalog.as_ref())
         .map(|catalog| catalog.visibility)
-}
-
-fn canonicalize(path: &Path, context: &str) -> Result<PathBuf, RunxExportLoadError> {
-    fs::canonicalize(path).map_err(|source| RunxExportLoadError::Io {
-        context: format!("{context} {}", display_path(path)),
-        source,
-    })
-}
-
-fn read_to_string(path: &Path) -> Result<String, RunxExportLoadError> {
-    fs::read_to_string(path).map_err(|source| RunxExportLoadError::Io {
-        context: format!("reading {}", display_path(path)),
-        source,
-    })
-}
-
-fn display_path(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
 }
