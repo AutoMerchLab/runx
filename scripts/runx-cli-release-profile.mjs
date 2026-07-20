@@ -28,7 +28,14 @@ try {
   else if (phase === "verify") await verify();
   else fail(`unknown release phase: ${phase ?? "<missing>"}`);
 } catch (error) {
-  fail(error instanceof Error ? error.message : String(error));
+  emit({
+    status: "failed",
+    version,
+    channel,
+    commit_ref: commit,
+    checks: { failure: summarizeFailure(error) },
+  });
+  process.exitCode = 1;
 }
 
 function prepare() {
@@ -206,6 +213,11 @@ function parseJsonScalar(value) {
   } catch {
     return "";
   }
+}
+
+function summarizeFailure(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  return message.split("\n").filter(Boolean).slice(-8).join(" | ").slice(0, 1_000);
 }
 
 function requiredEnvironment(name) {
