@@ -81,3 +81,54 @@ rather than keeping a resident polling loop.
 - Any request to expose credentials, signed upload URLs, raw contact files, or
   unbounded provider responses.
 - Any claim of completion without provider readback evidence.
+
+## Agent task contracts
+
+These planning acts prepare exact downstream operations; they never call the
+provider. Every plan returns `ready`, `needs_input`, or `reject`, names blockers
+and unsupported requirements, orders the intended tool calls, identifies any
+human action, and states a truthful success checkpoint.
+
+### `send-campaign`
+
+Build one campaign plan from the objective, current account-status JSON, and
+audience brief. Distinguish a campaign from a flow or transactional message.
+Require an explicit bounded audience, compliant sender readiness, review before
+approval, and a separate confirmation before send or schedule. Do not invent
+list or segment ids and do not claim delivery from this planning runner.
+
+### `build-flow-plan`
+
+Build one event-triggered automation plan with a supported trigger and ordered
+steps. Route one-off broadcasts to `send-campaign`; never disguise them as a
+flow. Preview and creation may be planned before confirmation, but approval and
+activation must remain a separate confirmed delivery-control operation.
+
+### `send-transactional-plan`
+
+Plan exactly one email or SMS to one named recipient. Require channel-specific
+content, a stable idempotency key, dry-run validation, and confirmation before a
+real send. Reject audience or list broadcasts and route those to
+`send-campaign`.
+
+### `compose-email-plan`
+
+Return `email_design` with subject, preheader, supported section sequence,
+rationale, review/test steps, and blockers. Use the saved brand and Nitrosend's
+section model. Do not invent a raw-HTML template format; ask whether supplied
+HTML may live in a text section or be converted into supported sections.
+
+### `import-contacts-plan`
+
+Plan only consented contacts with a stable source, consent basis, bounded record
+count, channels, compliance checks, dry run, and confirmation before import.
+Refuse purchased, scraped, or brokered lists. Choose inline import only for the
+bounded inline path; use the CSV runner for larger local files, without copying
+file contents or signed URLs into the plan.
+
+### `segment-from-prose-plan`
+
+Translate the brief only through filters and predicates present in
+`filter_catalog_json`. Return a concrete `segment_request` when every condition
+is representable. Reject unsupported event history, attribution, or compound
+semantics rather than approximating them with superficially similar fields.
