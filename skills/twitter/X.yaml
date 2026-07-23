@@ -1,5 +1,5 @@
 skill: twitter
-version: "0.2.0"
+version: "0.3.2"
 catalog:
   kind: skill
   audience: public
@@ -11,7 +11,7 @@ catalog:
   execution: execute
   completion: provider_readback
   requires_adapter: true
-  approval: required
+  approval: conditional
 credentials:
   twitter-read:
     provider: twitter
@@ -46,10 +46,6 @@ runners:
         type: json
         required: false
         description: "Query parameters: user_id, q (search text), pagination_token."
-      archive_file:
-        type: string
-        required: false
-        description: Path to an X archive export file (tweets.js or following.js); when set the read is offline.
       max_items:
         type: number
         required: false
@@ -63,16 +59,134 @@ runners:
     graph:
       name: twitter-read
       steps:
-        - id: read
-          tool: twitter.read
-          scopes:
-            - twitter:read
+        - id: prepare
           inputs:
             query: "$input.query"
             params: "$input.params"
-            archive_file: "$input.archive_file"
+            source: live
             max_items: "$input.max_items"
             auth: "$input.auth"
+          run:
+            type: javascript
+            module: twitter-read.mjs
+            export: prepareRead
+            outputs:
+              twitter_read_plan: object
+        - id: request
+          tool: http.read
+          scopes:
+            - twitter:read
+            - net:http
+          inputs:
+            stop_on_error: true
+          context:
+            requests: prepare.twitter_read_plan.requests
+            allowed_hosts: prepare.twitter_read_plan.allowed_hosts
+            auth: prepare.twitter_read_plan.auth
+        - id: normalize
+          context:
+            read_plan: prepare.twitter_read_plan
+            http_execution: request.http_execution.data
+          run:
+            type: javascript
+            module: twitter-read.mjs
+            export: normalizeRead
+            outputs:
+              twitter_read_result: object
+        - id: digest
+          tool: data.digest
+          context:
+            value: normalize.twitter_read_result.items
+        - id: finalize
+          context:
+            read_result: normalize.twitter_read_result
+            digest_result: digest.digest_result.data
+          run:
+            type: javascript
+            module: twitter-read.mjs
+            export: finalizeRead
+            outputs:
+              twitter_evidence: object
+          artifacts:
+            named_emits:
+              twitter_evidence: twitter_evidence
+            packets:
+              twitter_evidence: twitter.evidence.v1
+  read-archive:
+    type: graph
+    inputs:
+      query:
+        type: string
+        required: true
+        description: "Archive query kind: posts, following, or followers."
+      archive_file:
+        type: string
+        required: true
+        description: Relative path to an X archive export file.
+      archive_base:
+        type: string
+        required: false
+        default: workspace
+        description: "Archive path base: workspace or skill."
+      max_items:
+        type: number
+        required: false
+        default: 200
+        description: Maximum items returned from the archive.
+    graph:
+      name: twitter-read-archive
+      steps:
+        - id: prepare
+          inputs:
+            query: "$input.query"
+            archive_file: "$input.archive_file"
+            source: archive
+            max_items: "$input.max_items"
+          run:
+            type: javascript
+            module: twitter-read.mjs
+            export: prepareRead
+            outputs:
+              twitter_read_plan: object
+        - id: normalize
+          scopes:
+            - fs.read
+          inputs:
+            archive_file: "$input.archive_file"
+            archive_base: "$input.archive_base"
+          context:
+            read_plan: prepare.twitter_read_plan
+          run:
+            type: javascript
+            module: twitter-read.mjs
+            export: normalizeArchivePage
+            pages:
+              path_from: archive_file
+              path_scope_from: archive_base
+              media_type: application/javascript
+              framing: json_array
+              page_bytes: 524288
+            outputs:
+              twitter_read_result: object
+        - id: digest
+          tool: data.digest
+          context:
+            value: normalize.twitter_read_result.items
+        - id: finalize
+          context:
+            read_result: normalize.twitter_read_result
+            digest_result: digest.digest_result.data
+          run:
+            type: javascript
+            module: twitter-read.mjs
+            export: finalizeRead
+            outputs:
+              twitter_evidence: object
+          artifacts:
+            named_emits:
+              twitter_evidence: twitter_evidence
+            packets:
+              twitter_evidence: twitter.evidence.v1
   plan:
     type: agent-task
     agent: builder
@@ -108,15 +222,7 @@ runners:
         required: false
         description: Extra operator guardrails.
   select:
-    type: cli-tool
-    command: node
-    args:
-      - tools/twitter/select/run.mjs
-    outputs:
-      twitter_selection: object
-    artifacts:
-      wrap_as: twitter_selection
-      packet: twitter.selection.v1
+    type: graph
     inputs:
       objective:
         type: string
@@ -126,19 +232,159 @@ runners:
         type: string
         required: true
         description: The account being operated, for example account:@handle.
+      target:
+        type: string
+        required: false
+        default: posts
+        description: "What the selection operates over: posts (tweets.js, delete) or users (following.js, unfollow)."
       archive_file:
         type: string
-        required: true
-        description: Path to an X archive export file (tweets.js).
+        required: false
+        description: Path to an X tweets.js archive export; required for target posts.
+      archive_base:
+        type: string
+        required: false
+        default: workspace
+        description: "Archive path base: workspace or skill."
+      following_file:
+        type: string
+        required: false
+        description: Path to an X following.js archive export; required for target users.
+      followers_file:
+        type: string
+        required: false
+        description: Path to an X follower.js archive export; required for the non_mutual predicate.
       predicate:
         type: json
         required: true
-        description: "Typed selection predicate: rt_of, is_retweet, text_prefix, text_contains, max_likes, max_reposts, before_year, after_year. A post must satisfy every provided field."
+        description: "Typed selection predicate. Posts: rt_of, is_retweet, text_prefix, text_contains, max_likes, max_reposts, before_year, after_year. Users: non_mutual (true), user_ids. Every supplied field must match."
       max_acts:
         type: number
         required: false
         default: 5000
         description: Cap on selected acts; a larger match set is flagged truncated.
+    graph:
+      name: twitter-select
+      steps:
+        - id: prepare
+          inputs:
+            target: "$input.target"
+            archive_file: "$input.archive_file"
+            following_file: "$input.following_file"
+            followers_file: "$input.followers_file"
+            predicate: "$input.predicate"
+          run:
+            type: javascript
+            module: twitter-selection.mjs
+            export: prepareSelection
+            outputs:
+              twitter_selection_plan: object
+        - id: read-users
+          tool: fs.read_bundle
+          scopes:
+            - fs.read
+          when:
+            field: prepare.twitter_selection_plan.target
+            equals: users
+          inputs:
+            path_scope: "$input.archive_base"
+          context:
+            paths: prepare.twitter_selection_plan.paths
+        - id: select-posts
+          scopes:
+            - fs.read
+          inputs:
+            objective: "$input.objective"
+            principal: "$input.principal"
+            predicate: "$input.predicate"
+            max_acts: "$input.max_acts"
+            archive_file: "$input.archive_file"
+            archive_base: "$input.archive_base"
+          context:
+            selection_plan: prepare.twitter_selection_plan
+          when:
+            field: prepare.twitter_selection_plan.target
+            equals: posts
+          run:
+            type: javascript
+            module: twitter-selection.mjs
+            export: selectArchivePage
+            pages:
+              path_from: archive_file
+              path_scope_from: archive_base
+              media_type: application/javascript
+              framing: json_array
+              page_bytes: 524288
+            outputs:
+              twitter_selection_draft: object
+        - id: select-users
+          inputs:
+            objective: "$input.objective"
+            principal: "$input.principal"
+            predicate: "$input.predicate"
+            max_acts: "$input.max_acts"
+          context:
+            selection_plan: prepare.twitter_selection_plan
+            file_read_bundle: read-users.file_read_bundle.data
+          when:
+            field: prepare.twitter_selection_plan.target
+            equals: users
+          run:
+            type: javascript
+            module: twitter-selection.mjs
+            export: selectUsersArchive
+            outputs:
+              twitter_selection_draft: object
+        - id: digest-posts
+          tool: data.digest
+          when:
+            field: prepare.twitter_selection_plan.target
+            equals: posts
+          context:
+            value: select-posts.twitter_selection_draft.twitter_plan
+        - id: finalize-posts
+          when:
+            field: prepare.twitter_selection_plan.target
+            equals: posts
+          context:
+            twitter_selection_draft: select-posts.twitter_selection_draft
+            digest_result: digest-posts.digest_result.data
+          run:
+            type: javascript
+            module: twitter-selection.mjs
+            export: bindSelectionDigest
+            outputs:
+              twitter_selection: object
+          artifacts:
+            named_emits:
+              twitter_selection: twitter_selection
+            packets:
+              twitter_selection: twitter.selection.v1
+        - id: digest-users
+          tool: data.digest
+          when:
+            field: prepare.twitter_selection_plan.target
+            equals: users
+          context:
+            value: select-users.twitter_selection_draft.twitter_plan
+        - id: finalize-users
+          when:
+            field: prepare.twitter_selection_plan.target
+            equals: users
+          context:
+            twitter_selection_draft: select-users.twitter_selection_draft
+            digest_result: digest-users.digest_result.data
+          run:
+            type: javascript
+            module: twitter-selection.mjs
+            export: bindSelectionDigest
+            outputs:
+              twitter_selection: object
+          artifacts:
+            named_emits:
+              twitter_selection: twitter_selection
+            packets:
+              twitter_selection: twitter.selection.v1
   execute:
     type: graph
     credential: twitter-user
@@ -151,17 +397,13 @@ runners:
         description: The twitter.plan.v1 object to execute.
       plan_digest:
         type: string
-        required: false
+        required: true
         description: Expected canonical digest of plan_json; a mismatch is a hard failure.
-      already_executed_act_ids:
-        type: json
-        required: false
-        description: Act ids confirmed executed in a prior run; skipped for idempotent re-execution. A driver folds these from the execution ledger.
       max_acts:
         type: number
         required: false
         default: 50
-        description: Per-execution cap on total acts; size this to the provider rate window for a staged bulk purge.
+        description: Requested per-execution act cap; the provider tool enforces a hard maximum of 50.
       data_source_ref:
         type: string
         required: true
@@ -169,49 +411,123 @@ runners:
       expected_version:
         type: number
         required: true
-        description: Current version of the execution stream before this batch appends; the driver reads it from the ledger.
+        description: Current durable stream version. The runner independently reads and verifies it before any provider call.
       idempotency_key:
         type: string
         required: true
-        description: Stable retry key for this batch append.
+        description: Canonical retry key twitter:<plan_digest>:v<expected_version+1>; mismatches fail before approval.
     graph:
       name: twitter-execute
       steps:
+        - id: ledger
+          skill: ../data-store
+          runner: read_events
+          inputs:
+            data_source_ref: "$input.data_source_ref"
+            resource: twitter_execution
+            aggregate_id: "$input.plan_digest"
+            limit: 1
+        - id: digest
+          tool: data.digest
+          inputs:
+            value: "$input.plan_json"
+        - id: prepare
+          inputs:
+            plan_json: "$input.plan_json"
+            plan_digest: "$input.plan_digest"
+            expected_version: "$input.expected_version"
+            idempotency_key: "$input.idempotency_key"
+            max_acts: "$input.max_acts"
+          context:
+            digest_result: digest.digest_result.data
+            execution_ledger: ledger.data_operation_result.data
+          run:
+            type: javascript
+            module: twitter-execution.mjs
+            export: prepareExecution
+            outputs:
+              twitter_execution_plan: object
         - id: approve
           run:
             type: approval
+          when:
+            field: prepare.twitter_execution_plan.decision
+            equals: ready
           inputs:
             gate_id: twitter.execute.approval
             reason: Executing this plan publishes to a public timeline or mutates a live X account.
           artifacts:
             wrap_as: approval_decision
             packet: runx.approval.decision.v1
-        - id: apply
-          tool: twitter.act
+        - id: request
+          tool: http.execute
           scopes:
             - twitter:write
+            - net:http
+          when:
+            field: prepare.twitter_execution_plan.decision
+            equals: ready
           mutation: true
-          idempotency_key: twitter-execute
+          idempotency_key: "$input.idempotency_key"
           inputs:
-            plan_json: "$input.plan_json"
-            plan_digest: "$input.plan_digest"
-            already_executed_act_ids: "$input.already_executed_act_ids"
-            max_acts: "$input.max_acts"
+            stop_on_error: true
+          context:
+            requests: prepare.twitter_execution_plan.requests
+            allowed_hosts: prepare.twitter_execution_plan.allowed_hosts
+            auth: prepare.twitter_execution_plan.auth
+        - id: apply
+          when:
+            field: prepare.twitter_execution_plan.decision
+            equals: ready
+          context:
+            execution_plan: prepare.twitter_execution_plan
+            http_execution: request.http_execution.data
+          run:
+            type: javascript
+            module: twitter-execution-result.mjs
+            export: finalizeExecution
+            outputs:
+              twitter_execution: object
+          artifacts:
+            named_emits:
+              twitter_execution: twitter_execution
+            packets:
+              twitter_execution: twitter.execution.v1
+        - id: apply_noop
+          when:
+            field: prepare.twitter_execution_plan.decision
+            not_equals: ready
+          context:
+            execution_plan: prepare.twitter_execution_plan
+          run:
+            type: javascript
+            module: twitter-execution-result.mjs
+            export: finalizeExecution
+            outputs:
+              twitter_execution: object
+          artifacts:
+            named_emits:
+              twitter_execution: twitter_execution
+            packets:
+              twitter_execution: twitter.execution.v1
         - id: persist
           skill: ../data-store
           runner: append_event
           scopes:
             - runx:data:append
+          when:
+            field: prepare.twitter_execution_plan.decision
+            equals: ready
           inputs:
             data_source_ref: "$input.data_source_ref"
             resource: twitter_execution
-            aggregate_id: "$input.plan_digest"
-            expected_version: "$input.expected_version"
-            idempotency_key: "$input.idempotency_key"
           context:
+            aggregate_id: prepare.twitter_execution_plan.plan_digest
+            expected_version: prepare.twitter_execution_plan.expected_version
+            idempotency_key: prepare.twitter_execution_plan.idempotency_key
             event: apply.twitter_execution.data.ledger_delta
       policy:
         guards:
-          - step: apply
+          - step: request
             field: approve.approval_decision.data.approved
             equals: true

@@ -33,12 +33,7 @@ async function runVitest(args, extraEnv = {}) {
         // Point every subprocess-backed suite at the single prebuilt binary so the
         // kernel-parity / parser / CLI eval paths never cold-start a debug binary
         // under parallel load.
-        RUNX_KERNEL_EVAL_BIN: rustKernelBin,
-        RUNX_PARSER_EVAL_BIN: rustKernelBin,
         RUNX_RUST_CLI_BIN: rustKernelBin,
-        RUNX_DEV_RUST_CLI_BIN: rustKernelBin,
-        RUNX_KERNEL_EVAL_TIMEOUT_MS: "30000",
-        RUNX_PARSER_EVAL_TIMEOUT_MS: "30000",
         RUNX_RECEIPT_SIGN_KID: process.env.RUNX_RECEIPT_SIGN_KID ?? "test-workspace-key",
         RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64:
           process.env.RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64 ?? "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",

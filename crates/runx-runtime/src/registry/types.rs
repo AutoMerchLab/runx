@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - registry wire/domain types are kept together so
+// Module rationale: registry wire/domain types are kept together so
 // local, hosted, install, publish, trust, and signed-manifest envelopes evolve
 // under one serialization contract.
 use runx_contracts::JsonValue;
@@ -23,6 +23,17 @@ pub enum TrustTier {
     FirstParty,
     Verified,
     Community,
+}
+
+impl TrustTier {
+    #[must_use]
+    pub const fn as_str(&self) -> &'static str {
+        match self {
+            Self::FirstParty => "first_party",
+            Self::Verified => "verified",
+            Self::Community => "community",
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -123,6 +134,7 @@ pub struct RegistrySearchResult {
     pub skill_id: String,
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename(deserialize = "description"))]
     pub summary: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub category: Option<String>,
@@ -375,6 +387,7 @@ pub struct AcquiredRegistrySkill {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub source_metadata: Option<RegistrySourceMetadata>,
     pub attestations: Vec<RegistryAttestation>,
+    #[serde(default)]
     pub install_count: u64,
 }
 

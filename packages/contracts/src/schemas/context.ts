@@ -60,6 +60,7 @@ const agentContextEnvelopeTypeSchema = Type.Object(
     run_id: Type.String({ minLength: 1 }),
     step_id: Type.Optional(Type.String({ minLength: 1 })),
     skill: Type.String({ minLength: 1 }),
+    instructions_sha256: Type.String({ minLength: 1 }),
     instructions: Type.String({ minLength: 1 }),
     inputs: unknownRecordSchema(),
     allowed_tools: Type.Array(Type.String({ minLength: 1 })),

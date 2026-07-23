@@ -1,7 +1,7 @@
 use std::fs;
-use std::io;
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 
 use base64::Engine;
 use ring::signature::KeyPair;
@@ -10,6 +10,132 @@ use serde_json::json;
 const TEST_MANIFEST_KEY_ID: &str = "runx-registry-skill-test-key";
 const TEST_MANIFEST_SIGNER_ID: &str = "runx-registry-skill-test-signer";
 const TEST_MANIFEST_SEED: [u8; 32] = [7; 32];
+
+#[test]
+fn input_document_supports_file_and_stdin_without_a_second_input_map()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = crate::support::temp_root("runx-skill-input-document");
+    let skill_dir = crate::support::write_agent_task_skill(&root.join("skills"))?;
+    fs::write(root.join("inputs.json"), r#"{"thread_title":"from-file"}"#)?;
+    let workspace = runx_runtime::WorkspaceEnv::load_process(root.clone())?;
+    let args = [
+        "skill",
+        skill_dir.to_str().ok_or("skill path was not UTF-8")?,
+        "--inputs",
+        "inputs.json",
+    ]
+    .into_iter()
+    .map(std::ffi::OsString::from)
+    .collect::<Vec<_>>();
+
+    let plan = runx_cli::skill::parse_skill_plan_with_workspace(&args, &workspace)?;
+    assert!(plan.inputs.is_empty());
+    assert_eq!(
+        plan.input_document,
+        Some(runx_cli::document_input::DocumentInputSource::Path(
+            PathBuf::from("inputs.json")
+        ))
+    );
+
+    let mixed = [
+        "skill",
+        skill_dir.to_str().ok_or("skill path was not UTF-8")?,
+        "--inputs",
+        "inputs.json",
+        "--input",
+        "thread_title=inline",
+    ]
+    .into_iter()
+    .map(std::ffi::OsString::from)
+    .collect::<Vec<_>>();
+    let error = runx_cli::skill::parse_skill_plan_with_workspace(&mixed, &workspace)
+        .expect_err("mixed document and per-key inputs should fail");
+    assert!(error.contains("cannot be combined"));
+
+    let output = runx_command()
+        .current_dir(&root)
+        .env("RUNX_CWD", &root)
+        .args([
+            "skill",
+            skill_dir.to_str().ok_or("skill path was not UTF-8")?,
+            "--inputs",
+            "inputs.json",
+            "--json",
+            "--non-interactive",
+            "--skip-operator-context",
+        ])
+        .output()?;
+    let value = assert_json(&output, Some(2))?;
+    assert_eq!(
+        value["requests"][0]["invocation"]["envelope"]["inputs"]["thread_title"],
+        "from-file"
+    );
+
+    let mut child = runx_command()
+        .current_dir(&root)
+        .env("RUNX_CWD", &root)
+        .args([
+            "skill",
+            skill_dir.to_str().ok_or("skill path was not UTF-8")?,
+            "--inputs",
+            "-",
+            "--json",
+            "--non-interactive",
+            "--skip-operator-context",
+        ])
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    child
+        .stdin
+        .take()
+        .ok_or("skill stdin was not piped")?
+        .write_all(br#"{"thread_title":"from-stdin"}"#)?;
+    let output = child.wait_with_output()?;
+    let value = assert_json(&output, Some(2))?;
+    assert_eq!(
+        value["requests"][0]["invocation"]["envelope"]["inputs"]["thread_title"],
+        "from-stdin"
+    );
+    Ok(())
+}
+
+#[test]
+fn input_document_rejects_paths_outside_the_invocation_workspace()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = crate::support::temp_root("runx-skill-input-containment");
+    let skill_dir = crate::support::write_agent_task_skill(&root.join("skills"))?;
+    let outside = crate::support::temp_root("runx-skill-input-outside").join("inputs.json");
+    fs::create_dir_all(outside.parent().ok_or("outside fixture has no parent")?)?;
+    fs::write(&outside, r#"{"thread_title":"outside"}"#)?;
+
+    for path in [
+        outside.to_string_lossy().into_owned(),
+        "../inputs.json".to_owned(),
+    ] {
+        let output = runx_command()
+            .current_dir(&root)
+            .env("RUNX_CWD", &root)
+            .args([
+                "skill",
+                skill_dir.to_str().ok_or("skill path was not UTF-8")?,
+                "--inputs",
+                &path,
+                "--json",
+                "--non-interactive",
+                "--skip-operator-context",
+            ])
+            .output()?;
+
+        assert!(!output.status.success());
+        assert!(
+            String::from_utf8(output.stdout)?
+                .contains("workspace file path must be a non-empty relative path")
+        );
+    }
+    Ok(())
+}
 
 #[test]
 fn native_skill_resolves_bare_local_skill_and_documented_input_flags()
@@ -84,6 +210,12 @@ fn native_skill_prints_operator_context_and_admits_safe_run_by_default()
     let stdout = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
     assert_eq!(stdout["status"], "needs_agent");
     assert!(stdout.get("approval_flag").is_none());
+    let instructions = stdout["requests"][0]["invocation"]["envelope"]["instructions"]
+        .as_str()
+        .ok_or("missing nested skill instructions")?;
+    assert!(instructions.contains("# Nested Review Skill"));
+    assert!(instructions.contains("Judge the work against the supplied review-rubric"));
+    assert!(!instructions.contains("# Operator Context Fixture"));
 
     let full = runx_command()
         .args([
@@ -100,7 +232,8 @@ fn native_skill_prints_operator_context_and_admits_safe_run_by_default()
     assert!(full_stderr.contains("--- root skill ---"));
     assert!(full_stderr.contains("# Operator Context Fixture"));
     assert!(full_stderr.contains("--- skill node: entry.review ---"));
-    assert!(full_stderr.contains("context skill: ./context/review-rubric"));
+    assert!(full_stderr.contains("context skill summary: ./context/review-rubric"));
+    assert!(!full_stderr.contains("production bar from context skill"));
     assert!(full_stderr.contains("tool manifest: example.record at entry.review"));
     let full_stdout = serde_json::from_slice::<serde_json::Value>(&full.stdout)?;
     assert_eq!(full_stdout["status"], "needs_agent");
@@ -758,7 +891,7 @@ fn write_operator_context_skill(root: &Path) -> Result<PathBuf, Box<dyn std::err
     )?;
     fs::write(
         child_dir.join("SKILL.md"),
-        "---\nname: nested-review\n---\n# Nested Review Skill\n",
+        "---\nname: nested-review\n---\n# Nested Review Skill\n\nJudge the work against the supplied review-rubric context skill.\n",
     )?;
     fs::write(
         child_dir.join("context/review-rubric/SKILL.md"),
@@ -824,7 +957,6 @@ runners:
               decision: string
           context_skills:
             - ./context/review-rubric
-          instructions: Judge the work against the context skill.
         - id: record
           tool: example.record
           context:

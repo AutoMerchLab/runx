@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because the initial journal projection slice
+// Module rationale: the initial journal projection slice
 // keeps history filtering and receipt-backed rows together until CLI wiring
 // decides the permanent module boundary.
 use std::collections::BTreeSet;
@@ -320,7 +320,7 @@ pub fn project_journal_for_receipt(
 }
 
 #[must_use]
-// rust-style-allow: long-function because this projection assembles one sealed
+// Function rationale: this projection assembles one sealed
 // receipt into a deterministic row set; splitting it before CLI and
 // paused-run sources land would obscure the ordering invariants.
 pub fn project_receipt_journal(receipt: &Receipt) -> JournalProjection {
@@ -328,7 +328,7 @@ pub fn project_receipt_journal(receipt: &Receipt) -> JournalProjection {
 }
 
 #[must_use]
-// rust-style-allow: long-function because this projection assembles one sealed
+// Function rationale: this projection assembles one sealed
 // receipt into a deterministic row set; splitting it before CLI and
 // paused-run sources land would obscure the ordering invariants.
 pub fn project_receipt_journal_with_policy(

@@ -8,7 +8,7 @@
   "transport": {
     "kind": "process",
     "command": "node",
-    "args": ["stripe-spt-fulfill-adapter.mjs"]
+    "args": ["tools/stripe-spt-fulfill-adapter.mjs"]
   },
   "timeouts": {
     "startup_ms": 5000,

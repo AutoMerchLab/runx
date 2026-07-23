@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - receipt contracts keep the signed envelope,
+// Module rationale: receipt contracts keep the signed envelope,
 // lineage, and effect-finality schemas together for cross-language schema
 // generation.
 //! Governance receipt contracts: the flat `runx.receipt.v1` shape, seals,

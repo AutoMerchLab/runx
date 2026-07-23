@@ -1,4 +1,4 @@
-// rust-style-allow: large-file -- sandbox command assembly keeps backend
+// Module rationale: sandbox command assembly keeps backend
 // argument construction and mount-shape tests colocated with the policy it emits.
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -8,6 +8,10 @@ use runx_parser::SkillSandbox;
 
 use super::backend::SandboxRuntime;
 use super::policy::normalize_path;
+
+mod javascript;
+
+pub(super) use javascript::javascript_worker_spawn_command;
 
 pub(super) struct SandboxSpawnCommand<'a> {
     pub(super) runtime: Option<&'a SandboxRuntime>,

@@ -40,8 +40,8 @@ fn render_shim(
     command_target: &str,
     runx_bin: &Path,
 ) -> String {
-    if let RunxExportMode::NativeInstructions { body } = &skill.mode {
-        return render_native_instructions(target, skill, body, runx_bin);
+    if skill.mode == RunxExportMode::NativeInstructions {
+        return render_native_instructions(target, skill, runx_bin);
     }
     let mut output = String::new();
     output.push_str("---\n");
@@ -67,6 +67,7 @@ fn render_shim(
 If any `RUNX_RECEIPT_SIGN_*` variable is present, the complete signer tuple must be present or \
 runx fails closed. Never invent, copy, or print signing keys.\n\n",
     );
+    output.push_str(&render_source_manual(skill));
     if skill.requires_runner_selection {
         output.push_str(&render_runner_selection(
             command_target,
@@ -93,12 +94,7 @@ runx fails closed. Never invent, copy, or print signing keys.\n\n",
     output
 }
 
-fn render_native_instructions(
-    target: Target,
-    skill: &RunxExportSkill,
-    body: &str,
-    runx_bin: &Path,
-) -> String {
+fn render_native_instructions(target: Target, skill: &RunxExportSkill, runx_bin: &Path) -> String {
     let mut output = String::new();
     output.push_str("---\n");
     output.push_str(&format!("name: {}\n", yaml_plain_or_quoted(&skill.name)));
@@ -111,14 +107,22 @@ fn render_native_instructions(
         ));
     }
     output.push_str("---\n");
-    output.push_str(body.trim());
-    output.push_str("\n\n");
+    output.push_str(&render_source_manual(skill));
     output.push_str(&format!(
         "<!-- {} source={} - generated, do not edit -->\n",
         target.marker(),
         display_path(&skill.abs_dir)
     ));
     output
+}
+
+fn render_source_manual(skill: &RunxExportSkill) -> String {
+    format!(
+        "<!-- runx-source-manual-begin digest={} bytes={} -->\n{}<!-- runx-source-manual-end -->\n\n",
+        skill.manual_digest,
+        skill.manual_markdown.len(),
+        skill.manual_markdown
+    )
 }
 
 fn render_command(
@@ -182,7 +186,7 @@ fn render_continuation(runx_bin: &str) -> String {
         "\
 Interpret the runx JSON result exactly:
 - If `status` is `sealed`, surface the receipt id, status, and artifact ids.
-- If runx returns `status` `needs_agent`, inspect `requests[]`. For each request with `kind` `agent_act`, treat `request.invocation.envelope` as the only task packet: use its `inputs`, `current_context`, `historical_context`, `instructions`, and `output` contract; do not use tools outside `allowed_tools`.
+- If runx returns `status` `needs_agent`, inspect `requests[]`. For each request with `kind` `agent_act`, treat `request.invocation.envelope` as the only task packet: verify `instructions` against `instructions_sha256`, use its `inputs`, progressive `current_context` summaries, `historical_context`, exact `instructions`, and `output` contract; do not use tools outside `allowed_tools`.
 - Write an answers JSON file outside the skill package with one key per request id:
 
 ```json

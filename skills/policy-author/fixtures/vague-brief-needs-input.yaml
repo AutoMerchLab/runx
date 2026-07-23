@@ -24,16 +24,19 @@ expect:
   status: sealed
   steps:
     - draft
-    - validate
+    - prepare
+    - finalize-stop
   step_outputs:
-    validate:
+    finalize-stop:
       subset:
-        policy_proposal:
-          decision: needs_input
-          policy: null
-          validation:
-            status: not_run
-            engine: runx policy lint
+        policy_proposal_packet:
+          data:
+            policy_proposal:
+              decision: needs_input
+              policy: null
+              validation:
+                status: not_run
+                engine: runx policy
   receipt:
     schema: runx.receipt.v1
     state: sealed

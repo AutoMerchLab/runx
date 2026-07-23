@@ -6,7 +6,7 @@
     "profile": "skills/issue-to-pr/X.yaml"
   },
   "skill_name": "issue-to-pr",
-  "manifest_hash": "sha256:7ffa2fbcaa46d3558c17bba99b6c6fcaf4593b9c69ec15e0b0bdda360ec13b72",
+  "manifest_hash": "sha256:8f40a2d8dae48e0381afe607319ff4e611c6c00335ede1ebad09ae54e9ac252c",
   "harness_schema": "runx.receipt.v1",
   "case_names": [
     "issue-to-pr-dispatches-first-step",

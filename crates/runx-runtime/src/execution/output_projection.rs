@@ -61,21 +61,30 @@ pub(crate) fn project_step_output(output: &SkillOutput) -> StepOutputProjection 
 
 /// Wrap a value in the canonical `{ "data": ... }` artifact envelope, idempotently.
 ///
-/// This is the single owner of the envelope convention: a value that is already an
-/// object carrying a `data` key is returned untouched, so the envelope is applied at
-/// most once no matter how many layers (catalog adapter, step projection) handle the
-/// same payload. Without this guard a payload wrapped by one layer is re-wrapped by the
-/// next, producing the `data.data` depth drift that silently breaks context-edge paths.
+/// This is the single owner of the envelope convention. A runtime-created
+/// `{ "data": ... }` wrapper and a self-described `{ "schema": ..., "data": ... }`
+/// packet are already envelopes. A domain object that merely has its own `data` field
+/// is not: treating it as one loses the canonical wrapper and changes every sibling
+/// field's context path.
 #[must_use]
 pub(crate) fn data_envelope(value: JsonValue) -> JsonValue {
     match value {
-        JsonValue::Object(object) if object.contains_key("data") => JsonValue::Object(object),
+        JsonValue::Object(object) if is_data_envelope(&object) => JsonValue::Object(object),
         other => {
             let mut wrapper = JsonObject::new();
             wrapper.insert("data".to_owned(), other);
             JsonValue::Object(wrapper)
         }
     }
+}
+
+fn is_data_envelope(object: &JsonObject) -> bool {
+    object.contains_key("data")
+        && (object.len() == 1
+            || object
+                .get("schema")
+                .and_then(JsonValue::as_str)
+                .is_some_and(|schema| !schema.trim().is_empty()))
 }
 
 fn stdout_refs(value: Option<&JsonValue>) -> StepOutputRefs {

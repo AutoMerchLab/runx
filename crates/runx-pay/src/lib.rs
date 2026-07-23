@@ -5,12 +5,14 @@ mod json_util;
 pub mod ledger;
 pub mod packets;
 pub mod payment_admission;
+mod planning;
 pub mod refunds;
 pub mod supervisor;
 
 pub use authority::{
-    PaymentAuthorityError, PaymentSpendCapabilityBinding, StepAuthorityAdmission,
-    StepAuthorityAdmissionDecision, admit_step_authority, is_payment_authority_subset,
+    PaymentAuthorityError, PaymentBoundsComparator, PaymentSpendCapabilityBinding,
+    StepAuthorityAdmission, StepAuthorityAdmissionDecision, admit_step_authority,
+    is_payment_authority_subset,
 };
 pub use effect::{
     DeterministicPaymentFinalitySupervisor, INFERENCE_EFFECT_FAMILY, PAYMENT_EFFECT_FAMILY,

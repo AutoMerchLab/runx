@@ -1,5 +1,5 @@
 skill: weather-forecast
-version: "0.2.0"
+version: "0.2.1"
 catalog:
   kind: graph
   audience: public
@@ -51,14 +51,6 @@ runners:
             horizon: $input.horizon
             purpose: $input.purpose
             freshness_requirement: $input.freshness_requirement
-          instructions: >
-            Interpret only the supplied forecast evidence and return
-            forecast_draft using the documented output fields. Preserve the
-            requested location and horizon, provider, generated_at, source_refs,
-            receipt_refs, and relevant period names. Summaries, hazards,
-            uncertainty, and stop conditions require analyst judgment, but do
-            not invent evidence. Return needs_more_evidence when freshness or
-            coverage is insufficient. Return refused for life-safety use.
           artifacts:
             named_emits:
               forecast_draft: forecast_draft
@@ -72,10 +64,8 @@ runners:
           context:
             forecast_draft: interpret.forecast_draft.data
           run:
-            type: cli-tool
-            command: node
-            args:
-              - ./validate_forecast.mjs
+            type: javascript
+            module: weather-forecast.mjs
             outputs:
               decision: string
               location: string

@@ -1,10 +1,14 @@
+mod signals;
+
+/// Default retained bytes per stdout/stderr stream for general operator
+/// processes. The supervisor continues draining and hashing the complete stream;
+/// capability-specific contracts may choose a narrower or wider retained body.
 #[cfg(any(
     feature = "cli-tool",
     feature = "external-adapter",
-    feature = "thread-outbox-provider",
-    feature = "mcp"
+    feature = "thread-outbox-provider"
 ))]
-mod signals;
+pub(crate) const STANDARD_PROCESS_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
 
 #[cfg(any(
     feature = "cli-tool",
@@ -39,14 +43,8 @@ mod timeout;
 #[cfg(feature = "mcp")]
 mod tokio_supervisor;
 
-#[cfg(any(feature = "cli-tool", feature = "external-adapter"))]
+#[cfg(feature = "cli-tool")]
 pub(crate) use self::capture::CapturedOutput;
-#[cfg(any(
-    feature = "cli-tool",
-    feature = "external-adapter",
-    feature = "thread-outbox-provider",
-    feature = "mcp"
-))]
 pub(crate) use self::signals::{ProcessSignal, configure_process_group, signal_process_group_id};
 #[cfg(any(
     feature = "cli-tool",

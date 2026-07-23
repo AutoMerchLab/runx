@@ -1,120 +1,134 @@
 [
   {
     "skill_id": "runx/agency",
-    "version": "sha-dca0689b4cd4",
+    "version": "sha-eba8afb97ff7",
     "digest": "01339546cbb21bcb1d16b371a8942c46e0ee6789f68e470eac7b0e5993d866c7",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/audit-receipt",
-    "version": "sha-7ba88eb02c01",
-    "digest": "81009b3ff93d5278fba3ce56c57439c17bae5567059c19d86cfc8be5086b2a1c",
+    "version": "sha-f620d85c5b74",
+    "digest": "0380dbbc9d3d4787134bc5e92d2e8f3b2d5e86bba3d3ea7a788769ca0eeca961",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/brand-voice",
-    "version": "sha-8b64312ca0f6",
-    "digest": "54bf1ed1013ebc91a5491fb86f15a1bda2e872ac073a12680c58278af0867528",
+    "version": "sha-554f43f0a0c5",
+    "digest": "4a1c116664b67eeac12e8490735cba5f7cd0c80cb071b294bb6a3f58b80546e9",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/business-ops",
-    "version": "sha-9d0a8e6e108f",
+    "version": "sha-d91637d62eed",
     "digest": "7801492f5b8fa34f0f6e91f9f2729396744c35fe517ae275885e07204bc52b6f",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/charge",
-    "version": "sha-23e961d8003d",
-    "digest": "c151b98be3a2a7ccd306d7395d906ffd1fc22e45a7d94ffe34c294e9db1c47ce",
+    "version": "sha-8081f8bffc3f",
+    "digest": "265fb64208b7a553f7b66b0f20f0cd5967f15d2ea76482bff03cb7032d382a8e",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/chief-of-staff",
-    "version": "sha-2ab07ee34108",
-    "digest": "54a9f23f3431976783172a0f880824551fd91bb76df2b38e87d8d1b57efccf11",
+    "version": "sha-29b860639852",
+    "digest": "9fadb6380a76390dbcbeba0eed904ca568787189653f352404ca7dfb48d09ce9",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/content-pipeline",
-    "version": "sha-410e35968d46",
-    "digest": "c6c210735ca826875959c5eb3c2420c50aee52eb3723b19be7369e9da85552a5",
+    "version": "sha-65d48edc3561",
+    "digest": "59eef5811ad40f220a81e2952f9391a0a23d229e5f533e7f1b4c988863a8efce",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/cve-audit",
-    "version": "sha-3da827c37cd2",
-    "digest": "0054bd38ef971562ac257d358a74c9f9e1c474c343eb885403e0a4fdbbdfe62f",
+    "version": "sha-2bf2f887917b",
+    "digest": "236fdef67d382a54c38b0bf5f1cb96e34ad205baea44bab80aa24619972a2713",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/data-store",
-    "version": "sha-465810ac3b86",
-    "digest": "fbf0c7356f063f4fa12c9ff3bd944587f9202fb1520238a6652c90c907cb062f",
+    "version": "sha-bbae938bfdbc",
+    "digest": "b5b508361c4c6db175bfa664418d9a5449f7d40d90938982ce388dd3be154de2",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/deep-research",
-    "version": "sha-7a89a5eb93c4",
-    "digest": "9103fbae65187262f4ce201e9efbef32eee9e65f7aa13de592ba6321755574c3",
+    "version": "sha-3e179192c25c",
+    "digest": "c2a3ad055574fe8a601f6b36497756f3b527eefad75a49981b219c916ef15d81",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/dispute-respond",
-    "version": "sha-7118ff54d163",
-    "digest": "81469e87f29886e11b27faa2249a4e83fae59659f84f6628c81da7de0bf762c5",
+    "version": "sha-67cfecfed4eb",
+    "digest": "4d510b1517676078f772fc121c4ff0a52e9eb13f049b5103c5bd8664d6fce5e6",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/ecosystem-brief",
-    "version": "sha-b6659795af22",
-    "digest": "a9a277fef0a37fee799d25c70ff81615f5d76bd7d8a217ce2653603f3e3f4138",
+    "version": "sha-a1d448438c40",
+    "digest": "e8a138e6c05bb8f51c0012733e43aa6f7756aacb7f4c3c6c67282e4a663b099d",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/extract",
-    "version": "sha-fc2a29c1f69e",
-    "digest": "968f199487e712b33c145c8b03a6371611d2e4372fec6c53b9d1567944058165",
+    "version": "sha-ed3543746e78",
+    "digest": "7d0906a46fcf532c7903a3c0645174b7fd15a91682b782173d92b676df6ff7a9",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/ghostwrite",
-    "version": "sha-ae387457dd25",
-    "digest": "5a3982946c478a5fd771aebaf145e0b46f38720bf10d100923b3af61c269625d",
+    "version": "sha-2037027913a0",
+    "digest": "037e4ebc23cdb31bdaa14b498ea705ceb23764efba0904eb743915f1fbf48ef9",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/github-sync",
-    "version": "sha-a01c3544ab07",
-    "digest": "6981adc877736f05a41d764b3e42d479d87de3bc2d69a65992dff457b635bd9a",
+    "version": "sha-921666a0dbbe",
+    "digest": "a5fb94a3ac3a5dfbb26bfcb897de90f75b010d8642e68cc04f595a4e3bc0685b",
+    "catalog_visibility": "public",
+    "catalog_role": "canonical"
+  },
+  {
+    "skill_id": "runx/google-analytics",
+    "version": "sha-352442341fda",
+    "digest": "d6c23b6ec788fc4f06711c445ed8faa3121b2705568dcda805d4635cc29a8bd2",
+    "catalog_visibility": "public",
+    "catalog_role": "branded"
+  },
+  {
+    "skill_id": "runx/google-search-console",
+    "version": "sha-22e4d0bc7bd5",
+    "digest": "58034fe89c3893b58c97cf00a1282283423545ba3c9472312846b1f8db2088a6",
     "catalog_visibility": "public",
     "catalog_role": "branded"
   },
   {
     "skill_id": "runx/governed-outbound",
-    "version": "sha-fd8a3679530e",
+    "version": "sha-92150f21abfd",
     "digest": "7a35b84dab2cd9b9196ec90390765f0ba93bc85ed6272eee11ef935bc854f9e5",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/helpdesk",
-    "version": "sha-a0d86f54493b",
-    "digest": "449c348fcc81706226e676d01d7a824c2a866f8779af784b9eff70002f6e90bc",
+    "version": "sha-1a11b3d73eff",
+    "digest": "d386485916fad9392810d97e814e19c402c9eb6a13637b8a80deb0621c7956d3",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
@@ -127,239 +141,246 @@
   },
   {
     "skill_id": "runx/issue-to-pr",
-    "version": "sha-666e3d73116e",
-    "digest": "b58c10476991cd2828f7d8b9357ac9b1962eecc3a8d13dd0d036298e1739dd50",
+    "version": "sha-d3bc9a9c12f2",
+    "digest": "27a4c8fb5e5f4bf2a2b38763af1316a4297005da01ac7d06af7271a0a6d7b3b5",
     "catalog_visibility": "public",
-    "catalog_role": "context"
+    "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/issue-triage",
-    "version": "sha-791b59758890",
-    "digest": "97aceb246dbc14544017bde2ff448431cd601d1345852314837c1d86807e587b",
+    "version": "sha-d10afa330181",
+    "digest": "e9d36f92fb325a7341babf206ad2fac2b2734bb686717203709715fdfc3fd9d8",
     "catalog_visibility": "public",
-    "catalog_role": "context"
+    "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/knowledge-router",
-    "version": "sha-dbcc86ca2cdd",
-    "digest": "bb2ab025b432cff2261b1aa5472e519281ef6f0f7eec954ed33bd0b366dcfe8b",
+    "version": "sha-4ff91648a69a",
+    "digest": "e148d7ebf0163c2c1f38b1b55c821e29fb7418c04d361a4e9485e4aca6ef7966",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/lead-enrichment",
-    "version": "sha-765f3c444c89",
-    "digest": "802598ffc48634ee68df5833227407c58ccf3182a6de10d4001e5f764b532329",
+    "version": "sha-f01ca3c98d43",
+    "digest": "5e0d371bc8a6bb178d0b355abad9a0bf3ae6046ed199f38fe850ce64c48f27e7",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/lead-router",
-    "version": "sha-0746b4cb0bcc",
-    "digest": "4a27b60d2cdd54a5f02163473f756185f9fa5cb57e32c1f59f65fe3472ed3202",
+    "version": "sha-fd8c6d0d594e",
+    "digest": "f875a05d9e79a2573d3152430093971462f25086ae0518ecee29f0d69e8e3491",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/least-privilege",
-    "version": "sha-5700b4a01999",
+    "version": "sha-d5517d680c08",
     "digest": "b5531e32914f813fbd506672b368040c5cfb64d43b28ae90d1056c7d7aa48986",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/ledger",
-    "version": "sha-876721ac6502",
-    "digest": "de3cfbf8a47ac65575f87cbf7027fc6dd29ad471e2641d5f0ad545695d393f70",
+    "version": "sha-5c8aa65b30fb",
+    "digest": "9e3370c09616f2ae0490bfacbf9e944a4631f3e9569c71f2d00133ee1c939afe",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/messageboard",
-    "version": "sha-1f7d88a4da97",
-    "digest": "7fb6092161a234fbea28681ec5e72afd9c2d380e547cf4ef97683f28bb9a6427",
+    "version": "sha-95655812ff33",
+    "digest": "5f8a028b7c9105d719befeb413b116e57efa005adb11cf4a743fc41a677406e7",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/mock-charge",
-    "version": "sha-d0e726e1c9fb",
-    "digest": "54dd044edbcbe8808c6e80177628b5cb039c0f7ed91d9f6d526e55ebb2130841",
+    "version": "sha-3c3ad4acd471",
+    "digest": "40f9cb0afba40701cc11d3f66259207f166d7b58a5a10e058c00b18935d07bec",
     "catalog_visibility": "internal",
     "catalog_role": "harness-fixture"
   },
   {
     "skill_id": "runx/mock-pay",
-    "version": "sha-71202c8ed3dd",
-    "digest": "abd8f7f72eac658e8dba4d642bd66f59646969aebe58cbdc15692cc82b69021d",
+    "version": "sha-ae06409b3d00",
+    "digest": "d07f071fb2750e549d7509a73400ca1bcb3e3f861c23681990354602b9604d60",
     "catalog_visibility": "internal",
     "catalog_role": "harness-fixture"
   },
   {
     "skill_id": "runx/mock-refund",
-    "version": "sha-a7109d0d5dc4",
-    "digest": "e54cb774724bbf535ce02b7b1b686eca21fe45e8b2589a86aae935b558384ed5",
+    "version": "sha-800a44cc324b",
+    "digest": "d26ecb63db16eb71b50a2e972f5a73b013ff7fd8e9e08842d29056f76f5b0584",
     "catalog_visibility": "internal",
     "catalog_role": "harness-fixture"
   },
   {
     "skill_id": "runx/moltbook",
-    "version": "sha-e7a58d024f7e",
-    "digest": "5af0f25863a60fea243dd1cf31cfe1fa7c24a93e4307727a70771a7a26f3f4dc",
+    "version": "sha-14c3b640eaa3",
+    "digest": "b0c58ee66aeb38ab8a08f0479f6127f72406826c260c4577894a90ace79d5886",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/mpp-charge",
-    "version": "sha-eee4a6666cbd",
-    "digest": "833374862eee319c9c007cbecd122342980972fca44556c63381e85ab95ec500",
+    "version": "sha-ceb95af98704",
+    "digest": "2fde12e2a17a9293bcde4b7b678d32ba52e9cb4acf861f9ad04f6835ce928214",
     "catalog_visibility": "internal",
     "catalog_role": "runtime-path"
   },
   {
     "skill_id": "runx/mpp-pay",
-    "version": "sha-b4d4d4f490ab",
-    "digest": "1ff58b3687c33a26e19a52ef8bb5b23b33c99628a81f6041b3c1b8ec27315603",
+    "version": "sha-3048250032a8",
+    "digest": "9fb232c26b5d8c5bc94b2fdf2f0e8521b4c6d599fa6fc7e8f2f4ce36eba3d0a0",
     "catalog_visibility": "internal",
     "catalog_role": "runtime-path"
   },
   {
     "skill_id": "runx/mpp-refund",
-    "version": "sha-3079e247a034",
-    "digest": "9f4b6bcc9bf7cf6578a7906192ab9a6ff20e938836a5e0dc15ff3233af4f18e6",
+    "version": "sha-65bb5302b09b",
+    "digest": "f799a44a9c6f6f893b111472c36e296a6d329bba5e7838db2faa2a40ce7618d4",
     "catalog_visibility": "internal",
     "catalog_role": "runtime-path"
   },
   {
     "skill_id": "runx/n8n-handoff",
-    "version": "sha-8c9ddc3bd36e",
-    "digest": "599faff301adc853227ea94e7d8bd28c5383940c055c7ddaf609d0d646ab8b71",
+    "version": "sha-47029ea0a775",
+    "digest": "7bf1fa3209cde0f949f2db0d66b28a2ffd6609444b42da62bfce4b2e6a786a5e",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/nitrosend",
-    "version": "sha-5db01eca0452",
-    "digest": "650cf09ca0c40a4094c87449572d4455d1a1bbfb5c56492be0c63bddab6cd612",
+    "version": "sha-3acd321e3f51",
+    "digest": "3edfe4b5deb4fcb78beacaf3566e57443945ba5fe002e46aaaf304563aeaf32d",
     "catalog_visibility": "public",
     "catalog_role": "branded"
   },
   {
     "skill_id": "runx/nws-weather-forecast",
-    "version": "sha-1a902126f818",
+    "version": "sha-737b843fc91c",
     "digest": "382cdef84f660e7cfdc2dbbfd7e8382d204d1f4ee46ffa019549615f9c2f745c",
     "catalog_visibility": "public",
     "catalog_role": "branded"
   },
   {
     "skill_id": "runx/open-meteo-weather-forecast",
-    "version": "sha-cb7d0ab2f5c8",
+    "version": "sha-53a4d630625c",
     "digest": "041e0ec18fa4b646b46b72d34662eabbbfbc43ab5a3a65423b49b3e94e81d159",
     "catalog_visibility": "public",
     "catalog_role": "branded"
   },
   {
     "skill_id": "runx/operator-inbox",
-    "version": "sha-5702f12988d3",
+    "version": "sha-357d7d472f2f",
     "digest": "368dd1ece62cbab35a597893210ee296af86cc42e1e7c61a0c174177428df05d",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/ops-desk",
-    "version": "sha-0019f4b9cd24",
-    "digest": "aa8adb5b01de1727020f06f97e7f8ce5cd242ce49dbb37a55bd42679e1578b25",
+    "version": "sha-1dcfa3e80a64",
+    "digest": "61e36b3140f03cb2ec15f423322f936837fd3809ddb53e88c01ee657bd4acb95",
+    "catalog_visibility": "public",
+    "catalog_role": "canonical"
+  },
+  {
+    "skill_id": "runx/organic-growth",
+    "version": "sha-97e5c78d35d7",
+    "digest": "115d06eb9a646f67f0020ef0bb80abe3a1adfe80b8872f11d161cff39b357683",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/overlay",
-    "version": "sha-0d5c558afb6e",
-    "digest": "f34ccb01da5a6d827fe39c6b47c9868e1453eaec8c1890b26d77c34624dff043",
+    "version": "sha-e2c27e300817",
+    "digest": "1cf147a79735b7e927e9cfa85105c8f9eb40752347491a3142a079de2c707cbd",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/policy-author",
-    "version": "sha-4c2ad3d72e6f",
-    "digest": "da5f36ed198128c600200f1409e056039f4c191f083ab7bff735238b61ff3e8c",
+    "version": "sha-957d4b38ff5f",
+    "digest": "9c5da4bc2950eeb8b8b060a920021671272b9232d3c265f878620ffa0d1d6c6c",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/pr-review-note",
-    "version": "sha-5cdbb53bf257",
-    "digest": "b073ec884f56c9e412d0c1039d5f28f163df0f5530eb0bee922ed4c557955c52",
+    "version": "sha-9476f3cf5b2a",
+    "digest": "7412311ddc40d17d18fd8d35d8d89ee768b1c4ac13c1958bfb5312814ed98d34",
     "catalog_visibility": "public",
-    "catalog_role": "context"
+    "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/prior-art",
-    "version": "sha-a9ae34af9bda",
-    "digest": "3bee0968c0a16f2177c5790dec6eb43b18e1f8ccc8daba296dd9a63aece03572",
+    "version": "sha-797940512288",
+    "digest": "4aa9584eaa2611908cb2f676b2d81149893f0e0778e974434ab615e95e053c21",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/redact-pii",
-    "version": "sha-f87b7ca388d4",
-    "digest": "470739737a2fe9846372de3e75ff7c01623ef2e28f72929bea07a7bd7415e58a",
+    "version": "sha-569d972a8748",
+    "digest": "2358e19a81b07f70bdefee629290d7d132592b8b9f6491abedd44d4bf6837810",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/reflect-digest",
-    "version": "sha-91a16acce845",
-    "digest": "9f6a80d73c4ae252ccb55d0efc1666052f13d7eb9113d6d5b7fff0bd5a55f3a6",
+    "version": "sha-0f87282e69b3",
+    "digest": "1b6b29fb22758f05df90233dbb96555c89d061abd1e974e4069c360e74fc4766",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/refund",
-    "version": "sha-39fea7bffb21",
-    "digest": "1295dd1950b137f828319d3d56491241ba8629c56ede9e50a736e61e96dd1a9a",
+    "version": "sha-328fb2fe6845",
+    "digest": "9e655220841617355fdb58dfa7752db2ed1f752b39935a154da2b284121fa7c5",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/release",
-    "version": "sha-767257bc82e6",
-    "digest": "ad27b35e73a9cef0834edc4bcff47ec86d0967dc690147198fcd2a5fdbb65da5",
+    "version": "sha-4be1848a2c1b",
+    "digest": "7d75c52dfe90f1ba1ab916ce0cb050f9e9168441d5359cc7038455ff3161e0b0",
     "catalog_visibility": "public",
-    "catalog_role": "context"
+    "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/research",
-    "version": "sha-f32f26f6e8f6",
-    "digest": "f524007b2e95225075275ac9ce3551e797896581cf734380821208874f74d45f",
+    "version": "sha-a7dcaf105b8f",
+    "digest": "cec62f7de7f174d5edeb806528b774840511519f89a5d7f917795e4a34b8555e",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/review-receipt",
-    "version": "sha-94d523eac0cf",
-    "digest": "125546ddce39acf20991cb3d891eb23cf9acddb5deaa3f31810b39a86b3ea732",
+    "version": "sha-16d5691f25f0",
+    "digest": "df2dff75565f0c2675e8241acbc8cf04fbc64d5aa0cc004fd987c29a75c5136b",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/review-skill",
-    "version": "sha-abd777e6fe70",
-    "digest": "0895b326f2507bd87f8eeceb52f058326f2aac1eecfb2776ac006db7a14b4611",
+    "version": "sha-cf83dc69577e",
+    "digest": "f392318b16f97b0877c200edf3529b219fbdb1b1d9350b7a134766f8627b675a",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/run-history",
-    "version": "sha-352e3f84770c",
-    "digest": "7906c0a6b99c5e47588ff4b4a89325e38b654453923a77b22c486045ff7abf9e",
+    "version": "sha-0a001ba64fd8",
+    "digest": "6a87c41e9a7bfb26632be26efbc04de8a7f455de6d766553138505b394e051ce",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/sandbox-harden",
-    "version": "sha-2217b3911b8b",
-    "digest": "9d98ef46622061ab3236c116e7720d1b4b975626c3bebfd39cedaadea0a85d86",
+    "version": "sha-1dab917c8f86",
+    "digest": "71d3af2b20b874a39f2b5d9fb199c7edc18192181123cbe3bb3f6cbf4e47db47",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
@@ -372,141 +393,148 @@
   },
   {
     "skill_id": "runx/settle-invoice",
-    "version": "sha-6e8d1f264f5c",
-    "digest": "4fc9e01c12e2de29066f737ab18f0e5e532c40543f5af3ce356b95548c4d1687",
+    "version": "sha-12e36842e18f",
+    "digest": "b224db1ee54d3a64657ab215e4928c2cbc4dbd17a44be5c78cf8c7af2de5019f",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/sign-receipt",
-    "version": "sha-3437af6861fe",
-    "digest": "130cadcbf7c3c3a4f5fd849463f308e8dd7a3a121d9aa7c534ee1deac28a8289",
+    "version": "sha-1651a84c3ef4",
+    "digest": "512935aa95e2884f7bf8e45b1ba0a8bc071b249f5ed296a81fe767023d0cfae3",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/skill-lab",
-    "version": "sha-95a91382daa4",
-    "digest": "993a81bd27449283e404d91db55f4beb226004fe0bc6751237cc6f389ab83ba1",
+    "version": "sha-18d6e3aa961d",
+    "digest": "48ab2ae86ce529e7feca1271595d6e40c923e4fd3b872e486b5ffa3226013d9f",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
+    "skill_id": "runx/slack",
+    "version": "sha-55d0e73115ed",
+    "digest": "e2166addf0d7121cf134c2a7470d0d360b5cf89d9430c56b3273537744fb65b7",
+    "catalog_visibility": "public",
+    "catalog_role": "branded"
+  },
+  {
     "skill_id": "runx/slack-notify",
-    "version": "sha-c0b7907935ff",
-    "digest": "9e0abd47c54455add3c715e18c371c427e0bbb0d617ed0212f60d766f62c2856",
+    "version": "sha-d1bd47a31d9e",
+    "digest": "92033a99ae1942f34e89e3a3abe7da95cc53fbf2dcb08ac55fcc8c13b1409719",
     "catalog_visibility": "public",
     "catalog_role": "branded"
   },
   {
     "skill_id": "runx/sourcey",
-    "version": "sha-9999ff352740",
-    "digest": "30b7e7396d54f0b617dfb67d4c5c6506aaf9dd8df27cac546a9f0f51ff367670",
+    "version": "sha-898a86fdded2",
+    "digest": "c4e7c697e7f4a3fee9f3221a36bc55aefe348755662828e7d97f0cb7d7ad9511",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/spend",
-    "version": "sha-40f9d4737529",
-    "digest": "d5a5df47cd59faa2cc046a79fe44db6343c068483dae9bf8a470e3506bf90671",
+    "version": "sha-496870d44d39",
+    "digest": "f319654d2e4dd18820cf528ad9a614e210f655440f5e12b2a2d70d2ba8c736bd",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/sql-analyst",
-    "version": "sha-ef97d6cfc5ac",
-    "digest": "9508acb26e82956610cad656a80e76474f27dda5573bb58605e9f463fbfdde63",
+    "version": "sha-b4860ab0f8cd",
+    "digest": "460274b826b51d65dc87ff44a575068917b6af53d4e4bc92c00fab8ef2999f84",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/stripe-charge",
-    "version": "sha-7f86dd893b77",
-    "digest": "1af8a9a9fbc04fbda41b50c0e8a41b61eaeb0e12d9dcfd16f79e268ad00fb3e6",
+    "version": "sha-44d8cf2e2949",
+    "digest": "f511e18de56dbf0360961147049e0bb34d8a527b04681ba53df99a5a4c4788fd",
     "catalog_visibility": "internal",
     "catalog_role": "runtime-path"
   },
   {
     "skill_id": "runx/stripe-pay",
-    "version": "sha-de5ce4bec822",
-    "digest": "a5a05ee2c45d0f4a5c2f526cfdcb8af099c673ace97f10d8e392a7f3a0bf5f2b",
+    "version": "sha-ebfe5ce2a83b",
+    "digest": "cb2c956dd92f6c985a2c1708caca081bc41b9b82af3b1886fb9cd74ea9088e99",
     "catalog_visibility": "public",
     "catalog_role": "branded"
   },
   {
     "skill_id": "runx/stripe-refund",
-    "version": "sha-6668be7d4a86",
-    "digest": "892765b749dcb3698d86c40a297520794c03d10f8aa38fc734393414652648f1",
+    "version": "sha-48cc890c67f7",
+    "digest": "4f0a281e2767b666645751fe3f551731e9517a33f0bed2c68d9b91f96a8726f5",
     "catalog_visibility": "internal",
     "catalog_role": "runtime-path"
   },
   {
     "skill_id": "runx/taste-profile",
-    "version": "sha-fee7d7afa73b",
-    "digest": "bebc7d42b982295105d1da03ea392f1384977269adf1705905e1833e73dc78ae",
+    "version": "sha-38c7de62e155",
+    "digest": "492ba06c3de2bee1d87a3a1886a23bb3f6d4f61c18a19fb985cbdefb25ce6e68",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/twitter",
-    "version": "sha-5978f959b03b",
-    "digest": "713eb001285f04d7b82edcae447a812373db8155a803a3f3c56ad53934fa1046",
+    "version": "sha-951c805a5413",
+    "digest": "e523410553f3a41901a30cb07eda909b7d158f25a38847bab0b83d175221208d",
     "catalog_visibility": "public",
     "catalog_role": "branded"
   },
   {
     "skill_id": "runx/vault-unseal",
-    "version": "sha-4d66428872bc",
-    "digest": "1820157f5174546d50ade87d626c5e758436ae7b9c1cb58bca90bcdd4e7df210",
+    "version": "sha-5f5416092904",
+    "digest": "4b06413baba0efb67fa740c3367a30bc9e4a7f0a54f1b6c8d558139bf128f411",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/vuln-disclosure",
-    "version": "sha-0fdcec5106ef",
-    "digest": "7b677c87b593a3a38b804d199bbc5f80ed5a0f623118dfc9f7f6c266267b95fd",
+    "version": "sha-b6ca0df7a27d",
+    "digest": "77d199cdf19017436ba4f837d11e8e595f165f3a4702f94a1f4615be2e679e7b",
     "catalog_visibility": "public",
-    "catalog_role": "context"
+    "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/vuln-triage",
-    "version": "sha-9b40defd917a",
-    "digest": "c3656fd9342adace36205bed20c967c121f487622102daadc689587082cfd1e2",
+    "version": "sha-0703756f489a",
+    "digest": "1100857cf7c0c9337e7791cbe93838789c2c7e955f50e946d0a9624cd085d327",
     "catalog_visibility": "public",
-    "catalog_role": "context"
+    "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/weather-forecast",
-    "version": "sha-b361c52db322",
-    "digest": "24336a3f2b0e800ff72d975aa7543e909ef56ecd5b6673ef8d17f5dfd8a83804",
+    "version": "sha-c270b385b135",
+    "digest": "b1828f4187801fe5de29c48d515ede2ffd42cab8d2ace48aab98f4aeb28cd20c",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/web-fetch",
-    "version": "sha-5b29beff4257",
-    "digest": "b10c3b974a4deb45a36a9b80692d672c864326b59792c20b74dd81405a8dbc00",
+    "version": "sha-2a9765ea574f",
+    "digest": "89445885a1de165c3f709e00ef7e42911a8e89f048a3bd734916452dfb56720c",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
   {
     "skill_id": "runx/work-plan",
-    "version": "sha-e1da21f64f22",
-    "digest": "403362b6a5c40719d252481f57a119b68e2c8b479949b1d655dc4be375b5a1f7",
+    "version": "sha-c7b49dc5e418",
+    "digest": "0c4b3cbe546a009c917a9fb4b3fd380db7c147c816438f742b46b3ec3c7ae6eb",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
   {
     "skill_id": "runx/x402-pay",
-    "version": "sha-7967d7343ffb",
-    "digest": "18e4e8c85606f201463d29f4aca8cf910f84293a720a68b2090bd0df1544a62c",
+    "version": "sha-f573681a1228",
+    "digest": "cb3e5e85381b005a071f291ba91d822f289a9436cf6d041ad7c2a016ca8b98e9",
     "catalog_visibility": "public",
     "catalog_role": "branded"
   },
   {
     "skill_id": "runx/zapier-handoff",
-    "version": "sha-c66aaea037e2",
-    "digest": "fea3dfe9c62ee6579fcde6aa6a8653efc7944eec40a7926619f9bb533f23cb54",
+    "version": "sha-cb102a79ce5d",
+    "digest": "e2547cffb6969987bd227b3cedd05e3be3560bba44723d6cba204dd62ccb4ace",
     "catalog_visibility": "public",
     "catalog_role": "context"
   }

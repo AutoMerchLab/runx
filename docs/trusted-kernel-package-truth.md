@@ -19,7 +19,7 @@ Rust crates that are still in parity-only mode remain conformance evidence
 until a separate cutover spec changes a consumer and passes the relevant gate.
 
 Local Rust kernel parity is checked with `pnpm rust:check`, which runs Cargo
-formatting, clippy, workspace tests, crate graph/style guards, `cargo-deny`,
+formatting, Clippy, workspace tests, crate dependency guards, `cargo-deny`,
 and the `runx-core` public API snapshot. In CI this remains advisory during
 Phase A; it becomes blocking only through the `rust-kernel-blocking-promotion`
 spec after five clean kernel-touching PRs.

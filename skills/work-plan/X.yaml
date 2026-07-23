@@ -1,5 +1,5 @@
 skill: work-plan
-version: "0.2.0"
+version: "0.2.1"
 catalog:
   kind: graph
   audience: builder
@@ -138,6 +138,7 @@ harness:
       expect:
         status: sealed
         steps:
+          - inspect
           - draft
           - validate
         step_outputs:
@@ -311,9 +312,21 @@ runners:
         type: object
         required: false
         description: Optional captured control context to pass through unchanged.
+      repo_root:
+        type: string
+        required: false
+        default: .
+        description: Workspace root used for native skill-catalog inspection.
     graph:
       name: work-plan
       steps:
+        - id: inspect
+          label: inspect the local skill catalog
+          tool: runx.skill.inspect
+          scopes:
+            - fs.read
+          inputs:
+            repo_root: $input.repo_root
         - id: draft
           label: decompose objective at governance boundaries
           run:
@@ -328,17 +341,8 @@ runners:
             thread_locator: $input.thread_locator
             thread: $input.thread
             change_set: $input.change_set
-          instructions: >
-            Return work_plan_draft with decision, plan_kind, change_set,
-            objective_summary, workspace_change_plan, orchestration_steps,
-            required_skills, and open_questions. Preserve a supplied change_set
-            exactly. Split at authority, mutation, dependency, and review
-            boundaries; do not split for cognitive convenience. Every phase,
-            repo request, and orchestration step needs an id, ordered
-            dependencies, and an explicit mutation flag. A ready plan has no
-            blocking open questions. Use plan_kind skill_package for Runx skill
-            authoring and route that work through skill-lab. This runner plans
-            only and never claims downstream execution.
+          context:
+            catalog_skills: inspect.authoring_context.data.catalog_skills
           artifacts:
             named_emits:
               work_plan_draft: work_plan_draft
@@ -351,11 +355,10 @@ runners:
             harness_context: $input.harness_context
           context:
             work_plan_draft: draft.work_plan_draft.data
+            catalog_skills: inspect.authoring_context.data.catalog_skills
           run:
-            type: cli-tool
-            command: node
-            args:
-              - ./validate_plan.mjs
+            type: javascript
+            module: work-plan.mjs
             outputs:
               decision: string
               plan_kind: string

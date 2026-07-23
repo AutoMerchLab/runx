@@ -11,13 +11,14 @@ use ring::signature::KeyPair;
 use runx_contracts::JsonValue;
 #[cfg(feature = "cli-tool")]
 use runx_runtime::registry::TrustTier;
-use runx_runtime::registry::{
-    IngestSkillOptions, create_file_registry_store, ingest_skill_markdown,
-};
+use runx_runtime::registry::{FileRegistryStore, IngestSkillOptions, ingest_skill_markdown};
 use runx_runtime::{
-    LocalOrchestrator, LocalReceiptStore, RUNX_RECEIPT_DIR_ENV,
-    RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV, RUNX_RECEIPT_VERIFY_KID_ENV, RunResult,
-    RuntimeOptions, SkillRunRequest,
+    LocalOrchestrator, LocalReceiptStore, RUNX_RECEIPT_DIR_ENV, RunResult, RuntimeOptions,
+    SkillRunRequest,
+};
+#[cfg(feature = "cli-tool")]
+use runx_runtime::{
+    RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV, RUNX_RECEIPT_VERIFY_KID_ENV,
 };
 use tempfile::tempdir;
 
@@ -210,6 +211,7 @@ fn runtime_options_local_development_uses_live_timestamp() {
 fn native_skill_run_pauses_with_agent_act_request() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let skill_dir = write_agent_task_skill(temp.path())?;
+    let expected_instructions = fs::read_to_string(skill_dir.join("SKILL.md"))?;
     let result = run_skill(SkillRunRequest {
         skill_path: skill_dir,
         receipt_dir: None,
@@ -244,6 +246,9 @@ fn native_skill_run_pauses_with_agent_act_request() -> Result<(), Box<dyn std::e
     );
     let invocation = object_field(request, "invocation").ok_or("missing invocation")?;
     assert_eq!(string_field(invocation, "source_type"), Some("agent-task"));
+    let envelope = object_field(invocation, "envelope").ok_or("missing envelope")?;
+    let instructions = string_field(envelope, "instructions").ok_or("missing instructions")?;
+    assert_eq!(instructions, expected_instructions);
     let envelope = object_field(invocation, "envelope").ok_or("missing envelope")?;
     let inputs = object_field(envelope, "inputs").ok_or("missing inputs")?;
     assert_eq!(
@@ -598,12 +603,14 @@ runners:
   inspect:
     default: true
     type: cli-tool
-    command: /bin/sh
+    command: sh
     args:
       - -c
       - printf '{"receipt_dir":"%s","verify_kid":"%s","verify_key":"%s"}\n' "$RUNX_RECEIPT_DIR" "$RUNX_RECEIPT_VERIFY_KID" "$RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64"
     outputs:
       receipt_dir: string
+      verify_kid: string
+      verify_key: string
 "#,
     )?;
 
@@ -645,6 +652,176 @@ runners:
         string_field(structured, "verify_key"),
         Some("public-key-material")
     );
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "cli-tool")]
+fn native_graph_runs_a_javascript_module_without_manifest_process_plumbing()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let skill_dir = temp.path().join("javascript-module-skill");
+    fs::create_dir_all(&skill_dir)?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: javascript-module-skill\ndescription: Exercise the native JavaScript module boundary.\n---\n# JavaScript Module\n",
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        r#"
+skill: javascript-module-skill
+runners:
+  main:
+    default: true
+    type: graph
+    inputs:
+      value:
+        type: string
+        required: true
+    graph:
+      name: javascript-module-skill
+      steps:
+        - id: transform
+          inputs:
+            value: $input.value
+          run:
+            type: javascript
+            module: domain.mjs
+            export: transform
+            outputs:
+              transformed: object
+          artifacts:
+            named_emits:
+              transformed: transformed
+            packets:
+              transformed: runx.test.transformed.v1
+"#,
+    )?;
+    fs::create_dir_all(skill_dir.join("packets"))?;
+    fs::write(
+        skill_dir.join("packets/transformed.schema.json"),
+        r#"{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-runx-packet-id": "runx.test.transformed.v1",
+  "type": "object",
+  "required": ["value"],
+  "properties": { "value": { "type": "string" } },
+  "additionalProperties": false
+}"#,
+    )?;
+    fs::write(
+        skill_dir.join("domain.mjs"),
+        "export const transform = ({ value }) => ({ transformed: { value: value.toUpperCase() } });\n",
+    )?;
+    let env = std::env::var("PATH")
+        .ok()
+        .map(|path| BTreeMap::from([("PATH".to_owned(), path)]))
+        .unwrap_or_default();
+
+    let result = run_skill(SkillRunRequest {
+        skill_path: skill_dir,
+        receipt_dir: Some(temp.path().join("receipts")),
+        run_id: None,
+        answers_path: None,
+        inputs: BTreeMap::from([("value".to_owned(), JsonValue::String("runx".to_owned()))]),
+        env,
+        cwd: temp.path().to_path_buf(),
+        managed_agent: Default::default(),
+        local_credential: None,
+    })?;
+
+    let output = object(&result.output, "javascript module result")?;
+    assert_eq!(string_field(output, "status"), Some("sealed"));
+    let payload = object_field(output, "payload").ok_or("missing payload")?;
+    let claim = step_claim(payload, "transform").ok_or("missing transform claim")?;
+    let transformed = object_field(claim, "transformed").ok_or("missing transformed output")?;
+    assert_eq!(string_field(transformed, "value"), Some("RUNX"));
+    let steps = payload
+        .get("steps")
+        .and_then(JsonValue::as_array)
+        .ok_or("missing graph steps")?;
+    let receipt_id = steps
+        .first()
+        .and_then(JsonValue::as_object)
+        .and_then(|step| string_field(step, "receipt_id"))
+        .ok_or("missing transform receipt")?;
+    let receipt =
+        crate::support::read_test_signed_receipt(&temp.path().join("receipts"), receipt_id)?;
+    assert!(
+        receipt
+            .seal
+            .criteria
+            .iter()
+            .any(|criterion| { criterion.criterion_id.as_str() == "packet_schemas_verified" })
+    );
+    Ok(())
+}
+
+#[test]
+#[cfg(feature = "cli-tool")]
+fn native_javascript_runner_rejects_a_packet_schema_violation()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let skill_dir = temp.path().join("invalid-javascript-packet");
+    fs::create_dir_all(skill_dir.join("packets"))?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: invalid-javascript-packet\ndescription: Reject an invalid deterministic packet.\n---\n# Invalid packet\n",
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        r#"
+skill: invalid-javascript-packet
+runners:
+  main:
+    default: true
+    type: javascript
+    module: domain.mjs
+    outputs:
+      result: object
+    artifacts:
+      named_emits:
+        result: result
+      packets:
+        result: runx.test.result.v1
+"#,
+    )?;
+    fs::write(
+        skill_dir.join("domain.mjs"),
+        "export default () => ({ result: { value: 42 } });\n",
+    )?;
+    fs::write(
+        skill_dir.join("packets/result.schema.json"),
+        r#"{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-runx-packet-id": "runx.test.result.v1",
+  "type": "object",
+  "required": ["value"],
+  "properties": { "value": { "type": "string" } },
+  "additionalProperties": false
+}"#,
+    )?;
+    let env = std::env::var("PATH")
+        .ok()
+        .map(|path| BTreeMap::from([("PATH".to_owned(), path)]))
+        .unwrap_or_default();
+
+    let error = match run_skill(SkillRunRequest {
+        skill_path: skill_dir,
+        receipt_dir: Some(temp.path().join("receipts")),
+        run_id: None,
+        answers_path: None,
+        inputs: BTreeMap::new(),
+        env,
+        cwd: temp.path().to_path_buf(),
+        managed_agent: Default::default(),
+        local_credential: None,
+    }) {
+        Ok(_) => return Err("invalid deterministic packet must fail before sealing".into()),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains("output violates schema"));
     Ok(())
 }
 
@@ -772,10 +949,9 @@ fn native_graph_skill_run_pauses_and_resumes_agent_task() -> Result<(), Box<dyn 
     );
     let invocation = object_field(request, "invocation").ok_or("missing invocation")?;
     let envelope = object_field(invocation, "envelope").ok_or("missing envelope")?;
-    assert_eq!(
-        string_field(envelope, "instructions"),
-        Some("Use the full issue context.")
-    );
+    let instructions = string_field(envelope, "instructions").ok_or("missing instructions")?;
+    assert!(instructions.contains("# Graph Issue To PR"));
+    assert!(instructions.contains("Use the full issue context."));
     let envelope_inputs = object_field(envelope, "inputs").ok_or("missing inputs")?;
     assert_eq!(
         envelope_inputs.get("thread_title"),
@@ -891,6 +1067,17 @@ fn native_graph_skill_run_pauses_and_resumes_agent_task() -> Result<(), Box<dyn 
     assert_eq!(
         string_field(declared_result, "summary"),
         Some("Graph fix authored.")
+    );
+    let completed_state: JsonValue = serde_json::from_str(&fs::read_to_string(&state_path)?)?;
+    let completed_state = object(&completed_state, "completed graph state")?;
+    let completed_checkpoint =
+        object_field(completed_state, "checkpoint").ok_or("missing completed checkpoint")?;
+    let completed_graph =
+        object_field(completed_checkpoint, "state").ok_or("missing completed graph")?;
+    assert_eq!(
+        string_field(completed_graph, "status"),
+        Some("succeeded"),
+        "the durable checkpoint must agree with the sealed graph receipt"
     );
 
     Ok(())
@@ -1181,16 +1368,12 @@ fn graph_agent_task_injects_registry_skill_as_current_context()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let registry_dir = temp.path().join("registry");
-    let store = create_file_registry_store(&registry_dir);
+    let store = FileRegistryStore::new(&registry_dir);
     ingest_skill_markdown(
         &store,
         r#"---
 name: taste-profile
 description: Portable taste guidance for downstream agents.
-source:
-  type: agent
-  agent: critic
-  task: apply taste judgement
 ---
 # Taste Profile
 
@@ -1201,6 +1384,17 @@ weak contrast, and interaction states that feel bolted on.
             owner: Some("runx".to_owned()),
             version: Some("1.0.0".to_owned()),
             created_at: Some(FIXTURE_CREATED_AT.to_owned()),
+            profile_document: Some(
+                r#"skill: taste-profile
+runners:
+  main:
+    default: true
+    type: agent
+    agent: critic
+    task: apply taste judgement
+"#
+                .to_owned(),
+            ),
             ..IngestSkillOptions::default()
         },
     )?;
@@ -1246,9 +1440,17 @@ weak contrast, and interaction states that feel bolted on.
     assert_eq!(string_field(data, "source"), Some("runx-registry"));
     assert_eq!(string_field(data, "skill_id"), Some("runx/taste-profile"));
     assert_eq!(string_field(data, "version"), Some("1.0.0"));
-    assert!(
-        string_field(data, "content").is_some_and(|content| content.contains("# Taste Profile"))
+    assert_eq!(
+        string_field(data, "content_kind"),
+        Some("skill-catalog-summary")
     );
+    assert_eq!(
+        string_field(data, "description"),
+        Some("Portable taste guidance for downstream agents.")
+    );
+    assert!(string_field(data, "manual_sha256").is_some_and(|hash| hash.starts_with("sha256:")));
+    assert!(string_field(data, "profile_sha256").is_some_and(|hash| hash.starts_with("sha256:")));
+    assert!(data.get("content").is_none());
     let meta = object_field(context_entry, "meta").ok_or("missing context meta")?;
     assert!(string_field(meta, "hash").is_some_and(|hash| hash.starts_with("sha256:")));
 
@@ -1282,7 +1484,9 @@ fn graph_agent_task_rejects_parent_path_context_skill() -> Result<(), Box<dyn st
     };
 
     assert!(
-        error.to_string().contains("must not contain '..'"),
+        error
+            .to_string()
+            .contains("context skill ref \"../taste-profile\" must not traverse the package"),
         "unexpected error: {error}"
     );
 
@@ -1299,10 +1503,6 @@ fn graph_agent_task_rejects_graph_stage_context_skill() -> Result<(), Box<dyn st
         stage_dir.join("SKILL.md"),
         r#"---
 name: context-stage
-source:
-  type: agent
-  agent: builder
-  task: internal implementation detail
 ---
 # Context Stage
 "#,
@@ -1354,16 +1554,12 @@ fn graph_agent_task_rejects_registry_runtime_path_context_skill()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let registry_dir = temp.path().join("registry");
-    let store = create_file_registry_store(&registry_dir);
+    let store = FileRegistryStore::new(&registry_dir);
     ingest_skill_markdown(
         &store,
         r#"---
 name: runtime-helper
 description: Internal runtime helper.
-source:
-  type: agent
-  agent: builder
-  task: internal helper
 ---
 # Runtime Helper
 "#,
@@ -2101,7 +2297,7 @@ fn native_graph_skill_run_executes_nested_registry_skill() -> Result<(), Box<dyn
 {
     let temp = tempdir()?;
     let registry_dir = temp.path().join("registry");
-    let store = create_file_registry_store(&registry_dir);
+    let store = FileRegistryStore::new(&registry_dir);
     ingest_skill_markdown(
         &store,
         "---\nname: registry-child\ndescription: Registry-backed nested child.\n---\n# Registry Child\n",
@@ -2150,7 +2346,7 @@ fn native_graph_skill_run_rejects_env_promoted_official_nested_registry_skill()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let registry_dir = temp.path().join("registry");
-    let store = create_file_registry_store(&registry_dir);
+    let store = FileRegistryStore::new(&registry_dir);
     ingest_skill_markdown(
         &store,
         "---\nname: registry-child\ndescription: Official registry-backed nested child.\n---\n# Registry Child\n",
@@ -2207,7 +2403,7 @@ fn native_graph_skill_run_rejects_unsigned_nested_registry_skill()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let registry_dir = temp.path().join("registry");
-    let store = create_file_registry_store(&registry_dir);
+    let store = FileRegistryStore::new(&registry_dir);
     ingest_skill_markdown(
         &store,
         "---\nname: registry-child\ndescription: Registry-backed nested child.\n---\n# Registry Child\n",
@@ -2259,7 +2455,7 @@ fn native_graph_skill_run_rejects_tampered_nested_registry_skill()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let registry_dir = temp.path().join("registry");
-    let store = create_file_registry_store(&registry_dir);
+    let store = FileRegistryStore::new(&registry_dir);
     ingest_skill_markdown(
         &store,
         "---\nname: registry-child\ndescription: Registry-backed nested child.\n---\n# Registry Child\n",
@@ -2552,7 +2748,7 @@ fn write_graph_agent_task_skill(root: &Path) -> Result<PathBuf, Box<dyn std::err
     fs::create_dir_all(&skill_dir)?;
     fs::write(
         skill_dir.join("SKILL.md"),
-        "---\nname: graph-issue-to-pr\n---\n# Graph Issue To PR\n",
+        "---\nname: graph-issue-to-pr\n---\n# Graph Issue To PR\n\nUse the full issue context.\n",
     )?;
     fs::write(
         skill_dir.join("X.yaml"),
@@ -2572,7 +2768,6 @@ runners:
             task: graph-decide
             outputs:
               result: object
-          instructions: Use the full issue context.
 "#,
     )?;
     Ok(skill_dir.to_path_buf())
@@ -2676,32 +2871,37 @@ fn write_graph_nested_agent_skill(
         _ => return Err(format!("unsupported nested agent source type {source_type}").into()),
     };
     let child_dir = root.join(child_name);
-    fs::create_dir_all(&child_dir)?;
-    let source = if source_type == "agent-task" {
-        r#"
-source:
-  type: agent-task
-  agent: builder
-  task: child-agent-task
-  outputs:
-    result: object
+    let runner = if source_type == "agent-task" {
+        r#"    type: agent-task
+    agent: builder
+    task: child-agent-task
+    outputs:
+      result: object
 "#
     } else {
-        r#"
-source:
-  type: agent
-  outputs:
-    result: object
+        r#"    type: agent
+    outputs:
+      result: object
 "#
     };
-    fs::write(
-        child_dir.join("SKILL.md"),
+    crate::support::write_test_skill_package(
+        &child_dir,
         format!(
             r#"---
-name: {child_name}{source}---
+name: {child_name}
+---
 # {child_name}
 "#
-        ),
+        )
+        .as_str(),
+        format!(
+            r#"skill: {child_name}
+runners:
+  {child_name}:
+    default: true
+{runner}"#
+        )
+        .as_str(),
     )?;
 
     let skill_dir = root.join(format!("graph-nested-{source_type}"));
@@ -3054,7 +3254,7 @@ fn write_echo_tool_at(tool_dir: &Path, message: &str) -> Result<(), Box<dyn std:
   "name": "test.echo",
   "source": {
     "type": "cli-tool",
-    "command": "/bin/sh",
+    "command": "sh",
     "args": ["./run.sh"],
     "input_mode": "stdin"
   },
@@ -3091,7 +3291,7 @@ fn write_optional_json_tool(root: &Path) -> Result<(), Box<dyn std::error::Error
   "name": "test.optional-json",
   "source": {
     "type": "cli-tool",
-    "command": "/bin/sh",
+    "command": "sh",
     "args": ["./run.sh"],
     "input_mode": "stdin"
   },
@@ -3130,23 +3330,25 @@ esac
 #[cfg(feature = "cli-tool")]
 fn write_graph_nested_cli_skill(root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let child_dir = root.join("child-echo");
-    fs::create_dir_all(&child_dir)?;
-    fs::write(
-        child_dir.join("SKILL.md"),
+    crate::support::write_test_skill_package(
+        &child_dir,
         r#"---
 name: child-echo
-source:
-  type: cli-tool
-  command: node
-  args:
-    - run.mjs
-  input_mode: stdin
-runx:
-  artifacts:
-    named_emits:
-      nested: nested
 ---
 # Child Echo
+"#,
+        r#"skill: child-echo
+runners:
+  child-echo:
+    default: true
+    type: cli-tool
+    command: node
+    args:
+      - run.mjs
+    input_mode: stdin
+    artifacts:
+      named_emits:
+        nested: nested
 "#,
     )?;
     fs::write(
@@ -3224,19 +3426,22 @@ runners:
 fn write_graph_stage_cli_skill(root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let skill_dir = root.join("graph-stage-cli");
     let stage_dir = skill_dir.join("graph/child-echo");
-    fs::create_dir_all(&stage_dir)?;
-    fs::write(
-        stage_dir.join("SKILL.md"),
+    crate::support::write_test_skill_package(
+        &stage_dir,
         r#"---
 name: child-echo
-source:
-  type: cli-tool
-  command: node
-  args:
-    - run.mjs
-  input_mode: stdin
 ---
 # Child Echo
+"#,
+        r#"skill: child-echo
+runners:
+  child-echo:
+    default: true
+    type: cli-tool
+    command: node
+    args:
+      - run.mjs
+    input_mode: stdin
 "#,
     )?;
     fs::write(
@@ -3278,19 +3483,22 @@ fn write_graph_nested_cli_counter_skill(
     root: &Path,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let child_dir = root.join("child-counter");
-    fs::create_dir_all(&child_dir)?;
-    fs::write(
-        child_dir.join("SKILL.md"),
+    crate::support::write_test_skill_package(
+        &child_dir,
         r#"---
 name: child-counter
-source:
-  type: cli-tool
-  command: node
-  args:
-    - run.mjs
-  input_mode: stdin
 ---
 # Child Counter
+"#,
+        r#"skill: child-counter
+runners:
+  child-counter:
+    default: true
+    type: cli-tool
+    command: node
+    args:
+      - run.mjs
+    input_mode: stdin
 "#,
     )?;
     fs::write(

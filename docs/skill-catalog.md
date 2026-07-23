@@ -148,7 +148,7 @@ package, harness, and evidence without separating it from repo history.
 Most new skills should start outside the first-party repo:
 
 ```bash
-runx new <skill-name>
+runx new <skill-name> --objective "Describe the bounded operator outcome"
 runx harness ./<skill-name> --json
 runx login --for publish
 runx registry publish ./<skill-name>/SKILL.md --registry https://api.runx.ai

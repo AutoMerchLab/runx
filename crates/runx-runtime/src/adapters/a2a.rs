@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because the A2A parity slice keeps the transport
+// Module rationale: the A2A parity slice keeps the transport
 // contract, fixture transport, argument mapping, and receipt metadata in one
 // reviewable adapter surface until the live transport split lands.
 use std::collections::BTreeMap;
@@ -140,7 +140,7 @@ where
         "a2a"
     }
 
-    // rust-style-allow: long-function because the send, poll, timeout-cancel,
+    // Function rationale: the send, poll, timeout-cancel,
     // and receipt-metadata path is the governed A2A adapter boundary.
     fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
         let started = Instant::now();
@@ -390,9 +390,7 @@ fn map_arguments(
         .collect()
 }
 
-// rust-style-allow: long-function because the style guard counts template
-// delimiter literals as braces; this parser intentionally handles the full
-// exact-template and embedded-template mapping path in one place.
+// Exact and embedded templates share one delimiter-aware mapping path.
 fn map_template_string(
     template: &str,
     inputs: &JsonObject,
@@ -454,7 +452,7 @@ fn stringify_a2a_output(output: Option<&JsonValue>) -> Result<String, RuntimeErr
     }
 }
 
-// rust-style-allow: long-function because A2A metadata construction keeps
+// Function rationale: A2A metadata construction keeps
 // every hash committed field adjacent to the exact source it summarizes.
 fn metadata_for(
     source: &runx_parser::SkillSource,

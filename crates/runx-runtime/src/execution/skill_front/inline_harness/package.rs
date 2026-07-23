@@ -12,7 +12,6 @@ use crate::receipts::paths::{RUNX_CWD_ENV, RUNX_RECEIPT_DIR_ENV};
 use crate::receipts::store::LocalReceiptStore;
 
 use super::run_inline_harness_with_effects;
-use crate::execution::skill_front::runner_manifest::resolve_skill_dir;
 
 /// Run every harness case owned by a skill package: inline `harness.cases`
 /// plus conventional `fixtures/*.yaml` files. Discovery is deterministic and
@@ -23,16 +22,19 @@ pub(crate) fn run_package_harness_with_effects(
     env: Option<&BTreeMap<String, String>>,
     effects: &RuntimeEffectRegistry,
 ) -> Result<PackageHarnessReport, SkillRunError> {
-    let skill_dir = resolve_skill_dir(skill_path)?;
+    let skill_dir = crate::skill_package::resolve_skill_package_directory(skill_path)?;
     let base_env = env
         .cloned()
         .unwrap_or_else(crate::services::process_env_snapshot);
     let cwd = std::env::current_dir()
         .map_err(|source| RuntimeError::io("resolving cwd for package harness", source))?;
     let operator_workspace = crate::config::resolve_runx_workspace_base(&base_env, &cwd);
-    let harness = PackageHarnessEnvironment::prepare(base_env, &operator_workspace, receipt_dir)?;
+    let harness =
+        PackageHarnessEnvironment::prepare(base_env, &operator_workspace, &skill_dir, receipt_dir)?;
+    let inline_receipt_root = harness.inline_receipt_root();
     let mut report = run_inline_harness_with_effects(
         &skill_dir,
+        Some(&inline_receipt_root),
         Some(&harness.receipt_dir),
         Some(&harness.env),
         effects,
@@ -52,11 +54,19 @@ fn replay_conventional_fixtures(
     if fixture_paths.is_empty() {
         return Ok(());
     }
-    let mut options = RuntimeOptions::from_env_or_local_development(harness.env.clone())?;
-    options.created_at = crate::time::DEFAULT_CREATED_AT.to_owned();
-    options.effects = effects.clone();
+    let mut base_options = RuntimeOptions::from_env_or_local_development(harness.env.clone())?;
+    base_options.created_at = crate::time::DEFAULT_CREATED_AT.to_owned();
+    base_options.effects = effects.clone();
     let receipt_store = LocalReceiptStore::new(&harness.receipt_dir);
-    for fixture_path in fixture_paths {
+    for (index, fixture_path) in fixture_paths.into_iter().enumerate() {
+        let mut options = base_options.clone();
+        options.env.insert(
+            RUNX_RECEIPT_DIR_ENV.to_owned(),
+            harness
+                .fixture_receipt_dir(index)
+                .to_string_lossy()
+                .into_owned(),
+        );
         report.case_count += 1;
         match crate::execution::harness::run_harness_fixture_with_adapter(
             &fixture_path,
@@ -85,10 +95,13 @@ fn persist_fixture_receipts(
     output: &crate::execution::harness::HarnessReplayOutput,
 ) -> Result<(), SkillRunError> {
     let policy = options.receipt_signature.signature_policy();
-    for receipt in &output.step_receipts {
-        receipt_store.write_receipt_with_policy(receipt, policy)?;
-    }
-    receipt_store.write_receipt_with_policy(&output.receipt, policy)?;
+    receipt_store.write_receipts_with_policy(
+        output
+            .step_receipts
+            .iter()
+            .chain(std::iter::once(&output.receipt)),
+        policy,
+    )?;
     Ok(())
 }
 
@@ -104,28 +117,17 @@ fn finalize_report(report: &mut PackageHarnessReport) {
 struct PackageHarnessEnvironment {
     env: BTreeMap<String, String>,
     receipt_dir: PathBuf,
-    scratch_root: Option<PathBuf>,
+    scratch_root: PathBuf,
 }
 
 impl PackageHarnessEnvironment {
     fn prepare(
         mut env: BTreeMap<String, String>,
         operator_workspace: &Path,
+        skill_dir: &Path,
         receipt_dir: Option<&Path>,
     ) -> Result<Self, SkillRunError> {
-        let receipt_dir = receipt_dir
-            .map(Path::to_path_buf)
-            .or_else(|| env.get(RUNX_RECEIPT_DIR_ENV).map(PathBuf::from))
-            .unwrap_or_else(|| operator_workspace.join(".runx").join("receipts"));
-        let receipt_dir = if receipt_dir.is_absolute() {
-            receipt_dir
-        } else {
-            operator_workspace.join(receipt_dir)
-        };
-        env.insert(
-            RUNX_RECEIPT_DIR_ENV.to_owned(),
-            receipt_dir.to_string_lossy().into_owned(),
-        );
+        crate::services::merge_inferred_tool_roots(&mut env, skill_dir);
         let scratch_root = unique_scratch_root(operator_workspace);
         let workspace = scratch_root.join("workspace");
         fs::create_dir_all(&workspace).map_err(|source| {
@@ -137,6 +139,23 @@ impl PackageHarnessEnvironment {
                 source,
             )
         })?;
+        let configured_receipt_dir = receipt_dir
+            .map(Path::to_path_buf)
+            .or_else(|| env.get(RUNX_RECEIPT_DIR_ENV).map(PathBuf::from));
+        let receipt_dir = configured_receipt_dir.map_or_else(
+            || operator_workspace.join(".runx").join("receipts"),
+            |path| {
+                if path.is_absolute() {
+                    path
+                } else {
+                    operator_workspace.join(path)
+                }
+            },
+        );
+        env.insert(
+            RUNX_RECEIPT_DIR_ENV.to_owned(),
+            receipt_dir.to_string_lossy().into_owned(),
+        );
         env.insert(
             RUNX_CWD_ENV.to_owned(),
             workspace.to_string_lossy().into_owned(),
@@ -144,8 +163,18 @@ impl PackageHarnessEnvironment {
         Ok(Self {
             env,
             receipt_dir,
-            scratch_root: Some(scratch_root),
+            scratch_root,
         })
+    }
+
+    fn inline_receipt_root(&self) -> PathBuf {
+        self.scratch_root.join("inline-receipts")
+    }
+
+    fn fixture_receipt_dir(&self, index: usize) -> PathBuf {
+        self.scratch_root
+            .join("fixture-receipts")
+            .join(index.to_string())
     }
 }
 
@@ -161,9 +190,7 @@ fn unique_scratch_root(operator_workspace: &Path) -> PathBuf {
 
 impl Drop for PackageHarnessEnvironment {
     fn drop(&mut self) {
-        if let Some(root) = self.scratch_root.take() {
-            let _ignored = fs::remove_dir_all(root);
-        }
+        let _ignored = fs::remove_dir_all(&self.scratch_root);
     }
 }
 
@@ -211,18 +238,27 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let operator_workspace = unique_test_root("isolated")?;
         fs::create_dir_all(&operator_workspace)?;
-        let harness =
-            PackageHarnessEnvironment::prepare(BTreeMap::new(), &operator_workspace, None)?;
+        let skill_dir = operator_workspace.join("skills/demo");
+        let harness = PackageHarnessEnvironment::prepare(
+            BTreeMap::new(),
+            &operator_workspace,
+            &skill_dir,
+            None,
+        )?;
         let workspace = PathBuf::from(
             harness
                 .env
                 .get(RUNX_CWD_ENV)
                 .ok_or("missing isolated RUNX_CWD")?,
         );
-        let scratch_root = harness.scratch_root.clone().ok_or("missing scratch root")?;
+        let scratch_root = harness.scratch_root.clone();
 
         assert!(workspace.starts_with(operator_workspace.join(".runx").join("harness")));
         assert_eq!(workspace, scratch_root.join("workspace"));
+        assert_eq!(
+            harness.receipt_dir,
+            operator_workspace.join(".runx").join("receipts")
+        );
         assert_eq!(
             harness.env.get(RUNX_RECEIPT_DIR_ENV),
             Some(
@@ -232,6 +268,14 @@ mod tests {
                     .to_string_lossy()
                     .into_owned()
             )
+        );
+        assert_eq!(
+            harness.inline_receipt_root(),
+            scratch_root.join("inline-receipts")
+        );
+        assert_ne!(
+            harness.fixture_receipt_dir(0),
+            harness.fixture_receipt_dir(1)
         );
         drop(harness);
         assert!(!scratch_root.exists());
@@ -249,8 +293,10 @@ mod tests {
             RUNX_CWD_ENV.to_owned(),
             operator_workspace.to_string_lossy().into_owned(),
         );
-        let harness = PackageHarnessEnvironment::prepare(env, &operator_workspace, None)?;
-        let scratch_root = harness.scratch_root.clone().ok_or("missing scratch root")?;
+        let skill_dir = operator_workspace.join("skills/demo");
+        let harness =
+            PackageHarnessEnvironment::prepare(env, &operator_workspace, &skill_dir, None)?;
+        let scratch_root = harness.scratch_root.clone();
 
         assert!(scratch_root.starts_with(operator_workspace.join(".runx").join("harness")));
         assert_eq!(
@@ -276,6 +322,7 @@ mod tests {
         let harness = PackageHarnessEnvironment::prepare(
             BTreeMap::new(),
             &operator_workspace,
+            &operator_workspace.join("skills/demo"),
             Some(PathBuf::from(".runx/custom-receipts").as_path()),
         )?;
 
@@ -285,6 +332,33 @@ mod tests {
             harness.env.get(RUNX_RECEIPT_DIR_ENV),
             Some(&expected.to_string_lossy().into_owned())
         );
+        drop(harness);
+        fs::remove_dir_all(operator_workspace)?;
+        Ok(())
+    }
+
+    #[test]
+    fn package_harness_keeps_workspace_tool_catalogs_after_cwd_isolation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let operator_workspace = unique_test_root("tool-roots")?;
+        let skill_dir = operator_workspace.join("skills/demo");
+        let tools_dir = operator_workspace.join("tools");
+        fs::create_dir_all(&skill_dir)?;
+        fs::create_dir_all(&tools_dir)?;
+
+        let harness = PackageHarnessEnvironment::prepare(
+            BTreeMap::new(),
+            &operator_workspace,
+            &skill_dir,
+            None,
+        )?;
+        let configured = harness
+            .env
+            .get("RUNX_TOOL_ROOTS")
+            .ok_or("missing inferred tool roots")?;
+        let roots = std::env::split_paths(configured).collect::<Vec<_>>();
+
+        assert!(roots.contains(&tools_dir));
         drop(harness);
         fs::remove_dir_all(operator_workspace)?;
         Ok(())

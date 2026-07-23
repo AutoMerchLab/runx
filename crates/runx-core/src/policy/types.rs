@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - policy parity wire types stay colocated so serde surface changes are reviewed together.
+// Module rationale: policy parity wire types stay colocated so serde surface changes are reviewed together.
 use runx_contracts::JsonValue;
 use serde::{Deserialize, Serialize};
 

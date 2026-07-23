@@ -28,42 +28,61 @@ name missing evidence as a blocker.
 
 ## What this skill does
 
-Four runners:
+Five runners:
 
-- `read`: collect account evidence from the live API or, preferred for bulk
-  history, an X archive export file (`tweets.js`, `following.js`). Queries:
+- `read`: collect account evidence from the live API. Queries:
   `snapshot`, `posts`, `mentions`, `search`, `following`, `followers`. Emits
   `twitter.evidence.v1`. Read-only; no gate.
+- `read-archive`: inspect one contained X archive export (`tweets.js`,
+  `following.js`, or `follower.js`) through the runtime's digest-bound artifact
+  page seam. Twitter code receives bounded, record-complete pages and never a
+  path or whole-file escape hatch. The runtime snapshots up to 512 MiB and this
+  skill requests 512 KiB pages; the page size is not a total archive limit.
+  Emits the same `twitter.evidence.v1` packet; no gate.
 - `plan`: turn one bounded objective plus evidence into `twitter.plan.v1`, an
   explicit list of typed acts with rationale, using agent judgment. This is the
   curated lane, for dozens of acts that each deserve a reason. A plan is a
   draft; it delivers nothing.
 - `select`: the bulk lane. Apply a deterministic predicate to an archive export
-  and emit a compact plan of delete acts, no agent judgment. Use it when the
-  criterion is mechanical (an author, a date range, an engagement threshold)
-  and the match set runs to thousands, where a per-item rationale would be
-  wrong and would exceed the runtime output limit. Emits `twitter.selection.v1`
-  carrying a digest-bound `twitter_plan`.
+  and emit a compact plan, no agent judgment. Use it when the criterion is
+  mechanical and the match set runs to thousands, where a per-item rationale
+  would be wrong and would exceed the runtime output limit. Two targets:
+  `posts` pages `tweets.js` and emits `delete_post` acts (predicate: author,
+  date range, engagement threshold), with identical results across page sizes;
+  `users` reads a bounded `following.js` bundle and emits
+  `unfollow` acts (predicate: `non_mutual: true` for accounts you follow that
+  do not follow back, needing `follower.js` too, or an explicit `user_ids`
+  list). Emits `twitter.selection.v1` carrying a digest-bound `twitter_plan`.
 - `execute`: run an approved plan through the X API behind an approval gate,
   act by act, sealing per-act provider evidence into `twitter.execution.v1` and
-  appending the batch outcome to a durable execution ledger. Rate-limit and
-  batch stops are clean: the packet names the remaining act ids, and the ledger
-  holds what completed.
+  appending one compact progress fact to a durable execution ledger. A batch
+  is always a contiguous plan prefix and native HTTP stops at the first failed
+  or rate-limited request, so a monotonic cursor—not an accumulated id list—is
+  enough to resume safely.
 
 ### Resume and the execution ledger
 
-`execute` is stateless per turn; the state lives in the ledger, not the
-process. Each turn appends a `twitter_execution` event (its `executed_act_ids`)
-to a `data-store` stream keyed by the plan digest, under optimistic-concurrency
-version control. A bulk purge of thousands of posts is therefore many gated
-batches sized to the provider rate window, advanced by an external driver: the
-driver reads the ledger, folds the executed set and the stream version, calls
-`execute` for one batch, and repeats until the plan is empty. Resume is
-automatic, an interrupted purge continues from the ledger with no manual
-bookkeeping, because rerunning the driver re-reads the same durable state. The
-driver is a caller's concern, not part of this skill. The operator binds
-`data_source_ref` to durable local SQLite (the default `data-store` adapter);
-no state is invented in the skill.
+`execute` is stateless per turn; the state lives in a `data-store` stream keyed
+by the immutable plan digest. The latest `twitter.execution.progress.v1` event
+contains only `next_act_index`, `total_act_count`, an optional in-progress
+thread segment cursor, and a bounded summary of the last batch. Its size is
+constant whether the plan has completed two acts or two thousand.
+
+The driver reads only the latest ledger event (`read_events`, `limit: 1`) and
+its stream version. It calls `execute` with that `expected_version` and the
+canonical key `twitter:<plan_digest>:v<expected_version+1>`. The runner performs
+the same tail read itself and refuses stale or misbound inputs before approval
+or provider work. After a committed batch, the driver repeats with the new
+version until `next_act_index == total_act_count`. It never scans history or
+folds completed ids. An invalid plan, digest mismatch, stale cursor, or already
+complete plan produces a sealed refusal/no-op receipt but does not append a
+fake state transition.
+
+Threads use one extra bounded cursor: if segment 1 succeeds and segment 2
+fails, progress records the next segment plus the confirmed reply id. The next
+batch starts at segment 2 rather than reposting segment 1. The operator binds
+`data_source_ref` to durable local SQLite or another declared `data-store`
+adapter; the skill never opens the database directly.
 
 Each runner emits exactly one packet for its lane: typed evidence with
 provenance and a content digest, a curated or bulk act plan bound by digest, or
@@ -149,11 +168,19 @@ For the `plan` runner, build `twitter_plan` this way:
   `open_questions`.
 - **Rate limit during read:** the evidence packet returns what it collected
   with `stop_conditions: ["rate_limited"]` and the reset time.
-- **Rate limit during execute:** the execution packet lists
-  `remaining_act_ids`; re-run with `already_executed_act_ids` after the reset.
+- **Oversized user-selection archive:** the current two-file `users` selector
+  refuses when either bounded text file exceeds the native read limit; it never
+  treats truncation as an empty following/follower set. `read-archive` itself
+  remains paged. Do not claim an oversized users bulk plan was evaluated.
+- **Rate limit during execute:** the packet reports `next_act_index`,
+  `remaining_count`, and the reset time. After the reset, read the latest
+  ledger version and invoke the next canonical batch; do not reconstruct ids.
 - **Plan digest mismatch on execute:** the apply step refuses and executes
-  nothing; the ledger records a no-op refusal event, and the driver, which
-  re-reads the stream version each turn, folds no completed acts and advances.
+  nothing. A refusal is receipt evidence, not a fake ledger transition.
+- **Stale stream version or batch key:** refusal before the approval/provider
+  boundary. Re-read the one-event ledger tail and derive the canonical key.
+- **Partially posted thread:** resume from the ledger's `active_thread` cursor;
+  never restart the thread from its first confirmed segment.
 - **Approval missing or denied:** the execute graph stops at the gate.
 - **Credentials missing:** clean `needs_input` stop naming the environment
   variables; never a half-configured call.
@@ -178,15 +205,16 @@ For the `plan` runner, build `twitter_plan` this way:
   provably identical.
 - `twitter.execution.v1`: `decision` (`executed`, `partial`, `stopped`,
   `refused`), `plan_digest`, `principal`, `results[]` (`act_id`, `kind`,
-  `consequence`, `status`, `provider_ref`, `detail`), `executed_act_ids[]`
-  (folded by the ledger to compute what remains), `remaining_act_ids[]`,
-  `rate`, `blockers[]`, `success_checkpoint`.
+  `consequence`, `status`, `provider_ref`, `detail`) for the current bounded
+  batch, `next_act_index`, `total_act_count`, `remaining_count`, optional
+  `active_thread`, `rate`, `blockers[]`, and `success_checkpoint`. A ready batch
+  also carries the compact `twitter.execution.progress.v1` ledger delta.
 
 ## Worked example
 
 Input: objective "delete my zero-engagement posts from before 2024",
 principal `account:@example`, evidence from
-`read(query: posts, archive_file: data/tweets.js)` showing three matching
+`read-archive(query: posts, archive_file: data/tweets.js)` showing three matching
 posts, operator_policy "keep anything with replies".
 
 Output: `decision: ready`; three `delete_post` acts, each carrying the post id
@@ -198,17 +226,23 @@ confirmed.
 
 ## Inputs
 
-- `read`: `query` (required), `params`, `archive_file`, `max_items`, `auth`.
+- `read`: `query` (required), `params`, `max_items`, `auth`.
+- `read-archive`: `query` and relative `archive_file` (required),
+  `archive_base` (`workspace` default, or `skill` for packaged fixtures), and
+  `max_items`.
 - `plan`: `objective` (required), `principal` (required), `evidence_json`,
   `operator_policy`, `brand_context`, `operator_context`.
-- `select`: `objective` (required), `principal` (required), `archive_file`
-  (required), `predicate` (required: `rt_of`, `is_retweet`, `text_prefix`,
-  `text_contains`, `max_likes`, `max_reposts`, `before_year`, `after_year`),
-  `max_acts`.
-- `execute`: `plan_json` (required), `plan_digest`, `data_source_ref`
+- `select`: `objective` (required), `principal` (required), `target` (`posts`
+  default, or `users`), `archive_file` (posts), `following_file` and
+  `followers_file` (users), `predicate` (required: posts take `rt_of`,
+  `is_retweet`, `text_prefix`, `text_contains`, `max_likes`, `max_reposts`,
+  `before_year`, `after_year`; users take `non_mutual` or `user_ids`),
+  `archive_base`, `max_acts`.
+- `execute`: `plan_json` and `plan_digest` (required), `data_source_ref`
   (required), `expected_version` (required), `idempotency_key` (required),
-  `already_executed_act_ids`, `max_acts`. The driver supplies the ledger inputs
-  per turn.
+  `max_acts` (hard-capped at 50). `idempotency_key` must be exactly
+  `twitter:<plan_digest>:v<expected_version+1>`; the runner independently
+  verifies both values against the durable one-event tail before execution.
 
 ## Credentials and cost
 
@@ -236,3 +270,14 @@ The X API bills per request on current plans and a post containing a link
 costs a large multiple of a plain one, so prefer archive exports for bulk
 history, set a spending cap in the developer portal, and let `max_items` and
 the act caps bound each run.
+
+## Agent task contract
+
+### `twitter-plan`
+
+Follow the `plan` procedure and act vocabulary above. Return one
+`twitter_plan` containing `decision`, `objective`, `principal`, typed `acts`,
+approval gates, evidence refs, open questions, blockers, and a truthful success
+checkpoint. Every referenced post or user id must be grounded in supplied
+evidence, and every public word must appear verbatim in the act params. A plan
+never executes, publishes, deletes, follows, or otherwise mutates the account.

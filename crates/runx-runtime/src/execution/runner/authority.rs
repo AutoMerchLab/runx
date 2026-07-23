@@ -8,12 +8,13 @@ use crate::RuntimeError;
 use crate::adapter::SkillOutput;
 use crate::effects::{
     EffectAdmission, EffectOutputRequest, EffectReceiptRequest, EffectReplay,
-    EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest, RuntimeEffectError,
-    RuntimeEffectRegistry,
+    EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest, ResolvedEffectTarget,
+    RuntimeEffectError, RuntimeEffectRegistry,
 };
 
 pub(super) fn find_effect_replay(
     step: &GraphStep,
+    target: ResolvedEffectTarget<'_>,
     inputs: &JsonObject,
     env: &BTreeMap<String, String>,
     graph_dir: &Path,
@@ -22,6 +23,7 @@ pub(super) fn find_effect_replay(
     effects
         .find_replay(EffectStepRequest {
             step,
+            target,
             inputs,
             env,
             graph_dir,
@@ -31,6 +33,7 @@ pub(super) fn find_effect_replay(
 
 pub(super) fn recover_pending_effects(
     step: &GraphStep,
+    target: ResolvedEffectTarget<'_>,
     inputs: &JsonObject,
     env: &BTreeMap<String, String>,
     graph_dir: &Path,
@@ -39,6 +42,7 @@ pub(super) fn recover_pending_effects(
     effects
         .recover_pending(EffectStepRequest {
             step,
+            target,
             inputs,
             env,
             graph_dir,
@@ -48,6 +52,7 @@ pub(super) fn recover_pending_effects(
 
 pub(super) fn enforce_step_authority_admission(
     step: &GraphStep,
+    target: ResolvedEffectTarget<'_>,
     inputs: &JsonObject,
     env: &BTreeMap<String, String>,
     graph_dir: &Path,
@@ -56,11 +61,28 @@ pub(super) fn enforce_step_authority_admission(
     effects
         .admit(EffectStepRequest {
             step,
+            target,
             inputs,
             env,
             graph_dir,
         })
         .map(|admission| admission.map(StepAuthorityContext::new))
+        .map_err(|source| runtime_effect_error(step, source))
+}
+
+pub(super) fn resolve_effect_approval(
+    request: EffectStepRequest<'_>,
+    authority: Option<StepAuthorityContext>,
+    host: &mut dyn crate::Host,
+    effects: &RuntimeEffectRegistry,
+) -> Result<Option<StepAuthorityContext>, RuntimeError> {
+    let Some(authority) = authority else {
+        return Ok(None);
+    };
+    let step = request.step;
+    effects
+        .resolve_approval(request, authority.admission, host)
+        .map(|admission| Some(StepAuthorityContext::new(admission)))
         .map_err(|source| runtime_effect_error(step, source))
 }
 
@@ -164,6 +186,7 @@ pub(super) struct EffectReceiptContext<'a> {
     pub(super) output: &'a mut SkillOutput,
     pub(super) receipt: &'a Receipt,
     pub(super) env: &'a BTreeMap<String, String>,
+    pub(super) signature_policy: crate::receipts::RuntimeReceiptSignaturePolicy<'a>,
     pub(super) effects: &'a RuntimeEffectRegistry,
 }
 
@@ -179,11 +202,16 @@ fn effect_receipt_request<'a>(
         output: context.output,
         receipt: context.receipt,
         env: context.env,
+        signature_policy: context.signature_policy,
     }
 }
 
 fn runtime_effect_error(step: &GraphStep, source: RuntimeEffectError) -> RuntimeError {
     match source {
+        RuntimeEffectError::ApprovalPending { message, .. } => RuntimeError::GraphBlocked {
+            step_id: step.id.clone(),
+            reason: message,
+        },
         RuntimeEffectError::Denied { verb, message, .. } => authority_denied(step, verb, message),
         RuntimeEffectError::Failed {
             operation, message, ..
@@ -206,6 +234,11 @@ impl StepAuthorityContext {
 
     pub(super) fn admission_witness(&self) -> &runx_core::state_machine::AuthorityAdmissionWitness {
         self.admission.witness()
+    }
+
+    #[cfg(feature = "catalog")]
+    pub(super) fn admission(&self) -> &EffectAdmission {
+        &self.admission
     }
 
     pub(super) fn authority_grant_refs(

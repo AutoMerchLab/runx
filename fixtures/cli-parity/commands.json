@@ -1,6 +1,6 @@
 {
   "schema": "runx.cli_feature_parity_matrix.v1",
-  "sourceOfTruth": "crates/runx-cli Rust implementation",
+  "sourceOfTruth": "runx --help --json",
   "exitCodes": [
     0,
     1,
@@ -10,45 +10,20 @@
   ],
   "commands": [
     {
+      "name": "cli.help",
+      "topLevelUsage": [],
+      "usage": [
+        "runx <command> [args]",
+        "runx --help",
+        "runx --version"
+      ],
+      "notes": [],
+      "options": [
+        "-h, --help",
+        "-V, --version",
+        "-j, --json  Emit the native command catalog with --help"
+      ],
       "id": "cli.help",
-      "usage": "runx --help",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--help",
-        "-h"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        3,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "none",
-        "receipt": "none",
-        "sideEffect": "none",
-        "surfaces": [
-          "cli-presentation"
-        ]
-      },
-      "cases": [
-        "help.top-level"
-      ]
-    },
-    {
-      "id": "new",
-      "usage": "runx new <name>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<name>"
-      ],
-      "flags": [
-        "--directory",
-        "--json"
-      ],
       "exitCodes": [
         0,
         1,
@@ -60,9 +35,54 @@
         "humanOutput": "semantic",
         "jsonOutput": "schema-exact",
         "receipt": "none",
-        "sideEffect": "filesystem",
+        "sideEffect": "none",
         "surfaces": [
-          "scaffold",
+          "cli-presentation"
+        ]
+      },
+      "cases": [
+        "help.top-level",
+        "usage.unsupported"
+      ]
+    },
+    {
+      "name": "new",
+      "topLevelUsage": [],
+      "usage": [
+        "runx new <name> --objective text [--project-context text] [--directory dir] [-R dir] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]"
+      ],
+      "notes": [
+        "Delegates to the canonical Skill Lab build lane; no files are written until the digest-bound package validates.",
+        "Without --managed-agent, returns a needs_agent envelope and an exact runx resume command."
+      ],
+      "options": [
+        "--objective text  Required capability and outcome",
+        "--project-context text  Product, repository, and operator constraints",
+        "--directory dir  Child path inside the active workspace",
+        "-R, --receipt-dir dir",
+        "--managed-agent  Explicitly allow an in-process model loop for this run",
+        "--managed-agent-rounds n  Bound each managed act to 1-32 rounds (default 4)",
+        "--non-interactive",
+        "-j, --json"
+      ],
+      "id": "new",
+      "exitCodes": [
+        0,
+        1,
+        2,
+        3,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "schema-exact",
+        "sideEffect": "local-runtime",
+        "surfaces": [
+          "skill-authoring",
+          "graph-runtime",
+          "caller-mediated-resolution",
+          "receipts",
           "cli-presentation"
         ]
       },
@@ -71,16 +91,18 @@
       ]
     },
     {
-      "id": "init",
-      "usage": "runx init",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "-g",
-        "--global",
-        "--prefetch",
-        "--json"
+      "name": "init",
+      "topLevelUsage": [],
+      "usage": [
+        "runx init [-g|--global] [--prefetch official] [--json]"
       ],
+      "notes": [],
+      "options": [
+        "-g, --global",
+        "--prefetch official  Prefetch the official skill catalog",
+        "-j, --json"
+      ],
+      "id": "init",
       "exitCodes": [
         0,
         1,
@@ -94,7 +116,7 @@
         "receipt": "none",
         "sideEffect": "filesystem",
         "surfaces": [
-          "scaffold",
+          "workspace-init",
           "official-skills"
         ]
       },
@@ -103,22 +125,62 @@
       ]
     },
     {
-      "id": "history",
-      "usage": "runx history [query]",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--skill",
-        "--status",
-        "--source",
-        "--actor",
-        "--artifact-type",
-        "--since",
-        "--until",
-        "--limit",
-        "--receipt-dir",
-        "--json"
+      "name": "verify",
+      "topLevelUsage": [],
+      "usage": [
+        "runx verify [receipt-id] [--receipt-dir dir] [--receipt <path|->] [--notary <path|-> --notary-key trusted.pem] [-j|--json]"
       ],
+      "notes": [],
+      "options": [
+        "--receipt-dir dir",
+        "--receipt <path|->",
+        "--notary <path|->",
+        "--notary-key trusted.pem",
+        "--allow-local-development-signatures  Accept local fixture signatures only; never for production verification",
+        "-j, --json"
+      ],
+      "id": "verify",
+      "exitCodes": [
+        0,
+        1,
+        2,
+        3,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "schema-exact",
+        "sideEffect": "none",
+        "surfaces": [
+          "receipts",
+          "cli-presentation"
+        ]
+      },
+      "cases": [
+        "verify.validate"
+      ]
+    },
+    {
+      "name": "history",
+      "topLevelUsage": [],
+      "usage": [
+        "runx history [query] [--detail] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--limit n] [--receipt-dir dir] [--json]"
+      ],
+      "notes": [],
+      "options": [
+        "--skill s",
+        "--status s",
+        "--source s",
+        "--actor a",
+        "--artifact-type t",
+        "--since iso",
+        "--until iso",
+        "--limit n",
+        "--receipt-dir dir",
+        "-j, --json"
+      ],
+      "id": "history",
       "exitCodes": [
         0,
         1,
@@ -141,18 +203,21 @@
       ]
     },
     {
+      "name": "resume",
+      "topLevelUsage": [],
+      "usage": [
+        "runx resume <run-id> <answers.json> [-R dir] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]"
+      ],
+      "notes": [],
+      "options": [
+        "-R, --receipts dir",
+        "--receipt-dir dir",
+        "--non-interactive  Accepted for automation; resume never prompts",
+        "--managed-agent  Explicitly allow an in-process model loop for this continuation",
+        "--managed-agent-rounds n  Bound each managed act to 1-32 rounds (default 4)",
+        "-j, --json"
+      ],
       "id": "resume",
-      "usage": "runx resume <run-id> <answers.json>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<run-id>",
-        "<answers.json>"
-      ],
-      "flags": [
-        "--receipt-dir",
-        "--non-interactive",
-        "--json"
-      ],
       "exitCodes": [
         0,
         1,
@@ -177,49 +242,18 @@
       ]
     },
     {
-      "id": "verify",
-      "usage": "runx verify [receipt-id]",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--receipt-dir",
-        "--receipt",
-        "--notary",
-        "--notary-key",
-        "--allow-local-development-signatures",
-        "--json"
+      "name": "list",
+      "topLevelUsage": [],
+      "usage": [
+        "runx list [tools|skills|graphs|packets|overlays] [--ok-only|--invalid-only] [-j|--json]"
       ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        3,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "schema-exact",
-        "sideEffect": "none",
-        "surfaces": [
-          "receipts",
-          "cli-presentation"
-        ]
-      },
-      "cases": [
-        "verify.validate"
-      ]
-    },
-    {
-      "id": "list",
-      "usage": "runx list [tools|skills|graphs|packets|overlays]",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
+      "notes": [],
+      "options": [
         "--ok-only",
         "--invalid-only",
-        "--json"
+        "-j, --json"
       ],
+      "id": "list",
       "exitCodes": [
         0,
         1,
@@ -242,147 +276,21 @@
       ]
     },
     {
-      "id": "config.set",
-      "usage": "runx config set <key> <value>|--from-stdin",
-      "aliases": [],
-      "requiredPositionals": [
-        "<key>",
-        "<value>"
+      "name": "login",
+      "topLevelUsage": [],
+      "usage": [
+        "runx login [--provider github|google|gitlab] [--for default|publish] [--from-gh] [--api-base-url url] [--allow-local-api] [-j|--json]"
       ],
-      "flags": [
-        "--from-stdin",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        3,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "filesystem",
-        "surfaces": [
-          "config",
-          "cli-presentation"
-        ]
-      },
-      "cases": [
-        "config.set.validate"
-      ]
-    },
-    {
-      "id": "config.get",
-      "usage": "runx config get <key>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<key>"
-      ],
-      "flags": [
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        3,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "filesystem",
-        "surfaces": [
-          "config",
-          "cli-presentation"
-        ]
-      },
-      "cases": [
-        "config.get.validate"
-      ]
-    },
-    {
-      "id": "config.list",
-      "usage": "runx config list",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        3,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "filesystem",
-        "surfaces": [
-          "config",
-          "cli-presentation"
-        ]
-      },
-      "cases": [
-        "config.list.execute"
-      ]
-    },
-    {
-      "id": "credential",
-      "usage": "runx credential set|list|remove|bind ...",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--from-stdin",
-        "--profile",
-        "--auth-mode",
-        "--provider",
-        "--skill",
-        "--credential",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        3,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "filesystem",
-        "surfaces": [
-          "config",
-          "skill-resolution",
-          "cli-presentation"
-        ]
-      },
-      "cases": [
-        "credential.validate"
-      ]
-    },
-    {
-      "id": "login",
-      "usage": "runx login [--provider github|google|gitlab] [--for default|publish] [--from-gh] [--api-base-url url] [--allow-local-api] [--json]",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--provider",
-        "--for",
-        "--from-gh",
-        "--api-base-url",
+      "notes": [],
+      "options": [
+        "--provider provider",
+        "--for purpose",
+        "--from-gh            Use the active GitHub CLI identity instead of browser OAuth",
+        "--api-base-url url",
         "--allow-local-api",
-        "--json"
+        "-j, --json"
       ],
+      "id": "login",
       "exitCodes": [
         0,
         1,
@@ -405,26 +313,24 @@
       ]
     },
     {
-      "id": "connect",
-      "usage": "runx connect list|start|status|invoke|revoke ... [-j|--json]",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--scope",
-        "--scope-family",
-        "--authority-kind",
-        "--target-repo",
-        "--target-locator",
-        "--binding",
-        "--grant",
-        "--operation",
-        "--input",
-        "--api-base-url",
-        "--token",
-        "--allow-local-api",
-        "--json",
-        "-j"
+      "name": "connect",
+      "topLevelUsage": [
+        "runx connect list|start|status|revoke ... [-j|--json]"
       ],
+      "usage": [
+        "runx connect list [-j|--json]",
+        "runx connect start <provider> --scope <capability> [--scope <capability>...] [--scope-family family] [--authority-kind kind] [--target-repo repo] [--target-locator locator] [--binding id] [-j|--json]",
+        "runx connect status <session-id> [-j|--json]",
+        "runx connect revoke <grant-id> [-j|--json]"
+      ],
+      "notes": [],
+      "options": [
+        "--api-base-url url",
+        "--token token",
+        "--allow-local-api",
+        "-j, --json"
+      ],
+      "id": "connect",
       "exitCodes": [
         0,
         1,
@@ -448,15 +354,25 @@
       ]
     },
     {
-      "id": "policy.inspect",
-      "usage": "runx policy inspect <policy.json>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<policy.json>"
+      "name": "config",
+      "topLevelUsage": [
+        "runx config set|get|list [provider|model|api-key|public-token|auto-approve] [value] [-j|--json]"
       ],
-      "flags": [
-        "--json"
+      "usage": [
+        "runx config set <key> <value> [-j|--json]",
+        "runx config set api-key|public-token --from-stdin [-j|--json]",
+        "runx config get <key> [-j|--json]",
+        "runx config list [-j|--json]"
       ],
+      "notes": [
+        "Short keys: provider, model, api-key, public-token, and auto-approve. Fully qualified config keys are also accepted. Secret values are accepted only on stdin.",
+        "development.auto_approve applies only to local-development receipt runs and is recorded in approval evidence."
+      ],
+      "options": [
+        "--from-stdin",
+        "-j, --json"
+      ],
+      "id": "config",
       "exitCodes": [
         0,
         1,
@@ -468,26 +384,80 @@
         "humanOutput": "semantic",
         "jsonOutput": "schema-exact",
         "receipt": "none",
-        "sideEffect": "none",
+        "sideEffect": "filesystem",
         "surfaces": [
-          "policy",
+          "config",
           "cli-presentation"
         ]
       },
       "cases": [
-        "policy.inspect.validate"
+        "config.set.validate",
+        "config.get.validate",
+        "config.list.execute"
       ]
     },
     {
-      "id": "policy.lint",
-      "usage": "runx policy lint <policy.json>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<policy.json>"
+      "name": "credential",
+      "topLevelUsage": [
+        "runx credential set|list|remove|bind ... [-j|--json]"
       ],
-      "flags": [
-        "--json"
+      "usage": [
+        "runx credential set <provider> [--profile name] [--auth-mode mode] [--audience https://host] --from-stdin [-j|--json]",
+        "runx credential list [-j|--json]",
+        "runx credential remove <profile> [-j|--json]",
+        "runx credential bind <profile> --provider <provider> [-j|--json]",
+        "runx credential bind <profile> --skill <skill> --credential <name> [-j|--json]"
       ],
+      "notes": [
+        "Secret material is accepted only on stdin. Profiles are stored locally with encrypted-at-rest private files; project bindings contain names only."
+      ],
+      "options": [
+        "--from-stdin",
+        "--profile name",
+        "--auth-mode mode",
+        "--audience https://host",
+        "--provider provider",
+        "--skill skill",
+        "--credential name",
+        "-j, --json"
+      ],
+      "id": "credential",
+      "exitCodes": [
+        0,
+        1,
+        2,
+        3,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "none",
+        "sideEffect": "filesystem",
+        "surfaces": [
+          "config",
+          "skill-resolution",
+          "cli-presentation"
+        ]
+      },
+      "cases": [
+        "credential.validate"
+      ]
+    },
+    {
+      "name": "policy",
+      "topLevelUsage": [
+        "runx policy inspect|lint <policy.json> [--json]"
+      ],
+      "usage": [
+        "runx policy inspect <policy.json> [--json]",
+        "runx policy lint <policy.json> [--json]"
+      ],
+      "notes": [],
+      "options": [
+        "-j, --json"
+      ],
+      "id": "policy",
       "exitCodes": [
         0,
         1,
@@ -506,22 +476,24 @@
         ]
       },
       "cases": [
+        "policy.inspect.validate",
         "policy.lint.validate"
       ]
     },
     {
+      "name": "publish",
+      "topLevelUsage": [],
+      "usage": [
+        "runx publish <receipt.json> [--api-base-url url] [--token token] [--allow-local-api] [-j|--json]"
+      ],
+      "notes": [],
+      "options": [
+        "--api-base-url url  Public API base URL (default: RUNX_PUBLIC_API_BASE_URL or https://api.runx.ai)",
+        "--token token       Public API token (default: RUNX_PUBLIC_API_TOKEN or runx login)",
+        "--allow-local-api   Allow loopback/private public API URLs for local dogfood only",
+        "-j, --json          Print the raw notary response as JSON"
+      ],
       "id": "publish",
-      "usage": "runx publish <receipt.json> [--api-base-url url] [--token token] [--allow-local-api] [--json]",
-      "aliases": [],
-      "requiredPositionals": [
-        "<receipt.json>"
-      ],
-      "flags": [
-        "--api-base-url",
-        "--token",
-        "--allow-local-api",
-        "--json"
-      ],
       "exitCodes": [
         0,
         1,
@@ -544,48 +516,19 @@
       ]
     },
     {
-      "id": "payment",
-      "usage": "runx payment admission issue --input <file|-> --json",
-      "aliases": [],
-      "requiredPositionals": [
-        "<file|->"
+      "name": "kernel",
+      "topLevelUsage": [],
+      "usage": [
+        "runx kernel eval --input <file|-> --json"
       ],
-      "flags": [
-        "--input",
-        "--json"
+      "notes": [
+        "Reads a deterministic kernel request from a file or stdin."
       ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        3,
-        64
+      "options": [
+        "--input <file|->",
+        "--json  Required"
       ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "local-runtime",
-        "surfaces": [
-          "authority",
-          "cli-presentation"
-        ]
-      },
-      "cases": [
-        "payment.validate"
-      ]
-    },
-    {
       "id": "kernel",
-      "usage": "runx kernel eval --input <file|-> --json",
-      "aliases": [],
-      "requiredPositionals": [
-        "<file|->"
-      ],
-      "flags": [
-        "--input",
-        "--json"
-      ],
       "exitCodes": [
         0,
         1,
@@ -608,16 +551,54 @@
       ]
     },
     {
+      "name": "payment",
+      "topLevelUsage": [],
+      "usage": [
+        "runx payment admission issue --input <file|-> --json"
+      ],
+      "notes": [
+        "Issues a signed payment admission from a JSON request."
+      ],
+      "options": [
+        "--input <file|->",
+        "--json  Required"
+      ],
+      "id": "payment",
+      "exitCodes": [
+        0,
+        1,
+        2,
+        3,
+        64
+      ],
+      "parity": {
+        "humanOutput": "semantic",
+        "jsonOutput": "schema-exact",
+        "receipt": "none",
+        "sideEffect": "local-runtime",
+        "surfaces": [
+          "authority",
+          "cli-presentation"
+        ]
+      },
+      "cases": [
+        "payment.validate"
+      ]
+    },
+    {
+      "name": "parser",
+      "topLevelUsage": [],
+      "usage": [
+        "runx parser eval --input <file|-> --json"
+      ],
+      "notes": [
+        "Reads a parser evaluation request from a file or stdin."
+      ],
+      "options": [
+        "--input <file|->",
+        "--json  Required"
+      ],
       "id": "parser",
-      "usage": "runx parser eval --input <file|-> --json",
-      "aliases": [],
-      "requiredPositionals": [
-        "<file|->"
-      ],
-      "flags": [
-        "--input",
-        "--json"
-      ],
       "exitCodes": [
         0,
         1,
@@ -640,13 +621,16 @@
       ]
     },
     {
-      "id": "doctor",
-      "usage": "runx doctor [path]",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--json"
+      "name": "doctor",
+      "topLevelUsage": [],
+      "usage": [
+        "runx doctor [path|authority|registry] [--json]"
       ],
+      "notes": [],
+      "options": [
+        "-j, --json"
+      ],
+      "id": "doctor",
       "exitCodes": [
         0,
         1,
@@ -669,14 +653,17 @@
       ]
     },
     {
-      "id": "dev",
-      "usage": "runx dev [root]",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--lane",
-        "--json"
+      "name": "dev",
+      "topLevelUsage": [],
+      "usage": [
+        "runx dev [root] [--lane lane] [--json]"
       ],
+      "notes": [],
+      "options": [
+        "--lane lane",
+        "-j, --json"
+      ],
+      "id": "dev",
       "exitCodes": [
         0,
         1,
@@ -700,16 +687,17 @@
       ]
     },
     {
+      "name": "export",
+      "topLevelUsage": [],
+      "usage": [
+        "runx export <claude|codex> [skill-ref...] [--project] [--json]"
+      ],
+      "notes": [],
+      "options": [
+        "--project  Write project-local host-agent shims",
+        "-j, --json"
+      ],
       "id": "export",
-      "usage": "runx export <claude|codex> [skill-ref...]",
-      "aliases": [],
-      "requiredPositionals": [
-        "<claude|codex>"
-      ],
-      "flags": [
-        "--project",
-        "--json"
-      ],
       "exitCodes": [
         0,
         1,
@@ -732,18 +720,19 @@
       ]
     },
     {
-      "id": "mcp.serve",
-      "usage": "runx mcp serve <skill-ref...>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<skill-ref...>"
+      "name": "mcp",
+      "topLevelUsage": [],
+      "usage": [
+        "runx mcp serve <skill-ref...> [--receipt-dir dir] [--http-listen [addr]] [--http-allow-non-loopback]"
       ],
-      "flags": [
-        "--receipt-dir",
-        "--runner",
-        "--http-listen",
-        "--http-allow-non-loopback"
+      "notes": [],
+      "options": [
+        "--receipt-dir dir",
+        "--http-listen [addr]",
+        "--http-allow-non-loopback",
+        "--runner runner  Must follow the serve subcommand"
       ],
+      "id": "mcp",
       "exitCodes": [
         0,
         1,
@@ -766,26 +755,33 @@
       ]
     },
     {
-      "id": "skill.run",
-      "usage": "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner]",
-      "aliases": [],
-      "requiredPositionals": [
-        "<skill-ref|owner/name@version|skill-dir|SKILL.md>"
+      "name": "skill",
+      "topLevelUsage": [],
+      "usage": [
+        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [-j] [--managed-agent [--managed-agent-rounds n]] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [-R dir]",
+        "runx skill inspect <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-j] [--registry url|path] [--digest sha256]"
       ],
-      "flags": [
-        "--profile",
-        "--credential-profile",
-        "--input",
-        "--input-json",
-        "--approve-operator-context",
-        "--full-operator-context",
-        "--skip-operator-context",
-        "--registry",
-        "--digest",
-        "--receipt-dir",
-        "--non-interactive",
-        "--json"
+      "notes": [],
+      "options": [
+        "-p, --profile name       Use a stored local credential profile",
+        "--credential-profile name  Alias for --profile",
+        "-i, --input key=value    Set a structured input; repeat for multiple inputs",
+        "--input-json key=json    Set an input that must parse as JSON",
+        "--approve-operator-context digest",
+        "                          Approve a prepared mutation only when its context matches this digest",
+        "--full-operator-context  Print the complete prepared context before execution",
+        "--non-interactive        Never prompt; return approval instructions instead",
+        "--managed-agent          Explicitly allow an in-process model loop for this run",
+        "--managed-agent-rounds n Bound each managed act to 1-32 rounds (default 4)",
+        "--skip-operator-context  Run without context preparation, approval, drift checks, or receipt binding",
+        "-R, --receipts dir       Write receipts under dir",
+        "--receipt-dir dir        Alias for --receipts",
+        "-j, --json               Print machine-readable output",
+        "--registry url|path",
+        "--digest sha256",
+        "--flag value"
       ],
+      "id": "skill",
       "exitCodes": [
         0,
         1,
@@ -806,26 +802,32 @@
           "authority",
           "caller-mediated-resolution",
           "adapter-cli-tool",
-          "adapter-a2a",
-          "adapter-agent"
+          "adapter-agent",
+          "cli-presentation"
         ]
       },
       "cases": [
-        "skill.run.validate"
+        "skill.run.validate",
+        "skill.inspect.validate"
       ]
     },
     {
-      "id": "skill.inspect",
-      "usage": "runx skill inspect <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner]",
-      "aliases": [],
-      "requiredPositionals": [
-        "<skill-ref|owner/name@version|skill-dir|SKILL.md>"
+      "name": "add",
+      "topLevelUsage": [],
+      "usage": [
+        "runx add <skill-ref|github-url> [--registry url|path] [--version version] [--ref git-ref] [--digest sha256] [--to dir] [--api-base-url url] [--json]"
       ],
-      "flags": [
-        "--registry",
-        "--digest",
-        "--json"
+      "notes": [],
+      "options": [
+        "--registry url|path  Registry URL or local registry path for skill refs",
+        "--version version    Registry version for skill refs",
+        "--ref git-ref        Git ref for GitHub repository URLs",
+        "--digest sha256      Expected package digest for skill refs",
+        "--to dir             Install destination for skill refs",
+        "--api-base-url url   Hosted index API for GitHub repository URLs",
+        "-j, --json"
       ],
+      "id": "add",
       "exitCodes": [
         0,
         1,
@@ -837,29 +839,30 @@
         "humanOutput": "semantic",
         "jsonOutput": "schema-exact",
         "receipt": "none",
-        "sideEffect": "filesystem",
+        "sideEffect": "external-stub",
         "surfaces": [
-          "skill-resolution",
+          "registry",
           "cli-presentation"
         ]
       },
       "cases": [
-        "skill.inspect.validate"
+        "add.validate"
       ]
     },
     {
+      "name": "harness",
+      "topLevelUsage": [],
+      "usage": [
+        "runx harness <fixture.yaml...|skill-dir|SKILL.md> [-R dir] [-j|--json]"
+      ],
+      "notes": [
+        "Package mode runs both inline harness.cases and sorted fixtures/*.yaml."
+      ],
+      "options": [
+        "-R, --receipt-dir dir",
+        "-j, --json"
+      ],
       "id": "harness",
-      "usage": "runx harness <skill-dir|fixture.yaml...>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<skill-dir|fixture.yaml...>"
-      ],
-      "flags": [
-        "--receipt-dir",
-        "--json",
-        "--help",
-        "-h"
-      ],
       "exitCodes": [
         0,
         1,
@@ -883,49 +886,20 @@
       ]
     },
     {
-      "id": "tool.build",
-      "usage": "runx tool build <tool-dir>|--all",
-      "aliases": [],
-      "requiredPositionals": [],
-      "conditionalPositionals": [
-        "<tool-dir>"
+      "name": "tool",
+      "topLevelUsage": [],
+      "usage": [
+        "runx tool build <tool-dir>|--all [--json]",
+        "runx tool search <query> [--source source] [--json]",
+        "runx tool inspect <ref> [--source source] [--json]"
       ],
-      "flags": [
+      "notes": [],
+      "options": [
         "--all",
-        "--json"
+        "--source source",
+        "-j, --json"
       ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        3,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "filesystem",
-        "surfaces": [
-          "tool-catalog",
-          "authoring"
-        ]
-      },
-      "cases": [
-        "tool.build.validate"
-      ]
-    },
-    {
-      "id": "tool.search",
-      "usage": "runx tool search <query>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<query>"
-      ],
-      "flags": [
-        "--source",
-        "--json"
-      ],
+      "id": "tool",
       "exitCodes": [
         0,
         1,
@@ -940,62 +914,42 @@
         "sideEffect": "external-stub",
         "surfaces": [
           "tool-catalog",
-          "adapter-catalog"
+          "extension-sdk"
         ]
       },
       "cases": [
-        "tool.search.validate"
-      ]
-    },
-    {
-      "id": "tool.inspect",
-      "usage": "runx tool inspect <ref>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<ref>"
-      ],
-      "flags": [
-        "--source",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        3,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "external-stub",
-        "surfaces": [
-          "tool-catalog",
-          "adapter-catalog"
-        ]
-      },
-      "cases": [
+        "tool.build.validate",
+        "tool.search.validate",
         "tool.inspect.validate"
       ]
     },
     {
-      "id": "registry",
-      "usage": "runx registry search|read|resolve|install|publish ... --json",
-      "aliases": [],
-      "requiredPositionals": [],
-      "flags": [
-        "--registry",
-        "--registry-dir",
-        "--version",
-        "--digest",
-        "--to",
-        "--owner",
-        "--profile",
-        "--limit",
-        "--upsert",
-        "--json"
+      "name": "registry",
+      "topLevelUsage": [
+        "runx registry search|read|resolve|install|publish ... --json"
       ],
+      "usage": [
+        "runx registry search <query> [--registry url|path] [--registry-dir dir] [--limit n] [-j|--json]",
+        "runx registry read <ref> [--registry url|path] [--registry-dir dir] [--version version] [-j|--json]",
+        "runx registry resolve <ref> [--registry url|path] [--registry-dir dir] [--version version] [-j|--json]",
+        "runx registry install <ref> [--registry url|path] [--registry-dir dir] [--version version] [--digest sha256] [--to dir] [-j|--json]",
+        "runx registry publish <SKILL.md|skill-dir> [--registry url|path] [--owner owner] [--version version] [--profile X.yaml] [--trust-tier tier] [--upsert] [-j|--json]"
+      ],
+      "notes": [],
+      "options": [
+        "--registry url|path",
+        "--registry-dir dir",
+        "--version version",
+        "--digest sha256",
+        "--to dir",
+        "--owner owner",
+        "--profile X.yaml",
+        "--trust-tier first_party|verified|community",
+        "--limit n",
+        "--upsert",
+        "-j, --json"
+      ],
+      "id": "registry",
       "exitCodes": [
         0,
         1,
@@ -1015,43 +969,6 @@
       },
       "cases": [
         "registry.validate"
-      ]
-    },
-    {
-      "id": "add",
-      "usage": "runx add <skill-ref|github-url>",
-      "aliases": [],
-      "requiredPositionals": [
-        "<skill-ref|github-url>"
-      ],
-      "flags": [
-        "--registry",
-        "--version",
-        "--ref",
-        "--digest",
-        "--to",
-        "--api-base-url",
-        "--json"
-      ],
-      "exitCodes": [
-        0,
-        1,
-        2,
-        3,
-        64
-      ],
-      "parity": {
-        "humanOutput": "semantic",
-        "jsonOutput": "schema-exact",
-        "receipt": "none",
-        "sideEffect": "external-stub",
-        "surfaces": [
-          "registry",
-          "cli-presentation"
-        ]
-      },
-      "cases": [
-        "add.validate"
       ]
     }
   ]

@@ -1,5 +1,5 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { dirname, resolve } from "node:path";
 
 import {
   evaluateRustKernelInputSync,
@@ -55,19 +55,11 @@ const fixture = {
 };
 
 for (const scenario of writeScenarios) {
-  writeGeneratedGraph(scenario, branchCount);
+  reconcileGeneratedGraph(scenario, branchCount);
 }
 
 const serialized = `${JSON.stringify(fixture, null, 2)}\n`;
-
-if (check) {
-  const current = readFileSync(outputPath, "utf8");
-  if (current !== serialized) {
-    throw new Error(`${outputPath} is stale; run this script without --check`);
-  }
-} else {
-  writeFileSync(outputPath, serialized);
-}
+writeOrCheck(outputPath, serialized);
 
 function staticAllSuccess() {
   return {
@@ -131,11 +123,22 @@ function staticThresholdPause() {
         groupId: "advisors",
         strategy: "all",
         onBranchFailure: "halt",
-        thresholdGates: [{ step: "risk", field: "risk_score", above: 0.8, action: "pause" }],
+        thresholdGates: [
+          {
+            step: "risk",
+            field: "result.data.risk_score",
+            above: 0.8,
+            action: "pause",
+          },
+        ],
       },
       [
         { stepId: "market", status: "succeeded", outputs: { recommendation: "go" } },
-        { stepId: "risk", status: "succeeded", outputs: { risk_score: 0.91 } },
+        {
+          stepId: "risk",
+          status: "succeeded",
+          outputs: { result: { data: { risk_score: 0.91 } } },
+        },
       ],
       [
         "hrn_rcpt_fanout-threshold_market",
@@ -250,11 +253,23 @@ function generatedRetry(branches: number) {
   };
 }
 
-function writeGeneratedGraph(scenario: Scenario, branches: number) {
-  mkdirSync(generatedGraphDir, { recursive: true });
+function reconcileGeneratedGraph(scenario: Scenario, branches: number) {
   const graph = generatedScenario(scenario, branches);
   const yaml = graphYaml(scenario, branches, graph.graph);
-  writeFileSync(resolve(generatedGraphDir, `${graph.graph}.yaml`), yaml);
+  writeOrCheck(resolve(generatedGraphDir, `${graph.graph}.yaml`), yaml);
+}
+
+function writeOrCheck(path: string, contents: string) {
+  if (check) {
+    const current = readFileSync(path, "utf8");
+    if (current !== contents) {
+      throw new Error(`${path} is stale; run this script without --check`);
+    }
+    return;
+  }
+
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, contents);
 }
 
 function graphYaml(scenario: Scenario, branches: number, graphName: string): string {
@@ -271,7 +286,7 @@ steps:
 ${branchIdsFor(branches).map((id, index) => branchYaml(id, index, scenario, branches)).join("")}  - id: synthesize
     skill: ../../../skills/echo
     context:
-      message: branch_0.recommendation
+      message: branch_0.result.data.recommendation
 `;
 }
 

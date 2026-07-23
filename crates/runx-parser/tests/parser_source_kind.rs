@@ -1,6 +1,6 @@
 use runx_parser::{
-    InputMode, SourceKind, ValidateSkillOptions, parse_skill_markdown, validate_skill,
-    validate_skill_with_options,
+    InputMode, SourceKind, ValidateSkillOptions, parse_runner_manifest_yaml, parse_skill_markdown,
+    validate_runner_manifest, validate_skill, validate_skill_with_options,
 };
 
 fn parse_strict(markdown: &str) -> Result<runx_parser::ValidatedSkill, String> {
@@ -29,6 +29,167 @@ source:
 }
 
 #[test]
+fn javascript_source_parses_a_portable_module_without_process_plumbing() -> Result<(), String> {
+    let skill = parse_strict(
+        r#"---
+name: javascript-skill
+source:
+  type: javascript
+  module: domain/workflow.mjs
+  export: execute
+---
+# JavaScript
+"#,
+    )?;
+    assert_eq!(skill.source.source_type, SourceKind::JavaScript);
+    assert_eq!(skill.source.module.as_deref(), Some("domain/workflow.mjs"));
+    assert_eq!(skill.source.javascript_export.as_deref(), Some("execute"));
+    assert_eq!(skill.source.command, None);
+    assert_eq!(skill.source.source_type.as_str(), "javascript");
+    assert_eq!(skill.source.sandbox, None);
+    Ok(())
+}
+
+#[test]
+fn javascript_source_parses_runtime_owned_artifact_pages() -> Result<(), String> {
+    let skill = parse_strict(
+        r#"---
+name: paged-javascript
+inputs:
+  archive_file:
+    type: string
+    required: true
+  archive_base:
+    type: string
+    required: true
+source:
+  type: javascript
+  module: domain.mjs
+  pages:
+    path_from: archive_file
+    path_scope_from: archive_base
+    media_type: application/javascript
+    framing: json_array
+    page_bytes: 524288
+---
+# Paged JavaScript
+"#,
+    )?;
+    let pages = skill
+        .source
+        .pages
+        .ok_or_else(|| "artifact pages were not parsed".to_owned())?;
+    assert_eq!(pages.path_from, "archive_file");
+    assert_eq!(pages.path_scope_from.as_deref(), Some("archive_base"));
+    assert_eq!(pages.page_bytes, 524_288);
+    Ok(())
+}
+
+#[test]
+fn javascript_source_rejects_ambiguous_or_reserved_page_inputs() -> Result<(), String> {
+    for pages in [
+        "path_from: runx_page\n      media_type: application/json\n      framing: json_array",
+        "path_from: archive\n      path_scope_from: archive\n      media_type: application/json\n      framing: json_array",
+        "path_from: archive\n      media_type: application/json\n      framing: json_array\n      page_bytes: 1048577",
+    ] {
+        let raw = parse_skill_markdown(&format!(
+            "---\nname: bad-pages\nsource:\n  type: javascript\n  module: domain.mjs\n  pages:\n      {pages}\n---\n# Bad pages\n"
+        ))
+        .map_err(|error| error.to_string())?;
+        assert!(validate_skill(raw).is_err(), "invalid pages unexpectedly passed");
+    }
+    Ok(())
+}
+
+#[test]
+fn javascript_source_rejects_process_fields_and_path_escape() -> Result<(), String> {
+    for source in [
+        "type: javascript\n  module: ../escape.mjs",
+        "type: javascript\n  module: domain.mjs\n  command: node",
+        "type: javascript\n  module: domain.mjs\n  args: [extra]",
+        "type: javascript\n  module: domain.mjs\n  timeout_seconds: 1",
+        "type: javascript\n  module: domain.mjs\n  export: not-valid",
+        "type: cli-tool\n  command: node\n  module: domain.mjs",
+    ] {
+        let raw = parse_skill_markdown(&format!(
+            "---\nname: bad-javascript\nsource:\n  {source}\n---\n# JavaScript\n"
+        ))
+        .map_err(|error| error.to_string())?;
+        assert!(
+            validate_skill(raw).is_err(),
+            "invalid javascript source unexpectedly passed: {source}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
+fn javascript_runner_rejects_runx_level_sandbox_controls() -> Result<(), String> {
+    let raw = parse_runner_manifest_yaml(
+        r#"skill: sandboxed-javascript
+runners:
+  transform:
+    type: javascript
+    module: domain.mjs
+    runx:
+      sandbox:
+        profile: readonly
+        network: false
+"#,
+    )
+    .map_err(|error| error.to_string())?;
+    let error = validate_runner_manifest(raw)
+        .err()
+        .ok_or_else(|| "runx-level javascript sandbox unexpectedly passed".to_owned())?;
+    assert!(error.to_string().contains("cannot declare a sandbox"));
+    Ok(())
+}
+
+#[test]
+fn javascript_source_rejects_every_author_selected_sandbox() -> Result<(), String> {
+    for sandbox in [
+        "      profile: readonly\n      cwd_policy: skill-directory\n      network: false",
+        "      profile: network\n      network: true",
+        "      profile: workspace-write\n      writable_paths: [out]",
+        "      profile: readonly\n      cwd_policy: workspace",
+        "      profile: readonly\n      env_allowlist: [EXAMPLE_TOKEN]",
+        "      profile: readonly\n      require_enforcement: false",
+    ] {
+        let raw = parse_skill_markdown(&format!(
+            "---\nname: effectful-javascript\nsource:\n  type: javascript\n  module: domain.mjs\n  sandbox:\n{sandbox}\n---\n# JavaScript\n"
+        ))
+        .map_err(|error| error.to_string())?;
+        let error = validate_skill(raw)
+            .err()
+            .ok_or_else(|| format!("effectful javascript sandbox passed: {sandbox}"))?;
+        assert!(error.to_string().contains("cannot declare a sandbox"));
+    }
+    Ok(())
+}
+
+#[test]
+fn javascript_runner_rejects_credential_delivery() -> Result<(), String> {
+    let raw = parse_runner_manifest_yaml(
+        r#"skill: credentialed-javascript
+runners:
+  transform:
+    type: javascript
+    module: domain.mjs
+    credential: provider-user
+"#,
+    )
+    .map_err(|error| error.to_string())?;
+    let error = validate_runner_manifest(raw)
+        .err()
+        .ok_or_else(|| "credentialed javascript source unexpectedly passed".to_owned())?;
+    assert!(
+        error.to_string().contains("native provider tool"),
+        "{error}"
+    );
+    Ok(())
+}
+
+#[test]
 fn default_source_is_agent_kind() -> Result<(), String> {
     // A skill with no explicit source defaults to the `agent` source; the typed
     // `SourceKind` must carry an `Agent` variant for that (the built-in default).
@@ -51,89 +212,47 @@ inputs:
 }
 
 #[test]
-fn http_source_parses_url_and_method() -> Result<(), String> {
-    let skill = parse_strict(
+fn retired_http_source_points_to_native_http_tools() -> Result<(), String> {
+    let raw = parse_skill_markdown(
         r#"---
-name: http-skill
+name: retired-http-source
 source:
   type: http
   url: https://api.example.test/v1/pets
-  method: POST
----
-# HTTP
-"#,
-    )?;
-    assert_eq!(skill.source.source_type, SourceKind::Http);
-    assert_eq!(skill.source.source_type.as_str(), "http");
-    let http = skill.source.http.as_ref().ok_or("http config is present")?;
-    assert_eq!(http.url, "https://api.example.test/v1/pets");
-    assert_eq!(http.method.as_deref(), Some("POST"));
-    Ok(())
-}
-
-#[test]
-fn http_source_parses_headers_and_private_network_opt_in() -> Result<(), String> {
-    let skill = parse_strict(
-        r#"---
-name: http-internal
-source:
-  type: http
-  url: http://127.0.0.1:8732/v1/pets
-  allow_private_network: true
-  headers:
-    authorization: "Bearer ${secret:TOKEN}"
----
-# HTTP
-"#,
-    )?;
-    let http = skill.source.http.as_ref().ok_or("http config is present")?;
-    assert_eq!(http.allow_private_network, Some(true));
-    assert_eq!(
-        http.headers
-            .as_ref()
-            .and_then(|h| h.get("authorization"))
-            .map(String::as_str),
-        Some("Bearer ${secret:TOKEN}")
-    );
-    Ok(())
-}
-
-#[test]
-fn http_source_requires_a_url() -> Result<(), String> {
-    let raw = parse_skill_markdown(
-        r#"---
-name: http-no-url
-source:
-  type: http
 ---
 # HTTP
 "#,
     )
     .map_err(|error| error.to_string())?;
-    assert!(
-        validate_skill(raw).is_err(),
-        "an http source without a url must fail closed"
-    );
+    let error = validate_skill(raw)
+        .err()
+        .ok_or_else(|| "retired http source unexpectedly validated".to_owned())?;
+    assert!(error.to_string().contains(
+        "source.type http was removed; compose http.read, http.query, or http.execute in a graph"
+    ));
     Ok(())
 }
 
 #[test]
-fn http_source_rejects_an_unsupported_method() -> Result<(), String> {
+fn retired_catalog_source_points_to_graph_tool_steps() -> Result<(), String> {
     let raw = parse_skill_markdown(
         r#"---
-name: http-bad-method
+name: retired-catalog-source
 source:
-  type: http
-  url: https://api.example.test/v1/pets
-  method: HEAD
+  type: catalog
+  catalog_ref: git.status
 ---
-# HTTP
+# Catalog
 "#,
     )
     .map_err(|error| error.to_string())?;
+    let error = validate_skill(raw)
+        .err()
+        .ok_or_else(|| "retired catalog source unexpectedly validated".to_owned())?;
     assert!(
-        validate_skill(raw).is_err(),
-        "an unsupported http method must fail closed"
+        error.to_string().contains(
+            "source.type catalog was removed; invoke catalog tools from a graph tool step"
+        )
     );
     Ok(())
 }

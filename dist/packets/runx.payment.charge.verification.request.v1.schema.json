@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.runx.ai/runx/payment/charge_verification_request/v1.json",
+  "x-runx-packet-id": "runx.payment.charge_verification_request.v1",
+  "x-runx-generated-from": "skills/charge/graph/charge-verify/X.yaml#root.runners.verify.graph.steps.0",
+  "type": "object",
+  "required": [
+    "credential_binding",
+    "forwarding_status",
+    "open_questions",
+    "provider_status",
+    "receipt_status",
+    "verification_request"
+  ],
+  "properties": {
+    "credential_binding": {
+      "type": "object"
+    },
+    "forwarding_status": {
+      "type": "string"
+    },
+    "open_questions": {
+      "type": "array"
+    },
+    "provider_status": {
+      "type": "string"
+    },
+    "receipt_status": {
+      "type": "string"
+    },
+    "verification_request": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

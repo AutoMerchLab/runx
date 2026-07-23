@@ -12,13 +12,17 @@ Current slice:
 
 - parses a local graph with `runx-parser`
 - plans sequential/fanout transitions with `runx-core`
-- runs `cli-tool` skills behind the `cli-tool` feature
+- runs runtime-owned `javascript` modules through the dedicated
+  `runx-js-worker`; lower-level external processes remain behind the
+  `cli-tool` feature
 - emits receipts and validates the parent receipt tree with
   `runx-receipts`
 - exposes native skill, doctor, list, history, MCP, registry, config, policy,
   tool, and dev command support through `runx-cli`
 
-Adapter families remain feature gated:
+The deterministic `javascript` lane is part of the core runtime. It has no Node
+or CLI fallback and exposes no host authority. Adapter families that can cross
+host or provider boundaries remain feature gated:
 
 - `cli-tool`
 - `mcp`
@@ -27,11 +31,12 @@ Adapter families remain feature gated:
 - `agent`
 - `catalog`
 - `external-adapter`
-- `http`
+- `async-http`
+- `thread-outbox-provider`
 
 `a2a` is contract-defined but not enabled in `runx-cli`; the CLI enables
 `cli-tool`, `catalog`, `mcp`, `mcp-http-server`, `external-adapter`, `agent`,
-and `http`.
+and `thread-outbox-provider`. `cli-tool` enables `async-http` transitively.
 
 ## Doctor
 

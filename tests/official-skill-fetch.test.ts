@@ -145,7 +145,7 @@ describe("registry skill native fetch", () => {
     }
   });
 
-  it("copies local tool adapters beside cached registry graph skills", async () => {
+  it("runs cached registry graph skills through native data operations", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-official-fetch-data-store-"));
     const projectDir = path.join(tempDir, "project");
     const globalHomeDir = path.join(tempDir, "home");
@@ -172,8 +172,6 @@ describe("registry skill native fetch", () => {
         "--input",
         "data_source_ref=local://runx-data-store/official-cache",
         "--input",
-        "store_id=official-cache-data-store",
-        "--input",
         "resource=board_events",
         "--input",
         "aggregate_id=posting-123",
@@ -190,12 +188,8 @@ describe("registry skill native fetch", () => {
 
       expect(output.status).toBe("sealed");
       const cachedSkillPath = findRegistrySkillCachePath(globalHomeDir, "acme/data-store");
-      expect(
-        (await stat(path.join(cachedSkillPath, "tools", "data", "local", "manifest.json"))).isFile(),
-      ).toBe(true);
-      expect(
-        (await stat(path.join(cachedSkillPath, "tools", "data", "local", "run.mjs"))).isFile(),
-      ).toBe(true);
+      expect(existsSync(path.join(cachedSkillPath, "tools", "data", "local"))).toBe(false);
+      expect(existsSync(path.join(cachedSkillPath, "tools", "data", "sqlite"))).toBe(false);
     } finally {
       await rm(tempDir, { recursive: true, force: true });
     }
@@ -207,7 +201,7 @@ function testEnv(projectDir: string, globalHomeDir: string): NodeJS.ProcessEnv {
     ...process.env,
     RUNX_CWD: projectDir,
     RUNX_HOME: globalHomeDir,
-    RUNX_DEV_RUST_CLI_BIN: nativeRunxBinaryForTest(),
+    RUNX_RUST_CLI_BIN: nativeRunxBinaryForTest(),
     RUNX_DEVELOPMENT_AUTO_APPROVE: "true",
     RUNX_TOOL_ROOTS: path.resolve("tools"),
   };
@@ -247,7 +241,7 @@ function runNativeSkill(env: NodeJS.ProcessEnv, args: readonly string[]): {
   readonly stdout: string;
   readonly stderr: string;
 } {
-  const result = spawnSync(env.RUNX_DEV_RUST_CLI_BIN ?? "runx", ["skill", ...args], {
+  const result = spawnSync(env.RUNX_RUST_CLI_BIN ?? "runx", ["skill", ...args], {
     cwd: env.RUNX_CWD ?? process.cwd(),
     env,
     encoding: "utf8",
@@ -338,7 +332,7 @@ function publishLocalRegistrySkill(input: {
   if (input.profile) {
     args.push("--profile", input.profile);
   }
-  const result = spawnSync(input.env.RUNX_DEV_RUST_CLI_BIN ?? "runx", args, {
+  const result = spawnSync(input.env.RUNX_RUST_CLI_BIN ?? "runx", args, {
     cwd: process.cwd(),
     env: input.env,
     encoding: "utf8",
@@ -433,7 +427,7 @@ function findSingleRegistryEntry(root: string): string {
 }
 
 function nativeRunxBinaryForTest(): string {
-  const existing = process.env.RUNX_DEV_RUST_CLI_BIN;
+  const existing = process.env.RUNX_RUST_CLI_BIN;
   if (existing) {
     return existing;
   }

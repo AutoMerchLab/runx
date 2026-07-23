@@ -7,7 +7,7 @@
       "parityClass": "semantic",
       "coveredBy": [
         "cli.help",
-        "config.list"
+        "config"
       ],
       "notes": "Human output is normalized semantically; JSON output stays schema-exact."
     },
@@ -16,7 +16,7 @@
       "owner": "runx-cli + runx-runtime + runx-core",
       "parityClass": "fixture-backed",
       "coveredBy": [
-        "skill.run",
+        "skill",
         "registry"
       ],
       "notes": "Covers local paths, registry refs, and official skill resolution."
@@ -26,7 +26,7 @@
       "owner": "runx-runtime",
       "parityClass": "fixture-backed",
       "coveredBy": [
-        "skill.run",
+        "skill",
         "harness",
         "kernel"
       ],
@@ -37,7 +37,7 @@
       "owner": "runx-receipts + runx-runtime + runx-cli",
       "parityClass": "schema-exact",
       "coveredBy": [
-        "skill.run",
+        "skill",
         "harness",
         "history",
         "verify"
@@ -58,7 +58,7 @@
       "owner": "runx-core/policy + runx-runtime",
       "parityClass": "schema-exact",
       "coveredBy": [
-        "skill.run",
+        "skill",
         "harness"
       ],
       "notes": "Declared and enforced sandbox metadata must remain distinct."
@@ -93,22 +93,20 @@
     },
     {
       "id": "tool-catalog",
-      "owner": "runx-runtime adapters",
+      "owner": "runx-runtime tool catalogs",
       "parityClass": "fixture-backed",
       "coveredBy": [
-        "tool.search",
-        "tool.inspect",
-        "tool.build",
+        "tool",
         "list"
       ],
-      "notes": "Catalog discovery and local tool builds use native fixtures or local files."
+      "notes": "Catalog discovery, dispatch, and local tool builds use the canonical native or manifest-owned path."
     },
     {
       "id": "mcp",
       "owner": "runx-runtime adapters/mcp",
       "parityClass": "stubbed",
       "coveredBy": [
-        "mcp.serve"
+        "mcp"
       ],
       "notes": "Protocol behavior uses local servers and deterministic clients."
     },
@@ -117,7 +115,7 @@
       "owner": "runx-runtime cli-tool adapter",
       "parityClass": "fixture-backed",
       "coveredBy": [
-        "skill.run"
+        "skill"
       ],
       "notes": "Process invocation, env, cwd, and sandbox metadata are parity-critical."
     },
@@ -126,35 +124,16 @@
       "owner": "runx-runtime MCP adapter",
       "parityClass": "stubbed",
       "coveredBy": [
-        "mcp.serve"
+        "mcp"
       ],
       "notes": "MCP transport and tool results use local protocol fixtures."
-    },
-    {
-      "id": "adapter-a2a",
-      "owner": "runx-runtime A2A adapter",
-      "parityClass": "stubbed",
-      "coveredBy": [
-        "skill.run"
-      ],
-      "notes": "A2A remains a deterministic adapter path until live provider cutover."
-    },
-    {
-      "id": "adapter-catalog",
-      "owner": "runx-runtime catalog adapter",
-      "parityClass": "stubbed",
-      "coveredBy": [
-        "tool.search",
-        "tool.inspect"
-      ],
-      "notes": "Catalog adapter inputs and normalized outputs are preserved."
     },
     {
       "id": "adapter-agent",
       "owner": "runx-runtime external agent adapter",
       "parityClass": "stubbed",
       "coveredBy": [
-        "skill.run",
+        "skill",
         "dev"
       ],
       "notes": "Managed agent calls are represented by local stubs, not live providers."
@@ -164,9 +143,7 @@
       "owner": "runx-cli",
       "parityClass": "schema-exact",
       "coveredBy": [
-        "config.set",
-        "config.get",
-        "config.list",
+        "config",
         "credential"
       ],
       "notes": "RUNX_HOME, encrypted local profiles, and config file behavior are part of CLI parity."
@@ -189,7 +166,7 @@
       "coveredBy": [
         "connect"
       ],
-      "notes": "Provider-neutral grant lifecycle and bounded provider operations use the native CLI against a local API fixture."
+      "notes": "The native CLI owns provider-neutral grant lifecycle; governed skills and native provider tools own bounded provider operations."
     },
     {
       "id": "doctor",
@@ -232,7 +209,8 @@
       "owner": "runx-core/policy",
       "parityClass": "schema-exact",
       "coveredBy": [
-        "skill.run"
+        "skill",
+        "payment"
       ],
       "notes": "Grant, scope, and authority-kind policy remains machine-checkable without OSS brokerage."
     },
@@ -241,8 +219,7 @@
       "owner": "runx-core/policy",
       "parityClass": "schema-exact",
       "coveredBy": [
-        "policy.inspect",
-        "policy.lint"
+        "policy"
       ],
       "notes": "Policy inspection and linting stay machine-checkable before mutation gates run."
     },
@@ -251,19 +228,28 @@
       "owner": "runx-runtime",
       "parityClass": "fixture-backed",
       "coveredBy": [
-        "skill.run"
+        "skill"
       ],
       "notes": "Required input, approvals, and agent work keep the same continuation contract."
     },
     {
-      "id": "scaffold",
-      "owner": "runx-cli",
-      "parityClass": "semantic",
+      "id": "skill-authoring",
+      "owner": "runx-runtime + skill-lab",
+      "parityClass": "fixture-backed",
       "coveredBy": [
         "new",
+        "skill"
+      ],
+      "notes": "Skill creation uses one digest-bound inspect, plan, bind, validate, harness, and transactional apply lane."
+    },
+    {
+      "id": "workspace-init",
+      "owner": "runx-runtime",
+      "parityClass": "semantic",
+      "coveredBy": [
         "init"
       ],
-      "notes": "Project and standalone package scaffolds preserve command shape and generated-file intent."
+      "notes": "Deterministic project and global workspace initialization remains separate from skill authoring."
     },
     {
       "id": "official-skills",
@@ -284,13 +270,13 @@
       "notes": "Inventory output for tools, skills, graphs, packets, and overlays stays represented."
     },
     {
-      "id": "authoring",
-      "owner": "packages/authoring",
+      "id": "extension-sdk",
+      "owner": "packages/extension-sdk",
       "parityClass": "schema-exact",
       "coveredBy": [
-        "tool.build"
+        "tool"
       ],
-      "notes": "Tool build output and manifest validation remain schema-exact."
+      "notes": "External process extension output and manifest validation remain schema-exact."
     }
   ]
 }

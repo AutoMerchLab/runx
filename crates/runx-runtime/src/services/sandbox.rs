@@ -17,6 +17,14 @@ pub(crate) struct SandboxServices;
 
 impl SandboxServices {
     #[cfg(feature = "cli-tool")]
+    pub(crate) fn child_base_env(
+        self,
+        base_env: &BTreeMap<String, String>,
+    ) -> Result<BTreeMap<String, String>, RuntimeError> {
+        crate::sandbox::child_base_env(base_env)
+    }
+
+    #[cfg(feature = "cli-tool")]
     pub(crate) fn process_plan(
         self,
         source: &SkillSource,
@@ -25,6 +33,26 @@ impl SandboxServices {
         base_env: &BTreeMap<String, String>,
     ) -> Result<SandboxPlan, RuntimeError> {
         prepare_process_sandbox(source, skill_directory, inputs, base_env)
+    }
+
+    #[cfg(feature = "cli-tool")]
+    pub(crate) fn native_command_plan(
+        self,
+        command: String,
+        args: Vec<String>,
+        cwd: &Path,
+        workspace_root: &Path,
+        explicit_env: &BTreeMap<String, String>,
+        base_env: &BTreeMap<String, String>,
+    ) -> Result<SandboxPlan, RuntimeError> {
+        crate::sandbox::prepare_native_command_sandbox(
+            command,
+            args,
+            cwd,
+            workspace_root,
+            explicit_env,
+            base_env,
+        )
     }
 
     #[cfg(feature = "mcp")]

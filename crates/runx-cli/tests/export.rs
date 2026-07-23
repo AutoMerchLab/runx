@@ -175,13 +175,6 @@ fn codex_exports_runtime_self_skill_as_native_instructions()
         r#"---
 name: runx
 description: Use the Runx runtime.
-source:
-  type: cli-tool
-  command: runx
-inputs:
-  prompt:
-    type: string
-    required: true
 ---
 # Runx operator guide
 
@@ -557,17 +550,16 @@ impl ExportFixture {
         fs::write(
             dir.join("SKILL.md"),
             format!(
-                "---\nname: {name}\ndescription: Export {name} through runx.\ninputs:\n  {input_name}:\n    type: string\n    required: true\n    description: Work to perform.\n---\n# {name}\n\nRun the governed skill.\n"
+                "---\nname: {name}\ndescription: Export {name} through runx.\n---\n# {name}\n\nRun the governed skill.\n"
             ),
         )?;
-        if let Some(visibility) = visibility {
-            fs::write(
-                dir.join("X.yaml"),
-                format!(
-                    "skill: {name}\ncatalog:\n  kind: skill\n  audience: public\n  visibility: {visibility}\n  role: context\nrunners:\n  default:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: {name}\n"
-                ),
-            )?;
-        }
+        fs::write(
+            dir.join("X.yaml"),
+            format!(
+                "skill: {name}\ncatalog:\n  kind: skill\n  audience: public\n  visibility: {}\n  role: context\nrunners:\n  default:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: {name}\n    inputs:\n      {input_name}:\n        type: string\n        required: true\n        description: Work to perform.\n",
+                visibility.unwrap_or("public")
+            ),
+        )?;
         Ok(())
     }
 
@@ -608,13 +600,13 @@ impl ExportFixture {
         fs::write(
             dir.join("SKILL.md"),
             format!(
-                "---\nname: {declared_name}\ndescription: Export {declared_name} through runx.\ninputs:\n  objective:\n    type: string\n    required: true\n    description: Work to perform.\n---\n# {declared_name}\n"
+                "---\nname: {declared_name}\ndescription: Export {declared_name} through runx.\n---\n# {declared_name}\n"
             ),
         )?;
         fs::write(
             dir.join("X.yaml"),
             format!(
-                "skill: {declared_name}\ncatalog:\n  kind: skill\n  audience: operator\n  visibility: public\n  role: canonical\nrunners:\n  default:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: {name}\n"
+                "skill: {declared_name}\ncatalog:\n  kind: skill\n  audience: operator\n  visibility: public\n  role: canonical\nrunners:\n  default:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: {name}\n    inputs:\n      objective:\n        type: string\n        required: true\n        description: Work to perform.\n"
             ),
         )?;
         Ok(())

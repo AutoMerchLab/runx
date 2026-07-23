@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - the canonical entrypoint keeps request/result
+// Module rationale: the canonical entrypoint keeps request/result
 // types and prepared/unprepared execution dispatch in one reviewable boundary.
 //! Canonical local orchestration entrypoint.
 //!
@@ -13,7 +13,9 @@ use runx_contracts::{ClosureDisposition, JsonValue, Receipt};
 use thiserror::Error;
 
 use super::harness::{HarnessReplayError, HarnessReplayOutput};
-use super::prepared_skill::{PreparedEntryProvenance, PreparedSkillRun, prepare_skill_run};
+use super::prepared_skill::{
+    PreparedEntryProvenance, PreparedSkillRun, prepare_skill_run_with_effects,
+};
 #[cfg(feature = "cli-tool")]
 use super::runner::GraphRun;
 #[cfg(feature = "cli-tool")]
@@ -97,6 +99,9 @@ pub struct LocalCredentialDescriptor {
     pub profile: Option<String>,
     /// Provider the credential authenticates against (for example `github`).
     pub provider: String,
+    /// HTTPS audience declared by the resolved credential requirement. Native
+    /// authenticated HTTP may only attenuate this destination binding.
+    pub audience: Option<String>,
     /// Authentication mode label carried on the delivery profile/envelope.
     pub auth_mode: String,
     /// Environment variable the secret is delivered into for the skill process.
@@ -117,6 +122,7 @@ impl std::fmt::Debug for LocalCredentialDescriptor {
             .debug_struct("LocalCredentialDescriptor")
             .field("profile", &self.profile)
             .field("provider", &self.provider)
+            .field("audience", &self.audience)
             .field("auth_mode", &self.auth_mode)
             .field("env_var", &self.env_var)
             .field("material_ref", &self.material_ref)
@@ -242,7 +248,12 @@ impl LocalOrchestrator {
         runner: Option<&str>,
         entry: PreparedEntryProvenance,
     ) -> Result<PreparedSkillRun, OrchestratorError> {
-        Ok(prepare_skill_run(request, runner, entry)?)
+        Ok(prepare_skill_run_with_effects(
+            request,
+            runner,
+            entry,
+            &self.effects,
+        )?)
     }
 
     pub fn run_prepared_skill(
@@ -325,7 +336,10 @@ impl LocalOrchestrator {
         options.effects = self.effects.clone();
         let output = super::harness::run_harness_fixture_with_adapter(
             &request.fixture_path,
-            super::skill_front::SkillRunGraphAdapter::default(),
+            super::skill_front::SkillRunGraphAdapter::with_runtime(
+                self.effects.clone(),
+                options.created_at.clone(),
+            ),
             options.clone(),
         )?;
         persist_harness_receipts(&output, &options, &receipt_dir)?;
@@ -382,10 +396,13 @@ fn persist_harness_receipts(
 ) -> Result<(), OrchestratorError> {
     let store = crate::receipts::store::LocalReceiptStore::new(receipt_dir);
     let policy = options.receipt_signature.signature_policy();
-    for receipt in &output.step_receipts {
-        store.write_receipt_with_policy(receipt, policy)?;
-    }
-    store.write_receipt_with_policy(&output.receipt, policy)?;
+    store.write_receipts_with_policy(
+        output
+            .step_receipts
+            .iter()
+            .chain(std::iter::once(&output.receipt)),
+        policy,
+    )?;
     Ok(())
 }
 

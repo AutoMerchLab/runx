@@ -1,9 +1,8 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::fmt;
-use std::fs;
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::Path;
 use std::process::ExitCode;
 
 use runx_pay::{
@@ -11,6 +10,10 @@ use runx_pay::{
     PaymentAdmissionSigner,
 };
 use serde::Serialize;
+
+use crate::document_input::{DocumentInputError, read_document_input};
+
+pub use crate::document_input::DocumentInputSource as PaymentInputSource;
 
 pub const RUNX_PAYMENT_ADMISSION_KID_ENV: &str = "RUNX_PAYMENT_ADMISSION_KID";
 pub const RUNX_PAYMENT_ADMISSION_SIGNING_KEY_ENV: &str = "RUNX_PAYMENT_ADMISSION_SIGNING_KEY";
@@ -29,12 +32,6 @@ pub enum PaymentAction {
 pub struct PaymentAdmissionPlan {
     pub input: PaymentInputSource,
     pub json: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum PaymentInputSource {
-    Path(PathBuf),
-    Stdin,
 }
 
 pub fn run_native_payment(plan: PaymentPlan) -> ExitCode {
@@ -72,7 +69,7 @@ fn issue_admission(
             "runx payment admission issue requires --json".to_owned(),
         ));
     }
-    let raw = read_payment_input(&plan.input, env, cwd)?;
+    let raw = read_document_input(&plan.input, env, cwd).map_err(PaymentCliError::Input)?;
     let request: PaymentAdmissionRequest =
         serde_json::from_str(&raw).map_err(PaymentCliError::ParseInput)?;
     let kid = non_empty_env(env, RUNX_PAYMENT_ADMISSION_KID_ENV)
@@ -104,8 +101,7 @@ pub enum PaymentCliError {
     CurrentDirectory(io::Error),
     InvalidArgs(String),
     MissingSigningEnv,
-    Read(PathBuf, io::Error),
-    ReadStdin(io::Error),
+    Input(DocumentInputError),
     ParseInput(serde_json::Error),
     Admission(PaymentAdmissionError),
     Serialize(serde_json::Error),
@@ -117,8 +113,8 @@ impl PaymentCliError {
             Self::CurrentDirectory(_) => "current_directory",
             Self::InvalidArgs(_) => "invalid_args",
             Self::MissingSigningEnv => "missing_signing_env",
-            Self::Read(_, _) => "read_input",
-            Self::ReadStdin(_) => "read_stdin",
+            Self::Input(error) if error.is_stdin() => "read_stdin",
+            Self::Input(_) => "read_input",
             Self::ParseInput(_) => "parse_input",
             Self::Admission(_) => "payment_admission",
             Self::Serialize(_) => "serialize_output",
@@ -130,8 +126,7 @@ impl PaymentCliError {
             Self::InvalidArgs(_) => 64,
             Self::CurrentDirectory(_)
             | Self::MissingSigningEnv
-            | Self::Read(_, _)
-            | Self::ReadStdin(_)
+            | Self::Input(_)
             | Self::ParseInput(_)
             | Self::Admission(_)
             | Self::Serialize(_) => 1,
@@ -148,18 +143,8 @@ impl fmt::Display for PaymentCliError {
                 formatter,
                 "runx payment admission issue requires {RUNX_PAYMENT_ADMISSION_KID_ENV} and {RUNX_PAYMENT_ADMISSION_SIGNING_KEY_ENV}",
             ),
-            Self::Read(path, error) => {
-                write!(
-                    formatter,
-                    "failed to read payment admission input {}: {error}",
-                    path.display()
-                )
-            }
-            Self::ReadStdin(error) => {
-                write!(
-                    formatter,
-                    "failed to read payment admission input stdin: {error}"
-                )
+            Self::Input(error) => {
+                write!(formatter, "failed to read payment admission input {error}")
             }
             Self::ParseInput(error) => write!(
                 formatter,
@@ -188,33 +173,6 @@ struct PaymentJsonEnvelope<'a> {
     result: &'a PaymentAdmissionIssueResponse,
 }
 
-fn read_payment_input(
-    source: &PaymentInputSource,
-    env: &BTreeMap<String, String>,
-    cwd: &Path,
-) -> Result<String, PaymentCliError> {
-    match source {
-        PaymentInputSource::Path(path) => {
-            let resolved = resolve_payment_path(path, env, cwd);
-            fs::read_to_string(&resolved).map_err(|error| PaymentCliError::Read(resolved, error))
-        }
-        PaymentInputSource::Stdin => {
-            let mut raw = String::new();
-            io::stdin()
-                .read_to_string(&mut raw)
-                .map_err(PaymentCliError::ReadStdin)?;
-            Ok(raw)
-        }
-    }
-}
-
-fn resolve_payment_path(path: &Path, env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
-    if path.is_absolute() {
-        return path.to_path_buf();
-    }
-    runx_runtime::resolve_runx_workspace_base(env, cwd).join(path)
-}
-
 fn write_error(error: &PaymentCliError, json: bool) -> ExitCode {
     if json {
         return crate::cli_io::write_stdout_code(
@@ -235,6 +193,8 @@ fn non_empty_env<'a>(env: &'a BTreeMap<String, String>, key: &str) -> Option<&'a
 
 #[cfg(test)]
 mod tests {
+    use std::path::PathBuf;
+
     use super::*;
 
     #[test]
@@ -247,6 +207,6 @@ mod tests {
         };
         let env = BTreeMap::new();
         let result = run_payment_command(&plan, &env, Path::new("."));
-        assert!(matches!(result, Err(PaymentCliError::Read(_, _))));
+        assert!(matches!(result, Err(PaymentCliError::Input(_))));
     }
 }

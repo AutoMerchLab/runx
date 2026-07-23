@@ -25,6 +25,8 @@ use runx_runtime::{
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
+use crate::support::write_cli_tool_skill;
+
 const STRIPE_SPT_IDEMPOTENCY_KEY: &str = "payment:stripe-spt-demo-001";
 const STRIPE_SPT_PROOF_REF: &str = "receipt-proof:stripe-spt:demo-search-001";
 const STRIPE_SPT_CREDENTIAL_REF: &str = "credential:stripe-spt:demo-search-001";
@@ -196,11 +198,16 @@ fn runtime_options_with_effects(
 ) -> RuntimeOptions {
     let mut env = BTreeMap::new();
     env.insert(RUNX_RUN_ID_ENV.to_owned(), "run:test-stripe-spt".to_owned());
+    let effects = RuntimeEffectRegistry::with_effect(PaymentRuntimeEffect::new(
+        ExpectedPaymentFinalitySupervisor::new(evidence),
+    ));
+    assert!(
+        effects.is_ok(),
+        "payment effect fixture metadata must be valid: {effects:?}"
+    );
     RuntimeOptions {
         env,
-        effects: RuntimeEffectRegistry::with_effect(PaymentRuntimeEffect::new(
-            ExpectedPaymentFinalitySupervisor::new(evidence),
-        )),
+        effects: effects.unwrap_or_default(),
         ..RuntimeOptions::local_development()
     }
 }
@@ -574,16 +581,19 @@ impl StripeSptFixture {
         write_cli_tool_skill(
             &temp.path().join("quote"),
             "pay-quote",
+            "Quote a Stripe SPT payment fixture.",
             Some("payment_quote_packet"),
         )?;
         write_cli_tool_skill(
             &temp.path().join("reserve"),
             "pay-reserve",
+            "Reserve a Stripe SPT payment fixture.",
             Some("payment_reservation_packet"),
         )?;
         write_cli_tool_skill(
             &temp.path().join("fulfill"),
             "pay-fulfill-rail",
+            "Fulfill a Stripe SPT payment fixture.",
             Some("effect_evidence_packet"),
         )?;
         let graph_path = temp.path().join("graph.yaml");
@@ -597,32 +607,6 @@ impl StripeSptFixture {
     fn graph_path(&self) -> &Path {
         self.graph_path.as_path()
     }
-}
-
-fn write_cli_tool_skill(
-    dir: &Path,
-    name: &str,
-    emitted_packet: Option<&str>,
-) -> Result<(), std::io::Error> {
-    fs::create_dir(dir)?;
-    let artifacts = emitted_packet.map_or_else(String::new, |packet| {
-        format!("runx:\n  artifacts:\n    named_emits:\n      {packet}: runx.payment.{packet}.v1\n")
-    });
-    fs::write(
-        dir.join("SKILL.md"),
-        format!(
-            r#"---
-name: {name}
-description: Stripe SPT fixture skill.
-source:
-  type: cli-tool
-  command: runx-payment-test
-{artifacts}---
-
-Stripe SPT fixture skill.
-"#
-        ),
-    )
 }
 
 fn stripe_spt_graph_yaml() -> Result<String, serde_json::Error> {

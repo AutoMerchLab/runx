@@ -36,6 +36,28 @@ Package names carry trust claims:
 OSS packages must not import cloud code. Core must not import runtime, adapter,
 CLI, host-adapter, filesystem, network, or subprocess concerns.
 
+## Connector and Tenant Neutrality
+
+Portable Runx behavior targets provider capabilities, not connector vendors or
+Runx-company tenancy. Skills and public contracts must not contain Nango
+connection ids, provider-config keys, hosted tenant ids, connector endpoints,
+or assumptions that credentials are held by Runx Cloud. The operator binds an
+eligible local, self-hosted, third-party, or Runx-hosted connector at runtime.
+
+Provider operations therefore have stable names, typed inputs, bounded result
+projections, target-resource constraints, access classification, idempotency,
+and readback semantics independent of the adapter that executes them. Hosted
+adapters are optional implementations of those contracts. They must never
+become prerequisites for an otherwise portable skill.
+
+## Ownership Before Abstraction
+
+Promote behavior into native code only for a runtime/security invariant or two
+independent existing consumers. Keep domain policy in its owning skill, delete
+the displaced path in the same cutover, and never expose fixture or package
+layout through a generic API. `skills/skill-lab/SKILL.md` owns the full skill
+authoring contract; `docs/skill-quality-standard.md` owns the review standard.
+
 ## Rust Bar
 
 Rust code must keep the workspace green under:

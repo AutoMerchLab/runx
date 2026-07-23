@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because signer material parsing, production
+// Module rationale: signer material parsing, production
 // validation, and verifier behavior are audited as one receipt boundary.
 use std::collections::BTreeMap;
 use std::sync::Arc;

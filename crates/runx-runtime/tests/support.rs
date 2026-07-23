@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::fs;
 use std::path::Path;
 
 use runx_contracts::Receipt;
@@ -14,6 +15,16 @@ pub(crate) const TEST_CREATED_AT: &str = "2026-05-18T00:00:00Z";
 pub(crate) const TEST_SIGNING_KID: &str = "runx-runtime-prod-fixture-key";
 pub(crate) const TEST_SIGNING_SEED_BASE64: &str = "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=";
 pub(crate) const TEST_SIGNING_ISSUER_TYPE: &str = "hosted";
+
+pub(crate) fn write_test_skill_package(
+    dir: &Path,
+    manual: &str,
+    profile: &str,
+) -> Result<(), std::io::Error> {
+    fs::create_dir_all(dir)?;
+    fs::write(dir.join("SKILL.md"), manual)?;
+    fs::write(dir.join("X.yaml"), profile)
+}
 
 pub(crate) fn test_signing_env() -> BTreeMap<String, String> {
     [
@@ -74,7 +85,15 @@ pub(crate) fn read_test_signed_receipt(
 /// report ESRCH, all within `deadline`. Kill-the-descendants tests poll this
 /// instead of sleeping a fixed window before asserting the descendant's sentinel
 /// was never written.
-#[cfg(unix)]
+#[cfg(all(
+    unix,
+    any(
+        feature = "catalog",
+        feature = "external-adapter",
+        feature = "mcp",
+        feature = "thread-outbox-provider"
+    )
+))]
 pub(crate) fn wait_for_recorded_pid_exit(
     pid_path: &Path,
     deadline: std::time::Duration,
@@ -99,7 +118,15 @@ pub(crate) fn wait_for_recorded_pid_exit(
 
 /// Polls `kill(pid, 0)` until it reports ESRCH, failing if the process is
 /// still alive at `deadline`.
-#[cfg(unix)]
+#[cfg(all(
+    unix,
+    any(
+        feature = "catalog",
+        feature = "external-adapter",
+        feature = "mcp",
+        feature = "thread-outbox-provider"
+    )
+))]
 pub(crate) fn wait_for_pid_exit(
     pid: i32,
     deadline: std::time::Duration,

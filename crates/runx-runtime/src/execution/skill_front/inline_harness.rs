@@ -11,9 +11,8 @@ use runx_parser::{HarnessCallerFixture, RunnerHarnessCase, SkillRunnerManifest};
 use crate::RuntimeError;
 use crate::effects::RuntimeEffectRegistry;
 use crate::execution::orchestrator::SkillRunRequest;
-use crate::execution::prepared_skill::missing_required_inputs;
 
-use super::runner_manifest::{load_runner_manifest, resolve_skill_dir, selected_runner};
+use super::runner_manifest::selected_runner;
 
 mod package;
 
@@ -27,12 +26,19 @@ pub(crate) use package::run_package_harness_with_effects;
 /// run is `passed` only when every case meets its declared expectation.
 pub(crate) fn run_inline_harness_with_effects(
     skill_path: &Path,
-    receipt_dir: Option<&Path>,
+    case_receipt_root: Option<&Path>,
+    output_receipt_dir: Option<&Path>,
     env: Option<&BTreeMap<String, String>>,
     effects: &RuntimeEffectRegistry,
 ) -> Result<PackageHarnessReport, SkillRunError> {
-    let skill_dir = resolve_skill_dir(skill_path)?;
-    let manifest = load_runner_manifest(&skill_dir)?;
+    let loaded = crate::load_validated_skill_package(skill_path)?;
+    let manifest = loaded.manifest().cloned().ok_or_else(|| {
+        SkillRunError::Invalid(format!(
+            "skill package {} does not declare X.yaml runners",
+            loaded.directory.display()
+        ))
+    })?;
+    let skill_dir = loaded.directory;
     let Some(harness) = manifest.harness.as_ref() else {
         return Ok(PackageHarnessReport::not_declared());
     };
@@ -42,16 +48,43 @@ pub(crate) fn run_inline_harness_with_effects(
 
     let cwd = std::env::current_dir()
         .map_err(|source| RuntimeError::io("resolving cwd for inline harness", source))?;
+    let context = InlineHarnessContext {
+        skill_dir: &skill_dir,
+        case_receipt_root,
+        output_receipt_dir,
+        env,
+        effects,
+        manifest: &manifest,
+        cwd: &cwd,
+    };
+    Ok(run_inline_harness_cases(context, &harness.cases))
+}
 
+#[derive(Clone, Copy)]
+struct InlineHarnessContext<'a> {
+    skill_dir: &'a Path,
+    case_receipt_root: Option<&'a Path>,
+    output_receipt_dir: Option<&'a Path>,
+    env: Option<&'a BTreeMap<String, String>>,
+    effects: &'a RuntimeEffectRegistry,
+    manifest: &'a SkillRunnerManifest,
+    cwd: &'a Path,
+}
+
+fn run_inline_harness_cases(
+    context: InlineHarnessContext<'_>,
+    cases: &[RunnerHarnessCase],
+) -> PackageHarnessReport {
     let mut assertion_errors = Vec::new();
-    let mut case_names = Vec::with_capacity(harness.cases.len());
+    let mut case_names = Vec::with_capacity(cases.len());
     let mut receipt_ids = Vec::new();
     let mut graph_case_count = 0;
-
-    for case in &harness.cases {
+    for (index, case) in cases.iter().enumerate() {
         case_names.push(case.name.clone());
-        let outcome =
-            run_inline_harness_case(&skill_dir, receipt_dir, env, &manifest, case, &cwd, effects);
+        let case_receipt_dir = context
+            .case_receipt_root
+            .map(|root| root.join(index.to_string()));
+        let outcome = run_inline_harness_case(context, case_receipt_dir.as_deref(), case);
         if outcome.is_graph {
             graph_case_count += 1;
         }
@@ -68,15 +101,15 @@ pub(crate) fn run_inline_harness_with_effects(
     } else {
         "failed"
     };
-    Ok(PackageHarnessReport {
+    PackageHarnessReport {
         assertion_error_count: assertion_errors.len(),
         status,
-        case_count: harness.cases.len(),
+        case_count: cases.len(),
         assertion_errors,
         case_names,
         receipt_ids,
         graph_case_count,
-    })
+    }
 }
 
 struct InlineHarnessCaseOutcome {
@@ -86,15 +119,11 @@ struct InlineHarnessCaseOutcome {
 }
 
 fn run_inline_harness_case(
-    skill_dir: &Path,
+    context: InlineHarnessContext<'_>,
     receipt_dir: Option<&Path>,
-    env: Option<&BTreeMap<String, String>>,
-    manifest: &SkillRunnerManifest,
     case: &RunnerHarnessCase,
-    cwd: &Path,
-    effects: &RuntimeEffectRegistry,
 ) -> InlineHarnessCaseOutcome {
-    let runner = match selected_runner(manifest, case.runner.as_deref()) {
+    let runner = match selected_runner(context.manifest, case.runner.as_deref()) {
         Ok(runner) => runner,
         Err(error) => return inline_harness_case_error(&case.name, error),
     };
@@ -103,7 +132,7 @@ fn run_inline_harness_case(
     // Enforce the required-input contract the real `runx skill` prepare stage
     // applies. The harness executes directly, so without this a missing required
     // input would seal an empty run instead of blocking, masking the failure.
-    let missing = missing_required_inputs(runner, &case.inputs);
+    let missing = crate::input_contract::missing_required(&runner.inputs, &case.inputs);
     if !missing.is_empty() {
         return InlineHarnessCaseOutcome {
             is_graph,
@@ -112,23 +141,83 @@ fn run_inline_harness_case(
         };
     }
 
-    let request = inline_harness_case_request(skill_dir, receipt_dir, env, case, cwd);
+    let request = inline_harness_case_request(
+        context.skill_dir,
+        receipt_dir,
+        context.env,
+        case,
+        context.cwd,
+    );
     let overrides = SkillRunOverrides {
         runner: case.runner.clone(),
         seeded_answers: seeded_answers_from_caller(&case.caller),
     };
-    match execute_skill_run_with_overrides(&request, &overrides, effects) {
-        Ok(output) => InlineHarnessCaseOutcome {
-            is_graph,
-            receipt_id: receipt_id_from_output(&output),
-            assertion_error: inline_harness_expectation_error(case, &output),
-        },
+    execute_inline_harness_case(
+        &request,
+        receipt_dir,
+        context.output_receipt_dir,
+        case,
+        is_graph,
+        &overrides,
+        context.effects,
+    )
+}
+
+fn execute_inline_harness_case(
+    request: &SkillRunRequest,
+    receipt_dir: Option<&Path>,
+    output_receipt_dir: Option<&Path>,
+    case: &RunnerHarnessCase,
+    is_graph: bool,
+    overrides: &SkillRunOverrides,
+    effects: &RuntimeEffectRegistry,
+) -> InlineHarnessCaseOutcome {
+    match execute_skill_run_with_overrides(request, overrides, effects) {
+        Ok(output) => {
+            let receipt_id = receipt_id_from_output(&output);
+            if receipt_id.is_some()
+                && let (Some(receipt_dir), Some(output_receipt_dir)) =
+                    (receipt_dir, output_receipt_dir)
+                && let Err(error) =
+                    persist_inline_case_receipts(request, receipt_dir, output_receipt_dir)
+            {
+                return InlineHarnessCaseOutcome {
+                    is_graph,
+                    receipt_id: None,
+                    assertion_error: Some(format!(
+                        "{}: failed to persist harness receipts: {error}",
+                        case.name
+                    )),
+                };
+            }
+            InlineHarnessCaseOutcome {
+                is_graph,
+                receipt_id,
+                assertion_error: inline_harness_expectation_error(case, &output),
+            }
+        }
         Err(error) => InlineHarnessCaseOutcome {
             is_graph,
             receipt_id: None,
-            assertion_error: Some(format!("{}: {error}", case.name)),
+            assertion_error: inline_harness_execution_error(case, &error),
         },
     }
+}
+
+fn persist_inline_case_receipts(
+    request: &SkillRunRequest,
+    case_receipt_dir: &Path,
+    output_receipt_dir: &Path,
+) -> Result<(), String> {
+    let receipts = crate::services::ReceiptServices::from_env_or_local_development(&request.env)
+        .map_err(|error| error.to_string())?;
+    let policy = receipts.signature_config().signature_policy();
+    let produced = crate::receipts::store::LocalReceiptStore::new(case_receipt_dir)
+        .list_with_policy(policy)
+        .map_err(|error| error.to_string())?;
+    crate::receipts::store::LocalReceiptStore::new(output_receipt_dir)
+        .write_receipts_with_policy(&produced, policy)
+        .map_err(|error| error.to_string())
 }
 
 fn inline_harness_case_request(
@@ -183,6 +272,20 @@ fn inline_harness_expectation_error(
 fn inline_harness_status_error(case: &RunnerHarnessCase, actual: &str) -> Option<String> {
     let expected = case.expect.status.as_deref()?;
     (actual != expected).then(|| format!("{}: expected status {expected}, got {actual}", case.name))
+}
+
+fn inline_harness_execution_error(
+    case: &RunnerHarnessCase,
+    error: &impl std::fmt::Display,
+) -> Option<String> {
+    match case.expect.status.as_deref() {
+        Some("failure") => None,
+        Some(expected) => Some(format!(
+            "{}: expected status {expected}, execution failed: {error}",
+            case.name
+        )),
+        None => Some(format!("{}: {error}", case.name)),
+    }
 }
 
 // Merge a harness case's caller answers + approvals into one map keyed by

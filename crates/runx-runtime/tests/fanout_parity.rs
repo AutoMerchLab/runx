@@ -136,7 +136,7 @@ fn fanout_threshold_pause_blocks_followup() -> Result<(), Box<dyn std::error::Er
     let expected = fixture()?.threshold_pause;
     let error =
         match run_fixture_graph_file(Path::new("../../fixtures/graphs/fanout/threshold.yaml")) {
-            Ok(_) => return Err("threshold fanout should pause".into()),
+            Ok(run) => return Err(format!("threshold fanout should pause: {run:#?}").into()),
             Err(error) => error,
         };
 
@@ -246,11 +246,19 @@ fn fanout_runtime_error_branch_records_failure_and_continues()
     assert_step_state(&run, "missing", GraphStepStatus::Failed)?;
     assert_step_state(&run, "risk", GraphStepStatus::Succeeded)?;
     assert_step_state(&run, "synthesize", GraphStepStatus::Succeeded)?;
+    let missing_step = run
+        .steps
+        .iter()
+        .find(|step| step.step_id == "missing")
+        .ok_or("missing fanout branch result")?;
     assert!(
-        run.steps
-            .iter()
-            .find(|step| step.step_id == "missing")
-            .is_some_and(|step| step.output.stderr.contains("skill file is missing"))
+        missing_step
+            .output
+            .stderr
+            .contains("runtime I/O failed while reading")
+            && missing_step.output.stderr.contains("skills/not-found"),
+        "unexpected missing-branch error: {}",
+        missing_step.output.stderr
     );
     assert_eq!(run.sync_points.len(), 1);
     assert_eq!(run.sync_points[0].decision, FanoutReceiptDecision::Proceed);
@@ -350,20 +358,25 @@ fn write_retry_latest_wins_graph(root: &Path) -> Result<PathBuf, Box<dyn std::er
         r#"---
 name: flaky-json
 description: Fail once, then emit structured JSON.
-source:
-  type: cli-tool
-  command: sh
-  args:
-    - ./run.sh
-  timeout_seconds: 10
-inputs: {}
-runx:
-  artifacts:
-    named_emits:
-      message: message
 ---
 
 Fail once, then emit structured JSON.
+"#,
+    )?;
+    fs::write(
+        flaky_dir.join("X.yaml"),
+        r#"skill: flaky-json
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: sh
+    args:
+      - ./run.sh
+    timeout_seconds: 10
+    artifacts:
+      named_emits:
+        message: message
 "#,
     )?;
     fs::write(
@@ -386,19 +399,26 @@ printf '%s' '{"message":"fresh"}'
         r#"---
 name: echo
 description: Echo a message.
-source:
-  type: cli-tool
-  command: sh
-  args:
-    - ./run.sh
-  timeout_seconds: 10
-inputs:
-  message:
-    type: string
-    required: true
 ---
 
 Echo a message.
+"#,
+    )?;
+    fs::write(
+        echo_dir.join("X.yaml"),
+        r#"skill: echo
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: sh
+    args:
+      - ./run.sh
+    timeout_seconds: 10
+    inputs:
+      message:
+        type: string
+        required: true
 "#,
     )?;
     fs::write(

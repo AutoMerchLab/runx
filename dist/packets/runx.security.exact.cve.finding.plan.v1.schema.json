@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.runx.ai/runx/security/exact_cve_finding_plan/v1.json",
+  "x-runx-packet-id": "runx.security.exact_cve_finding_plan.v1",
+  "x-runx-generated-from": "skills/cve-audit/X.yaml#root.runners.audit.graph.steps.4",
+  "type": "object"
+}

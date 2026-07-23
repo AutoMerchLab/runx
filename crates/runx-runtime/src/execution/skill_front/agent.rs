@@ -8,8 +8,13 @@ use runx_contracts::{ClosureDisposition, JsonObject, JsonValue};
 
 use crate::RuntimeError;
 use crate::adapter::{InvocationStatus, SkillInvocation, SkillOutput};
+#[cfg(feature = "agent")]
+use crate::adapters::agent::AgentAdapterSourceType;
 use crate::agent_contract::verified_agent_metadata_with_artifacts;
 use crate::agent_invocation::agent_act_invocation_id;
+#[cfg(feature = "agent")]
+use crate::config::ManagedAgentConfig;
+use crate::effects::RuntimeEffectRegistry;
 use crate::execution::orchestrator::SkillRunRequest;
 use crate::journal::{PausedRunCheckpoint, append_paused_run_checkpoint};
 use crate::receipts::{DomainActReceiptRequest, domain_act_receipt};
@@ -18,18 +23,32 @@ use runx_parser::{SkillRunnerDefinition, SkillRunnerManifest};
 
 use super::runner_manifest::write_skill_receipt;
 
-// rust-style-allow: long-function - one agent-front transaction resolves the
+pub(super) struct AgentSkillExecutionContext<'a> {
+    pub request: &'a SkillRunRequest,
+    pub overrides: &'a SkillRunOverrides,
+    pub effects: &'a RuntimeEffectRegistry,
+    pub workspace: &'a WorkspaceEnv,
+    pub receipts: &'a ReceiptServices,
+    pub manifest: &'a SkillRunnerManifest,
+    pub runner: &'a SkillRunnerDefinition,
+}
+
+// Function rationale: one agent-front transaction resolves the
 // answer source, seals either a domain act or generic answer, and emits the
 // public skill output envelope.
 pub(super) fn execute_agent_skill_run(
-    request: &SkillRunRequest,
-    overrides: &SkillRunOverrides,
-    workspace: &WorkspaceEnv,
-    receipts: &ReceiptServices,
-    manifest: &SkillRunnerManifest,
-    runner: &SkillRunnerDefinition,
+    context: AgentSkillExecutionContext<'_>,
     invocation: SkillInvocation,
 ) -> Result<JsonValue, SkillRunError> {
+    let AgentSkillExecutionContext {
+        request,
+        overrides,
+        effects,
+        workspace,
+        receipts,
+        manifest,
+        runner,
+    } = context;
     let source_type = agent_invocation_source_type(runner.source.source_type.as_str())?;
     let request_id = agent_act_invocation_id(&invocation, source_type);
     let run_id = agent_run_id(request, &request_id)?;
@@ -45,33 +64,34 @@ pub(super) fn execute_agent_skill_run(
         Some(answer) => (answer, None),
         None => match &request.answers_path {
             Some(answers_path) => (read_answer(answers_path, &request_id)?, None),
-            None => match try_inline_agent_resolution(&invocation, &request.managed_agent)? {
-                #[cfg(feature = "agent")]
-                InlineAgentOutcome::Resolved { payload, effect } => (payload, effect),
-                InlineAgentOutcome::HostDrives => {
-                    write_paused_agent_checkpoint(
-                        request,
-                        workspace,
-                        receipts,
-                        manifest,
-                        runner,
-                        &run_id,
-                        &request_id,
-                    )?;
-                    return Ok(JsonValue::Object(needs_agent_output(
-                        &run_id,
-                        &request_id,
-                        contract_json_value(&resolution_request)?,
-                    )));
+            None => {
+                match try_inline_agent_resolution(&invocation, &request.managed_agent, effects)? {
+                    #[cfg(feature = "agent")]
+                    InlineAgentOutcome::Resolved { payload, effect } => (payload, effect),
+                    InlineAgentOutcome::HostDrives => {
+                        write_paused_agent_checkpoint(
+                            request,
+                            workspace,
+                            receipts,
+                            manifest,
+                            runner,
+                            &run_id,
+                            &request_id,
+                        )?;
+                        return Ok(JsonValue::Object(needs_agent_output(
+                            &run_id,
+                            &request_id,
+                            contract_json_value(&resolution_request)?,
+                        )));
+                    }
                 }
-            },
+            }
         },
     };
     let verification_metadata = verified_agent_metadata_with_artifacts(
         &resolution_request,
         &answer,
         runner.artifacts.as_ref(),
-        None,
         &invocation.skill_directory,
         workspace.env(),
     )?;
@@ -182,33 +202,15 @@ enum InlineAgentOutcome {
 fn try_inline_agent_resolution(
     invocation: &SkillInvocation,
     policy: &crate::execution::orchestrator::ManagedAgentPolicy,
+    effects: &RuntimeEffectRegistry,
 ) -> Result<InlineAgentOutcome, SkillRunError> {
-    use crate::adapters::agent::{
-        AgentAdapterSourceType, AgentResolver, build_managed_agent_act_invocation,
-    };
-    use crate::adapters::agent_resolver::AnthropicAgentResolver;
+    use crate::adapters::agent::{AgentResolver, build_managed_agent_act_invocation};
+    use crate::adapters::agent_resolver::{AnthropicAgentResolver, AnthropicAgentResolverOptions};
     use crate::http::ReqwestHttpTransport;
     use runx_contracts::ResolutionRequest;
 
-    let Some(max_rounds) = policy.max_rounds() else {
+    let Some((max_rounds, source_type, config)) = managed_agent_attempt(invocation, policy)? else {
         return Ok(InlineAgentOutcome::HostDrives);
-    };
-    let source_type = if invocation.source.source_type == runx_parser::SourceKind::Agent {
-        AgentAdapterSourceType::Agent
-    } else if invocation.source.source_type == runx_parser::SourceKind::AgentStep {
-        AgentAdapterSourceType::AgentStep
-    } else {
-        return Ok(InlineAgentOutcome::HostDrives);
-    };
-
-    let config = match crate::config::load_managed_agent_config(
-        &invocation.env,
-        &invocation.skill_directory,
-    )
-    .map_err(|error| SkillRunError::Invalid(format!("managed agent config error: {error}")))?
-    {
-        Some(config) if config.provider.as_str().eq_ignore_ascii_case("anthropic") => config,
-        _ => return Ok(InlineAgentOutcome::HostDrives),
     };
 
     let agent_act = build_managed_agent_act_invocation(invocation, source_type)?;
@@ -221,12 +223,16 @@ fn try_inline_agent_resolution(
     })?;
     let resolver = AnthropicAgentResolver::new(
         transport,
-        config.api_key,
-        config.model,
-        invocation.env.clone(),
-        invocation.skill_directory.clone(),
-        invocation.credential_delivery.clone(),
-        max_rounds,
+        AnthropicAgentResolverOptions {
+            api_key: config.api_key,
+            model: config.model,
+            env: invocation.env.clone(),
+            skill_directory: invocation.skill_directory.clone(),
+            credential_delivery: invocation.credential_delivery.clone(),
+            effects: effects.clone(),
+            observed_at: crate::time::now_iso8601(),
+            max_rounds,
+        },
     );
     let resolution = resolver
         .resolve(request)
@@ -237,10 +243,34 @@ fn try_inline_agent_resolution(
     })
 }
 
+#[cfg(feature = "agent")]
+fn managed_agent_attempt(
+    invocation: &SkillInvocation,
+    policy: &crate::execution::orchestrator::ManagedAgentPolicy,
+) -> Result<Option<(u32, AgentAdapterSourceType, ManagedAgentConfig)>, SkillRunError> {
+    let Some(max_rounds) = policy.max_rounds() else {
+        return Ok(None);
+    };
+    let source_type = match invocation.source.source_type {
+        runx_parser::SourceKind::Agent => AgentAdapterSourceType::Agent,
+        runx_parser::SourceKind::AgentStep => AgentAdapterSourceType::AgentStep,
+        _ => return Ok(None),
+    };
+    let config =
+        crate::config::load_managed_agent_config(&invocation.env, &invocation.skill_directory)
+            .map_err(|error| {
+                SkillRunError::Invalid(format!("managed agent config error: {error}"))
+            })?;
+    Ok(config
+        .filter(|config| config.provider.as_str().eq_ignore_ascii_case("anthropic"))
+        .map(|config| (max_rounds, source_type, config)))
+}
+
 #[cfg(not(feature = "agent"))]
 fn try_inline_agent_resolution(
     _invocation: &SkillInvocation,
     _policy: &crate::execution::orchestrator::ManagedAgentPolicy,
+    _effects: &RuntimeEffectRegistry,
 ) -> Result<InlineAgentOutcome, SkillRunError> {
     Ok(InlineAgentOutcome::HostDrives)
 }

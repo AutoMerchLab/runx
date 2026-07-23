@@ -62,13 +62,16 @@ Stages (the order is intentional — the GitHub Release must exist before any
 channel that downloads its archives):
 
 1. **prepare** — resolve the version, stamp + `--check` manifests, `verify:fast`.
-2. **build** (5-platform matrix) — pinned toolchain (`rust-toolchain.toml`), stamp,
-   `cargo build --release`, then per platform: npm artifacts (`package-rust-cli.ts`),
-   the raw archive (`build-release-archives.ts`), and the `.deb` (linux). Uploads
-   npm + archive artifacts.
+2. **build** (5-platform matrix) — resolve the matrix from
+   `packages/cli/native/supported-platforms.json`, run the shared hostile-module
+   contract on each native runner, then build `runx` and `runx-js-worker`
+   together with the pinned toolchain. Per platform, package both executables
+   into the signed npm artifact, raw archive, and Linux `.deb`, and record
+   digest-bound worker evidence.
 3. **smoke** (5-platform matrix) — downloads each built archive and runs
-   `runx --version` on the real OS. Gates the release: a broken or wrong-arch
-   binary fails here before anything is published. Runs in dry-runs too.
+   `runx --version` on the real OS after checking the matching worker is present.
+   Gates the release: a broken, incomplete, or wrong-arch archive fails before
+   anything is published. Runs in dry-runs too.
 4. **github-release** — assemble `checksums.txt`, generate a CycloneDX SBOM, emit
    build-provenance attestations for the binaries, stage the install scripts, and
    publish the Release with all archives. This is the hub.
@@ -114,6 +117,10 @@ to the scripts in this repo ([scripts/install](../scripts/install) and
 not duplicated on the site. Both detect OS/arch, download the matching archive
 from the GitHub Release, verify its sha256, and install to a user bin dir.
 Overrides: `RUNX_VERSION`, `RUNX_INSTALL_DIR`, `RUNX_BASE_URL` (private mirror).
+
+The archive is one release unit: installers place `runx-js-worker` beside
+`runx`, and deterministic-module execution fails closed if that
+version-compatible worker is absent.
 
 > Site proxy: point `runx.ai/install` → the raw `scripts/install` and
 > `runx.ai/install.ps1` → raw `scripts/install.ps1` (302 or pass-through). Keep
@@ -163,13 +170,14 @@ wrong.
 crates/rust-toolchain.toml    # pinned Rust version for reproducible builds
 scripts/
   set-release-version.ts      # stamp / --check the version across manifests
-  build-release-archives.ts   # raw tar.gz/zip + .sha256 per target (release hub)
+  release-platform-matrix.mjs # canonical topology -> GitHub matrix
+  build-release-archives.ts   # CLI + worker archive + .sha256 per target
   build-channel-input.mjs     # checksums -> channel manifest input
   gen-channel-manifests.ts    # render Homebrew / Scoop / winget / AUR
   check-channel-manifests.mjs # verify channel manifests against real archives
   publish-winget-manifest.mjs # submit the validated winget manifest set
-  make-signature-manifest.ts  # npm native-package signature manifest
-  package-rust-cli.ts         # npm selector + native package staging
+  make-signature-manifest.ts  # CLI + worker signature manifest
+  package-rust-cli.ts         # selector + paired native package staging
   check-rust-cli-release-artifacts.ts  # npm release contract validator
   install / install.ps1       # end-user one-liner installers (proxied via runx.ai/install)
 packaging/

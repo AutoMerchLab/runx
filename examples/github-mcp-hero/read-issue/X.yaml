@@ -1,0 +1,27 @@
+skill: github-mcp-read-issue
+version: "0.1.0"
+runners:
+  default:
+    default: true
+    type: mcp
+    server:
+      command: node
+      args:
+        - ../../../fixtures/runtime/adapters/mcp/github-stdio-server.mjs
+    tool: github_issue_read
+    arguments:
+      repository: "{{repository}}"
+      number: "{{issue_number}}"
+    timeout_seconds: 15
+    sandbox:
+      profile: network
+      cwd_policy: skill-directory
+    inputs:
+      repository:
+        type: string
+        required: true
+        description: Repository slug.
+      issue_number:
+        type: string
+        required: true
+        description: Issue number.

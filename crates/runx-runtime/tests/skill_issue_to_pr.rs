@@ -30,6 +30,17 @@ fn issue_to_pr_generated_fixtures_replay_to_needs_agent_receipts()
             .map_err(|verification| format!("{case_name}: {:?}", verification.findings))?;
         validate_receipt_tree(&output.receipt, &output.step_receipts)
             .map_err(|verification| format!("{case_name}: {:?}", verification.findings))?;
+        assert!(
+            output.receipt.id.starts_with("sha256:"),
+            "{case_name}: graph receipt id must be content-addressed"
+        );
+        assert!(
+            output
+                .step_receipts
+                .iter()
+                .all(|receipt| receipt.id.starts_with("sha256:")),
+            "{case_name}: child receipt ids must be content-addressed"
+        );
         assert_eq!(output.receipt.acts.len(), 0);
         // The flat graph receipt carries no inline decisions; governance
         // reasoning lives on the per-step child receipts.

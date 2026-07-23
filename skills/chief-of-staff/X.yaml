@@ -1,8 +1,8 @@
 skill: chief-of-staff
-version: "0.1.1"
+version: "0.3.0"
 
 catalog:
-  kind: skill
+  kind: graph
   audience: operator
   visibility: public
   role: context
@@ -10,89 +10,288 @@ catalog:
   completion: runtime_receipt
   requires_adapter: false
   approval: none
+
 harness:
   cases:
-    - name: inbox-calendar-exec-action-packet
+    - name: chief-of-staff-binds-actions-to-sources
       inputs:
-        objective: Prepare the operator's next three actions for the launch inbox.
+        objective: Prepare the next launch actions.
+        as_of: "2026-06-04T12:00:00Z"
+        max_age_days: 30
         mail_context:
           threads:
-            - id: thread_1
-              from: design-partner@example.com
-              summary: Asked for a launch-readiness call and sent two blocker questions.
-            - id: thread_2
-              from: vendor@example.com
-              summary: Shared a routine status update with no requested action.
+            - { id: thread_1, source_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, observed_at: "2026-06-04T10:00:00Z", summary: Design partner asked for a launch-readiness call., sensitivity: routine }
+            - { id: thread_2, source_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, observed_at: "2026-06-04T09:00:00Z", summary: Vendor shared a routine status update., sensitivity: routine }
         calendar_context:
-          availability:
-            - 2026-06-05T15:00:00Z
-            - 2026-06-05T17:00:00Z
-        constraints:
-          final_send_requires_human: true
+          availability: ["2026-06-05T15:00:00Z", "2026-06-05T17:00:00Z"]
+          availability_evidence: { source_ref: calendar_availability, source_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc, observed_at: "2026-06-04T11:00:00Z" }
+          events: []
+        constraints: { final_send_requires_human: true }
       caller:
         answers:
-          agent_task.chief-of-staff.output:
-            priority_queue:
-              - source_ref: thread_1
-                priority: high
-                reason: Design partner has active blocker questions before launch.
-              - source_ref: thread_2
-                priority: low
-                reason: Informational status update; no action requested.
-            draft_replies:
-              - source_ref: thread_1
-                subject: "Re: launch readiness"
-                body_summary: Acknowledge blockers, answer what is known, and offer a call.
-            scheduling_proposals:
-              - source_ref: thread_1
-                proposed_times:
-                  - 2026-06-05T15:00:00Z
-                  - 2026-06-05T17:00:00Z
-            risks:
-              - Final reply must be reviewed before send.
-            verdict: ready_for_human_review
+          agent_task.chief-of-staff-synthesize.output:
+            action_draft:
+              decision: ready_for_human_review
+              priority_queue:
+                - { source_ref: thread_1, priority: high, reason: Active launch request. }
+                - { source_ref: thread_2, priority: low, reason: Informational only. }
+              draft_replies:
+                - { source_ref: thread_1, subject: "Re: launch readiness", body_summary: Acknowledge the request and offer a call. }
+              scheduling_proposals:
+                - { source_ref: thread_1, proposed_times: ["2026-06-05T15:00:00Z"] }
+              risks: [Final reply requires review.]
       expect:
         status: sealed
-        receipt:
-          schema: runx.receipt.v1
+        steps: [index, synthesize, finalize]
+        step_outputs:
+          finalize:
+            subset:
+              action_packet:
+                data:
+                  decision: ready_for_human_review
+                  delivery_status: not_sent
+                  calendar_mutated: false
+                  source_evidence:
+                    - source_ref: thread_1
+                      source_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+                      provenance: caller_supplied_source_digest
+                  validation: { status: pass }
+        receipt: { schema: runx.receipt.v1 }
 
-    - name: inbox-calendar-needs-context
+    - name: chief-of-staff-rejects-invented-thread
       inputs:
-        objective: Tell me what to do next.
+        objective: Prepare the next action.
+        as_of: "2026-06-04T12:00:00Z"
+        mail_context:
+          threads:
+            - { id: thread_1, source_digest: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd, observed_at: "2026-06-04T10:00:00Z", summary: A bounded request., sensitivity: routine }
+      caller:
+        answers:
+          agent_task.chief-of-staff-synthesize.output:
+            action_draft:
+              decision: ready_for_human_review
+              priority_queue:
+                - { source_ref: thread_missing, priority: high, reason: Invented. }
+              draft_replies: []
+              scheduling_proposals: []
+              risks: []
       expect:
-        status: failure
+        status: sealed
+        steps: [index, synthesize, finalize]
+        step_outputs:
+          finalize:
+            subset:
+              action_packet:
+                data:
+                  decision: needs_context
+                  validation: { status: fail }
+        receipt: { schema: runx.receipt.v1 }
+
+    - name: chief-of-staff-forces-sensitive-review
+      inputs:
+        objective: Prepare the next action.
+        as_of: "2026-06-04T12:00:00Z"
+        mail_context:
+          threads:
+            - { id: thread_legal, source_digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee, observed_at: "2026-06-04T10:00:00Z", summary: Counsel requested contract changes., sensitivity: legal }
+      caller:
+        answers:
+          agent_task.chief-of-staff-synthesize.output:
+            action_draft:
+              decision: ready_for_human_review
+              priority_queue:
+                - { source_ref: thread_legal, priority: high, reason: Contract response is due. }
+              draft_replies: []
+              scheduling_proposals: []
+              risks: []
+      expect:
+        status: sealed
+        steps: [index, synthesize, finalize]
+        step_outputs:
+          finalize:
+            subset:
+              action_packet:
+                data:
+                  decision: manual_review
+                  mandatory_review_refs: [thread_legal]
+                  delivery_status: not_sent
+        receipt: { schema: runx.receipt.v1 }
+
+    - name: chief-of-staff-rejects-unprovenanced-source
+      inputs:
+        objective: Prepare the next action.
+        as_of: "2026-06-04T12:00:00Z"
+        mail_context:
+          threads:
+            - { id: thread_1, observed_at: "2026-06-04T10:00:00Z", summary: A request without upstream provenance., sensitivity: routine }
+      expect:
+        status: sealed
+        steps: [index, reject]
+        step_outputs:
+          reject:
+            subset:
+              action_packet:
+                data:
+                  decision: needs_context
+                  delivery_status: not_sent
+                  validation: { status: fail }
+        receipt: { schema: runx.receipt.v1 }
+
+    - name: chief-of-staff-rejects-stale-source
+      inputs:
+        objective: Prepare the next action.
+        as_of: "2026-06-04T12:00:00Z"
+        max_age_days: 30
+        mail_context:
+          threads:
+            - { id: thread_1, source_digest: sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff, observed_at: "2026-04-01T10:00:00Z", summary: A stale request., sensitivity: routine }
+      expect:
+        status: sealed
+        steps: [index, reject]
+        step_outputs:
+          reject:
+            subset:
+              action_packet:
+                data:
+                  decision: needs_context
+                  validation: { status: fail }
+        receipt: { schema: runx.receipt.v1 }
+
+    - name: chief-of-staff-rejects-unavailable-time
+      inputs:
+        objective: Prepare the next launch action.
+        as_of: "2026-06-04T12:00:00Z"
+        mail_context:
+          threads:
+            - { id: thread_1, source_digest: sha256:1111111111111111111111111111111111111111111111111111111111111111, observed_at: "2026-06-04T10:00:00Z", summary: Design partner requested a call., sensitivity: routine }
+        calendar_context:
+          availability: ["2026-06-05T15:00:00Z"]
+          availability_evidence: { source_ref: calendar_availability, source_digest: sha256:2222222222222222222222222222222222222222222222222222222222222222, observed_at: "2026-06-04T11:00:00Z" }
+      caller:
+        answers:
+          agent_task.chief-of-staff-synthesize.output:
+            action_draft:
+              decision: ready_for_human_review
+              priority_queue:
+                - { source_ref: thread_1, priority: high, reason: Active launch request. }
+              draft_replies: []
+              scheduling_proposals:
+                - { source_ref: thread_1, proposed_times: ["2026-06-05T16:00:00Z"] }
+              risks: []
+      expect:
+        status: sealed
+        steps: [index, synthesize, finalize]
+        step_outputs:
+          finalize:
+            subset:
+              action_packet:
+                data:
+                  decision: needs_context
+                  validation: { status: fail }
+        receipt: { schema: runx.receipt.v1 }
 
 runners:
   exec:
     default: true
-    type: agent-task
-    agent: operator
-    task: chief-of-staff
-    outputs:
-      priority_queue: array
-      draft_replies: array
-      scheduling_proposals: array
-      risks: array
-      verdict: string
-    artifacts:
-      wrap_as: inbox_calendar_action_packet
-      packet: runx.ops.inbox_calendar_action_packet.v1
-    runx:
-      category: ops
+    type: graph
     inputs:
       objective:
         type: string
         required: true
-        description: "Operator goal for this inbox/calendar pass."
+        description: Operator goal for this pass.
+      as_of:
+        type: string
+        required: true
+        description: Explicit ISO-8601 evaluation time for deterministic freshness checks.
+      max_age_days:
+        type: number
+        required: false
+        default: 30
+        description: Maximum accepted source age in days.
       mail_context:
         type: json
         required: true
-        description: "Redacted thread summaries and message evidence."
+        description: Redacted thread evidence.
       calendar_context:
         type: json
         required: false
-        description: "Redacted availability and event context."
+        description: Redacted events and availability.
       constraints:
         type: json
         required: false
-        description: "Tone, owner, final-send, and scheduling constraints."
+        description: Tone, ownership, send, and scheduling constraints.
+    graph:
+      name: chief-of-staff
+      steps:
+        - id: index
+          inputs:
+            objective: $input.objective
+            as_of: $input.as_of
+            max_age_days: $input.max_age_days
+            mail_context: $input.mail_context
+            calendar_context: $input.calendar_context
+          run:
+            type: javascript
+            module: chief-of-staff.mjs
+            export: indexContext
+            outputs:
+              context_index: object
+          artifacts:
+            named_emits:
+              context_index: context_index
+
+        - id: reject
+          when:
+            field: index.context_index.data.decision
+            equals: needs_context
+          context:
+            context_index: index.context_index.data
+          run:
+            type: javascript
+            module: chief-of-staff.mjs
+            export: finalizeActions
+            outputs:
+              action_packet: object
+          artifacts:
+            named_emits:
+              action_packet: action_packet
+            packets:
+              action_packet: runx.ops.inbox_calendar_action_packet.v1
+
+        - id: synthesize
+          when:
+            field: index.context_index.data.decision
+            equals: ready
+          run:
+            type: agent-task
+            agent: operator
+            task: chief-of-staff-synthesize
+            outputs:
+              action_draft: object
+          inputs:
+            objective: $input.objective
+            constraints: $input.constraints
+          context:
+            context_index: index.context_index.data
+          artifacts:
+            named_emits:
+              action_draft: action_draft
+
+        - id: finalize
+          when:
+            field: index.context_index.data.decision
+            equals: ready
+          context:
+            context_index: index.context_index.data
+            action_draft: synthesize.action_draft.data
+          run:
+            type: javascript
+            module: chief-of-staff.mjs
+            export: finalizeActions
+            outputs:
+              action_packet: object
+          artifacts:
+            named_emits:
+              action_packet: action_packet
+            packets:
+              action_packet: runx.ops.inbox_calendar_action_packet.v1

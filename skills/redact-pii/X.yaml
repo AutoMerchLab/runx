@@ -1,5 +1,5 @@
 skill: redact-pii
-version: "0.2.0"
+version: "0.2.1"
 catalog:
   kind: graph
   audience: public
@@ -37,6 +37,12 @@ runners:
     graph:
       name: redact-pii
       steps:
+        - id: digest-source
+          tool: data.digest
+          inputs:
+            value: $input.content
+            encoding: utf8_text
+
         - id: detect
           label: detect personal-data spans and semantic risk
           run:
@@ -51,18 +57,10 @@ runners:
             mode: $input.mode
             locale: $input.locale
             operator_context: $input.operator_context
-          instructions: >
-            Inspect only the supplied content. Return redaction_draft with
-            decision (ready, needs_review, or blocked), detected spans as class,
-            UTF-16 start/end offsets, and confidence, plus residual_risk with
-            level and reason_code. Never include matched values. Use reason_code
-            none, ambiguous_semantics, scrubbing_destroys_meaning, policy_block,
-            or insufficient_context. The deterministic finalizer owns all
-            replacements, scanning, digests, and the final pass gate.
           artifacts:
             named_emits:
               redaction_draft: redaction_draft
-        - id: finalize
+        - id: scrub
           label: scrub and scan residual content
           inputs:
             content: $input.content
@@ -72,10 +70,32 @@ runners:
           context:
             redaction_draft: detect.redaction_draft.data
           run:
-            type: cli-tool
-            command: node
-            args:
-              - ./finalize_redaction.mjs
+            type: javascript
+            module: redact-pii.mjs
+            export: scrubRedaction
+            outputs:
+              redaction_candidate: object
+          artifacts:
+            named_emits:
+              redaction_candidate: redaction_candidate
+
+        - id: digest-redacted
+          tool: data.digest
+          inputs:
+            encoding: utf8_text
+          context:
+            value: scrub.redaction_candidate.data.redacted_content
+
+        - id: finalize
+          label: bind native content digests and release the report
+          context:
+            redaction_candidate: scrub.redaction_candidate.data
+            source_digest: digest-source.digest_result.data.digest
+            redacted_digest: digest-redacted.digest_result.data.digest
+          run:
+            type: javascript
+            module: redact-pii.mjs
+            export: finalizeRedaction
             outputs:
               redaction_report: object
               redacted_content: string

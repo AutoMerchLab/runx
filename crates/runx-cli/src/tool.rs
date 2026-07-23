@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - command wiring keeps tool build/search/inspect output parity together.
+// Module rationale: command wiring keeps tool build/search/inspect output parity together.
 use std::collections::BTreeMap;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -6,7 +6,7 @@ use std::process::ExitCode;
 
 use runx_runtime::{
     ToolBuildOptions, ToolCatalogError, ToolInspectOptions, ToolSearchOptions, build_tool_catalogs,
-    inspect_tool, search_tools,
+    inspect_tool_with_effects, search_tools_with_effects,
 };
 
 use crate::router::{ToolAction, ToolPlan};
@@ -46,12 +46,10 @@ fn run_build(
         .path
         .as_deref()
         .map(|path| resolve_user_path(path, env, cwd));
-    let toolkit_version = toolkit_version(env);
     let report = build_tool_catalogs(&ToolBuildOptions {
         root,
         tool_path,
         all: plan.all,
-        toolkit_version,
     })?;
     let stdout = if plan.json {
         json_line(&report)?
@@ -73,13 +71,19 @@ fn run_search(
     let query = plan
         .ref_or_query
         .ok_or_else(|| ToolCliError::Usage("runx tool search requires a query".to_owned()))?;
-    let report = search_tools(&ToolSearchOptions {
-        query,
-        source: plan.source,
-        limit: 20,
-        fixture_catalog_enabled: env_value(env, "RUNX_ENABLE_FIXTURE_TOOL_CATALOG")
-            .is_some_and(|value| value == "1"),
-    });
+    let effects = crate::runtime::payment_effect_registry().map_err(|error| {
+        ToolCliError::Internal(format!("failed to initialize runtime effects: {error}"))
+    })?;
+    let report = search_tools_with_effects(
+        &ToolSearchOptions {
+            query,
+            source: plan.source,
+            limit: 20,
+            fixture_catalog_enabled: env_value(env, "RUNX_ENABLE_FIXTURE_TOOL_CATALOG")
+                .is_some_and(|value| value == "1"),
+        },
+        &effects,
+    );
     let stdout = if plan.json {
         json_line(&report)?
     } else {
@@ -104,16 +108,22 @@ fn run_inspect(
     let tool_roots = env_value(env, "RUNX_TOOL_ROOTS")
         .map(|value| split_env_paths(&value))
         .unwrap_or_default();
-    let report = inspect_tool(&ToolInspectOptions {
-        root,
-        tool_ref,
-        source: plan.source,
-        search_from_directory,
-        tool_roots,
-        fixture_catalog_enabled: env_value(env, "RUNX_ENABLE_FIXTURE_TOOL_CATALOG")
-            .is_some_and(|value| value == "1"),
-        allow_explicit_manifest_path: true,
+    let effects = crate::runtime::payment_effect_registry().map_err(|error| {
+        ToolCliError::Internal(format!("failed to initialize runtime effects: {error}"))
     })?;
+    let report = inspect_tool_with_effects(
+        &ToolInspectOptions {
+            root,
+            tool_ref,
+            source: plan.source,
+            search_from_directory,
+            tool_roots,
+            fixture_catalog_enabled: env_value(env, "RUNX_ENABLE_FIXTURE_TOOL_CATALOG")
+                .is_some_and(|value| value == "1"),
+            allow_explicit_manifest_path: true,
+        },
+        &effects,
+    )?;
     let stdout = if plan.json {
         json_line(&report)?
     } else {
@@ -139,14 +149,6 @@ fn resolve_user_path(user_path: &Path, env: &BTreeMap<String, String>, cwd: &Pat
 
 fn split_env_paths(value: &str) -> Vec<PathBuf> {
     env::split_paths(value).collect()
-}
-
-fn toolkit_version(env: &BTreeMap<String, String>) -> String {
-    env_value(env, "RUNX_AUTHORING_TOOLKIT_VERSION")
-        .or_else(|| env_value(env, "RUNX_AUTHORING_PACKAGE_VERSION"))
-        .map(|value| value.trim_start_matches('^').to_owned())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "0.1.4".to_owned())
 }
 
 fn json_line<T: serde::Serialize>(value: &T) -> Result<String, ToolCliError> {
@@ -212,6 +214,7 @@ fn inspect_header_lines(result: &runx_contracts::tools::ToolInspectResult) -> Ve
     let origin = match result.provenance.origin {
         runx_contracts::tools::ToolInspectOrigin::Local => "local",
         runx_contracts::tools::ToolInspectOrigin::Imported => "imported",
+        runx_contracts::tools::ToolInspectOrigin::Native => "native",
     };
     vec![
         String::new(),

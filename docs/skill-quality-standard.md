@@ -78,17 +78,27 @@ A reusable provider operation keeps governance, transport, and proof separate:
    provider secrets to the model, skill inputs, command arguments, or artifacts.
 2. Validate scope, audience, payload bounds, and idempotency before the provider
    call. Reads need no human approval; an external mutation is approved at the
-   consequential boundary, not during harmless planning or inspection.
-3. Execute through a declared tool, adapter, MCP server, or HTTP boundary. Agent
-   prose may choose or author inputs but may not stand in for transport.
-4. Record provider acknowledgement separately from finality. An accepted
+   consequential boundary, not during harmless planning or inspection. Pass one
+   stable retry identity through native `provider.mutate.idempotency_key`; Runx
+   injects it into the provider payload and rejects a duplicated payload copy.
+3. Execute through a declared tool, adapter, MCP server, or HTTP boundary. For
+   hosted drivers, use native `provider.read` or `provider.mutate`; Runx resolves
+   the unique active provider/scope grant and Cloud verifies the driver's
+   authoritative access class. Agent prose may choose or author inputs but may
+   not stand in for transport.
+4. Bind readback to the expected resource identity. Hosted operations may
+   declare `expected_result` fields that must match exactly and `result_fields`
+   that form the complete provider result allowed into the receipt. Secret-
+   adjacent operations must use this projection so undeclared result material
+   cannot cross into skill output.
+5. Record provider acknowledgement separately from finality. An accepted
    request is not delivered, published, paid, or applied unless provider
    evidence proves that terminal state.
-5. Read back the provider object by a stable provider id or deterministic
+6. Read back the provider object by a stable provider id or deterministic
    request coordinate. A read-only operation may use the bounded provider
    response itself as readback when it includes the requested resource identity
    and fresh response evidence.
-6. Seal the receipt with the attempted scope, idempotency key when relevant,
+7. Seal the receipt with the attempted scope, idempotency key when relevant,
    provider evidence reference, truthful terminal state, and recovery posture.
 
 Fixtures prove request construction, refusal, approval, retry, and readback
@@ -103,6 +113,14 @@ or finality logic.
 Agent work is valid for judgment and authorship. It must be isolated from
 deterministic effects and close into a declared artifact packet.
 
+`SKILL.md` is the sole static operating-instruction source for an agent act.
+Runx injects the complete owning document into the agent envelope and rejects
+runner or graph-step `instructions` fields. The envelope's task, typed inputs,
+outputs, allowed tools, and prepared context identify the current act without a
+second prompt contract. Nested skills run under their own documents; downstream
+steps receive declared outputs and context skills with provenance rather than a
+flattened prompt dump.
+
 The normal Runx path yields `needs_agent` to the caller. In-process managed
 agent execution requires explicit per-run `--managed-agent` consent, displays
 the act count and round budget before execution, and remains bounded. Available
@@ -116,23 +134,37 @@ selected execution graph declares a mutation; the receipt records an approval
 decision only when a human actually supplied one. A skill's own approval step
 still gates the specific consequential action at the point of use.
 
-## Required `SKILL.md` structure
+## `SKILL.md` content
 
-Each public skill must tell an agent enough to execute and audit the job without
-inventing procedure. It should cover:
+`SKILL.md` is the public capability manual shared by the operator and the
+operating agent. An operator opening it without prior context must be able to
+understand what the skill does, why and when to use it, what it will do in
+sequence, which other skills it composes with, what authority and evidence it
+needs, what it returns, and where it will stop. The document should teach the
+capability's mental model and preserve its product voice; it is not an internal
+prompt stub.
 
-- `## What this skill does`
-- `## When to use this skill`
-- `## When not to use this skill`
-- `## Procedure`
-- `## Edge cases and stop conditions`
-- `## Output schema`
-- `## Worked example`
-- `## Inputs`
+Its frontmatter description owns triggering. Its body owns the capability
+overview, operating model, non-obvious procedure, chain relationships, input
+and output semantics, evidence and authority rules, finality and recovery,
+relevant edge cases, useful examples, bundled resources, and any task-specific
+agent contracts. Use a structure natural to the capability rather than empty
+boilerplate. Simple facades and internal rails may be concise, but no public
+guide may be replaced with terse imperatives, schema fields, or task clauses.
 
-Equivalent headings are acceptable when the same operating information remains
-obvious. The document is execution guidance, not a repeated internal review
-rubric or marketing page.
+When an existing skill changes, preserve useful human context and reconcile it
+with the executable profile. Remove prose only when it is false, duplicated, or
+irrelevant. Moving enforcement into native code does not make the explanation
+dispensable: operators still need to understand the boundary and its reason.
+Task contracts belong after the operating guide and may sharpen a bounded
+agent act; they never substitute for the guide.
+
+The catalog audit enforces this as an anti-stub floor: a public guide must carry
+substantive operator context before any agent task contracts, and it must name
+each core skill its executable runners compose directly. The floor is not a
+prose score and must never be met with filler. Review still judges whether the
+manual explains the capability accurately, naturally, and with enough domain
+weight for a cold operator.
 
 ## Content bar
 
@@ -159,6 +191,15 @@ rubric or marketing page.
 - side-effect posture and truthful completion semantics;
 - artifact packets and focused harness declarations.
 
+Typed outputs and packets belong to their producing runner or graph step. A
+graph runner is a composition boundary, not a second producer: it must end in
+an explicit package/finalize step when the workflow needs one reusable result,
+and that terminal producer owns the output and packet contract.
+
+It does not own static model instructions. Keep those exclusively in the
+owning `SKILL.md`; the runtime supplies the current task and contracts
+separately.
+
 Use the strict profile YAML subset: no anchors, aliases, merge keys, custom
 tags, multi-document markers, duplicate mappings, or unknown fields. Do not put
 strategy, generated state, secrets, campaign copy, or broad documentation in
@@ -168,6 +209,52 @@ Standalone fixtures should live under `fixtures/` and exercise public runners.
 Inline cases remain acceptable where the runtime package already uses them as a
 focused evaluator or graph contract, but they should not turn `X.yaml` into a
 large scenario archive.
+
+## Architecture admission
+
+Skill authoring must decide ownership before it writes files:
+
+- Reusable skill procedure, end-user and domain-operator UX, local loops,
+  queues, and default local state belong in OSS or the owning product. Cloud may
+  custody credentials, resolve authoritative grants, execute registered bounded
+  provider operations, and run its hosted control plane; it does not become the
+  skill or operator owner merely because Hosted Connect is used. Existing Cloud
+  code is not architectural precedent. A missing operator capability is fixed
+  in OSS or the product, not in a Cloud dogfood script.
+- Prefer a declarative graph composed from existing native tools and canonical
+  skills.
+- Add package executable code only for irreducible domain computation. Its
+  admission names the domain boundary, why the graph cannot express it, and
+  which existing owners and tools were inspected.
+- Express irreducible JavaScript through `source.type: javascript`: a cohesive
+  package module exposes focused functions from resolved inputs to JSON values,
+  while Runx owns process input, output, errors, timeouts, and sandboxing. Do
+  not simulate named operations with public inputs or create one process wrapper
+  per graph step. The runtime must enforce a read-only, skill-directory,
+  no-network sandbox with no writable paths, injected credentials, or extra
+  environment. Reserve `cli-tool` for a genuine executable or protocol
+  boundary.
+- Generic packet and evidence digests belong to native `data.digest`. A
+  package-local canonical hash is admissible only when the hash is an intrinsic
+  field of an established domain or wire protocol, never as a replacement for
+  receipt or effect integrity; the module must state that exception at the
+  computation boundary.
+- Do not describe package code as filling a missing core capability. A genuine
+  generic gap returns `needs_core` without writes. The proposal must identify
+  either a runtime/security invariant or at least two independent existing
+  consumers and explain why a package fallback was rejected.
+- The authoring agent explains material ownership decisions when they affect
+  the result. The native apply result reports objective before/after files,
+  bytes, text lines, executable files, and executable lines.
+- Improving a skill includes removing superseded code and manifests. Splitting
+  one implementation into more files or moving it into Rust is not evidence of
+  lower complexity.
+
+`runx.skill.apply` fail-closes on objective facts: bounded paths, secret-like
+material, package parsing, exact-candidate inspection, isolated harness replay,
+target drift, and transactional application. Architectural judgment remains in
+the `skill-lab` operating contract and review; native code does not pretend to
+validate it by counting model-authored prose fields.
 
 ## Catalog and review policy
 
@@ -191,9 +278,11 @@ visible improvement findings. They may prevent a skill from meeting the full
 archetype bar without pretending the underlying product capability should be
 deleted.
 
-The generated [Core Skill Product Review](core-skill-review.md) records the
-current evidence and recommendation for every top-level package. It does not
-authorize removal, relocation, or demotion.
+The dated [Core Skill Product Review](core-skill-review.md) records the human
+product decision and evidence available at that review. Current structural
+truth comes from native package validation, the official lock, operator-context
+expansion, and package harnesses; no parallel review generator is authoritative.
+The review does not authorize removal, relocation, or demotion.
 
 Internal packages use two distinct review categories. `internal_fixture`
 packages provide deterministic test rails for canonical public skills;

@@ -38,30 +38,34 @@ inputs:
       seal_summary: Skill inspection completed.
 expect:
   status: sealed
-  output:
-    subset:
-      ledger_answer:
-        decision: answered
-        query:
-          receipt_ids:
-            - rcpt_target
-      matched_receipts:
-        - receipt_id: rcpt_target
-          skill_ref: runx/skill-lab
-          status: closed
-          verification_status: verified
-      receipt_details:
-        - id: rcpt_target
-          subject_ref: runx/skill-lab
-          authority:
-            exercised_scopes:
-              - scope: fs:read
-      chain_verification:
-        checked: false
+  steps: [prepare, finalize-replay]
+  step_outputs:
+    finalize-replay:
+      subset:
+        ledger_answer_packet:
+          data:
+            ledger_answer:
+              decision: answered
+              query:
+                receipt_ids:
+                  - rcpt_target
+            matched_receipts:
+              - receipt_id: rcpt_target
+                skill_ref: runx/skill-lab
+                status: closed
+                verification_status: verified
+            receipt_details:
+              - id: rcpt_target
+                subject_ref: runx/skill-lab
+                authority:
+                  exercised_scopes:
+                    - scope: fs:read
+            chain_verification:
+              checked: false
   receipt:
     schema: runx.receipt.v1
 metadata:
   public_skill: ledger
   source_case: read-ledger-by-exact-id
   source: skills-fixture
-  runner_kind: cli-tool
+  runner_kind: graph

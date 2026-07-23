@@ -41,7 +41,7 @@ describe("CLI package", () => {
     const topology = JSON.parse(topologyText) as {
       readonly schema: string;
       readonly selectorPackage: string;
-      readonly nativePackages: Record<string, { readonly package: string; readonly binary: string }>;
+      readonly nativePackages: Record<string, { readonly package: string; readonly binary: string; readonly worker: string }>;
     };
     const packageJson = JSON.parse(packageText) as {
       readonly name: string;
@@ -58,7 +58,7 @@ describe("CLI package", () => {
     };
 
     expect(topology).toMatchObject({
-      schema: "runx.rust_cli_selector_topology.v1",
+      schema: "runx.rust_cli_selector_topology.v2",
       selectorPackage: "@runxhq/cli",
     });
     expect(packageJson).toMatchObject({
@@ -67,7 +67,7 @@ describe("CLI package", () => {
       files: ["LICENSE", "bin/runx", "native/supported-platforms.json"],
       runx: {
         nativeSelector: {
-          schema: "runx.rust_cli_selector_topology.v1",
+          schema: "runx.rust_cli_selector_topology.v2",
           nativePackagePattern: "@runxhq/cli-${platform}",
         },
       },
@@ -86,6 +86,7 @@ describe("CLI package", () => {
     expect(packageJson.runx?.nativeSelector?.supportedPlatforms).toEqual(supportedPlatforms);
     for (const [platform, entry] of Object.entries(topology.nativePackages)) {
       expect(entry.package).toBe(`@runxhq/cli-${platform}`);
+      expect(entry.worker).toBe(platform === "win32-x64" ? "bin/runx-js-worker.exe" : "bin/runx-js-worker");
     }
   });
 

@@ -6,8 +6,8 @@ description: Draft or tighten a Runx operational policy from a governance brief,
 # Policy Author
 
 Produce one reviewable operational-policy proposal. Let the agent translate
-intent into policy fields; let `runx policy lint` decide whether the result is a
-valid Runx policy.
+intent into policy fields; let the native `policy.lint` tool decide whether the
+exact in-memory result is a valid Runx policy.
 
 ## Workflow
 
@@ -25,7 +25,7 @@ valid Runx policy.
 
 ## Native policy contract
 
-Draft the exact contract consumed by `runx policy lint`:
+Draft the exact contract consumed by `policy.lint` and the Runx policy parser:
 
 ```yaml
 schema: runx.operational_policy.v1
@@ -97,7 +97,7 @@ decision: ready | needs_input | reject
 policy: object | null
 validation:
   status: pass | fail | not_run
-  engine: runx policy lint
+  engine: runx policy
   findings: [{ code, path, message }]
   readback: object | null
   reason: string
@@ -109,3 +109,14 @@ success_checkpoint: object
 
 The runtime receipt proves which draft was validated. It does not approve or
 install the policy.
+
+## Agent task contracts
+
+### `policy-author-draft`
+
+Draft one policy proposal using the exact runx.operational_policy.v1 contract described by the
+skill. Return decision, policy, rationale, blockers, needs_input, and success_checkpoint. Do not
+author a lint verdict: the next deterministic step invokes native `policy.lint`. If required
+repos, source locators, owners, or runner bindings are missing, return needs_input with policy
+null. When existing_policy is supplied, never add authority, targets, sources, runners,
+locators, or actions; only tighten permissions, confidence, routing, and outcomes.

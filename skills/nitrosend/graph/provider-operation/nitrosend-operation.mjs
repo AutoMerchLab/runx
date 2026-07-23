@@ -5,6 +5,8 @@ const READ_OPERATIONS = new Map([
   ["insights", "nitro_get_insights"],
   ["review_delivery", "nitro_review_delivery"],
   ["import_status", "nitro_query"],
+  ["compose_campaign_intent", "nitro_compose_campaign"],
+  ["validate_campaign_composition", "nitro_compose_campaign"],
 ]);
 const ACT_OPERATIONS = new Map([
   ["send_transactional", "nitro_send_message"],
@@ -153,6 +155,28 @@ function validate(mode, operation, args) {
   if (mode === "read" && operation === "import_status" && !positiveInteger(args.import_id)) {
     return ["import_status requires arguments.import_id"];
   }
+  if (mode === "read" && ["compose_campaign_intent", "validate_campaign_composition"].includes(operation)) {
+    const expectedMode = operation === "compose_campaign_intent" ? "intent" : "validate";
+    if (args.composition_mode !== expectedMode) {
+      return [`${operation} requires arguments.composition_mode=${expectedMode}`];
+    }
+    const forbidden = [
+      "audience", "scheduled_at", "confirm", "idempotency_key", "campaign_id", "mode",
+      "approval", "activate", "activation", "send", "operation",
+    ].filter((key) => Object.hasOwn(args, key));
+    if (forbidden.length > 0) {
+      return [`refused:${operation} cannot receive stateful fields: ${forbidden.join(", ")}`];
+    }
+    if (operation === "compose_campaign_intent" && args.contract_id !== undefined) {
+      return ["compose_campaign_intent must not receive arguments.contract_id"];
+    }
+    if (operation === "validate_campaign_composition" && !text(args.contract_id)) {
+      return ["validate_campaign_composition requires arguments.contract_id"];
+    }
+    if (operation === "validate_campaign_composition" && !text(args.body) && !Array.isArray(args.sections)) {
+      return ["validate_campaign_composition requires arguments.body or arguments.sections"];
+    }
+  }
   if (mode === "act" && operation === "send_transactional") {
     if (!["email", "sms"].includes(args.channel) || !text(args.to)) {
       return ["send_transactional requires channel email or sms and one recipient"];
@@ -187,6 +211,12 @@ function validate(mode, operation, args) {
 }
 
 function providerArguments(operation, args) {
+  if (operation === "compose_campaign_intent") {
+    return { ...args, composition_mode: "intent", dry_run: true };
+  }
+  if (operation === "validate_campaign_composition") {
+    return { ...args, composition_mode: "validate", validate_only: true, dry_run: true };
+  }
   if (operation === "import_status") {
     return { entity: "imports", filters: { id: Number(args.import_id) }, page: 1, per: 1 };
   }

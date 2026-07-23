@@ -15,7 +15,10 @@ interface CommandMatrix {
 
 interface CommandEntry {
   readonly id: string;
-  readonly usage: string;
+  readonly topLevelUsage: readonly string[];
+  readonly usage: readonly string[];
+  readonly notes: readonly string[];
+  readonly options: readonly string[];
   readonly exitCodes: readonly number[];
   readonly parity: {
     readonly humanOutput: "semantic" | "none";

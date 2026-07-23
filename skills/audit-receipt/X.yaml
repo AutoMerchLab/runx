@@ -1,5 +1,5 @@
 skill: audit-receipt
-version: "0.3.1"
+version: "0.3.2"
 catalog:
   kind: graph
   audience: operator
@@ -61,15 +61,6 @@ runners:
             task: audit-receipt
             outputs:
               receipt_audit: object
-          instructions: >
-            Audit one run for authority over-reach, ungated mutation,
-            unrecorded refusal, or exposed material. Native ledger evidence
-            proves receipt identity, verification posture, signed authority,
-            decisions, acts, artifacts, and lineage through its redacted detail
-            projection. Treat receipt_summary and granted_scopes as supplemental
-            operator context only. If a receipt id is not resolved, or native
-            detail is insufficient, return needs_more_evidence rather than clean.
-            Do not repair the skill or mutate the ledger.
           context:
             receipt_evidence: evidence.ledger_answer_packet.data
           artifacts:

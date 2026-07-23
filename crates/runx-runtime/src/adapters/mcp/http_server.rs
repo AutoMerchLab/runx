@@ -1,4 +1,4 @@
-// rust-style-allow: large-file -- streamable HTTP serving keeps bearer auth,
+// Module rationale: streamable HTTP serving keeps bearer auth,
 // loopback binding, hyper service adaptation, and transport tests in one module
 // while the MCP HTTP front is still a single gated feature.
 //! Expose the governed MCP server over streamable HTTP/SSE.

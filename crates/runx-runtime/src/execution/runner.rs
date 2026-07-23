@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because RuntimeOptions, checkpoint resume, and
+// Module rationale: RuntimeOptions, checkpoint resume, and
 // the public graph runner surface are still audited as one Rust cutover unit.
 //! The act engine for runx: the single admit -> execute -> seal path every run
 //! takes. A standalone skill is a one-act plan and a graph a multi-act plan;
@@ -28,7 +28,8 @@ use crate::receipts::paths::{RUNX_CWD_ENV, RUNX_PROJECT_DIR_ENV, RUNX_RECEIPT_DI
 use crate::receipts::signing::strip_receipt_signing_env;
 use crate::receipts::{
     RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV, RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
-    RUNX_RECEIPT_SIGN_KID_ENV, RuntimeReceiptSignatureConfig, RuntimeReceiptSignaturePolicy,
+    RUNX_RECEIPT_SIGN_KID_ENV, RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
+    RUNX_RECEIPT_VERIFY_KID_ENV, RuntimeReceiptSignatureConfig, RuntimeReceiptSignaturePolicy,
     graph_receipt_with_disposition_and_policy, graph_receipt_with_effects_and_signature_policy,
 };
 use crate::services::ReceiptServices;
@@ -144,6 +145,8 @@ fn safe_default_env_from(
         RUNX_RECEIPT_SIGN_KID_ENV,
         RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
         RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
+        RUNX_RECEIPT_VERIFY_KID_ENV,
+        RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
         crate::sandbox::RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV,
         RUNX_MAX_FANOUT_CONCURRENCY_ENV,
         RUNX_RUN_ID_ENV,
@@ -151,7 +154,6 @@ fn safe_default_env_from(
         RUNX_CWD_ENV,
         PROVIDER_PERMISSION_GRANT_ID_ENV,
         PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
-        "RUNX_HTTP_ALLOW_PRIVATE_NETWORK",
         "RUNX_REGISTRY_DIR",
         "RUNX_REGISTRY_URL",
     ];
@@ -217,8 +219,9 @@ pub struct GraphCheckpoint {
 
 pub struct Runtime<A> {
     adapter: A,
+    javascript: crate::adapters::javascript::JavaScriptAdapter,
+    local_artifacts: crate::services::LocalArtifactService,
     options: RuntimeOptions,
-    step_types: steps::StepTypeRegistry<A>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -232,15 +235,38 @@ where
     A: SkillAdapter,
 {
     pub fn new(adapter: A, options: RuntimeOptions) -> Self {
+        let max_concurrency = scheduler::configured_max_concurrency(&options.env);
         Self {
             adapter,
+            javascript: crate::adapters::javascript::JavaScriptAdapter::with_max_concurrency(
+                max_concurrency,
+            ),
+            local_artifacts: crate::services::LocalArtifactService::default(),
             options,
-            step_types: steps::StepTypeRegistry::builtins(),
+        }
+    }
+
+    pub(crate) fn with_javascript(
+        adapter: A,
+        options: RuntimeOptions,
+        javascript: crate::adapters::javascript::JavaScriptAdapter,
+        local_artifacts: crate::services::LocalArtifactService,
+    ) -> Self {
+        Self {
+            adapter,
+            javascript,
+            local_artifacts,
+            options,
         }
     }
 
     pub(crate) fn options(&self) -> &RuntimeOptions {
         &self.options
+    }
+
+    #[must_use]
+    pub fn javascript_session_stats(&self) -> crate::adapters::javascript::JavaScriptSessionStats {
+        self.javascript.session_stats()
     }
 
     pub fn run_graph_file(&self, graph_path: &Path) -> Result<GraphRun, RuntimeError> {
@@ -277,7 +303,7 @@ where
         self.run_graph_with_host_outcome(graph_dir, graph, host, BlockedGraphOutcome::Error)
     }
 
-    // rust-style-allow: long-function because graph execution drives one ordered
+    // Function rationale: graph execution drives one ordered
     // ready-node loop (admit, dispatch to host, fold outcomes, advance frontier)
     // whose step sequencing must stay in a single scope to keep the run auditable.
     fn run_graph_with_host_outcome(
@@ -527,7 +553,13 @@ pub(crate) fn graph_run_payload(run: &GraphRun, include_receipt_id: bool) -> Jso
     );
     payload.insert(
         "graph_status".to_owned(),
-        JsonValue::String(format!("{:?}", run.state.status)),
+        JsonValue::String(
+            if run.receipt.seal.disposition == ClosureDisposition::Blocked {
+                "Blocked".to_owned()
+            } else {
+                format!("{:?}", run.state.status)
+            },
+        ),
     );
     if include_receipt_id {
         payload.insert(
@@ -591,8 +623,9 @@ pub(crate) fn graph_run_skill_output(
 mod tests {
     use super::{
         RUNX_LOCAL_ENV_ALLOWLIST_ENV, RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
-        RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV, RUNX_RECEIPT_SIGN_KID_ENV, RuntimeOptions,
-        safe_default_env_from,
+        RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV, RUNX_RECEIPT_SIGN_KID_ENV,
+        RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV, RUNX_RECEIPT_VERIFY_KID_ENV,
+        RuntimeOptions, safe_default_env_from,
     };
     use crate::sandbox::RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV;
     use std::collections::BTreeMap;
@@ -739,5 +772,25 @@ mod tests {
         assert!(!options.env.contains_key(RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV));
         assert_eq!(options.env.get("RUNX_CWD"), Some(&"/workspace".to_owned()));
         Ok(())
+    }
+
+    #[test]
+    fn safe_runtime_env_keeps_public_receipt_verifier_configuration() {
+        let env = safe_default_env_from(|key| match key {
+            RUNX_RECEIPT_VERIFY_KID_ENV => Some("receipt-verifier".to_owned()),
+            RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV => {
+                Some("public-key-material".to_owned())
+            }
+            _ => None,
+        });
+
+        assert_eq!(
+            env.get(RUNX_RECEIPT_VERIFY_KID_ENV),
+            Some(&"receipt-verifier".to_owned())
+        );
+        assert_eq!(
+            env.get(RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV),
+            Some(&"public-key-material".to_owned())
+        );
     }
 }

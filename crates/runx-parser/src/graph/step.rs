@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - graph step validation is kept together so
+// Module rationale: graph step validation is kept together so
 // field-level diagnostics stay consistent across graph target variants.
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -11,18 +11,18 @@ use super::helpers::{
     optional_string_array, optional_string_object, required_string, validation_error,
 };
 use super::types::{
-    GraphContextEdge, GraphRetryPolicy, GraphStep, GraphWhen, MintAuthorityDirective,
-    MintScopeSource,
+    GraphContextEdge, GraphRetryPolicy, GraphRunTarget, GraphStep, GraphWhen,
+    MintAuthorityDirective, MintScopeSource,
 };
-use crate::ValidationError;
+use crate::{ValidationError, skill::validate_skill_artifact_contract};
 
 struct StepTarget {
     skill: Option<String>,
     tool: Option<String>,
-    run: Option<JsonObject>,
+    run: Option<GraphRunTarget>,
 }
 
-// rust-style-allow: long-function - step validation parses one step's fields in a
+// Function rationale: step validation parses one step's fields in a
 // single pass and rejects incoherent combinations inline; splitting it would scatter
 // the per-field rules away from the step they validate.
 pub fn validate_step(
@@ -50,6 +50,7 @@ pub fn validate_step(
         optional_object(raw_step.get("inputs"), &format!("{field}.inputs"))?.unwrap_or_default();
     reject_legacy_input_bindings(&inputs, &format!("{field}.inputs"))?;
     reject_step_output_refs_in_inputs(&inputs, previous_step_ids, &format!("{field}.inputs"))?;
+    reject_static_context_input_collisions(&inputs, &context, field)?;
 
     let scopes = optional_string_array(raw_step.get("scopes"), &format!("{field}.scopes"))?
         .unwrap_or_default();
@@ -71,11 +72,10 @@ pub fn validate_step(
         skill: target.skill,
         tool: target.tool,
         run: target.run,
-        instructions: optional_string(
-            raw_step.get("instructions"),
-            &format!("{field}.instructions"),
+        artifacts: validate_skill_artifact_contract(
+            raw_step.get("artifacts"),
+            &format!("{field}.artifacts"),
         )?,
-        artifacts: optional_object(raw_step.get("artifacts"), &format!("{field}.artifacts"))?,
         runner,
         inputs,
         context_edges: context_edges(&context, previous_step_ids, field)?,
@@ -99,6 +99,25 @@ pub fn validate_step(
         mint_authority,
         requested_scope_from,
     })
+}
+
+fn reject_static_context_input_collisions(
+    inputs: &JsonObject,
+    context: &BTreeMap<String, String>,
+    field: &str,
+) -> Result<(), ValidationError> {
+    let collisions = inputs
+        .keys()
+        .filter(|key| context.contains_key(*key))
+        .cloned()
+        .collect::<Vec<_>>();
+    if collisions.is_empty() {
+        return Ok(());
+    }
+    Err(validation_error(format!(
+        "{field} binds the same input through both inputs and context: {}.",
+        collisions.join(", ")
+    )))
 }
 
 /// Validate the `mint_authority` compute-path directive and its coherence with
@@ -341,10 +360,12 @@ fn validate_context_skills(
     if context_skills.is_empty() || target.skill.is_some() {
         return Ok(());
     }
-    if let Some(run) = &target.run {
-        if matches!(run.get("type"), Some(JsonValue::String(value)) if value == "agent-task") {
-            return Ok(());
-        }
+    if let Some(run) = &target.run
+        && run
+            .source()
+            .is_some_and(|source| source.source_type == crate::SourceKind::AgentStep)
+    {
+        return Ok(());
     }
     Err(validation_error(format!(
         "{field}.context_skills is only valid for agent-task steps or nested agent skills."
@@ -366,10 +387,13 @@ fn validate_step_id(
 }
 
 fn validate_step_target(raw_step: &JsonObject, field: &str) -> Result<StepTarget, ValidationError> {
+    let run = optional_object(raw_step.get("run"), &format!("{field}.run"))?
+        .map(|run| GraphRunTarget::validate(run, &format!("{field}.run")))
+        .transpose()?;
     let target = StepTarget {
         skill: optional_non_empty_string(raw_step.get("skill"), &format!("{field}.skill"))?,
         tool: optional_non_empty_string(raw_step.get("tool"), &format!("{field}.tool"))?,
-        run: optional_object(raw_step.get("run"), &format!("{field}.run"))?,
+        run,
     };
     let target_count = usize::from(target.skill.is_some())
         + usize::from(target.tool.is_some())
@@ -379,7 +403,6 @@ fn validate_step_target(raw_step: &JsonObject, field: &str) -> Result<StepTarget
             "{field} must declare exactly one of skill, tool, or run."
         )));
     }
-    validate_run_type(field, &target.run)?;
     Ok(target)
 }
 
@@ -397,20 +420,20 @@ fn validate_runner(
     Ok(runner)
 }
 
-fn validate_run_type(field: &str, run: &Option<JsonObject>) -> Result<(), ValidationError> {
-    let Some(run) = run else {
-        return Ok(());
-    };
-    if matches!(run.get("type"), Some(JsonValue::String(_))) {
-        return Ok(());
-    }
-    Err(validation_error(format!("{field}.run.type is required.")))
-}
-
 fn reject_unsupported_step_fields(
     raw_step: &JsonObject,
     field: &str,
 ) -> Result<(), ValidationError> {
+    if raw_step.contains_key("instructions") {
+        return Err(validation_error(format!(
+            "{field}.instructions is not supported; put agent operating instructions in the owning SKILL.md"
+        )));
+    }
+    if raw_step.contains_key("effect_family") {
+        return Err(validation_error(format!(
+            "{field}.effect_family is not supported; effect ownership is derived from the resolved target"
+        )));
+    }
     if raw_step.contains_key("sync") {
         return Err(validation_error(format!(
             "{field}.sync is not supported by the local sequential graph runner."

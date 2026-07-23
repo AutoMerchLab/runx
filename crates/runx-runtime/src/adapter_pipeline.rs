@@ -8,42 +8,7 @@ use std::time::Instant;
 
 use runx_contracts::JsonObject;
 
-use crate::adapter::{InvocationStatus, SkillInvocation, SkillOutput};
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub(crate) struct AdapterInvocationPlan {
-    adapter_type: &'static str,
-    skill_name: String,
-    source_type: String,
-}
-
-impl AdapterInvocationPlan {
-    pub(crate) fn from_invocation(
-        adapter_type: &'static str,
-        invocation: &SkillInvocation,
-    ) -> Self {
-        Self {
-            adapter_type,
-            skill_name: invocation.skill_name.clone(),
-            source_type: invocation.source.source_type.as_str().to_owned(),
-        }
-    }
-
-    #[cfg(any(feature = "cli-tool", feature = "external-adapter"))]
-    pub(crate) fn adapter_type(&self) -> &'static str {
-        self.adapter_type
-    }
-
-    #[cfg(feature = "external-adapter")]
-    pub(crate) fn skill_name(&self) -> &str {
-        &self.skill_name
-    }
-
-    #[cfg(feature = "external-adapter")]
-    pub(crate) fn source_type(&self) -> &str {
-        &self.source_type
-    }
-}
+use crate::adapter::{InvocationStatus, SkillOutput};
 
 #[derive(Clone, Debug)]
 #[cfg(feature = "mcp")]
@@ -53,7 +18,7 @@ pub(crate) struct AdapterExecutionContext {
 
 #[cfg(feature = "mcp")]
 impl AdapterExecutionContext {
-    pub(crate) fn start(_plan: AdapterInvocationPlan) -> Self {
+    pub(crate) fn start() -> Self {
         Self {
             started: Instant::now(),
         }

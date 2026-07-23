@@ -278,25 +278,29 @@ fn a2a_cancel_failure_is_sanitized_in_metadata() -> Result<(), Box<dyn std::erro
 fn harness_replay_runs_a2a_skill_fixture() -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     let skill_dir = temp.path().join("skill");
-    std::fs::create_dir_all(&skill_dir)?;
-    std::fs::write(
-        skill_dir.join("SKILL.md"),
+    crate::support::write_test_skill_package(
+        &skill_dir,
         r#"---
 name: fixture-a2a
 description: Fixture A2A skill.
-source:
-  type: a2a
-  agent_card_url: fixture://echo-agent
-  agent_identity: echo-agent
-  task: echo
-  arguments:
-    message: "{{message}}"
-inputs:
-  message:
-    type: string
-    required: true
 ---
 Echo through A2A.
+"#,
+        r#"skill: fixture-a2a
+runners:
+  fixture-a2a:
+    default: true
+    source:
+      type: a2a
+      agent_card_url: fixture://echo-agent
+      agent_identity: echo-agent
+      task: echo
+      arguments:
+        message: "{{message}}"
+    inputs:
+      message:
+        type: string
+        required: true
 "#,
     )?;
     let fixture_path = temp.path().join("harness.yaml");
@@ -416,6 +420,8 @@ impl A2aTransport for &RecordingTransport {
 fn invocation(source: SkillSource, inputs: JsonObject) -> SkillInvocation {
     SkillInvocation {
         skill_name: "fixture.a2a".to_owned(),
+        artifacts: None,
+        allowed_tools: None,
         source,
         inputs,
         resolved_inputs: JsonObject::new(),
@@ -435,23 +441,25 @@ fn source(
         act: None,
         source_type: runx_parser::SourceKind::A2a,
         command: None,
+        module: None,
+        javascript_export: None,
+        pages: None,
         args: Vec::new(),
         cwd: None,
         timeout_seconds: Some(0),
         input_mode: None,
         sandbox: None,
         server: None,
-        catalog_ref: None,
         tool: None,
         arguments,
         agent_card_url: agent_card_url.map(str::to_owned),
         agent_identity: Some("echo-agent".to_owned()),
         agent: None,
         task: task.map(str::to_owned),
-        hook: None,
         outputs: None,
         graph: None,
-        http: None,
+        external_adapter: None,
+        thread_outbox_provider: None,
         raw: JsonObject::new(),
     }
 }

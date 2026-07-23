@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use runx_contracts::{JsonObject, JsonValue};
-use runx_parser::{SkillMcpServer, ValidatedSkill};
+use runx_parser::{SkillMcpServer, SkillRunnerDefinition};
 
 use crate::credentials::SecretEnv;
 use crate::sandbox::SandboxPlan;
@@ -79,7 +79,8 @@ pub enum McpServerToolBehavior {
 #[derive(Clone, Debug, PartialEq)]
 pub struct McpServerSkillExecution {
     pub skill_path: PathBuf,
-    pub skill: ValidatedSkill,
+    pub skill_name: String,
+    pub runner: SkillRunnerDefinition,
     pub receipt_dir: Option<PathBuf>,
     pub env: BTreeMap<String, String>,
     pub credential_delivery: crate::credentials::CredentialDelivery,

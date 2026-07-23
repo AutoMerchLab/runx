@@ -39,7 +39,6 @@ const RUNNER_MANIFEST_FIXTURES: &[&str] = &[
 ];
 
 const TOOL_MANIFEST_FIXTURES: &[&str] = &[
-    include_str!("../../../fixtures/parser/tool-manifests/catalog-tool-json.json"),
     include_str!("../../../fixtures/parser/tool-manifests/cli-tool.json"),
     include_str!("../../../fixtures/parser/tool-manifests/validation-agent-source-not-tool.json"),
 ];

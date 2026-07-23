@@ -1,0 +1,42 @@
+[package]
+name = "runx-js-worker"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+description = "Authority-free deterministic JavaScript worker for Runx."
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+publish = false
+
+[lints]
+workspace = true
+
+[features]
+default = ["engine"]
+engine = ["dep:boa_engine", "dep:cap", "dep:futures-lite", "dep:rlimit", "dep:runx-parser", "dep:win32job"]
+
+[dependencies]
+boa_engine = { version = "=0.21.1", default-features = false, optional = true }
+cap = { version = "=0.1.2", optional = true }
+futures-lite = { version = "=2.6.1", optional = true }
+runx-parser = { workspace = true, optional = true }
+runx-contracts.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+
+[target.'cfg(unix)'.dependencies]
+rlimit = { version = "0.10.2", optional = true }
+
+[target.'cfg(windows)'.dependencies]
+win32job = { version = "2.0.3", optional = true }
+
+[lib]
+name = "runx_js_worker"
+path = "src/lib.rs"
+
+[[bin]]
+name = "runx-js-worker"
+path = "src/main.rs"
+required-features = ["engine"]

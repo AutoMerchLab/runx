@@ -17,11 +17,17 @@ expect:
   step_outputs:
     forecast:
       subset:
-        open_meteo_forecast_evidence:
+        http_execution:
           data:
-            timezone: Asia/Shanghai
-            timezone_abbreviation: GMT+8
-            utc_offset_seconds: 28800
+            decision: completed
+            request_count: 1
+            responses:
+              - id: forecast
+                status: 200
+                json:
+                  timezone: Asia/Shanghai
+                  timezone_abbreviation: GMT+8
+                  utc_offset_seconds: 28800
 metadata:
   public_skill: open-meteo-weather-forecast
   source_case: open-meteo-shanghai

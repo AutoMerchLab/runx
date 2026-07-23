@@ -143,12 +143,12 @@ fn validate_harness_runners(
     runners: &BTreeMap<String, SkillRunnerDefinition>,
 ) -> Result<(), ValidationError> {
     for entry in harness.iter().flat_map(|harness| harness.cases.iter()) {
-        if let Some(runner) = &entry.runner {
-            if !runners.contains_key(runner) {
-                return Err(FIELDS.validation_error(format!(
-                    "harness.cases runner {runner} is not declared in runners."
-                )));
-            }
+        if let Some(runner) = &entry.runner
+            && !runners.contains_key(runner)
+        {
+            return Err(FIELDS.validation_error(format!(
+                "harness.cases runner {runner} is not declared in runners."
+            )));
         }
     }
     Ok(())

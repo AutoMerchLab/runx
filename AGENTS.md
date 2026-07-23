@@ -127,6 +127,21 @@ operator or its state. If an operator surface is missing, add it here rather
 than extending a Cloud dogfood script. Runx-company deployment and
 control-plane administration are not domain-operator surfaces.
 
+### Connector and Tenant Neutrality
+
+Runx is tenant-agnostic and connector-neutral. Skills, manifests, packets, and
+public provider-operation contracts must target stable provider capabilities,
+not a Runx-company tenant or one credential backend. Never expose Nango
+connection ids, provider-config keys, hosted tenant ids, connector URLs, or
+Runx-owned credential assumptions in a portable skill contract.
+
+The operator selects and binds the connector at runtime. It may be local,
+self-hosted, third-party, or Runx-hosted. A Runx-hosted connector is an optional
+implementation of the same contract, not the authoritative path and not a
+prerequisite for using the skill. If a skill works only with Runx Cloud when a
+user-owned connector could satisfy the same bounded operation, the design is
+wrong.
+
 ### Pure Kernel Boundaries
 
 Pure crates and packages stay pure. `runx-core`, `runx-contracts`,
@@ -151,6 +166,14 @@ enums or bespoke runtime branches.
 ### No Legacy Fallbacks
 
 No dual-reads, dual-writes, or runtime fallbacks. When changing schemas or identifiers, adopt the new scheme immediately. Use one-off migration scripts, not runtime code.
+
+### Architecture Admission
+
+Use the canonical `skill-lab` skill for skill design, creation, improvement, and
+harness work. Its `SKILL.md` is the complete operating contract supplied to the
+authoring agent; do not duplicate that contract here or in `X.yaml`. Apply the
+same ownership test to native/core work and keep one source of truth for every
+contract. See `docs/skill-quality-standard.md` for the review bar.
 
 ### Loop Orchestration
 

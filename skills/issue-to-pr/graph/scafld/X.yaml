@@ -9,6 +9,8 @@ catalog:
   part_of:
     - runx/issue-to-pr
 harness:
+  files:
+    - fixtures/scafld-v2-harness.mjs
   cases:
     - name: scafld-plan-json
       runner: scafld-cli
@@ -27,7 +29,7 @@ runners:
     type: cli-tool
     command: node
     args:
-      - ./run.mjs
+      - ./tools/scafld-cli.mjs
     timeout_seconds: 300
     input_mode: none
     artifacts:

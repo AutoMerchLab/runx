@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because local config, encrypted local key
+// Module rationale: local config, encrypted local key
 // storage, managed-agent overlay, and profile resolution are one parity slice.
 use std::collections::BTreeMap;
 use std::fs;
@@ -44,6 +44,8 @@ pub struct RunxCredentialsConfig {
 pub struct RunxCredentialProfile {
     pub provider: String,
     pub auth_mode: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audience: Option<String>,
     pub secret_ref: String,
 }
 
@@ -106,21 +108,6 @@ pub struct ManagedAgentConfig {
     pub api_key: SecretString,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub enum LocalProfileSource {
-    ProfileState,
-    SkillProfile,
-    WorkspaceBindings,
-    None,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ResolvedLocalProfile {
-    pub profile_document: Option<String>,
-    pub profile_source_path: Option<PathBuf>,
-    pub source: LocalProfileSource,
-}
-
 #[derive(Debug, Error)]
 pub enum ConfigError {
     #[error("{path} is not valid JSON: {message}")]
@@ -133,27 +120,6 @@ pub enum ConfigError {
     InvalidBooleanValue { key: String, value: String },
     #[error("runx local agent key corrupted or unreadable at {path}{suffix}")]
     LocalAgentKeyCorrupt { path: PathBuf, suffix: String },
-    #[error("Skill profile state is not valid JSON: {path}")]
-    InvalidProfileStateJson { path: PathBuf },
-    #[error("Skill profile state must be an object: {path}")]
-    NonObjectProfileState { path: PathBuf },
-    #[error(
-        "Binding manifest skill '{manifest_skill}' does not match skill '{skill_name}': {path}"
-    )]
-    ManifestSkillMismatch {
-        manifest_skill: String,
-        skill_name: String,
-        path: PathBuf,
-    },
-    #[error(
-        "Skill package '{skill_directory}' resolves to binding path {owner}/{binding_skill}, but SKILL.md declares '{skill_name}'."
-    )]
-    BindingLocatorMismatch {
-        skill_directory: PathBuf,
-        owner: String,
-        binding_skill: String,
-        skill_name: String,
-    },
     #[error("config crypto failed: {0}")]
     Crypto(String),
     #[error(transparent)]
@@ -465,38 +431,6 @@ pub fn load_managed_agent_config(
     }))
 }
 
-pub fn resolve_local_skill_profile(
-    skill_path: &Path,
-    skill_name: &str,
-) -> Result<ResolvedLocalProfile, ConfigError> {
-    let metadata = fs::metadata(skill_path)?;
-    let skill_directory = if metadata.is_dir() {
-        skill_path.to_path_buf()
-    } else {
-        skill_path
-            .parent()
-            .map(Path::to_path_buf)
-            .unwrap_or_else(|| PathBuf::from("."))
-    };
-    if let Some(profile) = read_skill_profile(&skill_directory, skill_name)? {
-        return Ok(profile);
-    }
-    if let Some(profile) = read_profile_state(&skill_directory, skill_name)? {
-        return Ok(profile);
-    }
-    for binding_root in collect_binding_roots(&skill_directory) {
-        if let Some(profile) = read_workspace_profile(&skill_directory, &binding_root, skill_name)?
-        {
-            return Ok(profile);
-        }
-    }
-    Ok(ResolvedLocalProfile {
-        profile_document: None,
-        profile_source_path: None,
-        source: LocalProfileSource::None,
-    })
-}
-
 #[derive(Deserialize)]
 struct LocalConfigSecretPayload {
     alg: String,
@@ -681,153 +615,6 @@ fn normalize_managed_agent_provider(value: &str) -> Option<NonEmptyString> {
 /// always override via `RUNX_AGENT_API_KEY`.
 fn managed_agent_provider_env_var(provider: &NonEmptyString) -> String {
     format!("{}_API_KEY", provider.as_ref().to_uppercase())
-}
-
-fn read_skill_profile(
-    skill_directory: &Path,
-    skill_name: &str,
-) -> Result<Option<ResolvedLocalProfile>, ConfigError> {
-    let path = skill_directory.join("X.yaml");
-    let Some(document) = read_optional_file(&path)? else {
-        return Ok(None);
-    };
-    validate_manifest_skill(&path, &document, skill_name)?;
-    Ok(Some(ResolvedLocalProfile {
-        profile_document: Some(document),
-        profile_source_path: Some(path),
-        source: LocalProfileSource::SkillProfile,
-    }))
-}
-
-fn read_profile_state(
-    skill_directory: &Path,
-    skill_name: &str,
-) -> Result<Option<ResolvedLocalProfile>, ConfigError> {
-    let path = skill_directory.join(".runx").join("profile.json");
-    let Some(document) = read_optional_file(&path)? else {
-        return Ok(None);
-    };
-    let value = serde_json::from_str::<JsonValue>(&document)
-        .map_err(|_| ConfigError::InvalidProfileStateJson { path: path.clone() })?;
-    let JsonValue::Object(object) = value else {
-        return Err(ConfigError::NonObjectProfileState { path });
-    };
-    let Some(JsonValue::Object(profile)) = object.get("profile") else {
-        return Ok(None);
-    };
-    let Some(profile_document) = profile
-        .get("document")
-        .and_then(JsonValue::as_str)
-        .filter(|value| !value.is_empty())
-    else {
-        return Ok(None);
-    };
-    validate_manifest_skill(&path, profile_document, skill_name)?;
-    Ok(Some(ResolvedLocalProfile {
-        profile_document: Some(profile_document.to_owned()),
-        profile_source_path: Some(path),
-        source: LocalProfileSource::ProfileState,
-    }))
-}
-
-fn collect_binding_roots(start: &Path) -> Vec<PathBuf> {
-    let mut roots = Vec::new();
-    let mut current = start.to_path_buf();
-    loop {
-        let candidate = current.join("bindings");
-        if candidate.exists() && !roots.contains(&candidate) {
-            roots.push(candidate);
-        }
-        if !current.pop() {
-            break;
-        }
-    }
-    roots
-}
-
-fn read_workspace_profile(
-    skill_directory: &Path,
-    binding_root: &Path,
-    skill_name: &str,
-) -> Result<Option<ResolvedLocalProfile>, ConfigError> {
-    let Some((owner, binding_skill)) = resolve_binding_locator(skill_directory, binding_root)
-    else {
-        return Ok(None);
-    };
-    if binding_skill != skill_name {
-        return Err(ConfigError::BindingLocatorMismatch {
-            skill_directory: skill_directory.to_path_buf(),
-            owner,
-            binding_skill,
-            skill_name: skill_name.to_owned(),
-        });
-    }
-    let path = binding_root
-        .join(&owner)
-        .join(&binding_skill)
-        .join("X.yaml");
-    let Some(document) = read_optional_file(&path)? else {
-        return Ok(None);
-    };
-    validate_manifest_skill(&path, &document, skill_name)?;
-    Ok(Some(ResolvedLocalProfile {
-        profile_document: Some(document),
-        profile_source_path: Some(path),
-        source: LocalProfileSource::WorkspaceBindings,
-    }))
-}
-
-fn resolve_binding_locator(
-    skill_directory: &Path,
-    binding_root: &Path,
-) -> Option<(String, String)> {
-    let binding_container = binding_root.parent()?;
-    let relative = skill_directory.strip_prefix(binding_container).ok()?;
-    let segments = relative
-        .components()
-        .map(|component| component.as_os_str().to_string_lossy().to_string())
-        .collect::<Vec<_>>();
-    let skill_segments = (segments.first()? == "skills").then_some(&segments[1..])?;
-    match skill_segments {
-        [skill] => Some(("runx".to_owned(), skill.clone())),
-        [owner, skill] => Some((owner.clone(), skill.clone())),
-        _ => None,
-    }
-}
-
-fn validate_manifest_skill(
-    path: &Path,
-    manifest_text: &str,
-    skill_name: &str,
-) -> Result<(), ConfigError> {
-    let value = serde_norway::from_str::<JsonValue>(manifest_text).map_err(|error| {
-        ConfigError::InvalidJson {
-            path: path.to_path_buf(),
-            message: error.to_string(),
-        }
-    })?;
-    let manifest_skill = match &value {
-        JsonValue::Object(object) => object.get("skill").and_then(JsonValue::as_str),
-        _ => None,
-    };
-    if let Some(manifest_skill) = manifest_skill
-        && manifest_skill != skill_name
-    {
-        return Err(ConfigError::ManifestSkillMismatch {
-            manifest_skill: manifest_skill.to_owned(),
-            skill_name: skill_name.to_owned(),
-            path: path.to_path_buf(),
-        });
-    }
-    Ok(())
-}
-
-fn read_optional_file(path: &Path) -> Result<Option<String>, ConfigError> {
-    match fs::read_to_string(path) {
-        Ok(contents) => Ok(Some(contents)),
-        Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-        Err(error) => Err(ConfigError::Io(error)),
-    }
 }
 
 fn write_private_file(path: &Path, contents: &[u8]) -> Result<(), ConfigError> {

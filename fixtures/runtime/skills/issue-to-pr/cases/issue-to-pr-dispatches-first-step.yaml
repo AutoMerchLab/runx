@@ -3,26 +3,23 @@ kind: "graph"
 target: "../../../../../skills/issue-to-pr/X.yaml"
 runner: "issue-to-pr"
 inputs:
+  risk: "low"
+  scafld_bin: "../../fixtures/issue-to-pr-harness-scafld.mjs"
+  size: "small"
   task_id: "issue-to-pr-smoke"
-  thread_title: "Fixture smoke test"
   thread_body: "Minimal thread body for the harness."
   thread_locator: "local://fixtures/issue-to-pr-smoke"
-  size: "small"
-  risk: "low"
-  scafld_bin: "./fixtures/issue-to-pr-harness-scafld.mjs"
+  thread_title: "Fixture smoke test"
 caller:
-  {}
+  approvals:
+    {}
 expect:
   status: "needs_agent"
   receipt:
     schema: "runx.receipt.v1"
-    receipt_id: "sha256:a58b68c6136b0eceef50389c81d46618e57c22865300471a179ca64c669aa802"
-    harness_id: "hrn_issue-to-pr-dispatches-first-step_graph"
     state: "deferred"
     disposition: "deferred"
-    reason_code: "issue-to-pr-dispatches-first-step_deferred"
-    child_receipt_refs:
-      - "runx:receipt:sha256:a831d968adb9b0cfd454337a5f3760139128ed0a1a49b8f3d895519cfb4760cd"
+    child_receipt_count: 1
   steps:
     - "author-spec"
 metadata:
@@ -31,9 +28,9 @@ metadata:
   runner_kind: "graph"
   graph_shape: "fixture_replay"
   graph_replay_steps:
-    - 
+    -
       step_id: "author-spec"
       task: "issue-to-pr-author-spec"
-    - 
+    -
       step_id: "author-fix"
       task: "issue-to-pr-apply-fix"

@@ -1,14 +1,15 @@
 # CLI Feature Parity Matrix
 
 This directory captures the canonical native Rust CLI/runtime surface. The
-matrix is generated from `scripts/generate-cli-feature-parity.ts` and checked
-against `crates/runx-cli/src/router.rs`.
+matrix projects command syntax directly from `runx --help --json`.
+`scripts/generate-cli-feature-parity.ts` adds only test, effect, and runtime
+surface annotations keyed by native command name.
 
 Required exit-code coverage: `"exitCodes": [0, 1, 2, 3, 64]`.
 
 ## Files
 
-- `commands.json`: command, alias, flag, exit-code, output, receipt, and
+- `commands.json`: native usage/options plus exit-code, output, receipt, and
   side-effect coverage.
 - `runtime-surfaces.json`: non-help runtime surfaces that must not disappear
   during a Rust rebuild.

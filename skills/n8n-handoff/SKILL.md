@@ -20,8 +20,27 @@ its workflow webhook, canvas, branching, fan-out, and downstream notifications.
 - `preflight`: validates and normalizes the handoff context without network.
 - `send`: validates the context and posts the payload to the n8n webhook.
 
-Use `preflight` for reviews, CI, and local harnesses. Use `send` only after the
-n8n webhook URL and a `N8N_WEBHOOK_TOKEN` credential profile have been configured.
+Use `preflight` for reviews, CI, and local harnesses; it never needs approval.
+The `send` runner opens approval immediately before the outbound webhook. It
+posts through Runx's native `http.execute` capability; there is no handoff-
+specific HTTP wrapper or token-bearing manifest.
+
+Because an n8n host may be self-hosted, bind the stored credential to that
+exact HTTPS audience when configuring it:
+
+```bash
+printf '%s' "$N8N_WEBHOOK_TOKEN" |
+  runx credential set n8n \
+    --profile workflow \
+    --auth-mode bearer \
+    --audience https://n8n.example.com \
+    --from-stdin
+```
+
+Then pass the same host without a scheme as `webhook_host`. Runx intersects
+the request allowlist with the credential audience before sending. A bare
+ambient `N8N_WEBHOOK_TOKEN` has no safe host binding for this dynamic-provider
+case and therefore cannot authorize the HTTP call.
 
 ## Execution context
 
@@ -47,6 +66,8 @@ When present, these fields must match the top-level inputs:
   APIs for public n8n listing work.
 - Self-hosted n8n can receive local outbound webhooks, but the receiver endpoint
   still needs an operator-owned bearer token and idempotency check.
+- A profile audience and `webhook_host` must name the same host. Runx rejects a
+  mismatch before credential material reaches the HTTP transport.
 - Do not put raw provider credentials into `payload` or `execution_context`.
   Pass credential references or let runx hold the provider secret.
 - If the workflow slug changes, update `handoff_audience` to the matching

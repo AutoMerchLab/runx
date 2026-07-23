@@ -21,7 +21,7 @@ use runx_contracts::{
 };
 use runx_core::policy::{CredentialBindingDecision, CredentialEnvelope};
 use runx_core::state_machine::GraphStatus;
-use runx_parser::SkillSource;
+use runx_parser::{SkillExternalAdapterManifest, SkillSource};
 use runx_runtime::adapters::external_adapter::{
     ExternalAdapterProcessSupervisor, ExternalAdapterSkillAdapter, ExternalAdapterSupervisorError,
 };
@@ -374,9 +374,9 @@ fn external_adapter_process_supervisor_rejects_oversized_stdout()
         temp.path(),
         r#"set -eu
 IFS= read -r _invocation
-chunk=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+chunk=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 i=0
-while [ "$i" -lt 20000 ]; do
+while [ "$i" -lt 9000 ]; do
   printf '%s' "$chunk"
   i=$((i + 1))
 done
@@ -532,13 +532,20 @@ fn external_adapter_manifest_path_resolves_below_skill_directory()
 }
 
 #[test]
-fn external_adapter_manifest_path_rejects_directory_escape()
+fn external_adapter_manifest_path_rejects_typed_directory_escape()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
+    let skill_dir = temp.path().join("skill");
+    fs::create_dir(&skill_dir)?;
+    fs::write(temp.path().join("external-adapter.manifest.json"), b"{}")?;
+    let mut source = skill_source_manifest_path("external-adapter.manifest.json")?;
+    source.external_adapter = Some(SkillExternalAdapterManifest::Path(
+        "../external-adapter.manifest.json".to_owned(),
+    ));
 
     let Err(error) = ExternalAdapterSkillAdapter::default().invoke(skill_invocation_with_source(
-        temp.path(),
-        skill_source_manifest_path("../external-adapter.manifest.json")?,
+        &skill_dir,
+        source,
         [],
         CredentialDelivery::none(),
     )?) else {
@@ -548,7 +555,7 @@ fn external_adapter_manifest_path_rejects_directory_escape()
     assert!(matches!(
         error,
         RuntimeError::SkillFailed { message, .. }
-            if message.contains("relative path below the skill directory")
+            if message.contains("escapes the skill directory")
     ));
     Ok(())
 }
@@ -755,20 +762,25 @@ IFS= read -r _invocation
 }
 
 #[test]
-fn external_adapter_skill_adapter_fails_closed_without_inline_manifest()
+fn external_adapter_skill_adapter_fails_closed_without_typed_manifest()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
+    let mut source = skill_source_manifest_path("external-adapter.manifest.json")?;
+    source.external_adapter = None;
 
-    let Err(error) =
-        ExternalAdapterSkillAdapter::default().invoke(skill_invocation(temp.path(), None, [])?)
-    else {
+    let Err(error) = ExternalAdapterSkillAdapter::default().invoke(skill_invocation_with_source(
+        temp.path(),
+        source,
+        [],
+        CredentialDelivery::none(),
+    )?) else {
         return Err("external-adapter source without manifest must fail closed".into());
     };
 
     assert!(matches!(
         error,
         RuntimeError::SkillFailed { message, .. }
-            if message.contains("missing a manifest")
+            if message.contains("is missing source.external_adapter")
     ));
     Ok(())
 }
@@ -924,36 +936,40 @@ fn write_script(dir: &Path, body: &str) -> Result<PathBuf, Box<dyn std::error::E
 }
 
 fn write_external_adapter_skill(dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    fs::write(
-        dir.join("SKILL.md"),
+    crate::support::write_test_skill_package(
+        dir,
         r#"---
 name: external-smoke
-source:
-  type: external-adapter
-  external_adapter:
-    manifest:
-      schema: runx.external_adapter.manifest.v1
-      protocol_version: runx.external_adapter.v1
-      adapter_id: adapter.github.issue-intake
-      name: GitHub issue intake adapter
-      version: 0.1.0
-      supported_source_types:
-        - external-adapter
-      transport:
-        kind: process
-        command: /bin/sh
-        args:
-          - adapter.sh
-      timeouts:
-        startup_ms: 500
-        invocation_ms: 2000
-      sandbox_intent:
-        profile: readonly
-        network: false
-        cwd_policy: skill-directory
 ---
 
 Exercise the external adapter runtime wiring path.
+"#,
+        r#"skill: external-smoke
+runners:
+  external-smoke:
+    default: true
+    type: external-adapter
+    external_adapter:
+      manifest_path: manifest.json
+"#,
+    )?;
+    fs::write(
+        dir.join("manifest.json"),
+        r#"{
+  "schema": "runx.external_adapter.manifest.v1",
+  "protocol_version": "runx.external_adapter.v1",
+  "adapter_id": "adapter.github.issue-intake",
+  "name": "GitHub issue intake adapter",
+  "version": "0.1.0",
+  "supported_source_types": ["external-adapter"],
+  "transport": { "kind": "process", "command": "sh", "args": ["adapter.sh"] },
+  "timeouts": { "startup_ms": 500, "invocation_ms": 2000 },
+  "sandbox_intent": {
+    "profile": "readonly",
+    "network": false,
+    "cwd_policy": "skill-directory"
+  }
+}
 "#,
     )?;
     Ok(())
@@ -1012,6 +1028,8 @@ fn skill_invocation_with_source<const N: usize>(
     Ok(SkillInvocation {
         skill_name: "external-smoke".to_owned(),
         source,
+        artifacts: None,
+        allowed_tools: None,
         inputs: [(
             "issue_number".to_owned(),
             JsonValue::Number(JsonNumber::I64(77)),
@@ -1045,29 +1063,7 @@ fn skill_source(
             JsonValue::Object(external_adapter),
         );
     }
-    Ok(SkillSource {
-        act: None,
-        source_type: runx_parser::SourceKind::ExternalAdapter,
-        command: None,
-        args: Vec::new(),
-        cwd: None,
-        timeout_seconds: None,
-        input_mode: None,
-        sandbox: None,
-        server: None,
-        catalog_ref: None,
-        tool: None,
-        arguments: None,
-        agent_card_url: None,
-        agent_identity: None,
-        agent: None,
-        task: None,
-        hook: None,
-        outputs: None,
-        graph: None,
-        http: None,
-        raw,
-    })
+    Ok(runx_parser::validate_skill_source(&raw, None)?)
 }
 
 fn skill_source_manifest_path(path: &str) -> Result<SkillSource, Box<dyn std::error::Error>> {
@@ -1085,29 +1081,7 @@ fn skill_source_manifest_path(path: &str) -> Result<SkillSource, Box<dyn std::er
         "external_adapter".to_owned(),
         JsonValue::Object(external_adapter),
     );
-    Ok(SkillSource {
-        act: None,
-        source_type: runx_parser::SourceKind::ExternalAdapter,
-        command: None,
-        args: Vec::new(),
-        cwd: None,
-        timeout_seconds: None,
-        input_mode: None,
-        sandbox: None,
-        server: None,
-        catalog_ref: None,
-        tool: None,
-        arguments: None,
-        agent_card_url: None,
-        agent_identity: None,
-        agent: None,
-        task: None,
-        hook: None,
-        outputs: None,
-        graph: None,
-        http: None,
-        raw,
-    })
+    Ok(runx_parser::validate_skill_source(&raw, None)?)
 }
 
 fn invocation_with_env<const N: usize>(env: [(&str, String); N]) -> ExternalAdapterInvocation {

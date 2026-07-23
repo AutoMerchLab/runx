@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because the JSON-RPC dispatch loop, server
+// Module rationale: the JSON-RPC dispatch loop, server
 // state, tool-result builders, and host-result projections for `runx mcp
 // serve` all sit on the same protocol surface.
 use std::collections::{BTreeMap, BTreeSet};
@@ -298,6 +298,7 @@ enum PreparedMcpToolCall {
         run_id: String,
         execution: Box<McpServerSkillExecution>,
         arguments: JsonObject,
+        javascript: crate::adapters::javascript::JavaScriptAdapter,
     },
 }
 
@@ -324,9 +325,10 @@ fn prepare_rmcp_tool_call(
         McpServerToolBehavior::Skill(execution) => {
             admit_mcp_tool_scopes(&tool.name, &tool.required_scopes, &execution.env)?;
             Ok(PreparedMcpToolCall::Skill {
-                run_id: state.next_run_id(&execution.skill.name),
+                run_id: state.next_run_id(&execution.skill_name),
                 execution,
                 arguments,
+                javascript: state.javascript.clone(),
             })
         }
     }
@@ -389,9 +391,10 @@ async fn execute_rmcp_tool_call(
             run_id,
             execution,
             arguments,
+            javascript,
         } => {
             let result = tokio::task::spawn_blocking(move || {
-                execute_mcp_server_skill(&run_id, *execution, arguments)
+                execute_mcp_server_skill(&run_id, *execution, arguments, javascript)
             })
             .await
             .map_err(|error| rmcp_internal_error(format!("MCP tool task failed: {error}")))?;
@@ -570,6 +573,7 @@ where
 pub(super) struct McpServerState {
     options: McpServerOptions,
     next_run_sequence: AtomicU64,
+    javascript: crate::adapters::javascript::JavaScriptAdapter,
 }
 
 impl McpServerState {
@@ -577,6 +581,9 @@ impl McpServerState {
         Self {
             options,
             next_run_sequence: AtomicU64::new(0),
+            javascript: crate::adapters::javascript::JavaScriptAdapter::with_max_concurrency(
+                runx_contracts::javascript_worker::MAX_CONCURRENT_INVOCATIONS,
+            ),
         }
     }
 

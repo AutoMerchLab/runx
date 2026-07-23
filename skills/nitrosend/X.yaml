@@ -1,5 +1,5 @@
 skill: nitrosend
-version: "0.2.2"
+version: "0.2.3"
 catalog:
   kind: skill
   audience: public
@@ -480,31 +480,91 @@ runners:
           field: approve-send.approval_decision.data.approved
           equals: true
   compose-email:
-    type: agent-task
-    agent: builder
-    task: compose-email-plan
-    outputs:
-      email_design: object
-    artifacts:
-      wrap_as: email_design_packet
-      packet: nitrosend.email_design.v1
+    type: graph
+    credential: nitrosend
     inputs:
       objective:
         type: string
         required: true
-        description: One bounded email design objective.
-      account_status_json:
+        description: One bounded email objective compiled by Nitrosend into an authoring contract.
+      name:
         type: string
         required: false
-        description: JSON string from nitro_get_status.
-      brand_brief:
+        description: Optional campaign working name retained in the composition intent.
+      design_mode_override:
         type: string
         required: false
-        description: Voice or layout guidance beyond the saved brand.
+        description: Optional Nitrosend design mode such as premium_rich, premium_minimal, founder_letter, or utility_plain.
+      brand_context_ref:
+        type: string
+        required: false
+        description: Optional current context ref from a prior intent; omit on first composition to receive full context.
       operator_context:
         type: string
         required: false
-        description: Extra operator guardrails.
+        description: Extra authoring constraints; this is context, never delivery authority.
+      brand_sid:
+        type: string
+        required: false
+        description: Optional public Nitrosend brand SID.
+    graph:
+      name: nitrosend-compose-email
+      steps:
+        - id: intent
+          skill: graph/provider-operation
+          runner: read
+          inputs:
+            operation: compose_campaign_intent
+            arguments:
+              composition_mode: intent
+              goal: "$input.objective"
+              name: "$input.name"
+              design_mode_override: "$input.design_mode_override"
+              brand_context_ref: "$input.brand_context_ref"
+              user_instruction: "$input.operator_context"
+            brand_sid: "$input.brand_sid"
+        - id: author
+          when:
+            field: intent.provider_evidence.data.decision
+            equals: ok
+          skill: .
+          runner: compose-email-candidate
+          inputs:
+            objective: "$input.objective"
+            operator_context: "$input.operator_context"
+          context:
+            composition_intent: intent.provider_evidence.data
+        - id: validate
+          when:
+            field: author.campaign_candidate.data.decision
+            equals: ready
+          skill: graph/provider-operation
+          runner: read
+          inputs:
+            operation: validate_campaign_composition
+            brand_sid: "$input.brand_sid"
+          context:
+            arguments: author.campaign_candidate.data.arguments
+
+  compose-email-candidate:
+    type: agent-task
+    agent: builder
+    task: compose-email-from-contract
+    outputs:
+      campaign_candidate: object
+    inputs:
+      objective:
+        type: string
+        required: true
+        description: One bounded email objective.
+      composition_intent:
+        type: json
+        required: true
+        description: Authoritative provider evidence from compose_campaign_intent, supplied directly or as graph context.
+      operator_context:
+        type: string
+        required: false
+        description: Extra authoring constraints that do not grant persistence or delivery authority.
   analytics:
     type: graph
     credential: nitrosend

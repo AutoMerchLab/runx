@@ -44,6 +44,7 @@ jobs:
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       publish: ${{ steps.resolve.outputs.publish }}
+      platform_matrix: ${{ steps.platforms.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
       - uses: pnpm/action-setup@v6
@@ -68,6 +69,10 @@ jobs:
           echo "resolved version=$version publish from tag=${{ github.event_name == 'push' }}"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Resolve release platform matrix
+        id: platforms
+        shell: bash
+        run: echo "matrix=$(node scripts/release-platform-matrix.mjs)" >> "$GITHUB_OUTPUT"
       - name: Stamp + verify manifests match the tag
         run: |
           pnpm exec tsx scripts/set-release-version.ts "${{ steps.resolve.outputs.version }}"
@@ -79,28 +84,7 @@ jobs:
     needs: prepare
     strategy:
       fail-fast: true
-      matrix:
-        include:
-          - platform: darwin-arm64
-            runner: macos-14
-            target: aarch64-apple-darwin
-            binary: runx
-          - platform: darwin-x64
-            runner: macos-15
-            target: x86_64-apple-darwin
-            binary: runx
-          - platform: linux-x64
-            runner: ubuntu-24.04
-            target: x86_64-unknown-linux-musl
-            binary: runx
-          - platform: linux-arm64
-            runner: ubuntu-24.04-arm
-            target: aarch64-unknown-linux-musl
-            binary: runx
-          - platform: win32-x64
-            runner: windows-latest
-            target: x86_64-pc-windows-msvc
-            binary: runx.exe
+      matrix: ${{ fromJSON(needs.prepare.outputs.platform_matrix) }}
     runs-on: ${{ matrix.runner }}
     permissions:
       contents: read
@@ -122,20 +106,37 @@ jobs:
         run: |
           rustup show               # installs the version pinned by rust-toolchain.toml
           rustup target add ${{ matrix.target }}
-      - name: Install musl toolchain
+      - name: Install Linux sandbox and musl toolchains
         if: contains(matrix.target, 'musl')
-        run: sudo apt-get update && sudo apt-get install -y musl-tools
+        run: sudo apt-get update && sudo apt-get install -y bubblewrap musl-tools
+      - name: Prove deterministic module boundary on the native runner
+        working-directory: crates
+        run: |
+          cargo test --locked -p runx-js-worker
+          cargo test --locked -p runx-runtime --test integration 'javascript_worker::' -- --nocapture
+          cargo test --locked -p runx-runtime --test integration 'javascript_worker_hostile::' -- --nocapture
       - name: Stamp version from tag
         shell: bash
         run: pnpm exec tsx scripts/set-release-version.ts "${{ needs.prepare.outputs.version }}"
       - name: Build release binary
         working-directory: crates
-        run: cargo build --release --locked --target ${{ matrix.target }} -p runx-cli
+        run: cargo build --release --locked --target ${{ matrix.target }} -p runx-cli -p runx-js-worker
+      - name: Record deterministic module platform evidence
+        shell: bash
+        run: |
+          node scripts/record-deterministic-module-platform-evidence.mjs \
+            --decision "docs/architecture/deterministic-module-engine.json" \
+            --platform "${{ matrix.platform }}" \
+            --target "${{ matrix.target }}" \
+            --runner "${{ matrix.runner }}" \
+            --worker "crates/target/${{ matrix.target }}/release/${{ matrix.worker }}" \
+            --out "dist/archives/deterministic-module-${{ matrix.platform }}.json"
       - name: Stage signature manifest (npm)
         shell: bash
         run: |
           pnpm exec tsx scripts/make-signature-manifest.ts \
             --binary "crates/target/${{ matrix.target }}/release/${{ matrix.binary }}" \
+            --worker "crates/target/${{ matrix.target }}/release/${{ matrix.worker }}" \
             --platform "${{ matrix.platform }}" \
             --out "signatures-${{ matrix.platform }}.json" \
             --identity "${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
@@ -144,6 +145,7 @@ jobs:
         run: |
           pnpm exec tsx scripts/package-rust-cli.ts \
             --binary "crates/target/${{ matrix.target }}/release/${{ matrix.binary }}" \
+            --worker "crates/target/${{ matrix.target }}/release/${{ matrix.worker }}" \
             --platform "${{ matrix.platform }}" \
             --out-dir ".runx/rust-cli-artifacts" \
             --signature-manifest "signatures-${{ matrix.platform }}.json"
@@ -152,6 +154,7 @@ jobs:
         run: |
           pnpm exec tsx scripts/build-release-archives.ts \
             --binary "crates/target/${{ matrix.target }}/release/${{ matrix.binary }}" \
+            --worker "crates/target/${{ matrix.target }}/release/${{ matrix.worker }}" \
             --target "${{ matrix.target }}" \
             --version "${{ needs.prepare.outputs.version }}" \
             --out-dir "dist/archives"
@@ -182,13 +185,7 @@ jobs:
     needs: [prepare, build]
     strategy:
       fail-fast: true
-      matrix:
-        include:
-          - { platform: darwin-arm64, runner: macos-14, target: aarch64-apple-darwin, ext: tar.gz, bin: runx }
-          - { platform: darwin-x64, runner: macos-15, target: x86_64-apple-darwin, ext: tar.gz, bin: runx }
-          - { platform: linux-x64, runner: ubuntu-24.04, target: x86_64-unknown-linux-musl, ext: tar.gz, bin: runx }
-          - { platform: linux-arm64, runner: ubuntu-24.04-arm, target: aarch64-unknown-linux-musl, ext: tar.gz, bin: runx }
-          - { platform: win32-x64, runner: windows-latest, target: x86_64-pc-windows-msvc, ext: zip, bin: runx.exe }
+      matrix: ${{ fromJSON(needs.prepare.outputs.platform_matrix) }}
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Download built archive
@@ -208,7 +205,8 @@ jobs:
           else
             tar -xzf "dist/${stem}.tar.gz" -C dist
           fi
-          out=$("dist/${stem}/${{ matrix.bin }}" --version)
+          test -f "dist/${stem}/${{ matrix.worker }}"
+          out=$("dist/${stem}/${{ matrix.binary }}" --version)
           echo "got: $out"
           case "$out" in
             *"${{ needs.prepare.outputs.version }}"*) echo "smoke ok" ;;
@@ -290,6 +288,10 @@ jobs:
           find .runx/rust-cli-artifacts -path '*/bin/runx' -type f -print0 \
             | xargs -0 -r chmod +x
           find .runx/rust-cli-artifacts -path '*/bin/runx.exe' -type f -print0 \
+            | xargs -0 -r chmod +x
+          find .runx/rust-cli-artifacts -path '*/bin/runx-js-worker' -type f -print0 \
+            | xargs -0 -r chmod +x
+          find .runx/rust-cli-artifacts -path '*/bin/runx-js-worker.exe' -type f -print0 \
             | xargs -0 -r chmod +x
       - name: Verify release artifacts
         run: |

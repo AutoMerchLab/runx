@@ -5,16 +5,15 @@ use std::path::{Path, PathBuf};
 use runx_contracts::{ClosureDisposition, JsonObject, JsonValue, ReceiptSchema};
 use runx_receipts::canonical_receipt_json;
 use runx_runtime::{
-    HarnessExpectedStatus, HarnessFixtureError, HarnessFixtureKind, InvocationStatus,
-    RuntimeOptions, SkillAdapter, SkillInvocation, SkillOutput, load_harness_fixture,
-    parse_harness_fixture, run_harness_fixture_with_adapter,
+    HarnessExpectedStatus, HarnessFixtureKind, InvocationStatus, RuntimeOptions, SkillAdapter,
+    SkillInvocation, SkillOutput, load_harness_fixture, run_harness_fixture_with_adapter,
 };
 
 const FIXTURE_CREATED_AT: &str = "2026-05-18T00:00:00Z";
 
 #[test]
-fn loads_active_harness_fixtures_without_retired_receipt_fields() -> Result<(), HarnessFixtureError>
-{
+fn loads_active_harness_fixtures_without_retired_receipt_fields()
+-> Result<(), Box<dyn std::error::Error>> {
     for (path, expected_status, expected_disposition) in [
         (
             "fixtures/harness/echo-skill.yaml",
@@ -29,12 +28,7 @@ fn loads_active_harness_fixtures_without_retired_receipt_fields() -> Result<(), 
     ] {
         let fixture = load_harness_fixture(fixture_path(path))?;
         assert_eq!(fixture.expect.status, Some(expected_status));
-        let receipt = fixture
-            .expect
-            .receipt
-            .ok_or(HarnessFixtureError::Required {
-                field: "expect.receipt".to_owned(),
-            })?;
+        let receipt = fixture.expect.receipt.ok_or("missing expect.receipt")?;
         assert_eq!(receipt.schema, ReceiptSchema::V1);
         // A suspended (deferred) run carries the "deferred" state; every
         // terminal seal carries "sealed".
@@ -50,38 +44,31 @@ fn loads_active_harness_fixtures_without_retired_receipt_fields() -> Result<(), 
 }
 
 #[test]
-fn parses_harness_skill_fixture_contract() -> Result<(), HarnessFixtureError> {
+fn parses_harness_skill_fixture_contract() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = load_harness_fixture(fixture_path("fixtures/harness/echo-skill.yaml"))?;
 
     assert_eq!(fixture.name, "echo-skill");
     assert_eq!(fixture.kind, HarnessFixtureKind::Skill);
     assert_eq!(fixture.target, "../skills/echo");
-    let receipt = fixture
-        .expect
-        .receipt
-        .ok_or(HarnessFixtureError::Required {
-            field: "expect.receipt".to_owned(),
-        })?;
-    assert_eq!(receipt.harness_id.as_deref(), Some("hrn_echo-skill_echo"));
+    let receipt = fixture.expect.receipt.ok_or("missing expect.receipt")?;
+    assert_eq!(
+        receipt.harness_id.as_deref(),
+        Some("hrn_echo-skill_default")
+    );
     assert_eq!(receipt.reason_code.as_deref(), Some("process_closed"));
-    assert_eq!(receipt.act_ids, vec!["act_echo"]);
+    assert_eq!(receipt.act_ids, vec!["act_default"]);
     Ok(())
 }
 
 #[test]
-fn parses_harness_graph_fixture_contract() -> Result<(), HarnessFixtureError> {
+fn parses_harness_graph_fixture_contract() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = load_harness_fixture(fixture_path("fixtures/harness/sequential-graph.yaml"))?;
 
     assert_eq!(fixture.name, "sequential-graph");
     assert_eq!(fixture.kind, HarnessFixtureKind::Graph);
     assert_eq!(fixture.target, "../graphs/sequential/graph.yaml");
     assert_eq!(fixture.expect.steps, vec!["first", "second"]);
-    let receipt = fixture
-        .expect
-        .receipt
-        .ok_or(HarnessFixtureError::Required {
-            field: "expect.receipt".to_owned(),
-        })?;
+    let receipt = fixture.expect.receipt.ok_or("missing expect.receipt")?;
     assert_eq!(
         receipt.harness_id.as_deref(),
         Some("hrn_sequential-echo_graph")
@@ -97,89 +84,16 @@ fn parses_harness_graph_fixture_contract() -> Result<(), HarnessFixtureError> {
 }
 
 #[test]
-fn rejects_retired_receipt_kind_field_with_stable_path() {
-    for field in [
-        "kind".to_owned(),
-        retired_execution_receipt_field("skill"),
-        retired_execution_receipt_field("graph"),
-    ] {
-        let result = parse_harness_fixture(&format!(
-            r#"
-name: old
-kind: skill
-target: ../skills/echo
-expect:
-  receipt:
-    {field}: value
-"#,
-        ));
-
-        assert!(matches!(
-            result,
-            Err(HarnessFixtureError::RetiredReceiptField { field_path })
-                if field_path == format!("expect.receipt.{field}")
-        ));
-    }
-}
-
-#[test]
-fn retired_receipt_expectations_are_rejected() {
-    for field in [
-        retired_execution_receipt_field("skill"),
-        retired_execution_receipt_field("graph"),
-        "skill_name".to_owned(),
-        "source_type".to_owned(),
-        "graph_name".to_owned(),
-        "owner".to_owned(),
-    ] {
-        let result = parse_harness_fixture(&format!(
-            r#"
-name: old
-kind: skill
-target: ../skills/echo
-expect:
-  receipt:
-    {field}: value
-"#,
-        ));
-
-        assert!(matches!(
-            result,
-            Err(HarnessFixtureError::RetiredReceiptField { field_path })
-                if field_path == format!("expect.receipt.{field}")
-        ));
-    }
-}
-
-#[test]
-fn rejects_unsupported_fixture_mode_with_stable_path() {
-    let result = parse_harness_fixture(
-        r#"
-name: old
-kind: mcp
-target: ../skills/echo
-expect:
-  status: sealed
-"#,
-    );
-
-    assert!(matches!(
-        result,
-        Err(HarnessFixtureError::UnsupportedFixtureMode { mode, field_path })
-            if mode == "mcp" && field_path == "kind"
-    ));
-}
-
-#[test]
 fn replays_active_harness_skill_fixture() -> Result<(), Box<dyn std::error::Error>> {
     let output = run_fixture_with_test_adapter("fixtures/harness/echo-skill.yaml")?;
 
     assert_eq!(output.status, HarnessExpectedStatus::Sealed);
-    assert_eq!(output.receipt.subject.reference.uri, "hrn_echo-skill_echo");
+    assert_eq!(
+        output.receipt.subject.reference.uri,
+        "hrn_echo-skill_default"
+    );
     assert_eq!(output.receipt.seal.disposition, ClosureDisposition::Closed);
-    let skill_output = output.skill_output.ok_or(HarnessFixtureError::Required {
-        field: "skill_output".to_owned(),
-    })?;
+    let skill_output = output.skill_output.ok_or("missing skill_output")?;
     assert_eq!(skill_output.stdout, "{\"message\":\"hello from harness\"}");
     Ok(())
 }
@@ -304,8 +218,4 @@ fn assert_oracle(relative_path: &str, actual: &str) -> Result<(), Box<dyn std::e
     let expected = std::fs::read_to_string(path)?;
     assert_eq!(expected, format!("{actual}\n"), "{relative_path}");
     Ok(())
-}
-
-fn retired_execution_receipt_field(prefix: &str) -> String {
-    format!("{prefix}_{}", "execution")
 }

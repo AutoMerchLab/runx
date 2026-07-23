@@ -1,16 +1,123 @@
 # Skill Author Runtime Contract
 
-This document defines the author-visible v1 subprocess ABI for `cli-tool`
-skills. It is shared by the TypeScript adapter while it survives and the Rust
-runtime cutover. Internal receipt IDs, artifact IDs, sandbox metadata internals,
-and temporary paths are not part of this contract unless named here.
+This document defines the lower-level author-visible v1 subprocess ABI for
+`cli-tool` skills. Use it only when a capability genuinely needs an executable
+or protocol that cannot use Runx's JavaScript module boundary. Ordinary package
+domain logic should declare `type: javascript`, export a function from a local
+module, accept the resolved input object, and return a JSON-compatible value;
+Runx then owns every process detail described below.
+
+The subprocess ABI is shared by the TypeScript adapter while it survives and
+the Rust runtime cutover. Internal receipt IDs, artifact IDs, sandbox metadata
+internals, and temporary paths are not part of this contract unless named here.
+
+## JavaScript module boundary
+
+A pure package module needs no manifest, wrapper, environment parsing, stdout
+serialization, or package dependency:
+
+```yaml
+run:
+  type: javascript
+  module: risk-model.mjs
+  export: assessRisk
+  outputs:
+    assessment: object
+```
+
+```js
+export function assessRisk(inputs) {
+  return { assessment: evaluate(inputs) };
+}
+```
+
+Omit `export` to select the default export. Module paths are portable relative
+`.mjs` or `.js` paths contained by the owning skill. The selected export may be
+sync or async. Runx owns the dedicated no-host worker, fixed limits, input and
+output framing, timeout, and failure semantics. The module receives neither a
+CLI-tool environment nor credentials, and those mechanics are not
+package-owned API.
+
+## Volume and artifact pages
+
+Volume changes transport, not execution authority. `runx skill --inputs` may
+read one complete control object from a contained UTF-8 JSON file or stdin, but
+it does not widen graph, deterministic-worker, output, credential, or approval
+limits. Do not pass an archive, history, or growing completed-id list through
+that object merely because the CLI can read it.
+
+For one large immutable JSON-array export, declare a paged deterministic source:
+
+```yaml
+run:
+  type: javascript
+  module: archive-selection.mjs
+  export: selectPage
+  pages:
+    path_from: archive_file
+    path_scope_from: archive_base
+    media_type: application/json
+    framing: json_array
+    page_bytes: 524288
+```
+
+The runtime removes the path and scope fields before module invocation, admits
+the contained file to an immutable snapshot, and calls the export repeatedly.
+Each call receives `runx_page` with `artifact_ref`, media type, whole digest,
+source byte count, page index, exact offsets, range digest, `eof`, complete
+encoded records, and the prior continuation `state`. An intermediate result may
+contain only `{ runx_page: { state, done? } }`; the final call also returns the
+declared domain output. A failed page reports its index and byte offset and
+cannot be mistaken for an empty page.
+
+Artifact admission is capped at 512 MiB, a page at 1 MiB, continuation state at
+2 MiB, and one execution at 4,096 pages. The normal 4 MiB deterministic-worker
+input/output ceilings still apply to each call, so framing also rejects a
+single record that cannot fit safely. These are runtime ceilings, not manifest
+profiles. Package code must keep continuation proportional to the bounded
+result it is building; durable progress belongs in `data.append_event` and is
+resumed through `after_version` or a projection rather than an ever-growing
+array.
+
+Use `artifact.admit`/`artifact.read` directly when a graph or tool needs exact
+byte pages instead of a domain transform. Use `fs.read` and `fs.read_bundle`
+only for bounded text. If a format cannot be framed safely or needs genuine
+streaming protocol behavior, use one declared sandboxed `cli-tool`; never add
+ambient filesystem access to a deterministic module or duplicate the runtime's
+containment, hashing, and page loop in package JavaScript.
+
+## Managed-agent tools
+
+An `agent-task` may call only the tools named in its `allowed_tools`. Before the
+model runs, Runx resolves every name through the same native-and-local catalog
+used for execution. The model receives the catalog description and exact input
+schema, including required fields, typed defaults, and
+`additionalProperties: false`; Runx does not substitute a permissive guessed
+schema. An unresolved allowed tool fails before a provider call.
+
+Invocation then returns through that same catalog path, so a tool cannot be
+described from one implementation and executed by another. Native tools retain
+their runtime effect, credential, artifact, and receipt boundaries. Local tool
+manifests retain the subprocess ABI below. The owning `SKILL.md` and any
+declared context-skill manuals provide operating judgment; tool schemas provide
+mechanics, not duplicate instructions.
+
+Bundled local tools use
+`tools/<namespace>/<tool>/manifest.json`; the dotted manifest name must match
+that path. Skill-package admission parses each manifest and binds its complete
+static local source closure. Registry publication consumes that admitted set—it
+does not rescan or reinterpret tool source—so a missing import, uncompiled Node
+TypeScript entrypoint, or path/name mismatch fails before execution or publish.
 
 ## Process
 
 The runtime starts the declared command with `shell: false` semantics. Arguments
 are resolved before spawn. The skill process runs with piped stdin, stdout, and
-stderr. Stdout and stderr are drained while the process runs and each stream is
-captured up to 1 MiB without emitting broken UTF-8.
+stderr. Stdout and stderr are drained completely while the process runs; each
+stream retains a bounded 8 MiB prefix without emitting broken UTF-8. The process
+supervisor also counts and hashes the complete stream, so a digest-mode native
+command can preserve evidence without retaining an unbounded body. Text and JSON
+contracts fail closed when their retained body is truncated.
 
 ## Environment
 
@@ -61,6 +168,13 @@ A zero exit code without timeout or abort maps to a sealed/success status.
 Timeout, abort, spawn failure, or non-zero exit maps to failure. Structured JSON
 stdout remains author output; graph runners may parse object stdout into step
 outputs, but raw stdout and stderr remain visible.
+
+Output ownership is exact. Deterministic and agent runners declare their typed
+outputs and packets at the producer. A graph runner declares neither
+runner-level `outputs` nor runner-level `artifacts`: the graph receipt proves
+the composition, while the terminal output-producing step owns the result and
+its packet schema. If a graph needs one reusable result, add an explicit
+package/finalize step instead of wrapping the graph trace in a second contract.
 
 ## Fixture Gate
 

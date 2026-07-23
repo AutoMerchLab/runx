@@ -3,6 +3,36 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "additionalProperties": false,
   "properties": {
+    "artifacts": {
+      "additionalProperties": false,
+      "properties": {
+        "emits": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "named_emits": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "packet": {
+          "type": "string"
+        },
+        "packets": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": "object"
+        },
+        "wrap_as": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
     "description": {
       "type": "string"
     },
@@ -47,39 +77,6 @@
     "name": {
       "type": "string"
     },
-    "output": {
-      "additionalProperties": true,
-      "properties": {
-        "named_emits": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": "object"
-        },
-        "outputs": {
-          "additionalProperties": {
-            "additionalProperties": true,
-            "properties": {
-              "packet": {
-                "type": "string"
-              },
-              "wrap_as": {
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
-          "type": "object"
-        },
-        "packet": {
-          "type": "string"
-        },
-        "wrap_as": {
-          "type": "string"
-        }
-      },
-      "type": "object"
-    },
     "retry": {
       "additionalProperties": false,
       "properties": {
@@ -93,37 +90,6 @@
       "type": "object"
     },
     "risk": {},
-    "runtime": {
-      "additionalProperties": false,
-      "properties": {
-        "args": {
-          "items": {
-            "type": "string"
-          },
-          "type": "array"
-        },
-        "command": {
-          "type": "string"
-        },
-        "cwd": {
-          "type": "string"
-        },
-        "env": {
-          "additionalProperties": {
-            "type": "string"
-          },
-          "type": "object"
-        }
-      },
-      "required": [
-        "command"
-      ],
-      "type": "object"
-    },
-    "runx": {
-      "additionalProperties": {},
-      "type": "object"
-    },
     "schema": {
       "anyOf": [
         {
@@ -131,9 +97,6 @@
           "type": "string"
         }
       ]
-    },
-    "schema_hash": {
-      "type": "string"
     },
     "scopes": {
       "items": {
@@ -160,38 +123,14 @@
           "additionalProperties": {},
           "type": "object"
         },
-        "catalog_ref": {
-          "type": "string"
-        },
         "command": {
           "type": "string"
         },
         "cwd": {
           "type": "string"
         },
-        "http": {
-          "additionalProperties": false,
-          "properties": {
-            "allow_private_network": {
-              "type": "boolean"
-            },
-            "headers": {
-              "additionalProperties": {
-                "type": "string"
-              },
-              "type": "object"
-            },
-            "method": {
-              "type": "string"
-            },
-            "url": {
-              "type": "string"
-            }
-          },
-          "required": [
-            "url"
-          ],
-          "type": "object"
+        "export": {
+          "type": "string"
         },
         "input_mode": {
           "anyOf": [
@@ -208,6 +147,9 @@
               "type": "string"
             }
           ]
+        },
+        "module": {
+          "type": "string"
         },
         "sandbox": {
           "additionalProperties": false,
@@ -306,19 +248,15 @@
               "type": "string"
             },
             {
+              "const": "javascript",
+              "type": "string"
+            },
+            {
               "const": "mcp",
               "type": "string"
             },
             {
               "const": "a2a",
-              "type": "string"
-            },
-            {
-              "const": "catalog",
-              "type": "string"
-            },
-            {
-              "const": "http",
               "type": "string"
             }
           ]
@@ -329,12 +267,6 @@
       ],
       "type": "object"
     },
-    "source_hash": {
-      "type": "string"
-    },
-    "toolkit_version": {
-      "type": "string"
-    },
     "version": {
       "type": "string"
     }
@@ -342,11 +274,7 @@
   "required": [
     "schema",
     "name",
-    "source",
-    "runtime",
-    "output",
-    "source_hash",
-    "schema_hash"
+    "source"
   ],
   "type": "object",
   "x-runx-schema": "runx.tool.manifest.v1"

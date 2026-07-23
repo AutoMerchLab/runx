@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because lifecycle event vocabulary and receipt
+// Module rationale: lifecycle event vocabulary and receipt
 // record projection stay together while producers converge on one sealed event
 // taxonomy.
 use runx_contracts::{
@@ -115,7 +115,7 @@ impl LifecycleEvent {
         }
     }
 
-    // rust-style-allow: long-function because each lifecycle variant maps to
+    // Function rationale: each lifecycle variant maps to
     // exactly one host-facing event shape; splitting the match would hide
     // exhaustiveness across the lifecycle vocabulary.
     pub(crate) fn into_execution_event(self) -> ExecutionEvent {

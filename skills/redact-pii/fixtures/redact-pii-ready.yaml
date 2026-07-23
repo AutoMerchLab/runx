@@ -31,7 +31,10 @@ caller:
 expect:
   status: sealed
   steps:
+    - digest-source
     - detect
+    - scrub
+    - digest-redacted
     - finalize
   step_outputs:
     finalize:

@@ -1,4 +1,4 @@
-// rust-style-allow: long-function because payment packet parsing accepts the
+// Function rationale: payment packet parsing accepts the
 // current graph output envelopes while payment execution is being generalized
 // across mock and provider-backed rails.
 use runx_contracts::{JsonNumber, JsonObject, JsonValue, json_bool_field, json_string_field};
@@ -70,7 +70,7 @@ pub(crate) fn redact_payment_transient_material(payload: &mut JsonObject) -> boo
     proof.remove("rail_session_material_ref").is_some()
 }
 
-// rust-style-allow: long-function because reservation packets may derive fields
+// Function rationale: reservation packets may derive fields
 // from either the authority envelope or the spend-capability binding while the
 // payment execution boundary is still being factored.
 pub fn read_payment_reservation_packet(

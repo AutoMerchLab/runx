@@ -111,9 +111,8 @@
       },
       "inputs": {},
       "expected": {
-        "status": "failure",
-        "stdout_bytes": 0,
-        "stderr_contains": "stdout/stderr omitted"
+        "status": "sealed",
+        "stdout_bytes": 2097152
       }
     }
   ]

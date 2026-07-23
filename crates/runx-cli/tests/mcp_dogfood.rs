@@ -538,40 +538,43 @@ fn read_json_file(path: &Path) -> Result<Value, Box<dyn std::error::Error>> {
 
 fn write_unenforced_mcp_echo_skill() -> Result<TestTempDir, Box<dyn std::error::Error>> {
     let skill_dir = TestTempDir::new("runx-mcp-dogfood-skill")?;
-    let server_path = repo_root()?.join("fixtures/runtime/adapters/mcp/stdio-server.py");
+    let server_path = repo_root()?.join("fixtures/runtime/adapters/mcp/stdio-server.mjs");
     let server_arg = serde_json::to_string(&server_path.display().to_string())?;
     fs::write(
         skill_dir.path().join("SKILL.md"),
-        format!(
-            r#"---
+        r#"---
 name: mcp-echo
 description: Echo a message through a local MCP stdio fixture server.
-source:
-  type: mcp
-  server:
-    command: python3
-    args:
-      - {server_arg}
-  tool: echo
-  arguments:
-    message: "{{{{message}}}}"
-  timeout_seconds: 15
-  sandbox:
-    profile: readonly
-    cwd_policy: workspace
-    require_enforcement: false
-inputs:
-  message:
-    type: string
-    required: true
-    description: Message to echo through MCP
-runx:
-  input_resolution:
-    required:
-      - message
 ---
 
 Echo the provided message through a local MCP server fixture.
+"#,
+    )?;
+    fs::write(
+        skill_dir.path().join("X.yaml"),
+        format!(
+            r#"skill: mcp-echo
+runners:
+  default:
+    default: true
+    type: mcp
+    server:
+      command: node
+      args:
+        - {server_arg}
+    tool: echo
+    arguments:
+      message: "{{{{message}}}}"
+    timeout_seconds: 15
+    sandbox:
+      profile: readonly
+      cwd_policy: workspace
+      require_enforcement: false
+    inputs:
+      message:
+        type: string
+        required: true
+        description: Message to echo through MCP
 "#
         ),
     )?;
@@ -581,33 +584,40 @@ Echo the provided message through a local MCP server fixture.
 fn write_workspace_env_mcp_skill(workspace: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let skill_dir = workspace.join("mcp-workspace-env");
     fs::create_dir_all(&skill_dir)?;
-    let server_path = repo_root()?.join("fixtures/runtime/adapters/mcp/stdio-server.py");
+    let server_path = repo_root()?.join("fixtures/runtime/adapters/mcp/stdio-server.mjs");
     let server_arg = serde_json::to_string(&server_path.display().to_string())?;
     fs::write(
         skill_dir.join("SKILL.md"),
-        format!(
-            r#"---
+        r#"---
 name: mcp-workspace-env
 description: Return an allowlisted workspace value through an MCP server.
-source:
-  type: mcp
-  server:
-    command: python3
-    args:
-      - {server_arg}
-  tool: env
-  arguments:
-    name: MCP_DOGFOOD_MARKER
-  timeout_seconds: 15
-  sandbox:
-    profile: readonly
-    cwd_policy: workspace
-    env_allowlist:
-      - MCP_DOGFOOD_MARKER
-    require_enforcement: false
 ---
 
 Return the allowlisted workspace marker.
+"#,
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        format!(
+            r#"skill: mcp-workspace-env
+runners:
+  default:
+    default: true
+    type: mcp
+    server:
+      command: node
+      args:
+        - {server_arg}
+    tool: env
+    arguments:
+      name: MCP_DOGFOOD_MARKER
+    timeout_seconds: 15
+    sandbox:
+      profile: readonly
+      cwd_policy: workspace
+      env_allowlist:
+        - MCP_DOGFOOD_MARKER
+      require_enforcement: false
 "#
         ),
     )?;
@@ -617,32 +627,15 @@ Return the allowlisted workspace marker.
 fn write_credential_mcp_skill(workspace: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let skill_dir = workspace.join("mcp-credential");
     fs::create_dir_all(&skill_dir)?;
-    let server_path = repo_root()?.join("fixtures/runtime/adapters/mcp/stdio-server.py");
-    let server_arg = serde_json::to_string(&server_path.display().to_string())?;
     fs::write(
         skill_dir.join("SKILL.md"),
-        format!(
-            r#"---
+        r#"---
 name: mcp-credential
 description: Credential readiness fixture.
-source:
-  type: mcp
-  server:
-    command: python3
-    args:
-      - {server_arg}
-  tool: echo
-  arguments:
-    message: ready
-  sandbox:
-    profile: readonly
-    cwd_policy: workspace
-    require_enforcement: false
 ---
 
 Credential readiness fixture.
-"#
-        ),
+"#,
     )?;
     fs::write(
         skill_dir.join("X.yaml"),

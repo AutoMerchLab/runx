@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - this binary is the fixture oracle transaction:
+// Module rationale: this binary is the fixture oracle transaction:
 // it replays harness fixtures, signs canonical receipts, and compares committed
 // root/step oracles in one reviewable regeneration boundary.
 use std::error::Error;

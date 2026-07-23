@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - doctor aggregates path, registry, and authority diagnostics until those surfaces split.
+// Module rationale: doctor aggregates path, registry, and authority diagnostics until those surfaces split.
 use std::collections::BTreeMap;
 use std::env;
 use std::path::{Path, PathBuf};
@@ -14,7 +14,7 @@ use runx_pay::effect_state::{
     hosted_effect_state_backend_is_supported, resolve_effect_state_path,
 };
 use runx_runtime::{
-    PROVIDER_PERMISSION_GRANT_ID_ENV, PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
+    HostedApiEnvironment, PROVIDER_PERMISSION_GRANT_ID_ENV, PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
     RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV, RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
     RUNX_RECEIPT_SIGN_KID_ENV, RuntimeError, default_doctor_options, load_runx_config_file,
     resolve_runx_home_dir, run_doctor,
@@ -101,7 +101,7 @@ fn run_doctor_command(
     Ok(DoctorCliOutput { stdout, exit_code })
 }
 
-// rust-style-allow: long-function - this builds one structured diagnostic packet
+// Function rationale: this builds one structured diagnostic packet
 // from env, config, and credential state so the evidence and repair stay together.
 fn managed_agent_config_diagnostic(
     env: &BTreeMap<String, String>,
@@ -367,7 +367,7 @@ fn path_diagnostic(id: &str, title: &str, path: PathBuf, env_names: &[&str]) -> 
     }
 }
 
-// rust-style-allow: long-function - one diagnostic assembles the trust-key matrix and repair hints.
+// Function rationale: one diagnostic assembles the trust-key matrix and repair hints.
 fn registry_trust_key_diagnostic(env: &BTreeMap<String, String>) -> DoctorDiagnostic {
     let configured_key_id = env
         .get(runx_runtime::registry::RUNX_REGISTRY_MANIFEST_TRUST_KEY_ID_ENV)
@@ -591,16 +591,7 @@ fn run_authority_doctor(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorRep
             Some(RUNX_RECEIPT_VERIFY_KID_ENV),
         ),
         effect_state_diagnostic(env, cwd),
-        readiness_diagnostic(
-            "runx.authority.provider_grant",
-            "Provider permission grant",
-            &[
-                PROVIDER_PERMISSION_GRANT_ID_ENV,
-                PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
-            ],
-            env,
-            None,
-        ),
+        provider_grant_diagnostic(env, cwd),
     ];
     DoctorReport {
         schema: DoctorReportSchema::V1,
@@ -610,7 +601,80 @@ fn run_authority_doctor(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorRep
     }
 }
 
-// rust-style-allow: long-function - one diagnostic keeps effect-state path, evidence, and repairs together.
+fn provider_grant_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorDiagnostic {
+    let explicit_grant = env_contains_non_empty(env, PROVIDER_PERMISSION_GRANT_ID_ENV);
+    let explicit_scopes = env_contains_non_empty(env, PROVIDER_PERMISSION_GRANTED_SCOPES_ENV);
+    let connect_available = HostedApiEnvironment::resolve(None, None, env, cwd)
+        .and_then(|environment| environment.require_token().map(|_| ()))
+        .is_ok();
+    let configured = (explicit_grant && explicit_scopes) || connect_available;
+    let message = provider_grant_message(explicit_grant, explicit_scopes, connect_available);
+    let mut evidence = authority_evidence(
+        &[
+            PROVIDER_PERMISSION_GRANT_ID_ENV,
+            PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
+        ],
+        configured,
+        None,
+    );
+    evidence.insert(
+        "connect_discovery".to_owned(),
+        JsonValue::Bool(connect_available),
+    );
+    evidence.insert("explicit_grant".to_owned(), JsonValue::Bool(explicit_grant));
+    DoctorDiagnostic {
+        id: "runx.authority.provider_grant".to_owned(),
+        instance_id: "runx:doctor-authority:runx.authority.provider_grant".to_owned(),
+        severity: if configured {
+            DoctorDiagnosticSeverity::Info
+        } else {
+            DoctorDiagnosticSeverity::Warning
+        },
+        title: "Provider permission grant".to_owned(),
+        message,
+        target: object([
+            ("kind", string_value("authority")),
+            ("ref", string_value("runx.authority.provider_grant")),
+        ]),
+        location: DoctorLocation {
+            path: "environment".to_owned(),
+            json_pointer: None,
+        },
+        evidence: Some(evidence),
+        repairs: if configured {
+            Vec::new()
+        } else {
+            vec![manual_env_repair(
+                "runx.authority.provider_grant.configure",
+                &[
+                    PROVIDER_PERMISSION_GRANT_ID_ENV,
+                    PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
+                ],
+                "Configure Runx Connect for automatic grant discovery, or inject an explicit provider grant and scopes from the operator host.",
+                DoctorRepairRisk::Sensitive,
+            )]
+        },
+    }
+}
+
+fn provider_grant_message(
+    explicit_grant: bool,
+    explicit_scopes: bool,
+    connect_available: bool,
+) -> String {
+    match (explicit_grant, explicit_scopes, connect_available) {
+        (true, true, _) => {
+            "Provider permission grant supplied by the operator environment.".to_owned()
+        }
+        (true, false, true) => "Provider grant selected by the operator; Runx Connect will resolve its active scopes at execution.".to_owned(),
+        (false, _, true) => "Runx Connect is configured; native provider tools will resolve the unique active provider/scope grant at execution.".to_owned(),
+        _ => format!(
+            "Provider permission grant is unavailable; configure Runx Connect, or set {PROVIDER_PERMISSION_GRANT_ID_ENV} and {PROVIDER_PERMISSION_GRANTED_SCOPES_ENV} for a host-injected grant."
+        ),
+    }
+}
+
+// Function rationale: one diagnostic keeps effect-state path, evidence, and repairs together.
 fn effect_state_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorDiagnostic {
     if env_contains_non_empty(env, RUNX_HOSTED_EFFECT_STATE_BACKEND_JSON_ENV) {
         let hosted_status = hosted_effect_state_backend_is_supported(env);

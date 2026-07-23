@@ -63,6 +63,8 @@ fn rust_matches_skill_author_runtime_fixtures() -> Result<(), Box<dyn std::error
         let started = Instant::now();
         let output = CliToolAdapter.invoke(SkillInvocation {
             skill_name: format!("skill-author-runtime.{}", fixture.id),
+            artifacts: None,
+            allowed_tools: None,
             source: fixture_source(&fixture, &probe_path)?,
             inputs: fixture_inputs(&fixture),
             resolved_inputs: JsonObject::new(),
@@ -120,6 +122,9 @@ fn fixture_source(
         act: None,
         source_type: runx_parser::SourceKind::CliTool,
         command: Some("node".to_owned()),
+        module: None,
+        javascript_export: None,
+        pages: None,
         args: vec![path_string(probe_path)?, fixture.mode.clone()],
         cwd: fixture.cwd.clone(),
         timeout_seconds: Some(fixture.timeout_seconds),
@@ -137,17 +142,16 @@ fn fixture_source(
             raw: JsonObject::new(),
         }),
         server: None,
-        catalog_ref: None,
         tool: None,
         arguments: None,
         agent_card_url: None,
         agent_identity: None,
         agent: None,
         task: None,
-        hook: None,
         outputs: None,
         graph: None,
-        http: None,
+        external_adapter: None,
+        thread_outbox_provider: None,
         raw: JsonObject::new(),
     })
 }

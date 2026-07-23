@@ -1,25 +1,23 @@
 skill: github-sync
-version: "0.1.3"
+version: "0.3.0"
 
 catalog:
   kind: skill
   audience: public
   visibility: public
-  role: branded
-  canonical_skill: runx/messageboard
+  role: canonical
   provider: github
   runtime_path: github
   execution: execute
-  completion: runtime_receipt
+  completion: provider_readback
   requires_adapter: true
-  approval: conditional
+  approval: required
 
 runners:
   github-sync:
     default: true
-    type: agent-task
-    agent: operator
-    task: github-sync
+    type: javascript
+    module: github-sync.mjs
     outputs:
       sync_plan: object
     artifacts:
@@ -27,65 +25,207 @@ runners:
         sync_plan: sync_plan
       packets:
         sync_plan: runx.github_sync.v1
-    runx:
-      category: ops
     inputs:
       repo:
         type: string
         required: true
-        description: "Target repository as owner/name."
+        description: Target repository as owner/name.
       direction:
         type: string
         required: true
-        description: "Sync direction: pull (read-only) or push (mutation)."
+        description: pull or push.
       resources:
         type: json
         required: true
-        description: "Selector for issues, prs, or threads plus filters (state, label, author, range, refs)."
+        description: Bounded issue, PR, or thread selector and digest-only mutations.
       scope:
         type: string
         required: true
-        description: "read or write. A push needs write backed by a repo:write grant."
+        description: read or write.
 
+  pull:
+    type: graph
+    inputs:
+      repo:
+        type: string
+        required: true
+        description: Target repository as owner/name.
+      resources:
+        type: json
+        required: true
+        description: Bounded issue, PR, or thread selector.
+    graph:
+      name: github-sync-pull
+      steps:
+        - id: plan
+          inputs:
+            repo: $input.repo
+            direction: pull
+            resources: $input.resources
+            scope: read
+          run:
+            type: javascript
+            module: github-sync.mjs
+            outputs:
+              sync_plan: object
+          artifacts:
+            named_emits:
+              sync_plan: sync_plan
+            packets:
+              sync_plan: runx.github_sync.v1
+
+        - id: pull
+          when:
+            field: plan.sync_plan.data.decision
+            equals: ready
+          tool: provider.read
+          scopes:
+            - repo.read
+          policy:
+            provider_permission:
+              verb: read
+          inputs:
+            expected_provider: github
+            target: $input.repo
+            expected_result:
+              repository: $input.repo
+            result_fields: [repository, items, cursor]
+          context:
+            operation: plan.sync_plan.data.provider_operation
+            input: plan.sync_plan.data
+
+  push:
+    type: graph
+    inputs:
+      repo:
+        type: string
+        required: true
+        description: Target repository as owner/name.
+      resources:
+        type: json
+        required: true
+        description: Bounded digest-addressed issue, PR, or thread mutations.
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for this exact mutation set.
+    graph:
+      name: github-sync-push
+      steps:
+        - id: plan
+          inputs:
+            repo: $input.repo
+            direction: push
+            resources: $input.resources
+            scope: write
+          run:
+            type: javascript
+            module: github-sync.mjs
+            outputs:
+              sync_plan: object
+          artifacts:
+            named_emits:
+              sync_plan: sync_plan
+            packets:
+              sync_plan: runx.github_sync.v1
+
+        - id: digest-mutations
+          when:
+            field: plan.sync_plan.data.decision
+            equals: ready_for_approval
+          tool: data.digest
+          context:
+            value: plan.sync_plan.data.diff_summary
+
+        - id: push
+          when:
+            field: plan.sync_plan.data.decision
+            equals: ready_for_approval
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: $input.idempotency_key
+          scopes:
+            - repo.write
+          policy:
+            provider_permission:
+              verb: write
+          inputs:
+            expected_provider: github
+            target: $input.repo
+            idempotency_key: $input.idempotency_key
+            expected_result:
+              repository: $input.repo
+            result_fields: [repository, sync_ref, mutation_digest, resources]
+          context:
+            operation: plan.sync_plan.data.provider_operation
+            input: plan.sync_plan.data
+
+        - id: bind-mutation
+          when:
+            field: plan.sync_plan.data.decision
+            equals: ready_for_approval
+          tool: data.compare
+          context:
+            actual: push.provider_operation.data.result.mutation_digest
+            expected: digest-mutations.digest_result.data.digest
+
+        - id: readback
+          when:
+            field: bind-mutation.comparison.data.equal
+            equals: true
+          tool: provider.read
+          scopes:
+            - repo.read
+          policy:
+            provider_permission:
+              verb: read
+          inputs:
+            operation: sync.read
+            target: $input.repo
+            expected_provider: github
+            result_fields: [repository, sync_ref, mutation_digest, resources]
+          context:
+            expected_result: push.provider_operation.data.result
+            input: push.provider_operation.data.result
   plan_and_append_cursor:
     type: graph
     inputs:
       data_source_ref:
         type: string
         required: true
-        description: Logical data source used to persist sync cursor events.
+        description: Logical data source for cursor events.
       resource:
         type: string
         required: true
-        description: Declared event resource for GitHub sync cursor events.
+        description: Declared cursor event resource.
       aggregate_id:
         type: string
         required: true
-        description: Cursor stream key, usually owner/repo or owner/repo:selector.
+        description: Cursor stream key.
       expected_version:
         type: number
         required: true
-        description: Current cursor stream version required before append.
+        description: Current cursor stream version.
       idempotency_key:
         type: string
         required: true
-        description: Stable retry key for this sync plan.
+        description: Stable retry key.
       repo:
         type: string
         required: true
-        description: "Target repository as owner/name."
+        description: Target repository.
       direction:
         type: string
         required: true
-        description: "Sync direction: pull (read-only) or push (mutation)."
+        description: pull or push.
       resources:
         type: json
         required: true
-        description: "Selector for issues, prs, or threads plus filters (state, label, author, range, refs)."
+        description: Bounded selector and digest-only mutation plan.
       scope:
         type: string
         required: true
-        description: "read or write. A push needs write backed by a repo:write grant."
+        description: read or write.
     graph:
       name: github-sync-plan-and-append-cursor
       steps:
@@ -93,34 +233,43 @@ runners:
           skill: ../data-store
           runner: read_projection
           inputs:
-            data_source_ref: "$input.data_source_ref"
-            resource: "$input.resource"
-            aggregate_id: "$input.aggregate_id"
+            data_source_ref: $input.data_source_ref
+            resource: $input.resource
+            aggregate_id: $input.aggregate_id
+
         - id: plan
-          skill: .
-          runner: github-sync
           inputs:
-            repo: "$input.repo"
-            direction: "$input.direction"
-            resources: "$input.resources"
-            scope: "$input.scope"
-          context:
-            cursor_projection: read-cursor.data_operation_result.data.projection
+            repo: $input.repo
+            direction: $input.direction
+            resources: $input.resources
+            scope: $input.scope
+          run:
+            type: javascript
+            module: github-sync.mjs
+            outputs:
+              sync_plan: object
+          artifacts:
+            named_emits:
+              sync_plan: sync_plan
+            packets:
+              sync_plan: runx.github_sync.v1
+
         - id: append-cursor-event
           skill: ../data-store
           runner: append_event
           inputs:
-            data_source_ref: "$input.data_source_ref"
-            resource: "$input.resource"
-            aggregate_id: "$input.aggregate_id"
-            expected_version: "$input.expected_version"
-            idempotency_key: "$input.idempotency_key"
+            data_source_ref: $input.data_source_ref
+            resource: $input.resource
+            aggregate_id: $input.aggregate_id
+            expected_version: $input.expected_version
+            idempotency_key: $input.idempotency_key
           context:
             event: plan.sync_plan.data
+
         - id: readback
           skill: ../data-store
           runner: read_projection
           inputs:
-            data_source_ref: "$input.data_source_ref"
-            resource: "$input.resource"
-            aggregate_id: "$input.aggregate_id"
+            data_source_ref: $input.data_source_ref
+            resource: $input.resource
+            aggregate_id: $input.aggregate_id

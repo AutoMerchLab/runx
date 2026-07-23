@@ -262,17 +262,39 @@ fn official_nitrosend_contract_delivers_fake_profile_to_fixture_without_leak()
     let runx_home = temp.join("home");
     let receipt_dir = temp.join("receipts");
     let skill_dir = temp.join("nitrosend");
-    let tool_root = temp.join("tools");
     fs::create_dir_all(&skill_dir)?;
-    fs::copy(
-        repo_root()?.join("skills/nitrosend/SKILL.md"),
-        skill_dir.join("SKILL.md"),
-    )?;
-    fs::copy(
-        repo_root()?.join("skills/nitrosend/X.yaml"),
+    let official_dir = repo_root()?.join("skills/nitrosend");
+    let official = runx_runtime::load_validated_skill_package(&official_dir)?;
+    let manifest = official.manifest().ok_or("Nitrosend X.yaml is missing")?;
+    let requirement = manifest
+        .credentials
+        .get("nitrosend")
+        .ok_or("Nitrosend credential contract is missing")?;
+    let (auth_mode, delivery_env) = requirement
+        .deliveries
+        .iter()
+        .next()
+        .ok_or("Nitrosend credential has no delivery mode")?;
+    fs::copy(official_dir.join("SKILL.md"), skill_dir.join("SKILL.md"))?;
+    let audience = match requirement.audience.as_ref() {
+        Some(value) => format!("    audience: {}\n", serde_json::to_string(value)?),
+        None => String::new(),
+    };
+    fs::write(
         skill_dir.join("X.yaml"),
+        format!(
+            "skill: nitrosend\ncredentials:\n  nitrosend:\n    provider: {}\n{audience}    auth:\n      {}:\n        delivery:\n          env: {}\nrunners:\n  status:\n    default: true\n    type: cli-tool\n    command: sh\n    args: [probe.sh]\n    input_mode: none\n    credential: nitrosend\n    sandbox:\n      profile: readonly\n      cwd_policy: skill-directory\n      require_enforcement: false\n",
+            serde_json::to_string(&requirement.provider)?,
+            serde_json::to_string(auth_mode)?,
+            serde_json::to_string(delivery_env)?,
+        ),
     )?;
-    write_nitrosend_fixture_tool(&tool_root)?;
+    fs::write(
+        skill_dir.join("probe.sh"),
+        format!(
+            "test -n \"${delivery_env}\" && printf '{{\"credential\":\"%s\",\"fixture\":\"nitrosend-credential\"}}' \"${delivery_env}\"\n"
+        ),
+    )?;
 
     let mut set = native_command()?;
     set.current_dir(&temp).env("RUNX_HOME", &runx_home).args([
@@ -290,7 +312,6 @@ fn official_nitrosend_contract_delivers_fake_profile_to_fixture_without_leak()
     let output = native_command()?
         .current_dir(&temp)
         .env("RUNX_HOME", &runx_home)
-        .env("RUNX_TOOL_ROOTS", &tool_root)
         .args([
             "skill",
             skill_dir.to_str().ok_or("invalid skill path")?,
@@ -672,44 +693,6 @@ fn repo_root() -> Result<PathBuf, std::io::Error> {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
         .canonicalize()
-}
-
-fn write_nitrosend_fixture_tool(root: &Path) -> Result<(), Box<dyn std::error::Error>> {
-    let tool_dir = root.join("nitrosend/read");
-    fs::create_dir_all(&tool_dir)?;
-    fs::write(
-        tool_dir.join("manifest.json"),
-        r#"{
-  "schema": "runx.tool.manifest.v1",
-  "name": "nitrosend.read",
-  "description": "Non-network Nitrosend credential delivery fixture.",
-  "source": {
-    "type": "cli-tool",
-    "command": "sh",
-    "args": ["run.sh"],
-    "input_mode": "stdin",
-    "sandbox": {
-      "profile": "readonly",
-      "cwd_policy": "skill-directory",
-      "network": false,
-      "writable_paths": [],
-      "require_enforcement": false,
-      "env_allowlist": []
-    }
-  },
-  "inputs": {
-    "operation": { "type": "string", "required": true },
-    "arguments": { "type": "json", "required": false },
-    "brand_sid": { "type": "string", "required": false }
-  }
-}
-"#,
-    )?;
-    fs::write(
-        tool_dir.join("run.sh"),
-        "test -n \"$NITROSEND_API_KEY\" && printf '{\"credential\":\"%s\",\"fixture\":\"nitrosend-read\"}' \"$NITROSEND_API_KEY\"\n",
-    )?;
-    Ok(())
 }
 
 fn directory_text(root: &Path) -> Result<String, std::io::Error> {

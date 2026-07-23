@@ -15,9 +15,11 @@ use crate::{
     ExternalAdapterResponse, Fixture, HandoffSignal, HandoffState, LedgerEntry, OperationalPolicy,
     OperationalProposal, Output, PacketIndex, Question, Receipt, Redaction, Reference,
     ReferenceLink, RegistryBinding, ResolutionRequest, ResolutionResponse, ReviewReceiptOutput,
-    RunSummary, RunxListReport, ScopeAdmission, Signal, SourcePacket, SuppressionRecord,
-    ThreadOutboxProviderFetch, ThreadOutboxProviderManifest, ThreadOutboxProviderObservation,
-    ThreadOutboxProviderPush, ToolManifest, Verification,
+    RunSummary, RunxListReport, ScopeAdmission, Signal, SkillApplyResult,
+    SkillArchitectureDecision, SkillArchitecturePlan, SkillChangeBundle, SkillChangeDraft,
+    SkillValidationResult, SourcePacket, SuppressionRecord, ThreadOutboxProviderFetch,
+    ThreadOutboxProviderManifest, ThreadOutboxProviderObservation, ThreadOutboxProviderPush,
+    ToolManifest, Verification,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -27,7 +29,7 @@ pub struct SchemaArtifact {
 }
 
 #[must_use]
-// rust-style-allow: long-function - the artifact manifest is deliberately one
+// Function rationale: the artifact manifest is deliberately one
 // ordered list so the published schema set is auditable against `oss/schemas`.
 pub fn generated_schema_artifacts() -> Vec<SchemaArtifact> {
     vec![
@@ -56,6 +58,12 @@ pub fn generated_schema_artifacts() -> Vec<SchemaArtifact> {
         artifact::<DevReport>("dev.schema.json"),
         artifact::<RunxListReport>("list.schema.json"),
         artifact::<RunSummary>("run-summary.schema.json"),
+        artifact::<SkillArchitectureDecision>("skill-architecture-decision.schema.json"),
+        artifact::<SkillArchitecturePlan>("skill-architecture-plan.schema.json"),
+        artifact::<SkillChangeDraft>("skill-change-draft.schema.json"),
+        artifact::<SkillChangeBundle>("skill-change-bundle.schema.json"),
+        artifact::<SkillValidationResult>("skill-validation-result.schema.json"),
+        artifact::<SkillApplyResult>("skill-apply-result.schema.json"),
         artifact::<Fixture>("fixture.schema.json"),
         artifact::<ToolManifest>("tool-manifest.schema.json"),
         artifact::<PacketIndex>("packet-index.schema.json"),

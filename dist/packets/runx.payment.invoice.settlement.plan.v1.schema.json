@@ -1,0 +1,7 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.runx.ai/runx/payment/invoice_settlement_plan/v1.json",
+  "x-runx-packet-id": "runx.payment.invoice_settlement_plan.v1",
+  "x-runx-generated-from": "skills/settle-invoice/X.yaml#root.runners.settle-invoice.graph.steps.0",
+  "type": "object"
+}

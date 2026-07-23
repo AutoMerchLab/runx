@@ -1,26 +1,19 @@
 use std::collections::BTreeMap;
-use std::fs;
 use std::path::Path;
 
+use crate::RuntimeError;
+use crate::SkillInvocation;
 use runx_contracts::schema::NonEmptyString;
 use runx_contracts::{
     AgentActInvocation, AgentActSourceType, AgentContextEnvelope, ExecutionLocation, JsonObject,
     JsonValue, Output, OutputField, ResolutionRequest,
 };
-use runx_parser::parse_skill_markdown;
-
-use crate::RuntimeError;
-use crate::SkillInvocation;
 
 const TRUST_BOUNDARY: &str = "native-managed: runx executes the model and tool loop directly, receipts the result, and only yields to a surface for explicit human resolution outside this path";
 
 mod profiles;
 
 pub(crate) use profiles::agent_profile_metadata;
-
-struct SkillMarkdownContext {
-    body: String,
-}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum AgentActInvocationSourceType {
@@ -89,7 +82,7 @@ fn envelope(
     request: &SkillInvocation,
     source_type: AgentActInvocationSourceType,
 ) -> Result<AgentContextEnvelope, RuntimeError> {
-    let skill_context = load_skill_markdown_context(&request.skill_directory)?;
+    let manual = load_skill_instructions(&request.skill_directory)?;
     let output = request
         .source
         .outputs
@@ -105,7 +98,8 @@ fn envelope(
         run_id: "rx_pending".into(),
         step_id: None,
         skill: skill_name(request, source_type).into(),
-        instructions: envelope_instructions(request, skill_context.as_ref()).into(),
+        instructions_sha256: manual.digest.into(),
+        instructions: envelope_instructions(request, &manual.markdown)?.into(),
         inputs: request.inputs.clone(),
         allowed_tools: envelope_allowed_tools(request)?,
         current_context: request.current_context.clone(),
@@ -121,57 +115,39 @@ fn envelope(
 
 fn envelope_instructions(
     request: &SkillInvocation,
-    skill_context: Option<&SkillMarkdownContext>,
-) -> String {
-    request
-        .source
-        .raw
-        .get("instructions")
-        .and_then(JsonValue::as_str)
-        .filter(|value| !value.trim().is_empty())
-        .map(str::to_owned)
-        .or_else(|| {
-            skill_context
-                .map(|context| context.body.trim())
-                .filter(|value| !value.is_empty())
-                .map(str::to_owned)
-        })
-        .unwrap_or_else(|| {
-            "Resolve the runx agent act using the supplied inputs and context.".to_owned()
-        })
+    skill_instructions: &str,
+) -> Result<String, RuntimeError> {
+    if skill_instructions.trim().is_empty() {
+        return Err(invalid_agent_invocation(
+            request,
+            "agent-mediated runners require operating instructions in SKILL.md",
+        ));
+    }
+    Ok(skill_instructions.to_owned())
 }
 
-fn load_skill_markdown_context(
+struct SkillManualInstructions {
+    markdown: String,
+    digest: String,
+}
+
+fn load_skill_instructions(
     skill_directory: &Path,
-) -> Result<Option<SkillMarkdownContext>, RuntimeError> {
-    let path = skill_directory.join("SKILL.md");
-    if !path.is_file() {
-        return Ok(None);
-    }
-    let source = fs::read_to_string(&path)
-        .map_err(|error| RuntimeError::io(format!("reading {}", path.display()), error))?;
-    let raw = parse_skill_markdown(&source)?;
-    Ok(Some(SkillMarkdownContext { body: raw.body }))
+) -> Result<SkillManualInstructions, RuntimeError> {
+    let loaded = crate::load_validated_skill_package(skill_directory)?;
+    Ok(SkillManualInstructions {
+        markdown: loaded.package.manual_markdown,
+        digest: loaded.package.manual_digest,
+    })
 }
 
 fn envelope_allowed_tools(request: &SkillInvocation) -> Result<Vec<NonEmptyString>, RuntimeError> {
-    let Some(value) = request.source.raw.get("allowed_tools") else {
+    let Some(tools) = request.allowed_tools.as_ref() else {
         return Ok(Vec::new());
-    };
-    let JsonValue::Array(tools) = value else {
-        return Err(invalid_agent_invocation(
-            request,
-            "allowed_tools must be an array of non-empty strings",
-        ));
     };
     let mut allowed_tools = Vec::new();
     for (index, value) in tools.iter().enumerate() {
-        let Some(tool) = value
-            .as_str()
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .and_then(|value| NonEmptyString::new(value.to_owned()))
-        else {
+        let Some(tool) = NonEmptyString::new(value.clone()) else {
             return Err(invalid_agent_invocation(
                 request,
                 format!("allowed_tools[{index}] must be a non-empty string"),
@@ -194,6 +170,7 @@ fn invalid_agent_invocation(request: &SkillInvocation, message: impl Into<String
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests;
 
 fn optional_non_empty(value: Option<&str>) -> Option<NonEmptyString> {

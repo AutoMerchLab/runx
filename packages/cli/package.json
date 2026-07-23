@@ -25,7 +25,7 @@
   },
   "runx": {
     "nativeSelector": {
-      "schema": "runx.rust_cli_selector_topology.v1",
+      "schema": "runx.rust_cli_selector_topology.v2",
       "supportedPlatforms": [
         "darwin-arm64",
         "darwin-x64",

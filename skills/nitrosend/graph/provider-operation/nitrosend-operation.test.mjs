@@ -114,3 +114,55 @@ test("projects credential rejection and local validation as bounded evidence", (
   assert.equal(blocked.decision, "needs_input");
   assert.equal(blocked.evidence, null);
 });
+
+test("admits only non-persisting campaign composition reads", () => {
+  const intent = prepareOperation({
+    mode: "read",
+    operation: "compose_campaign_intent",
+    arguments: { composition_mode: "intent", goal: "Write a product update" },
+  }).operation_plan;
+  assert.equal(intent.decision, "ready");
+  assert.equal(intent.tool, "nitro_compose_campaign");
+  assert.deepEqual(intent.requests[0].body.params.arguments, {
+    composition_mode: "intent",
+    goal: "Write a product update",
+    dry_run: true,
+  });
+
+  const validate = prepareOperation({
+    mode: "read",
+    operation: "validate_campaign_composition",
+    arguments: {
+      composition_mode: "validate",
+      contract_id: "ecc_fixture",
+      subject: "A careful update",
+      body: "We changed one detail because customers showed us where it hurt.",
+    },
+  }).operation_plan;
+  assert.equal(validate.decision, "ready");
+  assert.equal(validate.tool, "nitro_compose_campaign");
+  assert.deepEqual(validate.requests[0].body.params.arguments, {
+    composition_mode: "validate",
+    contract_id: "ecc_fixture",
+    subject: "A careful update",
+    body: "We changed one detail because customers showed us where it hurt.",
+    validate_only: true,
+    dry_run: true,
+  });
+});
+
+test("refuses persistence and delivery fields on campaign composition reads", () => {
+  const cases = [
+    ["compose_campaign_intent", { composition_mode: "draft", goal: "No" }],
+    ["compose_campaign_intent", { composition_mode: "intent", audience: { audience_type: "all_contacts" } }],
+    ["validate_campaign_composition", { composition_mode: "validate", contract_id: "ecc_fixture", body: "Hi", scheduled_at: "2026-08-01T00:00:00Z" }],
+    ["validate_campaign_composition", { composition_mode: "draft", contract_id: "ecc_fixture", body: "Hi" }],
+    ["validate_campaign_composition", { composition_mode: "validate", body: "Hi" }],
+  ];
+
+  for (const [operation, args] of cases) {
+    const plan = prepareOperation({ mode: "read", operation, arguments: args }).operation_plan;
+    assert.notEqual(plan.decision, "ready", `${operation} unexpectedly admitted ${JSON.stringify(args)}`);
+    assert.deepEqual(plan.requests, []);
+  }
+});

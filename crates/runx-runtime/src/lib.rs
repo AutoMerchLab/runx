@@ -10,18 +10,11 @@
 //! runtime orchestration under `runner` or `orchestrator`.
 
 pub mod adapter;
-#[cfg(any(
-    feature = "cli-tool",
-    feature = "catalog",
-    feature = "mcp",
-    feature = "a2a",
-    feature = "agent",
-    feature = "external-adapter"
-))]
 mod adapter_pipeline;
 mod agent_contract;
 mod agent_invocation;
 pub mod approval;
+mod capability;
 pub mod config;
 pub mod credential_resolver;
 pub mod credentials;
@@ -33,23 +26,31 @@ pub mod execution;
 pub mod export;
 mod filesystem;
 pub mod host;
+#[cfg(feature = "async-http")]
+mod hosted_api;
 mod http;
+mod init;
+mod input_contract;
 pub mod journal;
+#[cfg(feature = "mcp")]
 mod json_render;
 mod lifecycle;
 pub mod list;
 #[cfg(feature = "thread-outbox-provider")]
 pub mod outbox_provider;
+mod output_contract;
+mod packet_schemas;
 mod packet_validation;
-pub mod parser_eval;
 mod path_util;
 mod process;
+#[cfg(feature = "async-http")]
+mod provider_operations;
 pub mod receipts;
 pub mod redaction;
 pub mod registry;
 pub mod sandbox;
-pub mod scaffold;
 mod services;
+mod skill_package;
 mod time;
 pub mod tool_catalogs;
 
@@ -57,31 +58,29 @@ pub use execution::harness;
 pub use execution::orchestrator;
 pub use execution::runner;
 pub use execution::skill_front;
+pub use tool_catalogs::native::{
+    EventStoreMigrationProof, EventStoreMigrationRequest, EventStoreMigrationStatus,
+    migrate_event_store,
+};
 
-#[cfg(any(
-    feature = "cli-tool",
-    feature = "catalog",
-    feature = "mcp",
-    feature = "a2a",
-    feature = "agent",
-    feature = "external-adapter",
-    feature = "http",
-    feature = "thread-outbox-provider"
-))]
 pub mod adapters;
 
 pub use adapter::{
     FanoutExecutionMode, InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput,
 };
 pub use approval::{ApprovalError, LocalApprovalGateResolver, request_approval};
+pub use capability::{
+    CapabilityAdmission, CapabilityApproval, CapabilityArtifacts, CapabilityContract,
+    CapabilityDefinition, CapabilityEffect, CapabilityField, CapabilityInput, CapabilityOutput,
+    TypedCapability,
+};
 pub use config::{
-    ConfigError, ConfigKey, LocalProfileSource, ManagedAgentConfig,
-    RUNX_DEVELOPMENT_AUTO_APPROVE_ENV, RunxAgentConfig, RunxConfigFile, RunxCredentialProfile,
-    RunxCredentialsConfig, RunxDevelopmentConfig, RunxPublicConfig,
-    development_auto_approve_requested, load_local_agent_api_key, load_local_credential_secret,
-    load_local_public_api_token, load_managed_agent_config, load_runx_config_file,
-    lookup_runx_config_value, managed_agent_provider, mask_runx_config_file, parse_config_key,
-    remove_local_credential_secret, resolve_local_skill_profile, resolve_path_from_user_input,
+    ConfigError, ConfigKey, ManagedAgentConfig, RUNX_DEVELOPMENT_AUTO_APPROVE_ENV, RunxAgentConfig,
+    RunxConfigFile, RunxCredentialProfile, RunxCredentialsConfig, RunxDevelopmentConfig,
+    RunxPublicConfig, development_auto_approve_requested, load_local_agent_api_key,
+    load_local_credential_secret, load_local_public_api_token, load_managed_agent_config,
+    load_runx_config_file, lookup_runx_config_value, managed_agent_provider, mask_runx_config_file,
+    parse_config_key, remove_local_credential_secret, resolve_path_from_user_input,
     resolve_runx_global_home_dir, resolve_runx_home_dir, resolve_runx_workspace_base,
     store_local_credential_secret, update_runx_config_value, write_runx_config_file,
 };
@@ -99,29 +98,53 @@ pub use credentials::{
     ResolvedCredentialMaterial, SecretEnv, SecretString,
 };
 pub use dev::{
-    DevFixtureResult, DevFixtureStatus, DevLoopOptions, DevReport, DevReportStatus,
+    DevFixtureLane, DevFixtureResult, DevFixtureStatus, DevLoopOptions, DevReport, DevReportStatus,
     DevWatchOptions, DevWatchTrigger, PollingDevWatcher, dev_receipt_metadata,
     discover_fixture_paths, render_dev_result, run_dev_once, should_ignore_dev_watch_path,
 };
 pub use doctor::{DoctorOptions, default_doctor_options, run_doctor};
 pub use effects::{
-    EffectAdmission, EffectOutputRequest, EffectReceiptRequest, EffectReplay,
-    EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest,
-    PROVIDER_PERMISSION_EFFECT_FAMILY, PROVIDER_PERMISSION_GRANT_ID_ENV,
-    PROVIDER_PERMISSION_GRANTED_SCOPES_ENV, ProviderPermissionAdmission, ProviderPermissionEffect,
-    RuntimeEffect, RuntimeEffectError, RuntimeEffectRegistry, insert_effect_verification_ref,
+    EffectAdmission, EffectApprovalRequirement, EffectOutputRequest, EffectReceiptRequest,
+    EffectReplay, EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest,
+    EffectToolRequest, PROVIDER_MUTATE_TOOL, PROVIDER_PERMISSION_EFFECT_FAMILY,
+    PROVIDER_PERMISSION_GRANT_ID_ENV, PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
+    PROVIDER_PERMISSION_PRINCIPAL_REF_ENV, PROVIDER_READ_TOOL, ProviderAcknowledgementEvidence,
+    ProviderApprovalEvidence, ProviderEffectAcknowledged, ProviderEffectAmount,
+    ProviderEffectAttempt, ProviderEffectAuthority, ProviderEffectClass, ProviderEffectError,
+    ProviderEffectFinality, ProviderEffectIntent, ProviderEffectIntentInput,
+    ProviderEffectReadback, ProviderEffectReadbackEvidence, ProviderEffectResolved,
+    ProviderEffectUnknown, ProviderPermissionAdmission, ProviderPermissionEffect, RuntimeEffect,
+    RuntimeEffectError, RuntimeEffectRegistry, insert_effect_verification_ref,
 };
 pub use error::RuntimeError;
 pub use harness::{
     HarnessExpectedStatus, HarnessFixtureError, HarnessFixtureKind, HarnessReplayError,
-    HarnessReplayOutput, load_harness_fixture, parse_harness_fixture, run_harness_fixture,
+    HarnessReplayOutput, load_harness_fixture, run_harness_fixture,
     run_harness_fixture_with_adapter, run_harness_fixture_with_env,
 };
 pub use host::{Host, NoopHost};
+#[cfg(feature = "async-http")]
+pub use hosted_api::{
+    AuthenticatedHostedApiEnvironment, DEFAULT_HOSTED_API_BASE_URL, HOSTED_API_BASE_URL_ENV,
+    HOSTED_API_TOKEN_ENV, HostedApiEnvironment, HostedApiError, HostedApiErrorPayload,
+    HostedApiOperationError, HostedConnectAction, HostedConnectStart, HostedLoginCompleteResponse,
+    HostedLoginStartResponse, HostedProviderTokenLoginResponse, ReceiptPublishResponse,
+    complete_hosted_login, exchange_hosted_provider_token, execute_hosted_connect,
+    hosted_api_transport, hosted_private_network_allowed, parse_hosted_api_error,
+    publish_hosted_receipt, start_hosted_login, store_authenticated_hosted_environment,
+};
+pub use http::{
+    HttpMethod, ReqwestHttpTransport, RuntimeHttpError, RuntimeHttpHeader, RuntimeHttpRequest,
+    RuntimeHttpResponse, RuntimeHttpTransport,
+};
+pub use init::{
+    InitAction, InitError, InitGeneratedValues, RunxInitOptions, RunxInitResult, RunxInstallState,
+    RunxProjectState, ensure_runx_install_state, ensure_runx_project_state, runx_init,
+};
 pub use journal::ExecutionJournal;
 pub use list::{
     RunxListItem, RunxListItemKind, RunxListOptions, RunxListRequestedKind, RunxListStatus,
-    list_authoring_primitives,
+    list_authoring_primitives, list_authoring_primitives_with_effects,
 };
 pub use orchestrator::{
     DEFAULT_MANAGED_AGENT_MAX_ROUNDS, GraphRunRequest, HarnessRunRequest, LocalOrchestrator,
@@ -134,7 +157,12 @@ pub use outbox_provider::{
     ThreadOutboxProviderSupervisorError, ThreadOutboxProviderSupervisorOptions,
     thread_outbox_provider_forbidden_secret_fields,
 };
-pub use parser_eval::{ParserEvalError, ParserEvalOutput, evaluate_parser_document_str};
+#[cfg(feature = "async-http")]
+pub use provider_operations::{
+    HostedProviderGrant, ProviderOperationAccess, ProviderOperationError, ProviderOperationRequest,
+    invoke_provider_operation, list_provider_grants, validate_provider_grant_id,
+    validate_provider_operation,
+};
 pub use receipts::paths::{
     INIT_CWD_ENV, RUNTIME_RECEIPTS_DIR_CONFIG_KEY, RUNX_CWD_ENV, RUNX_PROJECT_DIR_ENV,
     RUNX_RECEIPT_DIR_ENV, ReceiptPathInputs, ReceiptPathSource, ReceiptStoreLabel,
@@ -165,19 +193,19 @@ pub use runner::{
 };
 pub use runx_core::kernel_eval;
 pub use runx_parser::{
-    CredentialRequirement, SkillRunnerDefinition, SkillRunnerManifest, SkillSource,
-    parse_runner_manifest_yaml, validate_runner_manifest,
+    CredentialRequirement, SkillArtifactContract, SkillExternalAdapterManifest, SkillPackageSource,
+    SkillRunnerDefinition, SkillRunnerManifest, SkillSource, SkillThreadOutboxProviderSource,
+    ValidatedSkillPackage,
 };
 pub use runx_receipts::ReceiptTreeConfig;
-pub use scaffold::{
-    InitAction, InitGeneratedValues, RunxInitOptions, RunxInitResult, RunxNewOptions,
-    RunxNewResult, ScaffoldError, runx_init, sanitize_runx_package_name, scaffold_runx_package,
+pub use services::{
+    VerifiedReceiptStore, WorkspaceEnv, WorkspaceEnvError, WorkspaceFileError, read_workspace_text,
 };
-pub use services::{WorkspaceEnv, WorkspaceEnvError};
 pub use skill_front::PackageHarnessReport;
+pub use skill_package::{LoadedSkillPackage, inspect_skill_package, load_validated_skill_package};
 pub use tool_catalogs::{
     ToolBuildOptions, ToolCatalogError, ToolInspectOptions, ToolSearchOptions, build_tool_catalogs,
-    inspect_tool, search_tools,
+    inspect_tool, inspect_tool_with_effects, search_tools, search_tools_with_effects,
 };
 
 pub const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");

@@ -180,56 +180,35 @@ jobs:
       - name: Rust public API snapshot
         run: node scripts/check-rust-kernel-parity.mjs --api-only
 
-  authoring-smoke:
-    # Drift guard: scaffold -> harness end to end. Reds the build the moment the
-    # `runx new` native scaffold breaks (broken templates, harness regressions),
-    # so the authoring path can never silently rot. Skills carry no per-package
-    # install or build step; the shared repository tool catalog consumes the
-    # compiled workspace authoring package prepared once below.
+  skill-harness:
+    # One catalog-wide behavioral sweep. Skill Lab is the sole authoring path,
+    # so there is no parallel template-generator smoke lane.
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
-        with:
-          version: 10.18.2
       - name: Setup Node
         uses: actions/setup-node@v6
         with:
           node-version: 24
-          cache: pnpm
-          cache-dependency-path: pnpm-lock.yaml
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: crates
-      - name: Install dependencies
-        run: pnpm install --frozen-lockfile
-      - name: Build shared packages
-        run: node scripts/build-workspace.mjs
-      - name: Build runx
+      - name: Build runtime binaries
         working-directory: crates
-        run: cargo build -p runx-cli
-      - name: Scaffold and harness
-        env:
-          RUNX_RECEIPT_SIGN_KID: ci-authoring-smoke
-          RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64: QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
-          RUNX_RECEIPT_SIGN_ISSUER_TYPE: hosted
         run: |
-          set -euo pipefail
-          RUNX="$GITHUB_WORKSPACE/crates/target/debug/runx"
-          "$RUNX" new authoring-smoke --directory "$RUNNER_TEMP/authoring-smoke"
-          "$RUNX" harness "$RUNNER_TEMP/authoring-smoke" --json
+          cargo build -p runx-cli
+          cargo build -p runx-runtime --bin runx-js-worker
       - name: Catalog harness sweep
         # Gate every official skill's declared harness. Reds the build the moment
         # a catalog case regresses, so a mis-authored fixture can never silently
         # rot again. --require floors the passing count; any unallowed failure
         # fails the gate. Add --allow <skill> only for a genuinely flaky case.
         env:
-          RUNX_RECEIPT_SIGN_KID: ci-authoring-smoke
+          RUNX_RECEIPT_SIGN_KID: ci-skill-harness
           RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64: QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=
           RUNX_RECEIPT_SIGN_ISSUER_TYPE: hosted
           # GitHub-hosted runners do not grant the user namespaces bubblewrap
@@ -248,7 +227,7 @@ jobs:
       - js-checks
       - demo-checks
       - rust-checks
-      - authoring-smoke
+      - skill-harness
     steps:
       - name: Done
         run: echo "All CI lanes passed."

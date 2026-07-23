@@ -1,12 +1,38 @@
 use super::CommandSpec;
 
+pub const ROOT_COMMAND_SPEC: CommandSpec = CommandSpec {
+    name: "cli.help",
+    top_level_usage: &[],
+    usage: &["runx <command> [args]", "runx --help", "runx --version"],
+    notes: &[],
+    options: &[
+        "-h, --help",
+        "-V, --version",
+        "-j, --json  Emit the native command catalog with --help",
+    ],
+};
+
 pub const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "new",
         top_level_usage: &[],
-        usage: &["runx new <name> [--directory dir] [--json]"],
-        notes: &[],
-        options: &["--directory dir", "-j, --json"],
+        usage: &[
+            "runx new <name> --objective text [--project-context text] [--directory dir] [-R dir] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]",
+        ],
+        notes: &[
+            "Delegates to the canonical Skill Lab build lane; no files are written until the digest-bound package validates.",
+            "Without --managed-agent, returns a needs_agent envelope and an exact runx resume command.",
+        ],
+        options: &[
+            "--objective text  Required capability and outcome",
+            "--project-context text  Product, repository, and operator constraints",
+            "--directory dir  Child path inside the active workspace",
+            "-R, --receipt-dir dir",
+            "--managed-agent  Explicitly allow an in-process model loop for this run",
+            "--managed-agent-rounds n  Bound each managed act to 1-32 rounds (default 4)",
+            "--non-interactive",
+            "-j, --json",
+        ],
     },
     CommandSpec {
         name: "init",
@@ -98,12 +124,11 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "connect",
-        top_level_usage: &["runx connect list|start|status|invoke|revoke ... [-j|--json]"],
+        top_level_usage: &["runx connect list|start|status|revoke ... [-j|--json]"],
         usage: &[
             "runx connect list [-j|--json]",
             "runx connect start <provider> --scope <capability> [--scope <capability>...] [--scope-family family] [--authority-kind kind] [--target-repo repo] [--target-locator locator] [--binding id] [-j|--json]",
             "runx connect status <session-id> [-j|--json]",
-            "runx connect invoke --grant <grant-id> --operation <operation> [--input <json-object>] [-j|--json]",
             "runx connect revoke <grant-id> [-j|--json]",
         ],
         notes: &[],
@@ -135,7 +160,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         name: "credential",
         top_level_usage: &["runx credential set|list|remove|bind ... [-j|--json]"],
         usage: &[
-            "runx credential set <provider> [--profile name] [--auth-mode mode] --from-stdin [-j|--json]",
+            "runx credential set <provider> [--profile name] [--auth-mode mode] [--audience https://host] --from-stdin [-j|--json]",
             "runx credential list [-j|--json]",
             "runx credential remove <profile> [-j|--json]",
             "runx credential bind <profile> --provider <provider> [-j|--json]",
@@ -148,9 +173,27 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
             "--from-stdin",
             "--profile name",
             "--auth-mode mode",
+            "--audience https://host",
             "--provider provider",
             "--skill skill",
             "--credential name",
+            "-j, --json",
+        ],
+    },
+    CommandSpec {
+        name: "data",
+        top_level_usage: &["runx data migrate --database path --source ref [--backup path] [-j|--json]"],
+        usage: &[
+            "runx data migrate --database path --source ref [--backup path] [-j|--json]",
+        ],
+        notes: &[
+            "Migrates only recognized legacy SQLite event stores under the active workspace, after an exclusive consistent backup and before independent readback verification.",
+            "Current stores return an idempotent proof. Unknown or partial schemas are not modified.",
+        ],
+        options: &[
+            "--database path  Workspace-relative SQLite event-store path",
+            "--source ref     Data-source reference assigned to formerly unscoped rows",
+            "--backup path    Optional workspace-relative backup target",
             "-j, --json",
         ],
     },
@@ -241,7 +284,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         name: "skill",
         top_level_usage: &[],
         usage: &[
-            "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [-j] [--managed-agent [--managed-agent-rounds n]] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [-R dir]",
+            "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [-R dir]",
             "runx skill inspect <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-j] [--registry url|path] [--digest sha256]",
         ],
         notes: &[],
@@ -250,6 +293,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
             "--credential-profile name  Alias for --profile",
             "-i, --input key=value    Set a structured input; repeat for multiple inputs",
             "--input-json key=json    Set an input that must parse as JSON",
+            "--inputs file|-          Read the complete JSON input object from a file or stdin; do not mix with per-key inputs",
             "--approve-operator-context digest",
             "                          Approve a prepared mutation only when its context matches this digest",
             "--full-operator-context  Print the complete prepared context before execution",

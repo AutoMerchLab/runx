@@ -21,10 +21,13 @@ inputs:
 expect:
   status: sealed
   steps:
-    - inspect
-    - reject
+    - plan-source
+    - read-source
+    - digest-source
+    - inspect-source
+    - reject-source
   step_outputs:
-    reject:
+    reject-source:
       subset:
         binding_bundle:
           data:

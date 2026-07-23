@@ -30,12 +30,12 @@ pub fn run_native_add(plan: AddUrlPlan) -> ExitCode {
         Err(error) => return fail(&error.to_string()),
     };
 
-    let transport =
-        match crate::public_api::transport(crate::public_api::private_network_allowed(false, &env))
-        {
-            Ok(transport) => transport,
-            Err(error) => return fail(&format!("failed to initialize HTTP transport: {error}")),
-        };
+    let transport = match runx_runtime::hosted_api_transport(
+        runx_runtime::hosted_private_network_allowed(false, &env),
+    ) {
+        Ok(transport) => transport,
+        Err(error) => return fail(&format!("failed to initialize HTTP transport: {error}")),
+    };
 
     let options = IndexGithubRepoOptions {
         base_url: environment.base_url(),
@@ -53,8 +53,8 @@ fn resolve_public_api_environment(
     plan: &AddUrlPlan,
     env: &BTreeMap<String, String>,
     cwd: &std::path::Path,
-) -> Result<crate::public_api::ApiEnvironment, crate::public_api::ApiEnvironmentError> {
-    crate::public_api::ApiEnvironment::resolve_unauthenticated(
+) -> Result<runx_runtime::HostedApiEnvironment, runx_runtime::HostedApiError> {
+    runx_runtime::HostedApiEnvironment::resolve_unauthenticated(
         plan.api_base_url.as_deref(),
         env,
         cwd,

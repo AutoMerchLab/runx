@@ -4,7 +4,7 @@ use std::path::Path;
 use crate::router::{FilterMode, ListKind, ListPlan};
 use runx_runtime::{
     RunxListItem, RunxListItemKind, RunxListOptions, RunxListRequestedKind, RunxListStatus,
-    list_authoring_primitives,
+    list_authoring_primitives_with_effects,
 };
 
 #[derive(Debug)]
@@ -14,6 +14,7 @@ pub enum ListCliError {
         context: &'static str,
         source: std::io::Error,
     },
+    Effect(runx_runtime::RuntimeEffectError),
     Runtime(runx_runtime::RuntimeError),
     Serialize(serde_json::Error),
 }
@@ -26,6 +27,9 @@ impl fmt::Display for ListCliError {
                 write!(formatter, "test I/O failed while {context}: {source}")
             }
             Self::Runtime(error) => write!(formatter, "{error}"),
+            Self::Effect(error) => {
+                write!(formatter, "failed to initialize runtime effects: {error}")
+            }
             Self::Serialize(error) => write!(formatter, "failed to serialize list output: {error}"),
         }
     }
@@ -36,6 +40,12 @@ impl std::error::Error for ListCliError {}
 impl From<runx_runtime::RuntimeError> for ListCliError {
     fn from(error: runx_runtime::RuntimeError) -> Self {
         Self::Runtime(error)
+    }
+}
+
+impl From<runx_runtime::RuntimeEffectError> for ListCliError {
+    fn from(error: runx_runtime::RuntimeEffectError) -> Self {
+        Self::Effect(error)
     }
 }
 
@@ -50,7 +60,8 @@ pub fn run_list_command(plan: &ListPlan, cwd: &Path) -> Result<String, ListCliEr
         root: cwd.to_path_buf(),
         requested_kind: requested_kind(plan.kind),
     };
-    let mut report = list_authoring_primitives(&options)?;
+    let effects = crate::runtime::payment_effect_registry()?;
+    let mut report = list_authoring_primitives_with_effects(&options, &effects)?;
     report
         .items
         .retain(|item| item_visible_for_filter(item, plan.filter));
@@ -181,7 +192,7 @@ mod tests {
 
         let output = run_list_command(
             &ListPlan {
-                kind: ListKind::Tools,
+                kind: ListKind::Overlays,
                 filter: FilterMode::All,
                 json: false,
             },
@@ -191,6 +202,33 @@ mod tests {
         assert_eq!(output, "No runx authoring primitives found.\n");
 
         fs::remove_dir_all(root).map_err(runtime_io("removing empty fixture"))?;
+        Ok(())
+    }
+
+    #[test]
+    fn json_lists_native_tools_without_local_manifests() -> Result<(), ListCliError> {
+        let root = temp_workspace("native-tools");
+        let _ignored = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).map_err(runtime_io("creating native tool fixture"))?;
+
+        let output = run_list_command(
+            &ListPlan {
+                kind: ListKind::Tools,
+                filter: FilterMode::OkOnly,
+                json: true,
+            },
+            &root,
+        )?;
+
+        let report = serde_json::from_str::<TestListReport>(&output)?;
+        assert!(
+            report
+                .items
+                .iter()
+                .any(|item| item.kind == "tool" && item.name == "fs.read")
+        );
+
+        fs::remove_dir_all(root).map_err(runtime_io("removing native tool fixture"))?;
         Ok(())
     }
 

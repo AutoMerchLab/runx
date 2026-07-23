@@ -6,10 +6,11 @@ use std::process::ExitCode;
 
 use runx_runtime::journal::list_local_history;
 use runx_runtime::{
-    DEFAULT_MANAGED_AGENT_MAX_ROUNDS, LocalReceiptStore, ManagedAgentPolicy, ReceiptPathInputs,
-    RuntimeReceiptConfig, WorkspaceEnv, resolve_receipt_path,
+    LocalReceiptStore, ManagedAgentPolicy, ReceiptPathInputs, RuntimeReceiptConfig, WorkspaceEnv,
+    resolve_receipt_path,
 };
 
+use crate::managed_agent::{managed_agent_policy, parse_boolean_flag, parse_managed_agent_rounds};
 use crate::skill::{SkillAction, SkillPlan};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -29,7 +30,7 @@ pub(crate) struct SkillResumeCommand<'a> {
     pub(crate) answers_path: Option<&'a Path>,
 }
 
-// rust-style-allow: long-function - resume parsing keeps UTF-8 identifiers and native path arguments in one audited cursor.
+// Function rationale: resume parsing keeps UTF-8 identifiers and native path arguments in one audited cursor.
 pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
     if args.first().and_then(|arg| arg.to_str()) != Some("resume") {
         return Err("internal error: resume dispatcher received non-resume command".to_owned());
@@ -60,6 +61,7 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
             }
             value if value.starts_with("--managed-agent=") => {
                 managed_agent = parse_boolean_flag(
+                    "resume",
                     "--managed-agent",
                     value.trim_start_matches("--managed-agent="),
                 )?;
@@ -67,6 +69,7 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
             }
             value if value.starts_with("--managed-agent-rounds=") => {
                 managed_agent_rounds = Some(parse_managed_agent_rounds(
+                    "resume",
                     value.trim_start_matches("--managed-agent-rounds="),
                 )?);
                 index += 1;
@@ -74,6 +77,7 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
             "--managed-agent-rounds" => {
                 index += 1;
                 managed_agent_rounds = Some(parse_managed_agent_rounds(
+                    "resume",
                     args.get(index)
                         .and_then(|value| value.to_str())
                         .ok_or_else(|| "--managed-agent-rounds requires a value".to_owned())?,
@@ -121,11 +125,11 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
         answers_path: PathBuf::from(positionals.remove(0)),
         receipt_dir,
         json,
-        managed_agent: managed_agent_policy(managed_agent, managed_agent_rounds)?,
+        managed_agent: managed_agent_policy("resume", managed_agent, managed_agent_rounds)?,
     })
 }
 
-// rust-style-allow: long-function - resume reconstructs one guarded continuation
+// Function rationale: resume reconstructs one guarded continuation
 // request and keeps its path, receipt, and output error handling in one transaction.
 pub fn run_native_resume(plan: ResumePlan) -> ExitCode {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -136,7 +140,7 @@ pub fn run_native_resume(plan: ResumePlan) -> ExitCode {
     run_native_resume_with_workspace(plan, &workspace)
 }
 
-// rust-style-allow: long-function - resume reconstructs one guarded continuation
+// Function rationale: resume reconstructs one guarded continuation
 // request and keeps its path, receipt, and output error handling in one transaction.
 pub fn run_native_resume_with_workspace(plan: ResumePlan, workspace: &WorkspaceEnv) -> ExitCode {
     let cwd = workspace.cwd().to_path_buf();
@@ -197,39 +201,11 @@ pub fn run_native_resume_with_workspace(plan: ResumePlan, workspace: &WorkspaceE
         full_operator_context: false,
         approve_operator_context: None,
         inputs: BTreeMap::new(),
+        input_document: None,
         credential_profile: pending.credential_profile.clone(),
         managed_agent: plan.managed_agent,
     };
     crate::skill::run_native_skill_with_workspace(skill_plan, workspace)
-}
-
-fn managed_agent_policy(
-    enabled: bool,
-    max_rounds: Option<u32>,
-) -> Result<ManagedAgentPolicy, String> {
-    if !enabled {
-        if max_rounds.is_some() {
-            return Err("runx resume --managed-agent-rounds requires --managed-agent".to_owned());
-        }
-        return Ok(ManagedAgentPolicy::HostDriven);
-    }
-    ManagedAgentPolicy::inline(max_rounds.unwrap_or(DEFAULT_MANAGED_AGENT_MAX_ROUNDS))
-        .map_err(|error| format!("runx resume {error}"))
-}
-
-fn parse_managed_agent_rounds(value: &str) -> Result<u32, String> {
-    value
-        .trim()
-        .parse::<u32>()
-        .map_err(|_| "runx resume --managed-agent-rounds expects a positive integer".to_owned())
-}
-
-fn parse_boolean_flag(flag: &str, value: &str) -> Result<bool, String> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "true" | "1" => Ok(true),
-        "false" | "0" => Ok(false),
-        _ => Err(format!("runx resume {flag} expects true or false")),
-    }
 }
 
 pub(crate) fn render_skill_resume_command(command: SkillResumeCommand<'_>) -> String {

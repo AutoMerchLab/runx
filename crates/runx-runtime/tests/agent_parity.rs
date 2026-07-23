@@ -74,7 +74,12 @@ fn agent_task_invocation_id_and_envelope_shape() -> Result<(), Box<dyn std::erro
         .execution_location
         .as_ref()
         .ok_or_else(|| std::io::Error::other("missing execution location"))?;
-    assert_eq!(execution_location.skill_directory.as_ref(), "/tmp/skill");
+    assert!(
+        execution_location
+            .skill_directory
+            .as_ref()
+            .ends_with("fixtures/skills/agent-task")
+    );
     let tool_roots = execution_location
         .tool_roots
         .as_ref()
@@ -340,28 +345,30 @@ fn harness_replay_runs_agent_skill_fixture() -> Result<(), Box<dyn std::error::E
     let resolver = RecordingResolver::success(JsonValue::String("agent replayed".to_owned()), None);
     let temp = tempfile::tempdir()?;
     let skill_dir = temp.path().join("skill");
-    std::fs::create_dir_all(&skill_dir)?;
-    std::fs::write(
-        skill_dir.join("SKILL.md"),
+    crate::support::write_test_skill_package(
+        &skill_dir,
         r#"---
 name: fixture-agent
 description: Fixture agent skill.
-source:
-  type: agent
-  agent: assistant
-  task: summarize
-inputs:
-  topic:
-    type: string
-    required: true
 ---
 Summarize the topic.
 "#,
+        r#"skill: fixture-agent
+runners:
+  fixture-agent:
+    default: true
+    type: agent
+    agent: assistant
+    task: summarize
+    inputs:
+      topic:
+        type: string
+        required: true
+"#,
     )?;
     let fixture_path = temp.path().join("harness.yaml");
-    // Agent skills replay from the caller's recorded answer, keyed by the agent
-    // act request id `agent.<skill>.output`, rather than from a live adapter
-    // resolver; a recorded answer with no refusing closure seals the run.
+    // Agent runners replay from the caller's recorded answer, keyed by the
+    // stable package runner id rather than from a live adapter resolver.
     std::fs::write(
         &fixture_path,
         r#"
@@ -435,13 +442,18 @@ fn invocation(
     source: SkillSource,
     inputs: JsonObject,
 ) -> SkillInvocation {
+    let skill_directory = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../..")
+        .join("fixtures/skills/agent-task");
     let mut request = SkillInvocation {
         skill_name: skill_name.to_owned(),
+        artifacts: None,
+        allowed_tools: None,
         source,
         inputs,
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
-        skill_directory: "/tmp/skill".into(),
+        skill_directory,
         env: BTreeMap::new(),
         credential_delivery: runx_runtime::CredentialDelivery::none(),
     };
@@ -459,23 +471,25 @@ fn source(
         act: None,
         source_type,
         command: None,
+        module: None,
+        javascript_export: None,
+        pages: None,
         args: Vec::new(),
         cwd: None,
         timeout_seconds: None,
         input_mode: None,
         sandbox: None,
         server: None,
-        catalog_ref: None,
         tool: None,
         arguments: None,
         agent_card_url: None,
         agent_identity: None,
         agent: agent.map(str::to_owned),
         task: task.map(str::to_owned),
-        hook: None,
         outputs,
         graph: None,
-        http: None,
+        external_adapter: None,
+        thread_outbox_provider: None,
         raw: JsonObject::new(),
     }
 }

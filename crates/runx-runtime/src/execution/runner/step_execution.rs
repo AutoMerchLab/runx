@@ -2,7 +2,10 @@ use std::path::Path;
 
 use runx_parser::GraphStep;
 
-use super::super::graph::{LoadedStepSkill, resolve_inputs, resolve_inputs_with_index};
+use super::super::graph::{
+    LoadedStepSkill, materialize_step_invocation_inputs,
+    materialize_step_invocation_inputs_with_index,
+};
 use super::super::graph_index::PriorRunIndex;
 use super::steps::{StepRunRequest, run_step_with_inputs};
 use super::{Runtime, StepRun};
@@ -27,7 +30,7 @@ pub(super) fn run_step_with_loaded_skill<A>(
 where
     A: SkillAdapter,
 {
-    let inputs = resolve_inputs(request.step, prior_runs)?;
+    let inputs = materialize_step_invocation_inputs(request.step, prior_runs)?;
     run_step_with_loaded_skill_inputs(request, inputs)
 }
 
@@ -38,7 +41,7 @@ pub(super) fn run_step_with_loaded_skill_index<A>(
 where
     A: SkillAdapter,
 {
-    let inputs = resolve_inputs_with_index(request.step, prior_run_index)?;
+    let inputs = materialize_step_invocation_inputs_with_index(request.step, prior_run_index)?;
     run_step_with_loaded_skill_inputs(request, inputs)
 }
 

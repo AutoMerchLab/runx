@@ -5,11 +5,12 @@ use super::{
     sandbox::admit_sandbox,
 };
 
-const DEFAULT_ALLOWED_SOURCE_TYPES: [&str; 8] = [
+const DEFAULT_ALLOWED_SOURCE_TYPES: [&str; 9] = [
     "agent",
     "agent-task",
     "approval",
     "cli-tool",
+    "javascript",
     "mcp",
     "a2a",
     "catalog",
@@ -79,7 +80,10 @@ fn collect_local_source_reasons(
     options: &LocalAdmissionOptions,
     reasons: &mut Vec<String>,
 ) {
-    if !matches!(skill.source.source_type.as_str(), "cli-tool" | "mcp") {
+    if !matches!(
+        skill.source.source_type.as_str(),
+        "cli-tool" | "javascript" | "mcp"
+    ) {
         return;
     }
 
@@ -99,11 +103,12 @@ fn collect_local_source_reasons(
         }
     }
 
-    if options
-        .execution_policy
-        .as_ref()
-        .and_then(|policy| policy.strict_cli_tool_inline_code)
-        .unwrap_or(false)
+    if skill.source.source_type == "cli-tool"
+        && options
+            .execution_policy
+            .as_ref()
+            .and_then(|policy| policy.strict_cli_tool_inline_code)
+            .unwrap_or(false)
     {
         collect_inline_code_reason(skill, reasons);
     }
@@ -157,4 +162,61 @@ fn allowed_source_types(options: &LocalAdmissionOptions) -> Vec<&str> {
         || DEFAULT_ALLOWED_SOURCE_TYPES.to_vec(),
         |source_types| source_types.iter().map(String::as_str).collect(),
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::policy::{
+        LocalAdmissionSource, LocalExecutionPolicy, SandboxDeclaration, SandboxProfile,
+    };
+
+    #[test]
+    fn javascript_is_a_default_local_source_and_uses_sandbox_admission() {
+        let allowed = admit_local_skill(
+            &javascript_skill(Some(SandboxDeclaration {
+                profile: SandboxProfile::Readonly,
+                cwd_policy: None,
+                env_allowlist: None,
+                network: Some(false),
+                writable_paths: None,
+                require_enforcement: Some(false),
+            })),
+            &LocalAdmissionOptions {
+                execution_policy: Some(LocalExecutionPolicy {
+                    strict_cli_tool_inline_code: Some(true),
+                }),
+                ..LocalAdmissionOptions::default()
+            },
+        );
+        assert!(matches!(allowed, AdmissionDecision::Allow { .. }));
+
+        let denied = admit_local_skill(
+            &javascript_skill(Some(SandboxDeclaration {
+                profile: SandboxProfile::Readonly,
+                cwd_policy: None,
+                env_allowlist: None,
+                network: Some(true),
+                writable_paths: None,
+                require_enforcement: Some(false),
+            })),
+            &LocalAdmissionOptions::default(),
+        );
+        assert!(matches!(denied, AdmissionDecision::Deny { .. }));
+    }
+
+    fn javascript_skill(sandbox: Option<SandboxDeclaration>) -> LocalAdmissionSkill {
+        LocalAdmissionSkill {
+            name: "domain-module".to_owned(),
+            source: LocalAdmissionSource {
+                source_type: "javascript".to_owned(),
+                command: None,
+                args: None,
+                timeout_seconds: Some(30),
+                sandbox,
+            },
+            auth: None,
+            runtime: None,
+        }
+    }
 }

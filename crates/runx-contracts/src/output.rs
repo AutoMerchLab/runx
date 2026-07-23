@@ -242,13 +242,13 @@ fn validate_output_field(
         OutputField::Type(field_type) => (Some(field_type), None),
         OutputField::Spec(spec) => (spec.field_type.as_ref(), spec.enum_values.as_ref()),
     };
-    if let Some(field_type) = field_type {
-        if !value_matches_type(value, field_type) {
-            return Err(OutputValidationError::new(
-                format!("$.{name}"),
-                format!("expected {}", output_type_name(field_type)),
-            ));
-        }
+    if let Some(field_type) = field_type
+        && !value_matches_type(value, field_type)
+    {
+        return Err(OutputValidationError::new(
+            format!("$.{name}"),
+            format!("expected {}", output_type_name(field_type)),
+        ));
     }
     if let Some(enum_values) = enum_values {
         let Some(actual) = value.as_str() else {

@@ -3,10 +3,10 @@ use runx_contracts::{JsonObject, JsonValue};
 use crate::ValidationError;
 
 use super::{
-    FIELDS, SkillGovernance, SkillRunnerDefinition, field_value, first_value, nested_value,
-    validate_allowed_tools, validate_artifact_contract, validate_execution_semantics,
-    validate_idempotency, validate_inputs, validate_mutating, validate_retry, validate_source,
-    validate_source_fields,
+    FIELDS, SkillGovernance, SkillRunnerDefinition, field_value, first_value,
+    flattened_source_record, nested_value, validate_allowed_tools, validate_artifact_contract,
+    validate_execution_semantics, validate_idempotency, validate_inputs, validate_mutating,
+    validate_retry, validate_source, validate_source_fields,
 };
 
 const RUNNER_FIELDS: &[&str] = &[
@@ -19,7 +19,6 @@ const RUNNER_FIELDS: &[&str] = &[
     "arguments",
     "artifacts",
     "auth",
-    "catalog_ref",
     "command",
     "credential",
     "context",
@@ -28,8 +27,7 @@ const RUNNER_FIELDS: &[&str] = &[
     "default",
     "execution",
     "external_adapter",
-    "external_adapter_manifest",
-    "external_adapter_manifest_path",
+    "export",
     "graph",
     "headers",
     "hook",
@@ -37,23 +35,22 @@ const RUNNER_FIELDS: &[&str] = &[
     "idempotency",
     "input_mode",
     "inputs",
-    "instructions",
-    "invocation_id",
     "method",
+    "module",
     "mutating",
     "outputs",
+    "pages",
     "policy",
     "retry",
     "risk",
-    "run_id",
     "runx",
     "runtime",
     "sandbox",
     "server",
-    "skill_ref",
     "scopes",
     "source",
     "task",
+    "thread_outbox_provider",
     "timeout_seconds",
     "tool",
     "type",
@@ -65,6 +62,11 @@ pub(crate) fn validate_runner_definition(
     name: &str,
     runner: JsonObject,
 ) -> Result<SkillRunnerDefinition, ValidationError> {
+    if runner.contains_key("instructions") {
+        return Err(FIELDS.validation_error(format!(
+            "runners.{name}.instructions is not supported; put agent operating instructions in the owning SKILL.md"
+        )));
+    }
     FIELDS.reject_unknown_fields(&runner, &format!("runners.{name}"), RUNNER_FIELDS)?;
     let runx = FIELDS.optional_object(runner.get("runx"), &format!("runners.{name}.runx"))?;
     crate::runner::resolve_post_run_reflect_policy(runx.as_ref(), &format!("runners.{name}.runx"))?;
@@ -74,21 +76,26 @@ pub(crate) fn validate_runner_definition(
                 validate_source_fields(&source, &format!("runners.{name}.source"))?;
                 source
             }
-            None => runner.clone(),
+            None => flattened_source_record(&runner),
         };
     let risk = runner.get("risk").cloned();
     let governance = validate_runner_governance(name, &runner, runx.as_ref(), risk.as_ref())?;
+    let source = validate_source(&source_record, runx.as_ref())?;
+    validate_runner_lane_constraints(name, &runner, &source, governance.artifacts.as_ref())?;
     Ok(SkillRunnerDefinition {
         name: name.to_owned(),
         default: FIELDS
             .optional_bool(runner.get("default"), &format!("runners.{name}.default"))?
             .unwrap_or(false),
-        source: validate_source(&source_record, runx.as_ref())?,
+        source,
         inputs: validate_inputs(
             FIELDS
                 .optional_object(runner.get("inputs"), &format!("runners.{name}.inputs"))?
                 .unwrap_or_default(),
         )?,
+        scopes: FIELDS
+            .optional_string_array(runner.get("scopes"), &format!("runners.{name}.scopes"))?
+            .unwrap_or_default(),
         credential: FIELDS.optional_non_empty_string(
             runner.get("credential"),
             &format!("runners.{name}.credential"),
@@ -105,6 +112,30 @@ pub(crate) fn validate_runner_definition(
         runx,
         raw: runner,
     })
+}
+
+fn validate_runner_lane_constraints(
+    name: &str,
+    runner: &JsonObject,
+    source: &super::SkillSource,
+    artifacts: Option<&super::SkillArtifactContract>,
+) -> Result<(), ValidationError> {
+    if source.source_type == super::SourceKind::JavaScript && runner.contains_key("credential") {
+        return Err(FIELDS.validation_error(format!(
+            "runners.{name}.credential is not valid for a pure javascript source; route credentials through a native provider tool"
+        )));
+    }
+    if source.source_type == super::SourceKind::Graph && artifacts.is_some() {
+        return Err(FIELDS.validation_error(format!(
+            "runners.{name}.artifacts is ambiguous for a graph source; declare the packet on the graph's terminal output-producing step"
+        )));
+    }
+    if source.source_type == super::SourceKind::Graph && source.outputs.is_some() {
+        return Err(FIELDS.validation_error(format!(
+            "runners.{name}.outputs is ambiguous for a graph source; declare outputs on the graph's terminal output-producing step"
+        )));
+    }
+    Ok(())
 }
 
 fn validate_runner_governance(

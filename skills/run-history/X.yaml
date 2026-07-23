@@ -1,5 +1,5 @@
 skill: run-history
-version: "0.2.1"
+version: "0.2.2"
 
 catalog:
   kind: skill
@@ -92,15 +92,7 @@ harness:
 runners:
   report:
     default: true
-    type: cli-tool
-    command: node
-    args:
-      - run.mjs
-    outputs:
-      history_report: object
-    artifacts:
-      wrap_as: history_report_packet
-      packet: runx.history_report.v1
+    type: graph
     inputs:
       objective:
         type: string
@@ -115,6 +107,10 @@ runners:
         type: string
         required: false
         description: Relative lookback such as 7d or 30d, or an RFC 3339 lower bound.
+      as_of:
+        type: string
+        required: false
+        description: Optional RFC3339 anchor for a reproducible relative lookback.
       limit:
         type: number
         required: false
@@ -131,4 +127,87 @@ runners:
       catalog_items:
         type: json
         required: false
-        description: Explicit catalog rows for replay; live runs use native runx list skills.
+        description: Explicit catalog rows paired with history_receipts for deterministic replay.
+    graph:
+      name: run-history
+      steps:
+        - id: prepare
+          label: normalize the bounded report request
+          inputs:
+            objective: $input.objective
+            scope: $input.scope
+            period: $input.period
+            as_of: $input.as_of
+            limit: $input.limit
+            history_receipts: $input.history_receipts
+            catalog_items: $input.catalog_items
+          run:
+            type: javascript
+            module: run-history.mjs
+            export: prepareHistory
+            outputs:
+              history_context: object
+          artifacts:
+            named_emits:
+              history_context: history_context
+        - id: history
+          label: query native receipt history
+          when:
+            field: prepare.history_context.data.path
+            equals: live
+          tool: receipt.query
+          scopes:
+            - receipt.read
+          context:
+            skill: prepare.history_context.data.skill_filter
+            period: prepare.history_context.data.period
+            as_of: prepare.history_context.data.as_of
+            limit: prepare.history_context.data.limit
+        - id: catalog
+          label: inspect native skill coverage
+          when:
+            field: prepare.history_context.data.path
+            equals: live
+          tool: runx.skill.inspect
+          scopes:
+            - fs.read
+          inputs:
+            repo_root: .
+        - id: finalize-live
+          label: calculate the live history report
+          when:
+            field: prepare.history_context.data.path
+            equals: live
+          run:
+            type: javascript
+            module: run-history.mjs
+            export: finalizeHistory
+            outputs:
+              history_report: object
+          context:
+            history_context: prepare.history_context.data
+            receipt_query: history.receipt_query.data
+            authoring_context: catalog.authoring_context.data
+          artifacts:
+            wrap_as: history_report_packet
+            packet: runx.history_report.v1
+        - id: finalize-replay
+          label: calculate the supplied replay report
+          when:
+            field: prepare.history_context.data.path
+            equals: replay
+          inputs:
+            history_receipts: $input.history_receipts
+            pending_runs: $input.pending_runs
+            catalog_items: $input.catalog_items
+          run:
+            type: javascript
+            module: run-history.mjs
+            export: finalizeHistory
+            outputs:
+              history_report: object
+          context:
+            history_context: prepare.history_context.data
+          artifacts:
+            wrap_as: history_report_packet
+            packet: runx.history_report.v1

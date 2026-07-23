@@ -34,3 +34,13 @@ receipt evidence, and non-goals for later governed execution.
 - `skill_lab_handoffs`: executable request packets naming `skill-lab`, runner
   `improve`, target directory, objective, primary receipt, evidence summary,
   and supporting receipt ids.
+
+## Agent task contracts
+
+### `reflect-digest`
+
+Review each grouped reflection independently. Return at most one proposal per skill_ref, and
+return an empty proposals array when no group supports a bounded fix. Every proposal must
+contain skill_ref, repo-relative target_dir, objective, evidence_summary,
+supporting_receipt_ids, and boundaries. Receipt ids must come from that group. Do not diagnose a
+single run again, author code, draft a pull request, publish, or mutate the target package.

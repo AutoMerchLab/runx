@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because harness replay owns fixture loading,
+// Module rationale: harness replay owns fixture loading,
 // adapter invocation, receipt assertion, and graph replay sealing as one
 // deterministic proof path until MCP replay creates a separate module boundary.
 
@@ -18,13 +18,10 @@ use runx_contracts::{
     ResolutionResponse, ResolutionResponseActor,
 };
 use runx_core::state_machine::StepAdmissionWitness;
-use runx_parser::{
-    SkillRunnerDefinition, SkillRunnerManifest, parse_runner_manifest_yaml,
-    validate_runner_manifest,
-};
+use runx_parser::{SkillRunnerDefinition, SkillRunnerManifest};
 use thiserror::Error;
 
-use super::super::graph::{load_skill, materialize_graph_inputs};
+use super::super::graph::materialize_graph_parameter_inputs;
 use super::assertions::{assert_expectations, status_from_disposition};
 use super::fixtures::{
     HarnessExpectedStatus, HarnessFixture, HarnessFixtureError, HarnessFixtureKind,
@@ -36,6 +33,7 @@ use crate::agent_invocation::{AgentActInvocationSourceType, agent_act_invocation
 use crate::effects::RuntimeEffectRegistry;
 use crate::execution::runner::{GraphRun, Runtime, RuntimeOptions, StepRun};
 use crate::host::Host;
+use crate::output_contract::{attach_verified_metadata, verified_runner_metadata_with_artifacts};
 use crate::receipts::{
     GraphClosure, StepReceiptWithDisposition, graph_receipt_with_disposition_and_policy,
     step_receipt_with_disposition_and_policy,
@@ -80,6 +78,20 @@ pub enum HarnessReplayError {
     UnsupportedFixtureMode { mode: String, field_path: String },
     #[error("invalid harness replay metadata at {field}: {message}")]
     InvalidReplayMetadata { field: String, message: String },
+    #[error("harness setup receipt path escaped its skill package: {path}")]
+    SetupReceiptPathEscape { path: PathBuf },
+    #[error("failed to read harness setup receipt {path}: {source}")]
+    SetupReceiptRead {
+        path: PathBuf,
+        source: std::io::Error,
+    },
+    #[error("invalid harness setup receipt {path}: {source}")]
+    SetupReceiptInvalid {
+        path: PathBuf,
+        source: serde_json::Error,
+    },
+    #[error(transparent)]
+    ReceiptStore(#[from] crate::receipts::store::ReceiptStoreError),
     #[error(
         "native cli-tool harness replay is unavailable because runx-runtime was built without the cli-tool feature"
     )]
@@ -189,6 +201,7 @@ where
     let fixture_path = fixture_path.as_ref();
     let fixture = load_harness_fixture(fixture_path)?;
     let target_path = resolve_target_path(fixture_path, &fixture.target)?;
+    seed_harness_receipts(&fixture, &target_path, &options)?;
     let receipt_signature = options.receipt_signature.clone();
     let output = match fixture.kind {
         HarnessFixtureKind::Skill | HarnessFixtureKind::A2a | HarnessFixtureKind::Agent => {
@@ -209,6 +222,67 @@ where
     assert_expectations(&output, receipt_signature.signature_policy())
         .map_err(|error| expectation_error_with_output(error, &output))?;
     Ok(output)
+}
+
+fn seed_harness_receipts(
+    fixture: &HarnessFixture,
+    target_path: &Path,
+    options: &RuntimeOptions,
+) -> Result<(), HarnessReplayError> {
+    if fixture.setup.receipts.is_empty() {
+        return Ok(());
+    }
+
+    let loaded = crate::load_validated_skill_package(target_path)?;
+    let package_root = fs::canonicalize(&loaded.package_root).map_err(|source| {
+        HarnessReplayError::SetupReceiptRead {
+            path: loaded.package_root.clone(),
+            source,
+        }
+    })?;
+    let mut receipts = Vec::with_capacity(fixture.setup.receipts.len());
+    for relative in &fixture.setup.receipts {
+        let candidate = package_root.join(relative);
+        let path = fs::canonicalize(&candidate).map_err(|source| {
+            HarnessReplayError::SetupReceiptRead {
+                path: candidate.clone(),
+                source,
+            }
+        })?;
+        if !path.starts_with(&package_root) {
+            return Err(HarnessReplayError::SetupReceiptPathEscape { path });
+        }
+        let contents = fs::read(&path).map_err(|source| HarnessReplayError::SetupReceiptRead {
+            path: path.clone(),
+            source,
+        })?;
+        receipts.push(
+            serde_json::from_slice::<Receipt>(&contents).map_err(|source| {
+                HarnessReplayError::SetupReceiptInvalid {
+                    path: path.clone(),
+                    source,
+                }
+            })?,
+        );
+    }
+
+    let mut env = options.env.clone();
+    env.extend(fixture.env.clone());
+    let verifier = crate::services::production_receipt_verifier(&env)?;
+    let policy = verifier.as_ref().map_or_else(
+        crate::receipts::RuntimeReceiptSignaturePolicy::local_development,
+        |verifier| crate::receipts::RuntimeReceiptSignaturePolicy::production(verifier),
+    );
+    let resolved =
+        crate::receipts::paths::resolve_receipt_path(crate::receipts::paths::ReceiptPathInputs {
+            explicit_dir: None,
+            runtime_config: None,
+            env: &env,
+            cwd: target_path,
+        });
+    crate::receipts::store::LocalReceiptStore::new(resolved.path)
+        .write_receipts_with_policy(&receipts, policy)?;
+    Ok(())
 }
 
 fn expectation_error_with_output(
@@ -296,7 +370,7 @@ fn is_fixture_replay_graph(fixture: &HarnessFixture) -> bool {
     string_metadata(fixture, "graph_shape") == Some("fixture_replay")
 }
 
-// rust-style-allow: long-function because graph replay receipt assembly keeps
+// Function rationale: graph replay receipt assembly keeps
 // step runs, closure disposition, and parent receipt sealing in one invariant.
 fn run_graph_replay_fixture(
     fixture: &HarnessFixture,
@@ -452,7 +526,7 @@ where
         return run_graph_skill_fixture(fixture, skill_name, runner, invocation, adapter, options);
     }
     let (skill_output, disposition, reason_code, summary) =
-        run_skill_invocation(fixture, invocation, adapter)?;
+        run_skill_invocation(fixture, &runner, invocation, adapter)?;
     let receipt = step_receipt_with_disposition_and_policy(
         StepReceiptWithDisposition {
             graph_name: &fixture.name,
@@ -476,13 +550,13 @@ where
     })
 }
 
-// rust-style-allow: long-function because the fixture graph turn keeps materialize,
+// Function rationale: the fixture graph turn keeps materialize,
 // run, and act-receipt minting in one path so it seals under the same instant and
 // signature policy as the production and inline fronts.
 fn run_graph_skill_fixture<A>(
     fixture: &HarnessFixture,
     skill_name: String,
-    runner: Option<SkillRunnerDefinition>,
+    runner: SkillRunnerDefinition,
     invocation: SkillInvocation,
     adapter: A,
     mut options: RuntimeOptions,
@@ -497,7 +571,7 @@ where
         .ok_or_else(|| RuntimeError::UnsupportedSource {
             source_kind: "graph runner without source.graph".to_owned(),
         })?;
-    let graph = materialize_graph_inputs(graph, &invocation.inputs);
+    let graph = materialize_graph_parameter_inputs(graph, &invocation.inputs);
     overlay_harness_env(&mut options, &invocation.env);
     let run_id = options
         .env
@@ -517,17 +591,14 @@ where
     // production/inline paths emit identical receipts. The graph trace receipt and
     // per-step receipts remain as the execution trace. Borrow `graph_run` before
     // `replay_output_from_graph` consumes it by value.
-    let minted = match runner.as_ref() {
-        Some(runner) => crate::execution::skill_front::graph_domain_act_receipt(
-            runner,
-            &invocation.inputs,
-            &graph_run,
-            &run_id,
-            &created_at,
-            &signature_config,
-        )?,
-        None => None,
-    };
+    let minted = crate::execution::skill_front::graph_domain_act_receipt(
+        &runner,
+        &invocation.inputs,
+        &graph_run,
+        &run_id,
+        &created_at,
+        &signature_config,
+    )?;
     let mut output = replay_output_from_graph(fixture, graph_run);
     if let Some(domain_receipt) = minted {
         output.receipt = domain_receipt;
@@ -554,25 +625,26 @@ fn skill_fixture_invocation(
     fixture: &HarnessFixture,
     skill_dir: PathBuf,
     options: &RuntimeOptions,
-) -> Result<(String, Option<SkillRunnerDefinition>, SkillInvocation), HarnessReplayError> {
-    let skill = load_skill(&skill_dir)?;
-    let runner = load_harness_runner(&skill_dir, fixture.runner.as_deref())?;
+) -> Result<(String, SkillRunnerDefinition, SkillInvocation), HarnessReplayError> {
+    let loaded = crate::load_validated_skill_package(&skill_dir)?;
+    let manifest = loaded
+        .manifest()
+        .ok_or_else(|| RuntimeError::UnsupportedRunnerSelection {
+            runner: fixture
+                .runner
+                .clone()
+                .unwrap_or_else(|| "default".to_owned()),
+        })?;
+    let runner = select_harness_runner(manifest, fixture.runner.as_deref())?.clone();
     let mut env = options.env.clone();
     env.extend(fixture.env.clone());
     crate::services::merge_inferred_tool_roots(&mut env, &skill_dir);
-    let skill_name = if fixture.runner.is_some() {
-        runner
-            .as_ref()
-            .map_or_else(|| skill.name.clone(), |runner| runner.name.clone())
-    } else {
-        skill.name.clone()
-    };
-    let source = runner
-        .as_ref()
-        .map_or_else(|| skill.source.clone(), |runner| runner.source.clone());
+    let skill_name = runner.name.clone();
     let invocation = SkillInvocation {
         skill_name: skill_name.clone(),
-        source,
+        source: runner.source.clone(),
+        artifacts: runner.artifacts.clone(),
+        allowed_tools: runner.allowed_tools.clone(),
         inputs: fixture.inputs.clone(),
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
@@ -585,6 +657,7 @@ fn skill_fixture_invocation(
 
 fn run_skill_invocation<A>(
     fixture: &HarnessFixture,
+    runner: &SkillRunnerDefinition,
     invocation: SkillInvocation,
     adapter: A,
 ) -> Result<(SkillOutput, ClosureDisposition, String, String), HarnessReplayError>
@@ -592,11 +665,27 @@ where
     A: SkillAdapter,
 {
     let skill_name = invocation.skill_name.clone();
+    let raw_output = invocation.source.outputs.clone();
+    let skill_directory = invocation.skill_directory.clone();
+    let invocation_env = invocation.env.clone();
     let (skill_output, disposition, reason_code, summary) =
         match invocation.source.source_type.as_str() {
             "agent" | "agent-task" => replay_agent_skill_fixture(fixture, &invocation)?,
             _ => {
-                let output = adapter.invoke(invocation)?;
+                let mut output = adapter.invoke(invocation)?;
+                if output.succeeded() {
+                    let payload = serde_json::from_str::<JsonValue>(&output.stdout)
+                        .unwrap_or_else(|_| JsonValue::String(output.stdout.clone()));
+                    let metadata = verified_runner_metadata_with_artifacts(
+                        &skill_name,
+                        &payload,
+                        raw_output.as_ref(),
+                        runner.artifacts.as_ref(),
+                        &skill_directory,
+                        &invocation_env,
+                    )?;
+                    attach_verified_metadata(&mut output, metadata)?;
+                }
                 let disposition = if output.succeeded() {
                     ClosureDisposition::Closed
                 } else {
@@ -608,30 +697,6 @@ where
             }
         };
     Ok((skill_output, disposition, reason_code, summary))
-}
-
-fn load_harness_runner(
-    skill_dir: &Path,
-    requested_runner: Option<&str>,
-) -> Result<Option<SkillRunnerDefinition>, HarnessReplayError> {
-    let manifest_path = skill_dir.join("X.yaml");
-    if !manifest_path.exists() {
-        if let Some(runner) = requested_runner {
-            return Err(RuntimeError::UnsupportedRunnerSelection {
-                runner: runner.to_owned(),
-            }
-            .into());
-        }
-        return Ok(None);
-    }
-    let source = fs::read_to_string(&manifest_path).map_err(|source| {
-        RuntimeError::io(format!("reading {}", manifest_path.display()), source)
-    })?;
-    let parsed = parse_runner_manifest_yaml(&source).map_err(RuntimeError::from)?;
-    let manifest = validate_runner_manifest(parsed).map_err(RuntimeError::from)?;
-    select_harness_runner(&manifest, requested_runner)
-        .cloned()
-        .map(Some)
 }
 
 fn select_harness_runner<'a>(

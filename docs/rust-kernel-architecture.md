@@ -120,16 +120,16 @@ runx-runtime      impure: filesystem, subprocess, network, built-in adapter
                   execution, external execution-adapter supervision, MCP,
                   sandbox admission/metadata, and future OS enforcement
                     default features: none
-                    opt-in features: cli-tool, mcp, mcp-http-server, a2a,
-                                     agent, catalog, external-adapter, http,
-                                     thread-outbox-provider
+                    opt-in features: async-http, cli-tool, mcp,
+                                     mcp-http-server, a2a, agent, catalog,
+                                     external-adapter, thread-outbox-provider
                     deps: runx-contracts, runx-core, runx-parser,
                           runx-receipts; async/network dependencies require
                           explicit adapter-tier exception specs
 
 runx-cli          binary: argument parsing, presentation, exit codes
-                    includes: skill authoring subcommands until a separate
-                              authoring library use case exists
+                    includes: thin `runx new` entry into the runtime-owned
+                              Skill Lab authoring service
                     deps: runx-runtime (long-term)
                     current: native local command surface for advertised Rust
                              commands; npm package is selector/client wrapper
@@ -194,16 +194,17 @@ and consumed JSON contract types before SDK Phase 2. `runx-sdk` may depend on
 `runx-contracts` in CLI-backed v0, but it must not duplicate contract-owned
 types or hash helpers.
 
-There is no `runx-authoring` crate in the initial Rust shape. Skill authoring
-helpers live in `runx-cli` subcommands or `runx-sdk` modules until there is a
-clear library caller who needs authoring without either surface. The TypeScript
-package split is useful history, not a forcing function for Cargo crates.
+There is no `runx-authoring` crate. Skill authoring has one service in
+`runx-runtime`, composed by `skill-lab`; `runx new` is a thin CLI entry into
+that lane. Neither `runx-sdk` nor a TypeScript package owns a second authoring
+implementation. The old TypeScript package split is useful history, not a
+forcing function for Cargo crates.
 
 There is also no `runx-adapters` crate in the initial Rust shape. Built-in
 adapter execution and external execution-adapter protocol supervision live under
 `runx-runtime` feature flags
-(`cli-tool`, `mcp`, `mcp-http-server`, `a2a`, `agent`, `catalog`,
-`external-adapter`, `http`, `thread-outbox-provider`) until a family has an
+(`async-http`, `cli-tool`, `mcp`, `mcp-http-server`, `a2a`, `agent`,
+`catalog`, `external-adapter`, `thread-outbox-provider`) until a family has an
 independent publishing story;
 `a2a` is contract-defined but not enabled in `runx-cli`. External execution adapter implementations live
 outside the trusted core and talk to runx over language-neutral protocols. The
@@ -242,7 +243,7 @@ of side effects. Current modules map to these implementation buckets:
   but checkable attenuation belongs in typed policy primitives.
 - CLI presentation: `runx-cli` owns argument parsing, output, and exit codes.
   It may call runtime services, but should not recreate runtime semantics.
-- Dev and testing: `dev`, `doctor`, `scaffold`, `tool_catalogs`, harness
+- Dev and testing: `dev`, `doctor`, project initialization, `tool_catalogs`, harness
   fixtures, adapter oracles, throughput scripts, and stress gates. These are
   product surfaces for authors and maintainers, not hidden fallback runtimes.
 
@@ -268,6 +269,31 @@ Current runtime lift shape:
 - Stress gates are explicit scripts (`stress:runtime:mcp`,
   `stress:runtime:cli-tool`, `stress:runtime:external-adapter`,
   `stress:runtime:fanout`). They are not hidden inside the default fast loop.
+
+### Volume-independent execution boundary
+
+Payload size does not create a new execution lane or grant more authority. The
+runtime uses three transports with different ownership:
+
+- control input is one typed JSON object; the CLI may read that object from a
+  contained `--inputs` file or stdin up to 64 MiB, but the selected runner and
+  worker retain their normal type and resource limits;
+- immutable local content is admitted once by the runtime as a digest-bound
+  artifact of at most 512 MiB and consumed through exact pages of at most 1
+  MiB; a deterministic module receives records and continuation metadata, not
+  a workspace path or ambient filesystem access;
+- durable histories stay in the data plane and move through bounded
+  `after_version`/keyset cursors or projections, never through an accumulating
+  graph-context array.
+
+`WorkspaceFile` is the single runtime owner for relative-path validation,
+canonical containment, regular-file checks, bounded reads, streaming digest,
+and source-copy detection. `fs.read`, `fs.read_bundle`, structured CLI input,
+and local-artifact admission compose that owner rather than maintaining
+parallel path resolvers or hashing loops. The artifact service owns immutable
+snapshot identity and page framing above it. Package code owns only an
+irreducible record transform and cannot select a larger profile, widen a page,
+or reopen the source path.
 
 ## 4. `runx-core` public API stance
 
@@ -400,7 +426,8 @@ is revisited as a follow-up spec; it does not constrain this plan.
 
 - Edition: 2024.
 - Resolver: 3.
-- MSRV: 1.85.0 (the first Rust release with edition 2024 support).
+- MSRV: 1.88.0 (required by the deterministic JavaScript engine selected for
+  the authority-free module worker).
 - MSRV pinned in `crates/Cargo.toml` workspace `[workspace.package]` block and
   enforced in CI via `rust-toolchain.toml` or an explicit toolchain in the
   workflow.
@@ -582,13 +609,13 @@ is explicit:
 - `runx-core` was reserved at `0.0.1` and now contains the first real Rust
   kernel surfaces: state-machine parity and policy parity. runx-core policy parity is not runtime-authoritative; it remains conformance evidence only
   until a cutover spec replaces TypeScript consumers.
-- `runx-parser` was reserved at `0.0.1` and now contains parser parity for the
-  public TypeScript parser surfaces listed in its README. It remains
-  conformance evidence until a TypeScript parser sunset spec replaces current
-  consumers. It is marked `publish = false`, depends on the local
-  `runx-contracts` and `runx-core` crates for shared boundary types, and its
-  package check verifies those three crates together so Cargo does not resolve
-  stale placeholder reservations from crates.io.
+- `runx-parser` was reserved at `0.0.1` and is now the canonical pure parser for
+  package, graph, runner, tool, and harness contracts. Runtime, CLI, scripts,
+  and tests consume its validated output rather than maintaining a TypeScript
+  parser. It is marked `publish = false`, depends on the local `runx-contracts`
+  and `runx-core` crates for shared boundary types, and its package check
+  verifies those three crates together so Cargo does not resolve stale
+  placeholder reservations from crates.io.
 - Placeholder README and crate docs must clearly say they are placeholders and
   do not provide native feature parity.
 - Placeholder publishing is governed by `rust-placeholder-crates-publish`.
@@ -693,8 +720,9 @@ Async and blocking rules:
   protocol crate only after a spec records the security rationale and updates
   `crates/deny.toml`; until then the workspace ban is deliberate.
 - `runx-runtime` defaults to no adapter features. Built-in protocol host
-  families are opt-in: `cli-tool`, `mcp`, `mcp-http-server`, `a2a`, `agent`,
-  `catalog`, `external-adapter`, `http`, and `thread-outbox-provider`; `a2a` is
+  families are opt-in: `async-http`, `cli-tool`, `mcp`, `mcp-http-server`,
+  `a2a`, `agent`, `catalog`, `external-adapter`, and
+  `thread-outbox-provider`; `a2a` is
   contract-defined but not enabled in `runx-cli`.
 - `runx-sdk` v0 is explicitly a blocking CLI-backed client and depends on
   `runx-contracts`, not `runx-core` or `runx-runtime`. A future async SDK path
@@ -718,10 +746,11 @@ Enforcement:
 
 - `cargo fmt --all --check` is required.
 - `cargo clippy -p runx-core --all-targets -- -D warnings` is required.
-- `scripts/check-rust-core-style.mjs` checks repository-specific shape rules
-  that Clippy does not know: no public `serde_json::Value`, no `HashMap` in
-  `runx-core/src`, no wildcard re-exports, no dynamic error erasure, no macro
-  definitions, and line-count warnings for oversized files/functions.
+- Rust semantic rules are compiler-owned: workspace lints and Clippy reject
+  panic/debug shortcuts, wildcard imports, unsafe code, and warning drift.
+  Contract and parser fixture coverage is owned by the native generators and
+  Rust tests that execute those contracts; JavaScript does not parse Rust
+  source to infer semantics or coverage.
 - `scripts/check-rust-crate-graph.mjs` checks crate membership, placeholder
   reservation versioning, and dependency direction. Dependency relaxation is a
   spec-level change.

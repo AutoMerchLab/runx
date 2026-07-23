@@ -31,6 +31,8 @@ use runx_runtime::{
 use serde_json::{Value, json};
 use tempfile::TempDir;
 
+use crate::support::write_cli_tool_skill;
+
 const PAID_ECHO_IDEMPOTENCY_KEY: &str = "payment:paid-echo-001";
 const PAID_ECHO_RAIL_SESSION_MATERIAL_REF: &str = "rail-session-material:mock:paid-echo-001";
 const X402_APPROVAL_IDEMPOTENCY_KEY: &str = "payment:x402-pay-approval-001";
@@ -300,7 +302,7 @@ fn payment_spend_success_without_rail_proof_is_denied_before_graph_success()
 }
 
 #[test]
-fn payment_spend_authority_is_detected_from_reserved_authority_not_scope_string()
+fn effect_family_bypass_is_impossible_when_resolved_target_owns_payment_effect()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = GraphFixture::with_fulfill_options(FulfillAdmission::Valid, FulfillScope::None)?;
     let runtime = Runtime::new(
@@ -321,7 +323,7 @@ fn payment_spend_authority_is_detected_from_reserved_authority_not_scope_string(
             assert_eq!(step_id, "fulfill");
             assert!(
                 reason.contains("rail proof"),
-                "authority denial should still happen without a payment:spend scope string"
+                "resolved payment target should enforce authority without an author-supplied family or scope string"
             );
         }
         Ok(run) => {
@@ -383,8 +385,7 @@ fn payment_spend_amount_widening_blocks_before_adapter_invocation()
 #[test]
 fn non_payment_step_without_rail_admission_inputs_invokes_adapter()
 -> Result<(), Box<dyn std::error::Error>> {
-    let fixture =
-        GraphFixture::with_fulfill_options(FulfillAdmission::MissingAll, FulfillScope::None)?;
+    let fixture = GraphFixture::non_payment()?;
     let adapter = RecordingAdapter::default();
     let invocations = adapter.invocations();
     let runtime = Runtime::new(adapter, runtime_options_with_effects(Vec::new()));
@@ -395,7 +396,7 @@ fn non_payment_step_without_rail_admission_inputs_invokes_adapter()
     assert_eq!(run.state.status, GraphStatus::Succeeded);
     assert_eq!(
         invocations.borrow().as_slice(),
-        &["pay-fulfill-rail".to_owned()],
+        &["non-payment-step".to_owned()],
         "non-payment steps should not require payment rail admission inputs"
     );
     Ok(())
@@ -1060,9 +1061,14 @@ fn runtime_options_with_effects(
 }
 
 fn runtime_effects(evidence: Vec<PaymentSupervisorSettlementEvidence>) -> RuntimeEffectRegistry {
-    RuntimeEffectRegistry::with_effect(PaymentRuntimeEffect::new(
+    let registry = RuntimeEffectRegistry::with_effect(PaymentRuntimeEffect::new(
         ExpectedPaymentFinalitySupervisor::new(evidence),
-    ))
+    ));
+    assert!(
+        registry.is_ok(),
+        "payment effect fixture metadata must be valid: {registry:?}"
+    );
+    registry.unwrap_or_default()
 }
 
 #[derive(Clone, Debug)]
@@ -1689,21 +1695,29 @@ impl GraphFixture {
         admission: FulfillAdmission,
         scope: FulfillScope,
     ) -> Result<Self, Box<dyn std::error::Error>> {
+        Self::with_target_name(admission, scope, "pay-fulfill-rail")
+    }
+
+    fn non_payment() -> Result<Self, Box<dyn std::error::Error>> {
+        Self::with_target_name(
+            FulfillAdmission::MissingAll,
+            FulfillScope::None,
+            "non-payment-step",
+        )
+    }
+
+    fn with_target_name(
+        admission: FulfillAdmission,
+        scope: FulfillScope,
+        skill_name: &str,
+    ) -> Result<Self, Box<dyn std::error::Error>> {
         let temp = tempfile::tempdir()?;
         let fulfill_dir = temp.path().join("fulfill");
-        fs::create_dir(&fulfill_dir)?;
-        fs::write(
-            fulfill_dir.join("SKILL.md"),
-            r#"---
-name: pay-fulfill-rail
-description: Fulfill approved payment.
-source:
-  type: cli-tool
-  command: runx-payment-test
----
-
-Fulfill the approved payment.
-"#,
+        write_cli_tool_skill(
+            &fulfill_dir,
+            skill_name,
+            "Fulfill approved payment.",
+            Some("effect_evidence_packet"),
         )?;
         let graph_path = temp.path().join("graph.yaml");
         fs::write(&graph_path, graph_yaml(admission, scope)?)?;
@@ -1729,19 +1743,27 @@ impl PaidEchoFixture {
         write_cli_tool_skill(
             &temp.path().join("quote"),
             "pay-quote",
+            "Quote a payment fixture.",
             Some("payment_quote_packet"),
         )?;
         write_cli_tool_skill(
             &temp.path().join("reserve"),
             "pay-reserve",
+            "Reserve a payment fixture.",
             Some("payment_reservation_packet"),
         )?;
         write_cli_tool_skill(
             &temp.path().join("fulfill"),
             "pay-fulfill-rail",
+            "Fulfill a payment fixture.",
             Some("effect_evidence_packet"),
         )?;
-        write_cli_tool_skill(&temp.path().join("echo"), "paid-echo", None)?;
+        write_cli_tool_skill(
+            &temp.path().join("echo"),
+            "paid-echo",
+            "Return the paid fixture result.",
+            None,
+        )?;
         let graph_path = temp.path().join("graph.yaml");
         fs::write(&graph_path, paid_echo_graph_yaml()?)?;
         Ok(Self {
@@ -1753,32 +1775,6 @@ impl PaidEchoFixture {
     fn graph_path(&self) -> &Path {
         self.graph_path.as_path()
     }
-}
-
-fn write_cli_tool_skill(
-    dir: &Path,
-    name: &str,
-    emitted_packet: Option<&str>,
-) -> Result<(), std::io::Error> {
-    fs::create_dir(dir)?;
-    let artifacts = emitted_packet.map_or_else(String::new, |packet| {
-        format!("runx:\n  artifacts:\n    named_emits:\n      {packet}: runx.payment.{packet}.v1\n")
-    });
-    fs::write(
-        dir.join("SKILL.md"),
-        format!(
-            r#"---
-name: {name}
-description: Payment fixture skill.
-source:
-  type: cli-tool
-  command: runx-payment-test
-{artifacts}---
-
-Payment fixture skill.
-"#
-        ),
-    )
 }
 
 #[derive(Clone, Copy)]
@@ -1987,13 +1983,11 @@ fn reserved_payment_authority(child_max_per_call_units: u64, include_subset_proo
         },
         "consumed_spend_capability_refs": []
     });
-    if include_subset_proof {
-        if let Some(object) = authority.as_object_mut() {
-            object.insert(
-                "subset_proof".to_owned(),
-                payment_subset_proof("child", "parent"),
-            );
-        }
+    if include_subset_proof && let Some(object) = authority.as_object_mut() {
+        object.insert(
+            "subset_proof".to_owned(),
+            payment_subset_proof("child", "parent"),
+        );
     }
     authority
 }

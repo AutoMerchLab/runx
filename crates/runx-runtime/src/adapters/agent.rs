@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because the managed-agent parity slice keeps
+// Module rationale: the managed-agent parity slice keeps
 // agent and agent-task invocation, telemetry, and metadata together until live
 // provider adapters create natural module boundaries.
 use std::time::Instant;
@@ -205,16 +205,10 @@ impl<T> AgentAdapter<T> {
         started: Instant,
         profile_metadata: &JsonObject,
     ) -> Result<SkillOutput, RuntimeError> {
-        let inline_artifacts = request
-            .source
-            .raw
-            .get("artifacts")
-            .and_then(JsonValue::as_object);
         let verified_metadata = verified_agent_metadata_with_artifacts(
             resolution_request,
             &resolution.response.payload,
-            None,
-            inline_artifacts,
+            request.artifacts.as_ref(),
             &request.skill_directory,
             &request.env,
         );

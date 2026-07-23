@@ -1,10 +1,10 @@
-// rust-style-allow: large-file - payment authority admission keeps spend
+// Module rationale: payment authority admission keeps spend
 // capability binding, subset enforcement, and rail admission in one algebraic
 // boundary until the term model settles.
 
 mod subset;
 
-pub use subset::is_payment_authority_subset;
+pub use subset::{PaymentBoundsComparator, is_payment_authority_subset};
 
 use runx_contracts::{
     AuthorityCapability, AuthorityEffectCredentialForm, AuthorityEffectLimit,

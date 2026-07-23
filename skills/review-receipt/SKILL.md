@@ -88,3 +88,18 @@ Supply whichever evidence is available:
 - `skill_path`: path to the skill being improved.
 - `receipt_rows`: native-projection rows for deterministic replay only; live
   runs resolve `receipt_id` from the configured receipt store.
+
+## Agent task contracts
+
+### `review-receipt`
+
+Diagnose one failure from native redacted receipt detail plus the supplied summary or harness
+output. Treat needs_agent or a deferred receipt as a healthy suspension unless another concrete
+failure signal exists. Ground authority, acts, decisions, criteria, and seal posture in
+receipt_evidence.receipt_details; treat caller summaries as supplemental evidence, never as a
+replacement for native facts. Distinguish input, scope, tool, schema, timeout, policy, review,
+and harness failures. If receipt_id was supplied but native evidence did not match it, return
+blocked unless the supplied harness output alone proves the defect. Return verdict, a concise
+failure_summary, at most three bounded improvement_proposals, and replayable
+next_harness_checks. Each proposal must name target, change, rationale, and risk. Do not write
+files or weaken a refusal.

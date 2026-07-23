@@ -17,7 +17,7 @@
 //! reuses the runtime's universal [`SkillOutput`]; this module only adds the two
 //! seams that did not exist before (the per-turn model call and tool execution).
 //!
-// rust-style-allow: large-file because the governed agent loop, its provider and
+// Module rationale: the governed agent loop, its provider and
 // executor seams, the transcript contracts, and the loop-coverage tests belong in
 // one cohesive unit; splitting them would scatter the single source of truth for
 // the tool-use protocol.
@@ -123,7 +123,7 @@ where
 /// Run the bounded tool-use loop, returning the existing [`AgentResolution`] when
 /// the model finalizes. Fails closed on an empty turn or on exhausting the round
 /// budget without a final result.
-// rust-style-allow: long-function because this is one bounded round loop whose
+// Function rationale: this is one bounded round loop whose
 // turn sequencing (model call, fail-closed checks, per-tool execution, transcript
 // append, telemetry accumulation) must stay linear to remain auditable.
 pub fn run_agent_loop<M, T>(
@@ -171,10 +171,9 @@ where
 
             let output = executor.execute(&use_.name, &use_.input)?;
             let is_error = !matches!(output.status, InvocationStatus::Success);
-            if !is_error {
-                if let Ok(effect) = serde_json::from_str::<JsonValue>(output.stdout.trim()) {
-                    last_effect = Some(effect);
-                }
+            if !is_error && let Ok(effect) = serde_json::from_str::<JsonValue>(output.stdout.trim())
+            {
+                last_effect = Some(effect);
             }
             let content = tool_result_content(&output, is_error);
             tool_executions.push(AgentToolExecutionTrace {

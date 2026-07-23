@@ -1,25 +1,23 @@
-// rust-style-allow: large-file - native registry CLI keeps local and hosted
+// Module rationale: native registry CLI keeps local and hosted
 // search/read/resolve/install/publish command wiring together so the command
 // matrix and output envelope stay auditable during the hosted-registry cutover.
 use std::collections::BTreeMap;
 use std::env;
-use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use runx_runtime::ConfigError;
 use runx_runtime::registry::{
     AcquireOptions, FileRegistryStore, IngestSkillOptions, InstallCandidate,
-    InstallLocalSkillOptions, LocalRegistryClient, PublishSkillMarkdownOptions, RegistryClient,
-    RegistryManifestSourceAuthority, RegistryPackageFile, RegistryResolveOptions,
+    InstallLocalSkillOptions, PublishSkillMarkdownOptions, RegistryClient,
+    RegistryManifestSourceAuthority, RegistryPublishPackageRequest, RegistryResolveOptions,
     RegistrySearchOptions, RegistrySkillResolution, TrustTier, TrustedRegistryManifestKey,
-    install_local_skill, publish_skill_markdown, read_registry_skill, resolve_registry_skill,
-    search_registry_with_options,
+    install_local_skill, prepare_registry_publish_package, publish_skill_markdown,
+    read_registry_skill, resolve_registry_skill, search_registry_with_options,
 };
-use runx_runtime::scaffold::{InitGeneratedValues, ensure_runx_install_state};
+use runx_runtime::{InitGeneratedValues, ensure_runx_install_state};
 
 mod output;
-mod package;
 mod remote_publish;
 mod target;
 
@@ -257,7 +255,7 @@ fn run_install(
     )
 }
 
-// rust-style-allow: long-function - local and hosted publish share the same
+// Function rationale: local and hosted publish share the same
 // package-read and harness gate before diverging at the storage boundary.
 fn run_publish(
     plan: RegistryPlan,
@@ -265,20 +263,21 @@ fn run_publish(
     env: &BTreeMap<String, String>,
     cwd: &Path,
 ) -> Result<RegistryCliOutput, RegistryCliError> {
+    let package = prepare_registry_publish_package(RegistryPublishPackageRequest {
+        subject: &plan.subject,
+        profile: plan.profile.as_deref(),
+        env,
+        cwd,
+    })
+    .map_err(|error| internal_error(error.to_string()))?;
+    let orchestrator = crate::runtime::local_orchestrator().map_err(|error| {
+        internal_error(format!("failed to initialize runtime effects: {error}"))
+    })?;
+    let harness = package
+        .run_harness(&orchestrator)
+        .map_err(|error| internal_error(error.to_string()))?;
     match target {
         RegistryTarget::Remote { registry_url } => {
-            let package = package::read_skill_package(
-                &plan.subject,
-                plan.profile.as_deref(),
-                env,
-                cwd,
-                true,
-            )?;
-            let harness = package::run_publish_harness(package.harness_path.as_deref());
-            if let Some(temp_dir) = package.harness_temp_dir.as_ref() {
-                let _ignored = fs::remove_dir_all(temp_dir);
-            }
-            let harness = harness?;
             let result = remote_publish::publish_remote_skill_package(
                 &registry_url,
                 &plan,
@@ -303,27 +302,16 @@ fn run_publish(
             registry_url,
             ..
         } => {
-            let package = package::read_skill_package(
-                &plan.subject,
-                plan.profile.as_deref(),
-                env,
-                cwd,
-                true,
-            )?;
-            let harness = package::run_publish_harness(package.harness_path.as_deref());
-            if let Some(temp_dir) = package.harness_temp_dir.as_ref() {
-                let _ignored = fs::remove_dir_all(temp_dir);
-            }
-            let harness = harness?;
+            let package = package.into_parts();
             let result = publish_skill_markdown(
-                &LocalRegistryClient::new(FileRegistryStore::new(registry_path)),
+                &FileRegistryStore::new(registry_path),
                 &package.markdown,
                 PublishSkillMarkdownOptions {
                     ingest: IngestSkillOptions {
                         owner: plan.owner,
                         version: plan.version,
                         profile_document: package.profile_document,
-                        package_files: package.package_files.into_iter().map(Into::into).collect(),
+                        package_files: package.package_files,
                         trust_tier: plan.trust_tier,
                         upsert: plan.upsert,
                         ..IngestSkillOptions::default()
@@ -460,15 +448,6 @@ fn candidate_from_acquired(
         runner_names: acquired.runner_names.clone(),
         trust_tier: Some(acquired.trust_tier.clone()),
         manifest_source_authority: Some(source_authority),
-    }
-}
-
-impl From<package::HostedSkillPackageFile> for RegistryPackageFile {
-    fn from(file: package::HostedSkillPackageFile) -> Self {
-        Self {
-            path: file.path,
-            content: file.content,
-        }
     }
 }
 

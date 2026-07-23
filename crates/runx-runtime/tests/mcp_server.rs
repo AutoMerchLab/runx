@@ -191,19 +191,27 @@ fn mcp_server_concurrent_call_completes_while_slow_skill_runs()
         r#"---
 name: slow-cli
 description: Slow skill used to prove MCP dispatch concurrency.
-source:
-  type: cli-tool
-  command: sh
-  args:
-    - ./run.sh
-  timeout_seconds: 5
-  sandbox:
-    profile: readonly
-    cwd_policy: skill-directory
-inputs: {}
 ---
 
 Slow fixture.
+"#,
+    )?;
+    fs::write(
+        slow_skill.path().join("X.yaml"),
+        r#"skill: slow-cli
+version: "0.1.0"
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: sh
+    args:
+      - ./run.sh
+    timeout_seconds: 5
+    sandbox:
+      profile: readonly
+      cwd_policy: skill-directory
+    inputs: {}
 "#,
     )?;
     fs::write(

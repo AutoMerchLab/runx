@@ -7,7 +7,7 @@
 //! reproduces the committed shape: fully inlined, closed string enums as
 //! `anyOf` of `const`, `additionalProperties: false`, and the `$id` /
 //! `x-runx-schema` identity.
-// rust-style-allow: large-file - the schema emitter keeps shared JSON Schema
+// Module rationale: the schema emitter keeps shared JSON Schema
 // construction helpers and primitive type impls together so generated contract
 // shapes are reviewable as one boundary.
 
@@ -158,7 +158,7 @@ pub fn object_schema(
 /// apply). `flattened` entries that are not plain objects (e.g. a flattened
 /// map) relax the parent to accept additional properties, matching serde's
 /// open-ended flatten capture.
-// rust-style-allow: long-function - flatten merging mirrors serde's object
+// Function rationale: flatten merging mirrors serde's object
 // projection rules and is easier to audit as one schema-construction path.
 pub fn object_schema_with_flatten(
     properties: Vec<Property>,

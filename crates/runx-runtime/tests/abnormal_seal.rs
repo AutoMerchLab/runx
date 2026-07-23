@@ -114,22 +114,29 @@ impl TempCase {
 
     fn write_skill(&self, directory: &str, name: &str) -> Result<(), std::io::Error> {
         let skill_dir = self.root.join(directory);
-        fs::create_dir_all(&skill_dir)?;
-        fs::write(
-            skill_dir.join("SKILL.md"),
+        crate::support::write_test_skill_package(
+            &skill_dir,
             format!(
                 r#"---
 name: {name}
 description: Abnormal seal test {name} skill.
-source:
-  type: cli-tool
-  command: runx-test-adapter
-  args: []
 ---
 
 Emits structured test output through the harness adapter.
 "#
-            ),
+            )
+            .as_str(),
+            format!(
+                r#"skill: {name}
+runners:
+  {name}:
+    default: true
+    type: cli-tool
+    command: runx-test-adapter
+    args: []
+"#
+            )
+            .as_str(),
         )
     }
 

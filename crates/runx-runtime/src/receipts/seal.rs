@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because receipt construction, explicit
+// Module rationale: receipt construction, explicit
 // signature policy, and local proof sealing stay together until the runtime
 // receipt builder is split out.
 use std::collections::BTreeMap;
@@ -341,14 +341,17 @@ fn contract_verification_criteria(
         )));
     }
 
-    let output_digest = required_verification_digest(verification, "output_contract_sha256")?;
     let mut result = ContractVerificationCriteria::default();
-    push_verified_criterion(
-        &mut result,
-        "output_contract_verified",
-        "Agent result satisfies its declared output contract",
-        output_digest,
-    );
+    if let Some(output_digest) =
+        optional_verification_digest(verification, "output_contract_sha256")?
+    {
+        push_verified_criterion(
+            &mut result,
+            "output_contract_verified",
+            "Runner result satisfies its declared output contract",
+            output_digest,
+        );
+    }
     if let Some(digest) = optional_verification_digest(verification, "voice_profile_sha256")? {
         push_verified_criterion(
             &mut result,
@@ -358,6 +361,11 @@ fn contract_verification_criteria(
         );
     }
     append_packet_schema_criterion(&mut result, verification)?;
+    if result.criteria.is_empty() {
+        return Err(invalid_contract_verification(
+            "contract_verification must contain a verified output, voice, or packet contract",
+        ));
+    }
     Ok(result)
 }
 
@@ -386,7 +394,7 @@ fn append_packet_schema_criterion(
             format!("runx:verification:packet_schema_verified:{packet}:{digest}"),
         ));
     }
-    let statement = "Agent packet outputs satisfy their declared packet schemas";
+    let statement = "Packet outputs satisfy their declared packet schemas";
     result.criteria.push(SuccessCriterion {
         criterion_id: "packet_schemas_verified".into(),
         statement: statement.into(),
@@ -444,15 +452,6 @@ fn required_verification_string<'a>(
                 "contract_verification.packet_schemas.{output}.{field} must be a non-empty string"
             ))
         })
-}
-
-fn required_verification_digest<'a>(
-    verification: &'a JsonObject,
-    field: &str,
-) -> Result<&'a str, RuntimeError> {
-    optional_verification_digest(verification, field)?.ok_or_else(|| {
-        invalid_contract_verification(format!("contract_verification.{field} is required"))
-    })
 }
 
 fn optional_verification_digest<'a>(
@@ -995,7 +994,7 @@ pub(crate) struct DomainActReceiptRequest<'a> {
 /// (`build_receipt`/`seal`) but fills the act, decision, and authority from the
 /// trusted `DomainActFrame`. Transport (tool names, urls, status codes, tokens)
 /// never enters the receipt.
-// rust-style-allow: long-function - domain-act receipt assembly binds act,
+// Function rationale: domain-act receipt assembly binds act,
 // decision, authority, and signature policy in one auditable receipt boundary.
 pub(crate) fn domain_act_receipt(
     request: DomainActReceiptRequest<'_>,

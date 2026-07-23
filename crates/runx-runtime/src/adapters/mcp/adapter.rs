@@ -4,7 +4,7 @@ use runx_contracts::{JsonObject, JsonValue, sha256_hex};
 
 use crate::RuntimeError;
 use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
-use crate::adapter_pipeline::{AdapterCapture, AdapterExecutionContext, AdapterInvocationPlan};
+use crate::adapter_pipeline::{AdapterCapture, AdapterExecutionContext};
 use crate::credentials::CredentialDelivery;
 use crate::sandbox::sandbox_metadata;
 use crate::services::SandboxServices;
@@ -44,26 +44,28 @@ where
     }
 
     fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
-        let context = AdapterExecutionContext::start(AdapterInvocationPlan::from_invocation(
-            self.adapter_type(),
-            &request,
-        ));
+        let context = AdapterExecutionContext::start();
         let prepared = match prepare_mcp_tool_call(request, &context)? {
             Ok(prepared) => prepared,
             Err(output) => return Ok(output),
         };
         match self.transport.call_tool(prepared.request) {
-            Ok(result) => Ok(context.projection().output(
-                InvocationStatus::Success,
-                AdapterCapture::new(
-                    prepared
-                        .credential_delivery
-                        .redact_text(super::templates::stringify_mcp_tool_result(&result)?),
-                    String::new(),
-                ),
-                Some(0),
-                prepared.success_metadata,
-            )),
+            Ok(mut result) => {
+                // MCP results are structured. Redact their decoded values and
+                // keys before rendering; redacting the serialized form first can
+                // be bypassed by JSON escapes that reconstruct a credential when
+                // graph context or receipt projection parses stdout again.
+                prepared.credential_delivery.redact_json_value(&mut result);
+                let stdout = prepared
+                    .credential_delivery
+                    .redact_output_text(super::templates::stringify_mcp_tool_result(&result)?);
+                Ok(context.projection().output(
+                    InvocationStatus::Success,
+                    AdapterCapture::new(stdout, String::new()),
+                    Some(0),
+                    prepared.success_metadata,
+                ))
+            }
             Err(error) => Ok(failure(
                 prepared
                     .credential_delivery

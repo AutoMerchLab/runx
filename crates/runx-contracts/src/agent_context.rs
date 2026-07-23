@@ -106,6 +106,8 @@ pub struct AgentContextEnvelope {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub step_id: Option<NonEmptyString>,
     pub skill: NonEmptyString,
+    /// Digest of the exact owning `SKILL.md` bytes carried in `instructions`.
+    pub instructions_sha256: NonEmptyString,
     pub instructions: NonEmptyString,
     pub inputs: JsonObject,
     pub allowed_tools: Vec<NonEmptyString>,

@@ -21,9 +21,12 @@ work. Those are product-operator concerns owned by the Nitrosend repository.
   deliverability readiness.
 - `analytics`: live account, campaign, flow, or message insights.
 - `review-delivery`: read-only content and preflight review.
-- `plan-campaign`, `plan-flow`, `plan-transactional`, `compose-email`, and
-  `plan-import`: bounded agent judgment. These produce a reviewable request;
-  they do not claim provider completion.
+- `plan-campaign`, `plan-flow`, `plan-transactional`, and `plan-import`:
+  bounded agent judgment that produces a reviewable request without provider
+  completion.
+- `compose-email`: read the live Nitrosend authoring contract, let one bounded
+  agent author its exact next call, and return authoritative MCP validation.
+  It never persists a draft or gains delivery authority.
 - `apply-draft`: apply exact reviewed arguments for a campaign, flow, template,
   or segment draft. It never sends or activates.
 - `approve-delivery`: approve a reviewed campaign or flow without delivering.
@@ -48,15 +51,19 @@ into another repo-local skill.
 
 1. Run `status` and stop on sender, domain, suspension, warmup, or account
    blockers.
-2. Use a planning runner only where content or audience judgment is needed.
-   Apply its exact reviewed MCP arguments with `apply-draft`.
-3. Run `review-delivery` before approval. Use `approve-delivery` separately so
+2. For email authoring, use `compose-email` so Nitrosend supplies current brand
+   and memory context before the model writes. Treat its MCP validation as
+   authoritative; repair in another bounded turn when requested. For other
+   planning, use the matching planning runner.
+3. Apply only validated arguments through `apply-draft`; that separate runner
+   retains the approval gate and is the first persistence boundary.
+4. Run `review-delivery` before approval. Use `approve-delivery` separately so
    retries never combine approval-state mutation with recipient delivery.
-4. Use `send-campaign` or `activate-flow` only after provider approval state is
+5. Use `send-campaign` or `activate-flow` only after provider approval state is
    established. A fresh review and Runx approval gate are mandatory.
-5. Give every real transactional send, campaign delivery, and import a stable
+6. Give every real transactional send, campaign delivery, and import a stable
    idempotency key. Reuse that key after a timeout; do not mint a new one.
-6. Treat completion as real only when the sealed receipt contains Nitrosend
+7. Treat completion as real only when the sealed receipt contains Nitrosend
    provider evidence. A plan receipt is not proof of send, schedule, activation,
    or import.
 
@@ -84,10 +91,11 @@ rather than keeping a resident polling loop.
 
 ## Agent task contracts
 
-These planning acts prepare exact downstream operations; they never call the
-provider. Every plan returns `ready`, `needs_input`, or `reject`, names blockers
-and unsupported requirements, orders the intended tool calls, identifies any
-human action, and states a truthful success checkpoint.
+The planning acts prepare exact downstream operations and never call the
+provider. `compose-email-from-contract` is different: the enclosing graph has
+already read authoritative MCP intent evidence, and the agent only authors a
+candidate for the graph's read-only MCP validation. No agent act persists or
+delivers.
 
 ### `send-campaign`
 
@@ -111,12 +119,21 @@ content, a stable idempotency key, dry-run validation, and confirmation before a
 real send. Reject audience or list broadcasts and route those to
 `send-campaign`.
 
-### `compose-email-plan`
+### `compose-email-from-contract`
 
-Return `email_design` with subject, preheader, supported section sequence,
-rationale, review/test steps, and blockers. Use the saved brand and Nitrosend's
-section model. Do not invent a raw-HTML template format; ask whether supplied
-HTML may live in a text section or be converted into supported sections.
+Read the `composition_intent` provider evidence supplied as the declared input
+or current graph context. It must contain a successful Nitrosend result with a
+composition contract, contract id, and next call. Return `campaign_candidate`
+with `decision` (`ready`, `needs_input`, or `reject`), exact `arguments`,
+`rationale`, and `blockers`.
+
+For `ready`, begin from the contract's `next_call`, preserve its `contract_id`,
+set `composition_mode` to `validate`, and fill only the requested creative
+fields. Follow the supplied brand, memory, examples, hard constraints, design
+mode, and repair guidance. Never reconstruct omitted context, invent claims,
+add an audience or schedule, or request draft, approval, activation, testing,
+or sending. If the intent evidence or required contract fields are missing,
+return `needs_input` without fabricated arguments.
 
 ### `import-contacts-plan`
 

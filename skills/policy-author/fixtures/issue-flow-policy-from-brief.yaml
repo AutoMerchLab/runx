@@ -124,18 +124,22 @@ expect:
   status: sealed
   steps:
     - draft
-    - validate
+    - prepare
+    - lint
+    - finalize-lint
   step_outputs:
-    validate:
+    finalize-lint:
       subset:
-        policy_proposal:
-          decision: ready
-          policy:
-            schema: runx.operational_policy.v1
-            policy_id: acme-issue-flow
-          validation:
-            status: pass
-            engine: runx policy lint
+        policy_proposal_packet:
+          data:
+            policy_proposal:
+              decision: ready
+              policy:
+                schema: runx.operational_policy.v1
+                policy_id: acme-issue-flow
+              validation:
+                status: pass
+                engine: runx policy
   receipt:
     schema: runx.receipt.v1
     state: sealed

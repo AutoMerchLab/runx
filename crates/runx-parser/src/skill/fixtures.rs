@@ -54,6 +54,8 @@ pub struct RunnerHarnessCase {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RunnerHarnessManifest {
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<String>,
     pub cases: Vec<RunnerHarnessCase>,
 }
 
@@ -64,6 +66,9 @@ pub(crate) fn validate_harness_manifest(
     let Some(value) = value else {
         return Ok(None);
     };
+    let files = FIELDS
+        .optional_string_array(value.get("files"), &format!("{field}.files"))?
+        .unwrap_or_default();
     let cases = FIELDS
         .required_plain_array(value.get("cases"), &format!("{field}.cases"))?
         .iter()
@@ -75,7 +80,7 @@ pub(crate) fn validate_harness_manifest(
             )
         })
         .collect::<Result<Vec<_>, _>>()?;
-    Ok(Some(RunnerHarnessManifest { cases }))
+    Ok(Some(RunnerHarnessManifest { files, cases }))
 }
 
 fn validate_harness_case(

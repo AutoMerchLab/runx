@@ -14,7 +14,7 @@ use runx_runtime::{
     RuntimeReceiptSignaturePolicy, resolve_receipt_path,
 };
 
-// rust-style-allow: large-file because the native history CLI slice keeps
+// Module rationale: the native history CLI slice keeps
 // parsing, rendering, and CLI parity tests together until the rest of the Rust
 // command routing settles.
 #[derive(Debug)]
@@ -195,7 +195,7 @@ pub fn env_map() -> BTreeMap<String, String> {
     crate::cli_io::env_map()
 }
 
-// rust-style-allow: long-function because this mirrors the public history CLI
+// Function rationale: this mirrors the public history CLI
 // flag grammar in one parser during the hard cutover.
 fn parse_history_args(args: &[OsString]) -> Result<ParsedHistoryArgs, HistoryCliError> {
     if args.first().and_then(|arg| arg.to_str()) != Some("history") {
@@ -519,7 +519,7 @@ mod tests {
     }
 
     #[test]
-    // rust-style-allow: long-function because the CLI execute oracle test keeps
+    // Function rationale: the CLI execute oracle test keeps
     // its ledger fixture, command invocation, and typed output assertions in
     // one place so the parity case remains readable.
     fn executes_history_json_against_cli_parity_oracle() -> Result<(), io::Error> {

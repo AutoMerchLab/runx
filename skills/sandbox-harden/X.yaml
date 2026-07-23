@@ -1,37 +1,45 @@
 skill: sandbox-harden
-version: "0.1.2"
+version: "0.3.0"
+
 catalog:
-  kind: skill
+  kind: graph
   audience: public
   visibility: public
   role: canonical
   execution: plan
   completion: plan
   requires_adapter: false
-  approval: required
+  approval: none
+
 runners:
   sandbox-harden:
     default: true
-    type: agent-task
-    agent: reviewer
-    task: sandbox-harden
-    outputs:
-      hardening_profile: object
-    artifacts:
-      wrap_as: hardening_profile_packet
-      packet: runx.hardening.v1
-    runx:
-      category: security
+    type: graph
     inputs:
       workload:
         type: json
         required: true
-        description: "Target to harden, as { image_digest } or { skill_ref }, optionally with class."
-      threat_context:
+        description: Immutable workload identity plus source-bound Runx runtime requirements.
+      as_of:
         type: string
+        required: true
+        description: Explicit RFC3339 evaluation time for requirements freshness.
+      max_age_days:
+        type: number
         required: false
-        description: "Trust assumptions and exposure, e.g. processes untrusted uploads, no inbound network."
+        default: 30
+        description: Maximum accepted requirements age in days.
       baseline:
-        type: string
+        type: json
         required: false
-        description: "Current or floor posture; the recommendation is never weaker than this without a stated reason."
+        description: Optional network, writable-path, environment, and enforcement ceilings.
+    graph:
+      name: sandbox-harden
+      steps:
+        - id: plan
+          tool: sandbox.plan
+          inputs:
+            workload: $input.workload
+            as_of: $input.as_of
+            max_age_days: $input.max_age_days
+            baseline: $input.baseline

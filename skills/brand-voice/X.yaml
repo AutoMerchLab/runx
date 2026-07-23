@@ -1,7 +1,8 @@
 skill: brand-voice
-version: "0.1.1"
+version: "0.2.0"
+
 catalog:
-  kind: skill
+  kind: graph
   audience: public
   visibility: public
   role: context
@@ -9,26 +10,11 @@ catalog:
   completion: runtime_receipt
   requires_adapter: false
   approval: none
+
 runners:
   voice:
     default: true
-    type: agent-task
-    agent: editor
-    task: brand-voice
-    outputs:
-      decision: string
-      brand: string
-      applicability: object
-      brand_voice: object
-      evidence: object
-      redactions: array
-      stop_conditions: array
-      receipt_notes: object
-    artifacts:
-      wrap_as: brand_voice_packet
-      packet: runx.context.brand_voice.v1
-    runx:
-      category: content
+    type: graph
     inputs:
       brand:
         type: string
@@ -37,16 +23,106 @@ runners:
       source_material:
         type: json
         required: true
-        description: Approved examples, drafts, rejected examples, operator notes, or caller-summarized links.
+        description: Bounded typed source objects; at least one approved source is required.
       channel:
         type: string
         required: false
-        description: Downstream channel where this voice packet will be used.
+        description: Downstream channel for this packet.
       audience:
         type: string
         required: false
-        description: Intended audience for downstream content.
+        description: Intended downstream audience.
       constraints:
         type: json
         required: false
-        description: Legal, compliance, accessibility, product, or editorial limits.
+        description: Legal, accessibility, product, or editorial boundaries.
+    graph:
+      name: brand-voice
+      steps:
+        - id: index
+          inputs:
+            brand: $input.brand
+            source_material: $input.source_material
+          run:
+            type: javascript
+            module: brand-voice.mjs
+            export: indexSources
+            outputs:
+              source_index: object
+          artifacts:
+            named_emits:
+              source_index: source_index
+
+        - id: digest
+          tool: data.digest
+          context:
+            value: index.source_index.data.sources
+
+        - id: reject
+          when:
+            field: index.source_index.data.decision
+            equals: needs_more_evidence
+          inputs:
+            brand: $input.brand
+            channel: $input.channel
+            audience: $input.audience
+          context:
+            source_index: index.source_index.data
+            evidence_digest: digest.digest_result.data.digest
+          run:
+            type: javascript
+            module: brand-voice.mjs
+            export: finalizeVoice
+            outputs:
+              brand_voice_packet: object
+          artifacts:
+            named_emits:
+              brand_voice_packet: brand_voice_packet
+            packets:
+              brand_voice_packet: runx.context.brand_voice.v1
+
+        - id: synthesize
+          when:
+            field: index.source_index.data.decision
+            equals: ready
+          run:
+            type: agent-task
+            agent: editor
+            task: brand-voice-synthesize
+            outputs:
+              brand_voice_draft: object
+          inputs:
+            brand: $input.brand
+            channel: $input.channel
+            audience: $input.audience
+            constraints: $input.constraints
+          context:
+            source_index: index.source_index.data
+            evidence_digest: digest.digest_result.data.digest
+          artifacts:
+            named_emits:
+              brand_voice_draft: brand_voice_draft
+
+        - id: finalize
+          when:
+            field: index.source_index.data.decision
+            equals: ready
+          inputs:
+            brand: $input.brand
+            channel: $input.channel
+            audience: $input.audience
+          context:
+            source_index: index.source_index.data
+            evidence_digest: digest.digest_result.data.digest
+            brand_voice_draft: synthesize.brand_voice_draft.data
+          run:
+            type: javascript
+            module: brand-voice.mjs
+            export: finalizeVoice
+            outputs:
+              brand_voice_packet: object
+          artifacts:
+            named_emits:
+              brand_voice_packet: brand_voice_packet
+            packets:
+              brand_voice_packet: runx.context.brand_voice.v1

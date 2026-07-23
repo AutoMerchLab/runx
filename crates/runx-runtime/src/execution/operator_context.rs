@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - transitive preflight discovery keeps traversal,
+// Module rationale: transitive preflight discovery keeps traversal,
 // admission provenance, limits, and its focused fixtures in one auditable module.
 //! Runtime-owned preflight expansion for the complete skill chain shown to an
 //! operator before execution. Discovery uses the same validated graph, child
@@ -9,24 +9,20 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use runx_contracts::{ContextEntry, JsonObject, JsonValue, sha256_prefixed};
-use runx_parser::{ExecutionGraph, GraphStep, SkillRunnerDefinition, SourceKind, ValidatedSkill};
+use runx_parser::{ExecutionGraph, GraphRunTarget, GraphStep, SkillRunnerDefinition, SourceKind};
 use serde::{Deserialize, Serialize};
 
+use crate::RuntimeEffectRegistry;
 use crate::RuntimeError;
 use crate::services::{WorkspaceEnv, merge_inferred_tool_roots};
-use crate::tool_catalogs::{
-    DATA_SOURCE_ROUTER_TOOL_REF, ToolCatalogError, ToolInspectOptions, resolve_local_tool,
-};
+use crate::tool_catalogs::{ToolCatalogError, ToolInspectOptions, resolve_local_tool};
 
 use super::graph::{
-    LoadedStepSkill, LoadedStepSkillDefinition, LoadedStepSkillRegistryProvenance,
-    StepSkillLoadOptions, load_step_skill,
+    LoadedStepSkill, LoadedStepSkillRegistryProvenance, StepSkillLoadOptions, load_step_skill,
 };
 use super::skill_context::load_context_skills;
 use super::skill_front::SkillRunError;
-use super::skill_front::runner_manifest::{
-    load_runner_manifest, resolve_skill_dir, selected_runner,
-};
+use super::skill_front::runner_manifest::selected_runner;
 
 const MAX_CHAIN_DEPTH: usize = 16;
 const MAX_CHAIN_NODES: usize = 128;
@@ -40,6 +36,7 @@ pub struct SkillOperatorContextOptions {
     max_depth: usize,
     max_nodes: usize,
     max_content_bytes: usize,
+    effects: RuntimeEffectRegistry,
 }
 
 impl SkillOperatorContextOptions {
@@ -51,7 +48,14 @@ impl SkillOperatorContextOptions {
             max_depth: MAX_CHAIN_DEPTH,
             max_nodes: MAX_CHAIN_NODES,
             max_content_bytes: MAX_CHAIN_CONTENT_BYTES,
+            effects: RuntimeEffectRegistry::default(),
         }
+    }
+
+    #[must_use]
+    pub fn with_effects(mut self, effects: RuntimeEffectRegistry) -> Self {
+        self.effects = effects;
+        self
     }
 }
 
@@ -118,37 +122,39 @@ pub struct SkillOperatorContextRunner {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SkillOperatorContextStep {
     pub node_path: String,
-    pub id: String,
-    pub target: SkillOperatorContextTarget,
-    pub raw: JsonValue,
-    pub mutating: bool,
-    pub allowed_tools: Vec<String>,
+    pub definition: GraphStep,
     pub context_skills: Vec<SkillOperatorContextContextSkill>,
     pub tool_refs: Vec<String>,
     pub child: Option<Box<SkillOperatorContextNode>>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(tag = "kind", rename_all = "snake_case")]
-pub enum SkillOperatorContextTarget {
-    Skill {
-        reference: String,
-        runner: Option<String>,
-    },
-    Tool {
-        name: String,
-    },
-    Run {
-        source_type: String,
-    },
+impl SkillOperatorContextStep {
+    #[must_use]
+    pub fn target_label(&self) -> String {
+        let step = &self.definition;
+        if let Some(reference) = &step.skill {
+            return match &step.runner {
+                Some(runner) => format!("skill {reference} runner {runner}"),
+                None => format!("skill {reference}"),
+            };
+        }
+        if let Some(name) = &step.tool {
+            return format!("tool {name}");
+        }
+        match &step.run {
+            Some(GraphRunTarget::Approval) => "run approval".to_owned(),
+            Some(GraphRunTarget::Source(source)) => format!("run {}", source.source_type),
+            None => "missing target".to_owned(),
+        }
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SkillOperatorContextContextSkill {
     pub reference: String,
-    pub source: String,
-    pub name: String,
-    pub document: SkillOperatorContextDocument,
+    pub summary_sha256: String,
+    pub summary_bytes: u64,
+    pub summary: JsonObject,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -165,7 +171,6 @@ pub struct SkillOperatorContextTool {
 pub enum SkillOperatorContextTerminal {
     ExpandedGraph,
     Runner,
-    LegacyMarkdown,
 }
 
 pub fn load_skill_operator_context_chain(
@@ -173,8 +178,17 @@ pub fn load_skill_operator_context_chain(
     selected_runner_name: Option<&str>,
     options: SkillOperatorContextOptions,
 ) -> Result<SkillOperatorContextChain, SkillRunError> {
-    let skill_dir = resolve_skill_dir(skill_path)?;
-    let manifest = load_runner_manifest(&skill_dir)?;
+    let loaded = crate::load_validated_skill_package(skill_path)?;
+    let manifest = loaded.manifest().cloned().ok_or_else(|| {
+        SkillRunError::Invalid(format!(
+            "skill package {} does not declare X.yaml runners",
+            loaded.directory.display()
+        ))
+    })?;
+    let skill_dir = loaded.directory;
+    let manual_path = loaded.package_root.join("SKILL.md");
+    let manual_markdown = loaded.package.manual_markdown;
+    let manual_digest = loaded.package.manual_digest;
     let runner = selected_runner(&manifest, selected_runner_name)?.clone();
     let workspace = WorkspaceEnv::new(options.env.clone(), options.cwd.clone());
     let env = workspace.skill_env_for_skill(&skill_dir);
@@ -183,6 +197,9 @@ pub fn load_skill_operator_context_chain(
         node_path: "entry".to_owned(),
         package: local_package(&skill_dir, None),
         skill_dir,
+        manual_path,
+        manual_markdown,
+        manual_digest,
         runner,
         requested_runner: selected_runner_name.map(str::to_owned),
         env,
@@ -209,6 +226,9 @@ struct NodeInput {
     node_path: String,
     package: SkillOperatorContextPackage,
     skill_dir: PathBuf,
+    manual_path: PathBuf,
+    manual_markdown: String,
+    manual_digest: String,
     runner: SkillRunnerDefinition,
     requested_runner: Option<String>,
     env: BTreeMap<String, String>,
@@ -247,7 +267,11 @@ impl ExpansionState {
         &mut self,
         input: &NodeInput,
     ) -> Result<SkillOperatorContextNode, SkillRunError> {
-        let skill_markdown = self.load_document(&input.skill_dir.join("SKILL.md"))?;
+        let skill_markdown = self.manual_document(
+            &input.manual_path,
+            &input.manual_markdown,
+            &input.manual_digest,
+        )?;
         let raw = JsonValue::Object(input.runner.raw.clone());
         self.add_bytes(serialized_bytes(&raw)?)?;
         let graph = input.runner.source.graph.as_ref();
@@ -279,67 +303,6 @@ impl ExpansionState {
         })
     }
 
-    fn expand_legacy_node(
-        &mut self,
-        node_path: String,
-        package: SkillOperatorContextPackage,
-        skill_dir: PathBuf,
-        skill: ValidatedSkill,
-        env: BTreeMap<String, String>,
-        depth: usize,
-    ) -> Result<SkillOperatorContextNode, SkillRunError> {
-        self.admit_node(depth)?;
-        let identity = node_identity(&package, &skill_dir, &skill.name)?;
-        if !self.ancestry.insert(identity.clone()) {
-            return Err(blocked(format!(
-                "operator context chain contains a cycle at {node_path} ({identity})"
-            )));
-        }
-        let result = (|| {
-            let skill_markdown = self.load_document(&skill_dir.join("SKILL.md"))?;
-            let raw = JsonValue::Object(skill.raw.frontmatter.clone());
-            self.add_bytes(serialized_bytes(&raw)?)?;
-            let allowed_tools = skill.allowed_tools.clone().unwrap_or_default();
-            let graph = skill.source.graph.as_ref();
-            let mut tool_names = allowed_tools.iter().cloned().collect::<BTreeSet<_>>();
-            if let Some(graph) = graph {
-                for step in &graph.steps {
-                    tool_names.extend(step_tool_refs(step));
-                }
-            }
-            let tools = self.load_tools(&skill_dir, &tool_names, &env)?;
-            let steps = match graph {
-                Some(graph) => {
-                    self.expand_graph_steps(&node_path, &skill_dir, graph, &env, depth)?
-                }
-                None => Vec::new(),
-            };
-            let terminal = if graph.is_some() {
-                SkillOperatorContextTerminal::ExpandedGraph
-            } else {
-                SkillOperatorContextTerminal::LegacyMarkdown
-            };
-            Ok(SkillOperatorContextNode {
-                node_path,
-                package,
-                skill_markdown,
-                runner: SkillOperatorContextRunner {
-                    name: skill.name,
-                    source_type: skill.source.source_type.to_string(),
-                    selection: "legacy-markdown".to_owned(),
-                    requested_name: None,
-                    raw,
-                    allowed_tools,
-                },
-                steps,
-                tools,
-                terminal,
-            })
-        })();
-        self.ancestry.remove(&identity);
-        result
-    }
-
     fn expand_graph_steps(
         &mut self,
         parent_path: &str,
@@ -355,7 +318,7 @@ impl ExpansionState {
             .collect()
     }
 
-    // rust-style-allow: long-function - one graph-step expansion must resolve
+    // Function rationale: one graph-step expansion must resolve
     // its exclusive target, attached context, child provenance, and recursion together.
     fn expand_graph_step(
         &mut self,
@@ -366,15 +329,15 @@ impl ExpansionState {
         depth: usize,
     ) -> Result<SkillOperatorContextStep, SkillRunError> {
         let node_path = format!("{parent_path}.{}", step.id);
-        let raw = contract_value(step, "serializing operator context graph step")?;
+        self.add_bytes(serialized_bytes(step)?)?;
         let mut context_skills = Vec::new();
         let mut child = None;
-        let target = if let Some(reference) = &step.skill {
+        if let Some(reference) = &step.skill {
             let loaded = load_step_skill(graph_dir, step, StepSkillLoadOptions { env })?;
             context_skills = self.load_step_context(graph_dir, step, env)?;
             if !context_skills.is_empty()
                 && !matches!(
-                    loaded.source.source_type,
+                    loaded.runner.source.source_type,
                     SourceKind::Agent | SourceKind::AgentStep
                 )
             {
@@ -393,35 +356,21 @@ impl ExpansionState {
                 env,
                 depth + 1,
             )?));
-            SkillOperatorContextTarget::Skill {
-                reference: reference.clone(),
-                runner: step.runner.clone(),
-            }
-        } else if let Some(name) = &step.tool {
-            SkillOperatorContextTarget::Tool { name: name.clone() }
-        } else if let Some(run) = &step.run {
+        } else if step.tool.is_some() {
+            // Tool admission and manifest resolution are handled for the
+            // containing node after every step has been expanded.
+        } else if step.run.is_some() {
             context_skills = self.load_step_context(graph_dir, step, env)?;
-            SkillOperatorContextTarget::Run {
-                source_type: run
-                    .get("type")
-                    .and_then(JsonValue::as_str)
-                    .unwrap_or("agent-task")
-                    .to_owned(),
-            }
         } else {
             return Err(blocked(format!(
                 "operator context graph step '{}' has no target",
                 step.id
             )));
-        };
+        }
         let tool_refs = step_tool_refs(step);
         Ok(SkillOperatorContextStep {
             node_path,
-            id: step.id.clone(),
-            target,
-            raw,
-            mutating: step.mutating,
-            allowed_tools: step.allowed_tools.clone().unwrap_or_default(),
+            definition: step.clone(),
             context_skills,
             tool_refs,
             child,
@@ -440,25 +389,18 @@ impl ExpansionState {
         let package = loaded_package(&loaded, reference);
         let mut child_env = env.clone();
         merge_inferred_tool_roots(&mut child_env, &loaded.directory);
-        match loaded.definition {
-            LoadedStepSkillDefinition::Runner(runner) => self.expand_runner_node(NodeInput {
-                node_path,
-                package,
-                skill_dir: loaded.directory,
-                runner,
-                requested_runner: requested_runner.map(str::to_owned),
-                env: child_env,
-                depth,
-            }),
-            LoadedStepSkillDefinition::Legacy(skill) => self.expand_legacy_node(
-                node_path,
-                package,
-                loaded.directory,
-                skill,
-                child_env,
-                depth,
-            ),
-        }
+        self.expand_runner_node(NodeInput {
+            node_path,
+            package,
+            skill_dir: loaded.directory,
+            manual_path: loaded.manual_path,
+            manual_markdown: loaded.manual_markdown,
+            manual_digest: loaded.manual_digest,
+            runner: loaded.runner,
+            requested_runner: requested_runner.map(str::to_owned),
+            env: child_env,
+            depth,
+        })
     }
 
     fn load_step_context(
@@ -486,48 +428,39 @@ impl ExpansionState {
         reference: &str,
         entry: ContextEntry,
     ) -> Result<SkillOperatorContextContextSkill, SkillRunError> {
-        let source = context_string(&entry.data, "source")?;
-        let name = context_string(&entry.data, "name")?;
-        let content = context_string(&entry.data, "content")?;
-        let sha256 = context_string(&entry.data, "sha256")?;
-        let path = entry
+        let resolved_reference = entry
             .data
-            .get("path")
+            .get("ref")
             .and_then(JsonValue::as_str)
-            .map(PathBuf::from);
-        let source_label = entry
-            .data
-            .get("source_label")
-            .and_then(JsonValue::as_str)
-            .or_else(|| path.as_ref().and_then(|value| value.to_str()))
-            .unwrap_or(source.as_str())
-            .to_owned();
-        self.add_bytes(content.len())?;
+            .ok_or_else(|| blocked("resolved context skill is missing string field ref"))?;
+        if resolved_reference != reference {
+            return Err(blocked(format!(
+                "resolved context skill ref '{resolved_reference}' does not match declared ref '{reference}'"
+            )));
+        }
+        let summary_bytes = usize::try_from(entry.meta.size_bytes)
+            .map_err(|_| blocked("resolved context skill summary size exceeds this platform"))?;
+        self.add_bytes(summary_bytes)?;
         Ok(SkillOperatorContextContextSkill {
             reference: reference.to_owned(),
-            source,
-            name,
-            document: SkillOperatorContextDocument {
-                path,
-                source_label,
-                sha256,
-                content,
-            },
+            summary_sha256: entry.meta.hash.as_str().to_owned(),
+            summary_bytes: entry.meta.size_bytes,
+            summary: entry.data,
         })
     }
 
-    fn load_document(
+    fn manual_document(
         &mut self,
         path: &Path,
+        content: &str,
+        sha256: &str,
     ) -> Result<SkillOperatorContextDocument, SkillRunError> {
-        let content = fs::read_to_string(path)
-            .map_err(|source| RuntimeError::io(format!("reading {}", path.display()), source))?;
         self.add_bytes(content.len())?;
         Ok(SkillOperatorContextDocument {
             path: Some(path.to_path_buf()),
             source_label: path.to_string_lossy().into_owned(),
-            sha256: sha256_prefixed(content.as_bytes()),
-            content,
+            sha256: sha256.to_owned(),
+            content: content.to_owned(),
         })
     }
 
@@ -543,13 +476,22 @@ impl ExpansionState {
         names
             .iter()
             .map(|name| {
-                if name == DATA_SOURCE_ROUTER_TOOL_REF {
+                let workspace_root = crate::config::resolve_runx_workspace_base(env, skill_dir);
+                if let Some(report) = crate::tool_catalogs::native::inspect(
+                    name,
+                    &workspace_root,
+                    &self.options.effects,
+                ) {
+                    let content = serde_json::to_string(&report.tool).map_err(|source| {
+                        RuntimeError::json("serializing native tool operator context", source)
+                    })?;
+                    self.add_bytes(content.len())?;
                     return Ok(SkillOperatorContextTool {
                         name: name.clone(),
-                        source: "runtime-router".to_owned(),
+                        source: "native-runtime".to_owned(),
                         path: None,
-                        sha256: None,
-                        content: None,
+                        sha256: Some(sha256_prefixed(content.as_bytes())),
+                        content: Some(content),
                     });
                 }
                 match resolve_referenced_local_tool(skill_dir, name, env)? {
@@ -743,15 +685,7 @@ fn resolve_referenced_local_tool(
         allow_explicit_manifest_path: true,
     };
     match resolve_local_tool(&options) {
-        Ok(resolution) => {
-            let content = fs::read_to_string(&resolution.manifest_path).map_err(|source| {
-                RuntimeError::io(
-                    format!("reading {}", resolution.manifest_path.display()),
-                    source,
-                )
-            })?;
-            Ok(Some((resolution.manifest_path, content)))
-        }
+        Ok(resolution) => Ok(Some((resolution.manifest_path, resolution.manifest_source))),
         Err(ToolCatalogError::NotFound(_)) => Ok(None),
         Err(ToolCatalogError::InvalidRequest(message))
             if message.contains("must include a namespace") =>
@@ -764,28 +698,7 @@ fn resolve_referenced_local_tool(
     }
 }
 
-fn context_string(data: &JsonObject, field: &str) -> Result<String, SkillRunError> {
-    data.get(field)
-        .and_then(JsonValue::as_str)
-        .map(str::to_owned)
-        .ok_or_else(|| {
-            blocked(format!(
-                "resolved context skill is missing string field {field}"
-            ))
-        })
-}
-
-fn contract_value(
-    value: &impl serde::Serialize,
-    operation: &str,
-) -> Result<JsonValue, SkillRunError> {
-    let value =
-        serde_json::to_value(value).map_err(|source| RuntimeError::json(operation, source))?;
-    serde_json::from_value(value)
-        .map_err(|source| RuntimeError::json("normalizing operator context value", source).into())
-}
-
-fn serialized_bytes(value: &JsonValue) -> Result<usize, SkillRunError> {
+fn serialized_bytes(value: &impl serde::Serialize) -> Result<usize, SkillRunError> {
     serde_json::to_vec(value)
         .map(|bytes| bytes.len())
         .map_err(|source| RuntimeError::json("serializing operator context content", source).into())
@@ -887,8 +800,12 @@ runners:
         let child = chain.entry.steps[0].child.as_ref().ok_or("missing child")?;
         let context = &child.steps[0].context_skills[0];
         assert_eq!(context.reference, "./context/rubric");
-        assert!(context.document.content.contains("child-local rubric"));
-        assert_eq!(context.document.path, Some(rubric.join("SKILL.md")));
+        assert_eq!(
+            context.summary.get("path").and_then(JsonValue::as_str),
+            rubric.join("SKILL.md").canonicalize()?.to_str()
+        );
+        assert!(!context.summary.contains_key("content"));
+        assert!(context.summary.contains_key("manual_sha256"));
         Ok(())
     }
 
@@ -925,8 +842,11 @@ runners:
             SkillOperatorContextOptions::new(BTreeMap::new(), temp.path().to_path_buf()),
         )?;
         let context = &chain.entry.steps[0].context_skills[0];
-        assert!(context.document.content.contains("parent-local rubric"));
-        assert_eq!(context.document.path, Some(rubric.join("SKILL.md")));
+        assert_eq!(
+            context.summary.get("path").and_then(JsonValue::as_str),
+            rubric.join("SKILL.md").canonicalize()?.to_str()
+        );
+        assert!(!context.summary.contains_key("content"));
         Ok(())
     }
 
@@ -1005,13 +925,12 @@ runners:
     fn operator_context_includes_admitted_registry_child_provenance() -> Result<(), Box<dyn Error>>
     {
         use crate::registry::{
-            IngestSkillOptions, RegistryPackageFile, create_file_registry_store,
-            ingest_skill_markdown,
+            FileRegistryStore, IngestSkillOptions, RegistryPackageFile, ingest_skill_markdown,
         };
 
         let temp = tempdir()?;
         let registry_dir = temp.path().join("registry");
-        let store = create_file_registry_store(&registry_dir);
+        let store = FileRegistryStore::new(&registry_dir);
         ingest_skill_markdown(
             &store,
             "---\nname: registry-child\n---\n# Registry Child\n",
@@ -1082,17 +1001,17 @@ runners:
         assert!(error.to_string().contains("contains a cycle"));
 
         let mut previous = temp.path().join("deep-entry");
-        write_skill(&previous, "deep-entry", "# Deep")?;
+        write_skill(&previous, "entry", "# Deep")?;
         let root = previous.clone();
         for index in 0..=MAX_CHAIN_DEPTH {
             let next = previous.join(format!("child-{index}"));
-            write_skill(&next, &format!("child-{index}"), "# Child")?;
+            write_skill(&next, "entry", "# Child")?;
             write_entry_graph(&previous, &format!("./child-{index}"), "")?;
             previous = next;
         }
         write_file(
             &previous.join("X.yaml"),
-            "skill: terminal\nrunners:\n  agent:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: done\n",
+            "skill: entry\nrunners:\n  agent:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: done\n",
         )?;
         let error = operator_context_error(
             load_skill_operator_context_chain(
@@ -1102,7 +1021,10 @@ runners:
             ),
             "depth overflow must fail",
         )?;
-        assert!(error.to_string().contains("exceeds maximum depth"));
+        assert!(
+            error.to_string().contains("exceeds maximum depth"),
+            "unexpected depth error: {error}"
+        );
         Ok(())
     }
 
@@ -1159,6 +1081,7 @@ runners:
         write_file(
             &entry.join("tools/example/record/manifest.json"),
             r#"{
+  "schema": "runx.tool.manifest.v1",
   "name": "example.record",
   "source": {
     "type": "cli-tool",
@@ -1179,7 +1102,7 @@ runners:
             None,
             SkillOperatorContextOptions::new(BTreeMap::new(), temp.path().to_path_buf()),
         )?;
-        assert!(chain.entry.steps[0].mutating);
+        assert!(chain.entry.steps[0].definition.mutating);
         assert_eq!(chain.entry.steps[0].tool_refs, ["example.record"]);
         assert_eq!(chain.entry.tools.len(), 1);
         assert_eq!(chain.entry.tools[0].name, "example.record");
@@ -1194,14 +1117,13 @@ runners:
     }
 
     #[test]
-    fn operator_context_surfaces_runtime_data_source_router_without_manifest()
-    -> Result<(), Box<dyn Error>> {
+    fn operator_context_surfaces_typed_native_data_operation() -> Result<(), Box<dyn Error>> {
         let temp = tempdir()?;
         let entry = temp.path().join("entry");
         write_skill(&entry, "entry", "# Entry")?;
         write_file(
             &entry.join("X.yaml"),
-            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      steps:\n        - id: append\n          tool: data.source\n",
+            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      steps:\n        - id: append\n          tool: data.append_event\n",
         )?;
 
         let chain = load_skill_operator_context_chain(
@@ -1211,10 +1133,46 @@ runners:
         )?;
 
         assert_eq!(chain.entry.tools.len(), 1);
-        assert_eq!(chain.entry.tools[0].name, DATA_SOURCE_ROUTER_TOOL_REF);
-        assert_eq!(chain.entry.tools[0].source, "runtime-router");
+        assert_eq!(chain.entry.tools[0].name, "data.append_event");
+        assert_eq!(chain.entry.tools[0].source, "native-runtime");
         assert!(chain.entry.tools[0].path.is_none());
-        assert!(chain.entry.tools[0].content.is_none());
+        assert!(
+            chain.entry.tools[0]
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("runx-runtime/event-store"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "catalog")]
+    fn operator_context_surfaces_native_tool_contract() -> Result<(), Box<dyn Error>> {
+        let temp = tempdir()?;
+        let entry = temp.path().join("entry");
+        write_skill(&entry, "entry", "# Entry")?;
+        write_file(
+            &entry.join("X.yaml"),
+            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      steps:\n        - id: apply\n          tool: runx.skill.apply\n          mutation: true\n          idempotency_key: apply-1\n",
+        )?;
+
+        let chain = load_skill_operator_context_chain(
+            &entry,
+            None,
+            SkillOperatorContextOptions::new(BTreeMap::new(), temp.path().to_path_buf()),
+        )?;
+
+        assert_eq!(chain.entry.tools.len(), 1);
+        assert_eq!(chain.entry.tools[0].name, "runx.skill.apply");
+        assert_eq!(chain.entry.tools[0].source, "native-runtime");
+        assert!(chain.entry.tools[0].path.is_none());
+        assert!(
+            chain.entry.tools[0]
+                .content
+                .as_deref()
+                .is_some_and(|content| content.contains("runx.skill.apply"))
+        );
+        assert!(chain.entry.tools[0].sha256.is_some());
         Ok(())
     }
 

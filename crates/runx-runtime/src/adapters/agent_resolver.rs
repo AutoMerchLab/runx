@@ -11,6 +11,7 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 use runx_contracts::OutputType;
+use runx_contracts::tools::ToolInput;
 use runx_contracts::{
     ContextEntry, JsonObject, JsonValue, OutputField, ResolutionRequest, output_value_schema,
 };
@@ -20,6 +21,7 @@ use super::agent_anthropic::{AgentToolDefinition, AnthropicModelCaller};
 use super::agent_loop::{AgentLoopConfig, run_agent_loop};
 use super::agent_tools::RuntimeToolExecutor;
 use crate::credentials::{CredentialDelivery, SecretString};
+use crate::effects::RuntimeEffectRegistry;
 use crate::http::RuntimeHttpTransport;
 
 const FINAL_RESULT_TOOL: &str = "runx_final_result";
@@ -39,56 +41,121 @@ pub struct AnthropicAgentResolver<T> {
     env: BTreeMap<String, String>,
     skill_directory: PathBuf,
     credential_delivery: CredentialDelivery,
+    effects: RuntimeEffectRegistry,
+    observed_at: String,
     max_rounds: u32,
+}
+
+pub struct AnthropicAgentResolverOptions {
+    pub api_key: SecretString,
+    pub model: String,
+    pub env: BTreeMap<String, String>,
+    pub skill_directory: PathBuf,
+    pub credential_delivery: CredentialDelivery,
+    pub effects: RuntimeEffectRegistry,
+    pub observed_at: String,
+    pub max_rounds: u32,
 }
 
 impl<T> AnthropicAgentResolver<T> {
     #[must_use]
-    pub fn new(
-        transport: T,
-        api_key: SecretString,
-        model: String,
-        env: BTreeMap<String, String>,
-        skill_directory: PathBuf,
-        credential_delivery: CredentialDelivery,
-        max_rounds: u32,
-    ) -> Self {
+    pub fn new(transport: T, options: AnthropicAgentResolverOptions) -> Self {
         Self {
             transport,
-            api_key,
-            model,
-            env,
-            skill_directory,
-            credential_delivery,
-            max_rounds,
+            api_key: options.api_key,
+            model: options.model,
+            env: options.env,
+            skill_directory: options.skill_directory,
+            credential_delivery: options.credential_delivery,
+            effects: options.effects,
+            observed_at: options.observed_at,
+            max_rounds: options.max_rounds,
         }
     }
 }
 
-fn object_schema() -> JsonValue {
-    output_value_schema(None)
-}
-
 /// The skill's allowed tools plus the final-result tool the model calls to finish.
-/// Input schemas are permissive for now; resolving each tool's manifest schema is
-/// a refinement, not required for the loop to run governed.
+/// Every allowed tool is inspected through the same catalog roots used at call
+/// time, so the model receives the real description and argument contract.
 fn tool_definitions<'a>(
     tool_names: impl Iterator<Item = &'a str>,
     output: Option<&BTreeMap<String, OutputField>>,
-) -> Vec<AgentToolDefinition> {
-    let mut tools: Vec<AgentToolDefinition> = tool_names
-        .map(|name| AgentToolDefinition {
-            name: name.to_owned(),
-            description: format!("runx tool {name}"),
-            input_schema: object_schema(),
+    env: &BTreeMap<String, String>,
+    skill_directory: &std::path::Path,
+    effects: &RuntimeEffectRegistry,
+) -> Result<Vec<AgentToolDefinition>, AgentResolverError> {
+    let mut tools = tool_names
+        .map(|name| {
+            let inspected = crate::tool_catalogs::dispatch::inspect_catalog_tool(
+                name,
+                env,
+                skill_directory,
+                effects,
+            )
+            .map_err(|error| {
+                AgentResolverError::sanitized(format!(
+                    "managed agent allowed tool '{name}' could not be inspected: {error}"
+                ))
+            })?;
+            Ok(AgentToolDefinition {
+                name: name.to_owned(),
+                description: inspected
+                    .description
+                    .unwrap_or_else(|| format!("Runx tool {name}.")),
+                input_schema: tool_input_schema(&inspected.inputs),
+            })
         })
-        .collect();
+        .collect::<Result<Vec<_>, AgentResolverError>>()?;
     tools.push(AgentToolDefinition {
         name: FINAL_RESULT_TOOL.to_owned(),
         description: "Submit the final structured payload for this runx agent act.".to_owned(),
         input_schema: output_value_schema(output),
     });
-    tools
+    Ok(tools)
+}
+
+fn tool_input_schema(inputs: &BTreeMap<String, ToolInput>) -> JsonValue {
+    let properties = inputs
+        .iter()
+        .map(|(name, input)| (name.clone(), JsonValue::Object(tool_input_property(input))))
+        .collect::<JsonObject>();
+    let required = inputs
+        .iter()
+        .filter(|(_, input)| input.required)
+        .map(|(name, _)| JsonValue::String(name.clone()))
+        .collect();
+    JsonValue::Object(JsonObject::from([
+        ("type".to_owned(), JsonValue::String("object".to_owned())),
+        ("properties".to_owned(), JsonValue::Object(properties)),
+        ("required".to_owned(), JsonValue::Array(required)),
+        ("additionalProperties".to_owned(), JsonValue::Bool(false)),
+    ]))
+}
+
+fn tool_input_property(input: &ToolInput) -> JsonObject {
+    let mut schema = JsonObject::new();
+    if matches!(
+        input.input_type.as_str(),
+        "string" | "number" | "integer" | "boolean" | "object" | "array"
+    ) {
+        schema.insert(
+            "type".to_owned(),
+            JsonValue::String(input.input_type.clone()),
+        );
+    }
+    if let Some(description) = &input.description {
+        schema.insert(
+            "description".to_owned(),
+            JsonValue::String(description.clone()),
+        );
+    }
+    if let Some(default) = &input.default
+        && let Ok(wire) = serde_json::to_value(default)
+        && let Ok(value) = serde_json::from_value(wire)
+    {
+        schema.insert("default".to_owned(), value);
+    }
+    schema
 }
 
 fn build_prompt(
@@ -147,7 +214,10 @@ impl<T: RuntimeHttpTransport + Clone> AgentResolver for AnthropicAgentResolver<T
         let tools = tool_definitions(
             envelope.allowed_tools.iter().map(|name| name.as_str()),
             envelope.output.as_ref(),
-        );
+            &self.env,
+            &self.skill_directory,
+            &self.effects,
+        )?;
         let prompt = build_prompt(
             envelope.instructions.as_str(),
             &envelope.inputs,
@@ -164,6 +234,8 @@ impl<T: RuntimeHttpTransport + Clone> AgentResolver for AnthropicAgentResolver<T
             self.env.clone(),
             self.skill_directory.clone(),
             self.credential_delivery.clone(),
+            self.effects.clone(),
+            self.observed_at.clone(),
             envelope
                 .allowed_tools
                 .iter()
@@ -186,13 +258,38 @@ mod tests {
     use runx_contracts::{ContextArtifactMeta, ContextArtifactProducer, ContextEntryVersion};
 
     #[test]
-    fn tool_definitions_include_allowed_and_final_result() {
-        let tools = tool_definitions(["pay", "read"].into_iter(), None);
+    fn tool_definitions_include_allowed_and_final_result() -> Result<(), AgentResolverError> {
+        let tools = tool_definitions(
+            ["fs.read", "git.status"].into_iter(),
+            None,
+            &BTreeMap::new(),
+            std::path::Path::new("."),
+            &RuntimeEffectRegistry::default(),
+        )?;
         let names: Vec<&str> = tools.iter().map(|tool| tool.name.as_str()).collect();
         assert!(
-            names == ["pay", "read", FINAL_RESULT_TOOL],
+            names == ["fs.read", "git.status", FINAL_RESULT_TOOL],
             "tool defs should be the allowed tools plus the final-result tool; got: {names:?}"
         );
+        let read = &tools[0];
+        assert!(read.description.contains("file"));
+        let schema = read
+            .input_schema
+            .as_object()
+            .ok_or_else(|| AgentResolverError::sanitized("missing tool schema"))?;
+        assert!(
+            schema
+                .get("properties")
+                .and_then(JsonValue::as_object)
+                .is_some_and(|properties| properties.contains_key("path"))
+        );
+        assert_eq!(
+            schema.get("required"),
+            Some(&JsonValue::Array(vec![JsonValue::String(
+                "path".to_owned()
+            )]))
+        );
+        Ok(())
     }
 
     #[test]
@@ -201,7 +298,14 @@ mod tests {
             ("decision".to_owned(), OutputField::Type(OutputType::String)),
             ("quality".to_owned(), OutputField::Type(OutputType::Object)),
         ]);
-        let tools = tool_definitions([].into_iter(), Some(&outputs));
+        let tools = tool_definitions(
+            [].into_iter(),
+            Some(&outputs),
+            &BTreeMap::new(),
+            std::path::Path::new("."),
+            &RuntimeEffectRegistry::default(),
+        )
+        .map_err(|error| error.sanitized_message().to_owned())?;
         let final_tool = tools
             .iter()
             .find(|tool| tool.name == FINAL_RESULT_TOOL)

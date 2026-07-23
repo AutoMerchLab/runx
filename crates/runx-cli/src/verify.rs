@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - verify owns legacy receipt-tree checks plus the new single-receipt machine verdict.
+// Module rationale: verify owns legacy receipt-tree checks plus the new single-receipt machine verdict.
 use std::collections::{BTreeMap, BTreeSet};
 use std::ffi::OsString;
 use std::fmt;
@@ -124,7 +124,7 @@ pub fn run_verify_command(
     run_verify_command_with_stdin(args, env, cwd, io::empty())
 }
 
-// rust-style-allow: long-function - argument dispatch keeps tree and single-receipt modes mutually exclusive in one parser.
+// Function rationale: argument dispatch keeps tree and single-receipt modes mutually exclusive in one parser.
 pub fn run_verify_command_with_stdin<R: Read>(
     args: &[OsString],
     env: &BTreeMap<String, String>,
@@ -241,7 +241,7 @@ pub fn run_verify_command_with_stdin<R: Read>(
     })
 }
 
-// rust-style-allow: long-function - verify accepts legacy receipt-tree flags and
+// Function rationale: verify accepts legacy receipt-tree flags and
 // the single-receipt machine surface in one mutually-exclusive parser.
 fn parse_verify_args(args: &[OsString]) -> Result<ParsedVerifyArgs, VerifyCliError> {
     let mut parsed = ParsedVerifyArgs::default();
@@ -419,10 +419,10 @@ fn read_single_receipt_input<R: Read>(
     match input {
         ReceiptInput::Path(path) => {
             let path = resolve_under_cwd(path, cwd);
-            if let Ok(metadata) = fs::metadata(&path) {
-                if metadata.len() > SINGLE_RECEIPT_MAX_BYTES as u64 {
-                    return Err(single_receipt_too_large());
-                }
+            if let Ok(metadata) = fs::metadata(&path)
+                && metadata.len() > SINGLE_RECEIPT_MAX_BYTES as u64
+            {
+                return Err(single_receipt_too_large());
             }
             let document = fs::read(&path).map_err(|error| {
                 VerifyCliError::Store(format!(
@@ -475,7 +475,7 @@ fn run_notary_verify<R: Read>(
     })
 }
 
-// rust-style-allow: long-function - hosted notary verification traverses one
+// Function rationale: hosted notary verification traverses one
 // public projection and accumulates all findings for operator diagnostics.
 fn verify_notary_document(document: &[u8], trusted_keys: &[Vec<u8>]) -> NotaryVerifyVerdict {
     let mut findings = Vec::new();
@@ -582,7 +582,7 @@ fn locate_notary_verification(
         .and_then(serde_json::Value::as_object)
 }
 
-// rust-style-allow: long-function - counter-seal validation intentionally binds
+// Function rationale: counter-seal validation intentionally binds
 // digest, public key, signature, and trust-key diagnostics in one check.
 fn verify_counter_seal_signature(
     notary: &serde_json::Map<String, serde_json::Value>,
@@ -945,9 +945,7 @@ fn load_receipts(root: &Path) -> Result<(Vec<Receipt>, Vec<FileIssue>), VerifyCl
             ))
         })?;
         let path = entry.path();
-        if path.extension().and_then(|value| value.to_str()) != Some("json")
-            || path.file_name().and_then(|value| value.to_str()) == Some("index.json")
-        {
+        if !is_content_addressed_receipt_path(&path) {
             continue;
         }
         match fs::read_to_string(&path) {
@@ -966,6 +964,17 @@ fn load_receipts(root: &Path) -> Result<(Vec<Receipt>, Vec<FileIssue>), VerifyCl
     }
     receipts.sort_by(|left, right| left.id.cmp(&right.id));
     Ok((receipts, issues))
+}
+
+fn is_content_addressed_receipt_path(path: &Path) -> bool {
+    path.extension().and_then(|value| value.to_str()) == Some("json")
+        && path
+            .file_stem()
+            .and_then(|value| value.to_str())
+            .and_then(|stem| stem.strip_prefix("sha256-"))
+            .is_some_and(|digest| {
+                digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
+            })
 }
 
 #[derive(Clone, Debug)]
@@ -1320,6 +1329,48 @@ mod tests {
     }
 
     #[test]
+    fn receipt_store_verification_ignores_non_receipt_state_json() -> Result<(), io::Error> {
+        let temp = tempfile_dir()?;
+        let receipt_dir = temp.join("receipts");
+        let signer = fixture_signer().map_err(io::Error::other)?;
+        let verifier = Ed25519ReceiptVerifier::new([signer.production_key()]);
+        let receipt = production_signed_receipt(&signer)
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        LocalReceiptStore::new(&receipt_dir)
+            .write_receipt_with_policy(
+                &receipt,
+                RuntimeReceiptSignaturePolicy::production(&verifier),
+            )
+            .map_err(|error| io::Error::other(error.to_string()))?;
+        fs::write(
+            receipt_dir.join("effect-state.json"),
+            r#"{"schema_version":1,"entries":{}}"#,
+        )?;
+
+        let result = run_verify_command(
+            &[
+                "verify".into(),
+                "--receipt-dir".into(),
+                receipt_dir.into_os_string(),
+                "--json".into(),
+            ],
+            &verifier_env(&signer),
+            &temp,
+        )
+        .map_err(|error| io::Error::other(error.to_string()))?;
+
+        assert!(
+            !result.failed,
+            "non-receipt state must not poison verification: {}",
+            result.output
+        );
+        let report: JsonValue = serde_json::from_str(&result.output).map_err(io::Error::other)?;
+        assert_eq!(report["valid"], JsonValue::Bool(true));
+        assert_eq!(report["unreadable_files"].as_array().map(Vec::len), Some(0));
+        Ok(())
+    }
+
+    #[test]
     fn groups_runtime_tree_from_parent_child_refs_without_child_back_links() -> Result<(), io::Error>
     {
         let signer = fixture_signer().map_err(io::Error::other)?;
@@ -1645,7 +1696,7 @@ mod tests {
     }
 
     #[test]
-    // rust-style-allow: long-function - this notary negative fixture builds the
+    // Function rationale: this notary negative fixture builds the
     // untrusted projection and verifies each emitted finding together.
     fn hosted_notary_rejects_embedded_key_without_external_trust() -> Result<(), io::Error> {
         let temp = tempfile_dir()?;
@@ -1715,7 +1766,7 @@ mod tests {
     }
 
     #[test]
-    // rust-style-allow: long-function - this notary fixture keeps the signed
+    // Function rationale: this notary fixture keeps the signed
     // payload, projection, and verification readback in one regression.
     fn hosted_notary_binds_signed_payload_to_public_projection() -> Result<(), io::Error> {
         let temp = tempfile_dir()?;
@@ -1786,7 +1837,7 @@ mod tests {
         Ok(())
     }
 
-    // rust-style-allow: long-function - malformed receipt regression covers capped stdin, invalid JSON, and machine verdict fields together.
+    // Function rationale: malformed receipt regression covers capped stdin, invalid JSON, and machine verdict fields together.
     #[test]
     fn malformed_single_receipt_returns_invalid_verdict() -> Result<(), io::Error> {
         let temp = tempfile_dir()?;

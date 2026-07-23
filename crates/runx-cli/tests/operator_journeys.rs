@@ -10,20 +10,17 @@ type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 fn skill_author_journey_discovers_harnesses_runs_verifies_and_reads_history() -> TestResult {
     let root = crate::support::temp_root("runx-operator-author-journey");
     let skills_dir = root.join("skills");
-    let skill_dir = skills_dir.join("operator-echo");
+    let skill_dir = skills_dir.join("digest-note");
     let receipt_dir = root.join(".runx/receipts");
-    fs::create_dir_all(&skills_dir)?;
-
-    let scaffold = command(&root)
-        .arg("new")
-        .arg("operator-echo")
-        .arg("--directory")
-        .arg(&skill_dir)
-        .arg("--json")
-        .output()?;
-    let scaffold = assert_json(&scaffold, 0)?;
-    assert_eq!(scaffold["status"], "success");
-    assert_eq!(scaffold["new"]["name"], "operator-echo");
+    fs::create_dir_all(&skill_dir)?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        crate::new_skill_authoring::digest_note_manual(),
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        crate::new_skill_authoring::digest_note_manifest(),
+    )?;
 
     let list = command(&root)
         .args(["list", "skills", "--ok-only", "--json"])
@@ -33,8 +30,8 @@ fn skill_author_journey_discovers_harnesses_runs_verifies_and_reads_history() ->
         .as_array()
         .ok_or("list items must be an array")?
         .iter()
-        .find(|item| item["name"] == "operator-echo")
-        .ok_or("scaffolded skill was not discoverable")?;
+        .find(|item| item["name"] == "digest-note")
+        .ok_or("authored skill was not discoverable")?;
     assert_eq!(listed["status"], "ok");
 
     let inspect = command(&root)
@@ -46,13 +43,13 @@ fn skill_author_journey_discovers_harnesses_runs_verifies_and_reads_history() ->
     let inspect = assert_json(&inspect, 0)?;
     assert_eq!(inspect["status"], "ok");
     assert_eq!(inspect["readiness"]["status"], "ready");
-    assert_eq!(inspect["capabilities"]["execution"], "execute");
+    assert_eq!(inspect["capabilities"]["execution"], "read");
     assert_eq!(inspect["capabilities"]["completion"], "runtime_receipt");
-    assert_eq!(inspect["runner"]["type"], "cli-tool");
+    assert_eq!(inspect["runner"]["type"], "graph");
     assert!(
         inspect["runner"]["inputs"]
             .as_array()
-            .is_some_and(|inputs| inputs.iter().any(|input| input["name"] == "message"))
+            .is_some_and(|inputs| inputs.iter().any(|input| input["name"] == "note"))
     );
 
     let harness = command(&root)
@@ -64,12 +61,12 @@ fn skill_author_journey_discovers_harnesses_runs_verifies_and_reads_history() ->
         .output()?;
     let harness = assert_json(&harness, 0)?;
     assert_eq!(harness["status"], "passed");
-    assert_eq!(harness["case_count"], 2);
+    assert_eq!(harness["case_count"], 1);
 
     let run = command(&root)
         .arg("skill")
         .arg(&skill_dir)
-        .args(["--input", "message=hello"])
+        .args(["--input", "note=hello"])
         .arg("--receipt-dir")
         .arg(&receipt_dir)
         .args(["--json", "--skip-operator-context"])
@@ -222,6 +219,70 @@ fn composite_business_ops_journey_runs_verifies_and_reads_receipt_tree() -> Test
     );
     let receipt_id = json_string(&run, "receipt_id")?;
 
+    assert_receipt_verifies(&root, &receipt_dir, receipt_id)?;
+    assert_history_contains_local_receipt(&root, &receipt_dir, receipt_id)?;
+
+    Ok(())
+}
+
+#[test]
+fn provider_skill_journey_reports_readiness_and_seals_missing_authority() -> TestResult {
+    let root = crate::support::temp_root("runx-operator-provider-readiness-journey");
+    let skill_dir = crate::support::repo_root()?.join("skills/google-analytics");
+    let receipt_dir = root.join(".runx/receipts");
+    fs::create_dir_all(&root)?;
+
+    let inspect = command(&root)
+        .env("RUNX_PROVIDER_PERMISSION_GRANT_ID", "grant_google_read")
+        .env(
+            "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES",
+            "properties.read,reports.read",
+        )
+        .arg("skill")
+        .arg("inspect")
+        .arg(&skill_dir)
+        .arg("properties")
+        .arg("--json")
+        .output()?;
+    let inspect = assert_json(&inspect, 0)?;
+    assert_eq!(inspect["readiness"]["status"], "ready");
+    assert_eq!(inspect["provider"]["status"], "ready");
+    assert_eq!(
+        inspect["provider"]["requirements"][0]["provider"],
+        "google-analytics"
+    );
+    assert_eq!(
+        inspect["provider"]["requirements"][0]["operation"],
+        "properties.list"
+    );
+    assert_eq!(
+        inspect["provider"]["requirements"][0]["grant_ref"],
+        "runx:grant:grant_google_read"
+    );
+
+    let denied = command(&root)
+        .env(
+            "RUNX_PROVIDER_PERMISSION_GRANT_ID",
+            "grant_google_wrong_scope",
+        )
+        .env("RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES", "reports.read")
+        .arg("skill")
+        .arg(&skill_dir)
+        .arg("properties")
+        .arg("--receipt-dir")
+        .arg(&receipt_dir)
+        .args(["--json", "--skip-operator-context"])
+        .output()?;
+    let denied = assert_json(&denied, 0)?;
+    assert_eq!(denied["status"], "sealed");
+    assert_eq!(denied["closure"]["disposition"], "blocked");
+    assert_eq!(denied["closure"]["reason_code"], "authority_denied");
+    assert_eq!(denied["payload"]["graph_status"], "Blocked");
+    assert_eq!(
+        denied["execution"]["skill_claim"]["graph_status"],
+        "Blocked"
+    );
+    let receipt_id = json_string(&denied, "receipt_id")?;
     assert_receipt_verifies(&root, &receipt_dir, receipt_id)?;
     assert_history_contains_local_receipt(&root, &receipt_dir, receipt_id)?;
 

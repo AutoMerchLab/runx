@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because the sandbox root owns orchestration
+// Module rationale: the sandbox root owns orchestration
 // tests that exercise the split backend, command, env, metadata, and policy
 // modules together.
 mod backend;
@@ -12,15 +12,19 @@ use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
 use runx_contracts::JsonObject;
+use runx_core::policy::{CwdPolicy, SandboxProfile};
+use runx_parser::SkillSandbox;
 use runx_parser::{SkillMcpServer, SkillSource};
 
 use crate::RuntimeError;
 
+use self::backend::resolve_javascript_worker_runtime;
 use self::backend::resolve_sandbox_runtime;
+use self::command::javascript_worker_spawn_command;
 use self::command::{SandboxSpawnCommand, sandbox_network_enabled, sandbox_spawn_command};
 use self::env::{
-    child_base_env, child_env, cleanup_paths_quietly, prepare_sandbox_tmp_env,
-    sandbox_private_tmp_enabled,
+    child_base_env as sandbox_child_base_env, child_env, cleanup_paths_quietly,
+    prepare_sandbox_tmp_env, sandbox_private_tmp_enabled,
 };
 use self::metadata::sandbox_metadata_with_runtime;
 use self::policy::{
@@ -30,6 +34,13 @@ use self::policy::{
 use self::template::resolve_template;
 
 pub use self::metadata::sandbox_metadata;
+
+#[cfg(feature = "cli-tool")]
+pub(crate) fn child_base_env(
+    base_env: &std::collections::BTreeMap<String, String>,
+) -> Result<std::collections::BTreeMap<String, String>, RuntimeError> {
+    sandbox_child_base_env(None, base_env)
+}
 
 pub(crate) const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV: &str =
     "RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY";
@@ -44,7 +55,6 @@ pub struct SandboxPlan {
     pub cleanup_paths: Vec<PathBuf>,
 }
 
-#[cfg(feature = "cli-tool")]
 pub(crate) struct SandboxProcessPlan {
     pub(crate) command: String,
     pub(crate) args: Vec<String>,
@@ -55,7 +65,6 @@ pub(crate) struct SandboxProcessPlan {
 }
 
 impl SandboxPlan {
-    #[cfg(feature = "cli-tool")]
     pub(crate) fn into_process_plan(mut self) -> SandboxProcessPlan {
         SandboxProcessPlan {
             command: std::mem::take(&mut self.command),
@@ -131,6 +140,133 @@ pub fn prepare_process_sandbox(
     })
 }
 
+/// Prepare the fixed sandbox used by the generic native command capability.
+///
+/// Unlike a package-declared CLI tool, `command.execute` cannot choose its
+/// sandbox, network, environment allowlist, or credential delivery. The
+/// runtime pins those controls here and requires a real platform enforcer.
+#[cfg(feature = "cli-tool")]
+pub(crate) fn prepare_native_command_sandbox(
+    command: String,
+    args: Vec<String>,
+    cwd: &Path,
+    workspace_root: &Path,
+    explicit_env: &BTreeMap<String, String>,
+    base_env: &BTreeMap<String, String>,
+) -> Result<SandboxPlan, RuntimeError> {
+    let sandbox = native_command_sandbox(workspace_root);
+    validate_sandbox(Some(&sandbox))?;
+
+    let writable_paths = resolved_writable_paths(Some(&sandbox), &JsonObject::new(), base_env);
+    let validated_writable_paths =
+        validated_writable_paths(Some(&sandbox), &writable_paths, cwd, Some(workspace_root))?;
+    let mut sandbox_base_env = base_env.clone();
+    sandbox_base_env.insert(
+        crate::receipts::paths::RUNX_CWD_ENV.to_owned(),
+        workspace_root.to_string_lossy().into_owned(),
+    );
+    let runtime = resolve_sandbox_runtime(Some(&sandbox), &sandbox_base_env)?;
+    let private_tmp_enabled = sandbox_private_tmp_enabled(Some(&sandbox), runtime.as_ref());
+    let mut cleanup_paths = Vec::new();
+    prepare_sandbox_tmp_env(
+        Some(&sandbox),
+        &runtime,
+        &mut sandbox_base_env,
+        &mut cleanup_paths,
+    )?;
+    let mut env = sandbox_child_base_env(Some(&sandbox), &sandbox_base_env)?;
+    env.extend(explicit_env.clone());
+    let (command, args) = sandbox_spawn_command(SandboxSpawnCommand {
+        runtime: runtime.as_ref(),
+        command,
+        args,
+        cwd,
+        skill_directory: workspace_root,
+        workspace_cwd: Some(workspace_root),
+        writable_paths: &validated_writable_paths,
+        network: false,
+        private_tmp: cleanup_paths.first().map(PathBuf::as_path),
+    });
+    Ok(SandboxPlan {
+        command,
+        args,
+        cwd: cwd.to_path_buf(),
+        env,
+        metadata: sandbox_metadata_with_runtime(
+            Some(&sandbox),
+            &writable_paths,
+            runtime.as_ref(),
+            private_tmp_enabled,
+        ),
+        cleanup_paths,
+    })
+}
+
+#[cfg(feature = "cli-tool")]
+fn native_command_sandbox(workspace_root: &Path) -> SkillSandbox {
+    SkillSandbox {
+        profile: SandboxProfile::WorkspaceWrite,
+        cwd_policy: Some(CwdPolicy::Workspace),
+        env_allowlist: None,
+        network: Some(false),
+        writable_paths: vec![workspace_root.to_string_lossy().into_owned()],
+        require_enforcement: Some(true),
+        approved_escalation: None,
+        raw: JsonObject::new(),
+    }
+}
+
+/// Prepare the runtime-owned containment boundary for the deterministic
+/// JavaScript worker. Package authors cannot influence this plan: it carries no
+/// package/workspace mount, environment, credential, writable path, or network
+/// permission.
+pub(crate) fn prepare_javascript_worker_sandbox(
+    worker_path: &Path,
+) -> Result<SandboxPlan, RuntimeError> {
+    let cwd = javascript_worker_cwd()?;
+    #[cfg(windows)]
+    {
+        return Ok(SandboxPlan {
+            command: worker_path.to_string_lossy().into_owned(),
+            args: Vec::new(),
+            cwd,
+            env: BTreeMap::new(),
+            metadata: JsonObject::new(),
+            cleanup_paths: Vec::new(),
+        });
+    }
+
+    #[cfg(not(windows))]
+    {
+        let sandbox = SkillSandbox {
+            profile: SandboxProfile::Readonly,
+            cwd_policy: Some(CwdPolicy::SkillDirectory),
+            env_allowlist: None,
+            network: Some(false),
+            writable_paths: Vec::new(),
+            require_enforcement: Some(true),
+            approved_escalation: None,
+            raw: JsonObject::new(),
+        };
+        let runtime = resolve_javascript_worker_runtime()?;
+        let (command, args) = javascript_worker_spawn_command(runtime.as_ref(), worker_path, &cwd)?;
+        Ok(SandboxPlan {
+            command,
+            args,
+            cwd,
+            env: BTreeMap::new(),
+            metadata: sandbox_metadata_with_runtime(Some(&sandbox), &[], runtime.as_ref(), false),
+            cleanup_paths: Vec::new(),
+        })
+    }
+}
+
+fn javascript_worker_cwd() -> Result<PathBuf, RuntimeError> {
+    let cwd = std::env::temp_dir();
+    std::fs::canonicalize(&cwd)
+        .map_err(|source| RuntimeError::io("resolving deterministic worker cwd", source))
+}
+
 pub fn prepare_mcp_process_sandbox(
     source: &SkillSource,
     server: &SkillMcpServer,
@@ -154,7 +290,7 @@ pub fn prepare_mcp_process_sandbox(
     let mut cleanup_paths = Vec::new();
     let mut sandbox_base_env = base_env.clone();
     prepare_sandbox_tmp_env(sandbox, &runtime, &mut sandbox_base_env, &mut cleanup_paths)?;
-    let env = match child_base_env(sandbox, &sandbox_base_env) {
+    let env = match sandbox_child_base_env(sandbox, &sandbox_base_env) {
         Ok(env) => env,
         Err(error) => {
             cleanup_paths_quietly(&cleanup_paths);
@@ -390,23 +526,25 @@ mod tests {
             act: None,
             source_type,
             command: Some("node".to_owned()),
+            module: None,
+            javascript_export: None,
+            pages: None,
             args: vec!["script.mjs".to_owned()],
             cwd: None,
             timeout_seconds: None,
             input_mode: None,
             sandbox: None,
             server: None,
-            catalog_ref: None,
             tool: None,
             arguments: None,
             agent_card_url: None,
             agent_identity: None,
             agent: None,
             task: None,
-            hook: None,
             outputs: None,
             graph: None,
-            http: None,
+            external_adapter: None,
+            thread_outbox_provider: None,
             raw: JsonObject::new(),
         }
     }

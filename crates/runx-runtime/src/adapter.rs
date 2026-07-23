@@ -4,7 +4,7 @@ use std::path::PathBuf;
 use runx_contracts::{ContextEntry, JsonObject};
 #[cfg(feature = "cli-tool")]
 use runx_contracts::{CredentialDeliveryObservation, JsonValue};
-use runx_parser::SkillSource;
+use runx_parser::{SkillArtifactContract, SkillSource};
 use serde::{Deserialize, Serialize};
 
 use crate::RuntimeError;
@@ -28,6 +28,11 @@ pub enum InvocationStatus {
 pub struct SkillInvocation {
     pub skill_name: String,
     pub source: SkillSource,
+    /// Parser-validated artifact contract for this invocation. Adapters must not
+    /// reconstruct it from `source.raw`.
+    pub artifacts: Option<SkillArtifactContract>,
+    /// Parser-validated tools available to an agent invocation.
+    pub allowed_tools: Option<Vec<String>>,
     pub inputs: JsonObject,
     pub resolved_inputs: JsonObject,
     pub current_context: Vec<ContextEntry>,

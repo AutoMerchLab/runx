@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - the thread-outbox provider supervisor keeps transport, manifest
+// Module rationale: the thread-outbox provider supervisor keeps transport, manifest
 // validation, secret rejection, and redaction in one module so the provider boundary is reviewed
 // as a single trust surface.
 use std::collections::BTreeSet;
@@ -13,11 +13,12 @@ use runx_contracts::{
 use thiserror::Error;
 
 use crate::credentials::CredentialDelivery;
-use crate::process::{ProcessOutcome, ProcessSpec, ProcessStdin, run_process};
+use crate::process::{
+    ProcessOutcome, ProcessSpec, ProcessStdin, STANDARD_PROCESS_OUTPUT_BYTES, run_process,
+};
 use crate::redaction::trim_ascii_whitespace;
 
 const DEFAULT_TIMEOUT_MS: u64 = 5_000;
-const DEFAULT_OUTPUT_LIMIT_BYTES: usize = 1_048_576;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ThreadOutboxProviderSupervisorOptions {
@@ -30,7 +31,7 @@ impl Default for ThreadOutboxProviderSupervisorOptions {
     fn default() -> Self {
         Self {
             timeout_ms: DEFAULT_TIMEOUT_MS,
-            output_limit_bytes: DEFAULT_OUTPUT_LIMIT_BYTES,
+            output_limit_bytes: STANDARD_PROCESS_OUTPUT_BYTES,
             cwd: None,
         }
     }
@@ -399,7 +400,7 @@ fn parse_provider_response(
     let mut value: JsonValue = serde_json::from_slice(bytes)
         .map_err(|source| json_error("parsing thread outbox provider observation", source))?;
     reject_secret_like_fields(&value, "$")?;
-    redact_json_value(&mut value, credential_delivery);
+    credential_delivery.redact_json_value(&mut value);
     let (observation_value, output) = provider_response_parts(value)?;
     let redacted = serde_json::to_vec(&observation_value).map_err(|source| {
         json_error(
@@ -409,10 +410,10 @@ fn parse_provider_response(
     })?;
     let mut observation: ThreadOutboxProviderObservation = serde_json::from_slice(&redacted)
         .map_err(|source| json_error("validating thread outbox provider observation", source))?;
-    if observation.delivery_observations.is_none() {
-        if let Some(delivery_observation) = credential_delivery.public_observation() {
-            observation.delivery_observations = Some(vec![delivery_observation.clone()]);
-        }
+    if observation.delivery_observations.is_none()
+        && let Some(delivery_observation) = credential_delivery.public_observation()
+    {
+        observation.delivery_observations = Some(vec![delivery_observation.clone()]);
     }
     Ok(ThreadOutboxProviderProviderResponse {
         observation,
@@ -531,25 +532,6 @@ fn secret_like_key(key: &str) -> bool {
         "authorization",
     ];
     SECRET_KEYS.contains(&normalized.as_str())
-}
-
-fn redact_json_value(value: &mut JsonValue, credential_delivery: &CredentialDelivery) {
-    match value {
-        JsonValue::String(text) => {
-            *text = credential_delivery.redact_text(std::mem::take(text));
-        }
-        JsonValue::Array(values) => {
-            for child in values {
-                redact_json_value(child, credential_delivery);
-            }
-        }
-        JsonValue::Object(object) => {
-            for child in object.values_mut() {
-                redact_json_value(child, credential_delivery);
-            }
-        }
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) => {}
-    }
 }
 
 fn current_dir() -> PathBuf {

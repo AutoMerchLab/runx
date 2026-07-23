@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - the Anthropic adapter keeps request shaping,
+// Module rationale: the Anthropic adapter keeps request shaping,
 // tool-use parsing, and provider error mapping in one reviewed HTTP boundary.
 //! Anthropic provider [`ModelCaller`] for the managed-agent loop.
 //!
@@ -238,6 +238,10 @@ mod tests {
             Ok(RuntimeHttpResponse {
                 status: self.status,
                 body: self.body.clone(),
+                headers: Vec::new(),
+                body_digest: runx_contracts::sha256_prefixed(self.body.as_bytes()),
+                body_bytes: self.body.len(),
+                truncated: false,
             })
         }
     }

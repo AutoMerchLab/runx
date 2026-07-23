@@ -68,6 +68,50 @@ expect:
 }
 
 #[test]
+fn package_mode_keeps_default_receipts_after_isolated_replay() -> TestResult {
+    let root = crate::support::temp_root("runx-package-harness-default-receipts");
+    let skill_dir = root.join("skill");
+    let receipt_dir = root.join(".runx/receipts");
+    fs::create_dir_all(&skill_dir)?;
+    write_cli_tool_skill(&skill_dir)?;
+
+    let output = unsigned_runx_command()?
+        .env("RUNX_CWD", &root)
+        .env("RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY", "local")
+        .args([
+            "harness",
+            skill_dir.to_str().ok_or("non-utf8 skill dir")?,
+            "--json",
+        ])
+        .output()?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(0),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    let receipt_id = report["receipt_ids"]
+        .as_array()
+        .and_then(|ids| ids.first())
+        .and_then(serde_json::Value::as_str)
+        .ok_or("missing receipt id")?;
+    let file_name = format!(
+        "sha256-{}.json",
+        receipt_id
+            .strip_prefix("sha256:")
+            .ok_or("invalid receipt id")?
+    );
+
+    assert!(receipt_dir.join(file_name).is_file());
+    assert!(receipt_dir.join("index.json").is_file());
+    assert!(root.join(".runx/harness").read_dir()?.next().is_none());
+    Ok(())
+}
+
+#[test]
 fn package_harness_partial_signer_config_prints_actionable_hint() -> TestResult {
     let root = crate::support::temp_root("runx-inline-harness-hint");
     let skill_dir = root.join("skill");

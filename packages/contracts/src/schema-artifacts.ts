@@ -841,6 +841,10 @@ export const runxSchemaArtifacts = {
                             "minLength": 1,
                             "type": "string"
                           },
+                          "instructions_sha256": {
+                            "minLength": 1,
+                            "type": "string"
+                          },
                           "output": {
                             "additionalProperties": {
                               "anyOf": [
@@ -1011,6 +1015,7 @@ export const runxSchemaArtifacts = {
                         "required": [
                           "run_id",
                           "skill",
+                          "instructions_sha256",
                           "instructions",
                           "inputs",
                           "allowed_tools",
@@ -6547,6 +6552,10 @@ export const runxSchemaArtifacts = {
             "minLength": 1,
             "type": "string"
           },
+          "instructions_sha256": {
+            "minLength": 1,
+            "type": "string"
+          },
           "output": {
             "additionalProperties": {
               "anyOf": [
@@ -6717,6 +6726,7 @@ export const runxSchemaArtifacts = {
         "required": [
           "run_id",
           "skill",
+          "instructions_sha256",
           "instructions",
           "inputs",
           "allowed_tools",
@@ -7113,6 +7123,10 @@ export const runxSchemaArtifacts = {
         "minLength": 1,
         "type": "string"
       },
+      "instructions_sha256": {
+        "minLength": 1,
+        "type": "string"
+      },
       "output": {
         "additionalProperties": {
           "anyOf": [
@@ -7283,6 +7297,7 @@ export const runxSchemaArtifacts = {
     "required": [
       "run_id",
       "skill",
+      "instructions_sha256",
       "instructions",
       "inputs",
       "allowed_tools",
@@ -21793,6 +21808,10 @@ export const runxSchemaArtifacts = {
                         "minLength": 1,
                         "type": "string"
                       },
+                      "instructions_sha256": {
+                        "minLength": 1,
+                        "type": "string"
+                      },
                       "output": {
                         "additionalProperties": {
                           "anyOf": [
@@ -21963,6 +21982,7 @@ export const runxSchemaArtifacts = {
                     "required": [
                       "run_id",
                       "skill",
+                      "instructions_sha256",
                       "instructions",
                       "inputs",
                       "allowed_tools",
@@ -42421,7 +42441,7 @@ export const runxSchemaArtifacts = {
             "type": "string"
           },
           "materialized_package_is_registry_artifact": {
-            "type": "boolean"
+            "const": true
           },
           "owner": {
             "type": "string"
@@ -42546,7 +42566,7 @@ export const runxSchemaArtifacts = {
             "type": "string"
           },
           "source_of_truth": {
-            "type": "boolean"
+            "const": true
           }
         },
         "required": [
@@ -43049,6 +43069,10 @@ export const runxSchemaArtifacts = {
                     "minLength": 1,
                     "type": "string"
                   },
+                  "instructions_sha256": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
                   "output": {
                     "additionalProperties": {
                       "anyOf": [
@@ -43219,6 +43243,7 @@ export const runxSchemaArtifacts = {
                 "required": [
                   "run_id",
                   "skill",
+                  "instructions_sha256",
                   "instructions",
                   "inputs",
                   "allowed_tools",
@@ -46989,6 +47014,1896 @@ export const runxSchemaArtifacts = {
     ],
     "type": "object",
     "x-runx-schema": "runx.signal.v1"
+  } as JsonSchema,
+  "skill-apply-result.schema.json": {
+    "$id": "https://schemas.runx.ai/runx/skill/apply-result/v1.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "base_digest": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "changed_paths": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "decision": {
+        "anyOf": [
+          {
+            "const": "write",
+            "type": "string"
+          },
+          {
+            "const": "no_skill",
+            "type": "string"
+          },
+          {
+            "const": "no_change",
+            "type": "string"
+          },
+          {
+            "const": "needs_core",
+            "type": "string"
+          }
+        ]
+      },
+      "deleted_paths": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "package_digest": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "plan_digest": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "residual_risks": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "schema": {
+        "anyOf": [
+          {
+            "const": "runx.skill.apply_result.v1",
+            "type": "string"
+          }
+        ]
+      },
+      "target_dir": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "validation": {
+        "$id": "https://schemas.runx.ai/runx/skill/validation-result/v1.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "after": {
+            "additionalProperties": false,
+            "properties": {
+              "bytes": {
+                "type": "integer"
+              },
+              "executable_files": {
+                "type": "integer"
+              },
+              "executable_lines": {
+                "type": "integer"
+              },
+              "files": {
+                "type": "integer"
+              },
+              "generated_lines": {
+                "type": "integer"
+              },
+              "production_lines": {
+                "type": "integer"
+              },
+              "test_lines": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "files",
+              "bytes",
+              "production_lines",
+              "test_lines",
+              "generated_lines",
+              "executable_files",
+              "executable_lines"
+            ],
+            "type": "object"
+          },
+          "base_digest": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "before": {
+            "additionalProperties": false,
+            "properties": {
+              "bytes": {
+                "type": "integer"
+              },
+              "executable_files": {
+                "type": "integer"
+              },
+              "executable_lines": {
+                "type": "integer"
+              },
+              "files": {
+                "type": "integer"
+              },
+              "generated_lines": {
+                "type": "integer"
+              },
+              "production_lines": {
+                "type": "integer"
+              },
+              "test_lines": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "files",
+              "bytes",
+              "production_lines",
+              "test_lines",
+              "generated_lines",
+              "executable_files",
+              "executable_lines"
+            ],
+            "type": "object"
+          },
+          "candidate_digest": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "checks": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "detail": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "name": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "status": {
+                  "anyOf": [
+                    {
+                      "const": "passed",
+                      "type": "string"
+                    },
+                    {
+                      "const": "skipped",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "name",
+                "status",
+                "detail"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "delta": {
+            "additionalProperties": false,
+            "properties": {
+              "bytes": {
+                "type": "integer"
+              },
+              "executable_files": {
+                "type": "integer"
+              },
+              "executable_lines": {
+                "type": "integer"
+              },
+              "files": {
+                "type": "integer"
+              },
+              "generated_lines": {
+                "type": "integer"
+              },
+              "production_lines": {
+                "type": "integer"
+              },
+              "test_lines": {
+                "type": "integer"
+              }
+            },
+            "required": [
+              "files",
+              "bytes",
+              "production_lines",
+              "test_lines",
+              "generated_lines",
+              "executable_files",
+              "executable_lines"
+            ],
+            "type": "object"
+          },
+          "plan_digest": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "residual_risks": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "const": "runx.skill.validation_result.v1",
+                "type": "string"
+              }
+            ]
+          },
+          "target_dir": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "schema",
+          "target_dir",
+          "base_digest",
+          "plan_digest",
+          "candidate_digest",
+          "checks",
+          "before",
+          "after",
+          "delta",
+          "residual_risks"
+        ],
+        "type": "object",
+        "x-runx-schema": "runx.skill.validation_result.v1"
+      },
+      "verdict": {
+        "anyOf": [
+          {
+            "const": "unchanged",
+            "type": "string"
+          },
+          {
+            "const": "needs_core",
+            "type": "string"
+          },
+          {
+            "const": "validated_and_applied",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "required": [
+      "schema",
+      "target_dir",
+      "decision",
+      "verdict",
+      "base_digest",
+      "plan_digest",
+      "package_digest",
+      "changed_paths",
+      "deleted_paths",
+      "residual_risks"
+    ],
+    "type": "object",
+    "x-runx-schema": "runx.skill.apply_result.v1"
+  } as JsonSchema,
+  "skill-architecture-decision.schema.json": {
+    "$id": "https://schemas.runx.ai/runx/skill/architecture-decision/v1.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "deletions": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "disposition": {
+        "anyOf": [
+          {
+            "const": "build",
+            "type": "string"
+          },
+          {
+            "const": "extend_existing",
+            "type": "string"
+          },
+          {
+            "const": "no_skill",
+            "type": "string"
+          },
+          {
+            "const": "needs_core",
+            "type": "string"
+          }
+        ]
+      },
+      "effects": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "approval": {
+              "anyOf": [
+                {
+                  "const": "none",
+                  "type": "string"
+                },
+                {
+                  "const": "policy",
+                  "type": "string"
+                },
+                {
+                  "const": "human",
+                  "type": "string"
+                }
+              ]
+            },
+            "authority_scopes": {
+              "items": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "effect": {
+              "anyOf": [
+                {
+                  "const": "none",
+                  "type": "string"
+                },
+                {
+                  "const": "read",
+                  "type": "string"
+                },
+                {
+                  "const": "draft",
+                  "type": "string"
+                },
+                {
+                  "const": "mutate",
+                  "type": "string"
+                },
+                {
+                  "const": "financial",
+                  "type": "string"
+                }
+              ]
+            },
+            "provider_boundary": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "effect",
+            "authority_scopes",
+            "approval",
+            "provider_boundary"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "knowledge_contract": {
+        "additionalProperties": false,
+        "properties": {
+          "decision_logic": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "evidence_required": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "purpose": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "recovery": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "stop_conditions": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "purpose",
+          "evidence_required",
+          "decision_logic",
+          "stop_conditions",
+          "recovery"
+        ],
+        "type": "object"
+      },
+      "native_reuse": {
+        "additionalProperties": false,
+        "properties": {
+          "inspected_capabilities": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "missing_capabilities": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "selected_capabilities": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "inspected_capabilities",
+          "selected_capabilities",
+          "missing_capabilities"
+        ],
+        "type": "object"
+      },
+      "objective": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "operator_value": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "preservation_obligations": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "proof_plan": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "expected": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "kind": {
+              "anyOf": [
+                {
+                  "const": "contract",
+                  "type": "string"
+                },
+                {
+                  "const": "harness",
+                  "type": "string"
+                },
+                {
+                  "const": "regression",
+                  "type": "string"
+                },
+                {
+                  "const": "security",
+                  "type": "string"
+                },
+                {
+                  "const": "performance",
+                  "type": "string"
+                },
+                {
+                  "const": "operator_trial",
+                  "type": "string"
+                }
+              ]
+            },
+            "name": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "kind",
+            "expected"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "required_behaviors": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "domain_module_justification": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "id": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "lane": {
+              "anyOf": [
+                {
+                  "const": "manual",
+                  "type": "string"
+                },
+                {
+                  "const": "graph",
+                  "type": "string"
+                },
+                {
+                  "const": "agent_task",
+                  "type": "string"
+                },
+                {
+                  "const": "native_capability",
+                  "type": "string"
+                },
+                {
+                  "const": "domain_module",
+                  "type": "string"
+                },
+                {
+                  "const": "cli_tool",
+                  "type": "string"
+                },
+                {
+                  "const": "provider_adapter",
+                  "type": "string"
+                }
+              ]
+            },
+            "outcome": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "reuse_ref": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "outcome",
+            "lane"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "resource_budget": {
+        "additionalProperties": false,
+        "properties": {
+          "max_executable_lines": {
+            "type": "integer"
+          },
+          "max_fanout": {
+            "type": "integer"
+          },
+          "max_files": {
+            "type": "integer"
+          },
+          "max_process_spawns": {
+            "type": "integer"
+          },
+          "network_allowed": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "max_files",
+          "max_executable_lines",
+          "max_fanout",
+          "max_process_spawns",
+          "network_allowed"
+        ],
+        "type": "object"
+      },
+      "schema": {
+        "anyOf": [
+          {
+            "const": "runx.skill.architecture_decision.v1",
+            "type": "string"
+          }
+        ]
+      },
+      "skill_chain": {
+        "additionalProperties": false,
+        "properties": {
+          "context_skills": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "routes": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "context_skills",
+          "routes"
+        ],
+        "type": "object"
+      }
+    },
+    "required": [
+      "schema",
+      "disposition",
+      "objective",
+      "operator_value",
+      "knowledge_contract",
+      "required_behaviors",
+      "native_reuse",
+      "effects",
+      "skill_chain",
+      "resource_budget",
+      "preservation_obligations",
+      "deletions",
+      "proof_plan"
+    ],
+    "type": "object",
+    "x-runx-schema": "runx.skill.architecture_decision.v1"
+  } as JsonSchema,
+  "skill-architecture-plan.schema.json": {
+    "$id": "https://schemas.runx.ai/runx/skill/architecture-plan/v1.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "architecture": {
+        "$id": "https://schemas.runx.ai/runx/skill/architecture-decision/v1.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "deletions": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "const": "build",
+                "type": "string"
+              },
+              {
+                "const": "extend_existing",
+                "type": "string"
+              },
+              {
+                "const": "no_skill",
+                "type": "string"
+              },
+              {
+                "const": "needs_core",
+                "type": "string"
+              }
+            ]
+          },
+          "effects": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "approval": {
+                  "anyOf": [
+                    {
+                      "const": "none",
+                      "type": "string"
+                    },
+                    {
+                      "const": "policy",
+                      "type": "string"
+                    },
+                    {
+                      "const": "human",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "authority_scopes": {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "effect": {
+                  "anyOf": [
+                    {
+                      "const": "none",
+                      "type": "string"
+                    },
+                    {
+                      "const": "read",
+                      "type": "string"
+                    },
+                    {
+                      "const": "draft",
+                      "type": "string"
+                    },
+                    {
+                      "const": "mutate",
+                      "type": "string"
+                    },
+                    {
+                      "const": "financial",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "provider_boundary": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "effect",
+                "authority_scopes",
+                "approval",
+                "provider_boundary"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "knowledge_contract": {
+            "additionalProperties": false,
+            "properties": {
+              "decision_logic": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "evidence_required": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "purpose": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "recovery": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "stop_conditions": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "purpose",
+              "evidence_required",
+              "decision_logic",
+              "stop_conditions",
+              "recovery"
+            ],
+            "type": "object"
+          },
+          "native_reuse": {
+            "additionalProperties": false,
+            "properties": {
+              "inspected_capabilities": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "missing_capabilities": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "selected_capabilities": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "inspected_capabilities",
+              "selected_capabilities",
+              "missing_capabilities"
+            ],
+            "type": "object"
+          },
+          "objective": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "operator_value": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "preservation_obligations": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "proof_plan": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "expected": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "kind": {
+                  "anyOf": [
+                    {
+                      "const": "contract",
+                      "type": "string"
+                    },
+                    {
+                      "const": "harness",
+                      "type": "string"
+                    },
+                    {
+                      "const": "regression",
+                      "type": "string"
+                    },
+                    {
+                      "const": "security",
+                      "type": "string"
+                    },
+                    {
+                      "const": "performance",
+                      "type": "string"
+                    },
+                    {
+                      "const": "operator_trial",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "name": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "kind",
+                "expected"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "required_behaviors": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "domain_module_justification": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "lane": {
+                  "anyOf": [
+                    {
+                      "const": "manual",
+                      "type": "string"
+                    },
+                    {
+                      "const": "graph",
+                      "type": "string"
+                    },
+                    {
+                      "const": "agent_task",
+                      "type": "string"
+                    },
+                    {
+                      "const": "native_capability",
+                      "type": "string"
+                    },
+                    {
+                      "const": "domain_module",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cli_tool",
+                      "type": "string"
+                    },
+                    {
+                      "const": "provider_adapter",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "outcome": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "reuse_ref": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "outcome",
+                "lane"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "resource_budget": {
+            "additionalProperties": false,
+            "properties": {
+              "max_executable_lines": {
+                "type": "integer"
+              },
+              "max_fanout": {
+                "type": "integer"
+              },
+              "max_files": {
+                "type": "integer"
+              },
+              "max_process_spawns": {
+                "type": "integer"
+              },
+              "network_allowed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "max_files",
+              "max_executable_lines",
+              "max_fanout",
+              "max_process_spawns",
+              "network_allowed"
+            ],
+            "type": "object"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "const": "runx.skill.architecture_decision.v1",
+                "type": "string"
+              }
+            ]
+          },
+          "skill_chain": {
+            "additionalProperties": false,
+            "properties": {
+              "context_skills": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "routes": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "context_skills",
+              "routes"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "schema",
+          "disposition",
+          "objective",
+          "operator_value",
+          "knowledge_contract",
+          "required_behaviors",
+          "native_reuse",
+          "effects",
+          "skill_chain",
+          "resource_budget",
+          "preservation_obligations",
+          "deletions",
+          "proof_plan"
+        ],
+        "type": "object",
+        "x-runx-schema": "runx.skill.architecture_decision.v1"
+      },
+      "base_digest": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "plan_digest": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "schema": {
+        "anyOf": [
+          {
+            "const": "runx.skill.architecture_plan.v1",
+            "type": "string"
+          }
+        ]
+      }
+    },
+    "required": [
+      "schema",
+      "base_digest",
+      "plan_digest",
+      "architecture"
+    ],
+    "type": "object",
+    "x-runx-schema": "runx.skill.architecture_plan.v1"
+  } as JsonSchema,
+  "skill-change-bundle.schema.json": {
+    "$id": "https://schemas.runx.ai/runx/skill/change-bundle/v1.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "architecture": {
+        "$id": "https://schemas.runx.ai/runx/skill/architecture-decision/v1.json",
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "deletions": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "disposition": {
+            "anyOf": [
+              {
+                "const": "build",
+                "type": "string"
+              },
+              {
+                "const": "extend_existing",
+                "type": "string"
+              },
+              {
+                "const": "no_skill",
+                "type": "string"
+              },
+              {
+                "const": "needs_core",
+                "type": "string"
+              }
+            ]
+          },
+          "effects": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "approval": {
+                  "anyOf": [
+                    {
+                      "const": "none",
+                      "type": "string"
+                    },
+                    {
+                      "const": "policy",
+                      "type": "string"
+                    },
+                    {
+                      "const": "human",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "authority_scopes": {
+                  "items": {
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "type": "array"
+                },
+                "effect": {
+                  "anyOf": [
+                    {
+                      "const": "none",
+                      "type": "string"
+                    },
+                    {
+                      "const": "read",
+                      "type": "string"
+                    },
+                    {
+                      "const": "draft",
+                      "type": "string"
+                    },
+                    {
+                      "const": "mutate",
+                      "type": "string"
+                    },
+                    {
+                      "const": "financial",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "provider_boundary": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "effect",
+                "authority_scopes",
+                "approval",
+                "provider_boundary"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "knowledge_contract": {
+            "additionalProperties": false,
+            "properties": {
+              "decision_logic": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "evidence_required": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "purpose": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "recovery": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "stop_conditions": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "purpose",
+              "evidence_required",
+              "decision_logic",
+              "stop_conditions",
+              "recovery"
+            ],
+            "type": "object"
+          },
+          "native_reuse": {
+            "additionalProperties": false,
+            "properties": {
+              "inspected_capabilities": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "missing_capabilities": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "selected_capabilities": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "inspected_capabilities",
+              "selected_capabilities",
+              "missing_capabilities"
+            ],
+            "type": "object"
+          },
+          "objective": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "operator_value": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "preservation_obligations": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "proof_plan": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "expected": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "kind": {
+                  "anyOf": [
+                    {
+                      "const": "contract",
+                      "type": "string"
+                    },
+                    {
+                      "const": "harness",
+                      "type": "string"
+                    },
+                    {
+                      "const": "regression",
+                      "type": "string"
+                    },
+                    {
+                      "const": "security",
+                      "type": "string"
+                    },
+                    {
+                      "const": "performance",
+                      "type": "string"
+                    },
+                    {
+                      "const": "operator_trial",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "name": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "name",
+                "kind",
+                "expected"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "required_behaviors": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "domain_module_justification": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "id": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "lane": {
+                  "anyOf": [
+                    {
+                      "const": "manual",
+                      "type": "string"
+                    },
+                    {
+                      "const": "graph",
+                      "type": "string"
+                    },
+                    {
+                      "const": "agent_task",
+                      "type": "string"
+                    },
+                    {
+                      "const": "native_capability",
+                      "type": "string"
+                    },
+                    {
+                      "const": "domain_module",
+                      "type": "string"
+                    },
+                    {
+                      "const": "cli_tool",
+                      "type": "string"
+                    },
+                    {
+                      "const": "provider_adapter",
+                      "type": "string"
+                    }
+                  ]
+                },
+                "outcome": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "reuse_ref": {
+                  "minLength": 1,
+                  "type": "string"
+                }
+              },
+              "required": [
+                "id",
+                "outcome",
+                "lane"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "resource_budget": {
+            "additionalProperties": false,
+            "properties": {
+              "max_executable_lines": {
+                "type": "integer"
+              },
+              "max_fanout": {
+                "type": "integer"
+              },
+              "max_files": {
+                "type": "integer"
+              },
+              "max_process_spawns": {
+                "type": "integer"
+              },
+              "network_allowed": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "max_files",
+              "max_executable_lines",
+              "max_fanout",
+              "max_process_spawns",
+              "network_allowed"
+            ],
+            "type": "object"
+          },
+          "schema": {
+            "anyOf": [
+              {
+                "const": "runx.skill.architecture_decision.v1",
+                "type": "string"
+              }
+            ]
+          },
+          "skill_chain": {
+            "additionalProperties": false,
+            "properties": {
+              "context_skills": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "routes": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "context_skills",
+              "routes"
+            ],
+            "type": "object"
+          }
+        },
+        "required": [
+          "schema",
+          "disposition",
+          "objective",
+          "operator_value",
+          "knowledge_contract",
+          "required_behaviors",
+          "native_reuse",
+          "effects",
+          "skill_chain",
+          "resource_budget",
+          "preservation_obligations",
+          "deletions",
+          "proof_plan"
+        ],
+        "type": "object",
+        "x-runx-schema": "runx.skill.architecture_decision.v1"
+      },
+      "base_digest": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "decision": {
+        "anyOf": [
+          {
+            "const": "write",
+            "type": "string"
+          },
+          {
+            "const": "no_skill",
+            "type": "string"
+          },
+          {
+            "const": "no_change",
+            "type": "string"
+          },
+          {
+            "const": "needs_core",
+            "type": "string"
+          }
+        ]
+      },
+      "deletes": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "expected_outputs": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "packet": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "value_type": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "value_type"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "non_goals": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "plan_digest": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "schema": {
+        "anyOf": [
+          {
+            "const": "runx.skill.change_bundle.v1",
+            "type": "string"
+          }
+        ]
+      },
+      "summary": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "writes": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "contents": {
+              "type": "string"
+            },
+            "path": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "contents"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "schema",
+      "decision",
+      "base_digest",
+      "plan_digest",
+      "architecture",
+      "summary",
+      "non_goals",
+      "writes",
+      "deletes",
+      "expected_outputs"
+    ],
+    "type": "object",
+    "x-runx-schema": "runx.skill.change_bundle.v1"
+  } as JsonSchema,
+  "skill-change-draft.schema.json": {
+    "$id": "https://schemas.runx.ai/runx/skill/change-draft/v1.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "decision": {
+        "anyOf": [
+          {
+            "const": "write",
+            "type": "string"
+          },
+          {
+            "const": "no_skill",
+            "type": "string"
+          },
+          {
+            "const": "no_change",
+            "type": "string"
+          },
+          {
+            "const": "needs_core",
+            "type": "string"
+          }
+        ]
+      },
+      "deletes": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "expected_outputs": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "packet": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "value_type": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "name",
+            "value_type"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "non_goals": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "schema": {
+        "anyOf": [
+          {
+            "const": "runx.skill.change_draft.v1",
+            "type": "string"
+          }
+        ]
+      },
+      "summary": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "writes": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "contents": {
+              "type": "string"
+            },
+            "path": {
+              "minLength": 1,
+              "type": "string"
+            }
+          },
+          "required": [
+            "path",
+            "contents"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      }
+    },
+    "required": [
+      "schema",
+      "decision",
+      "summary",
+      "non_goals",
+      "writes",
+      "deletes",
+      "expected_outputs"
+    ],
+    "type": "object",
+    "x-runx-schema": "runx.skill.change_draft.v1"
+  } as JsonSchema,
+  "skill-validation-result.schema.json": {
+    "$id": "https://schemas.runx.ai/runx/skill/validation-result/v1.json",
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "additionalProperties": false,
+    "properties": {
+      "after": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "type": "integer"
+          },
+          "executable_files": {
+            "type": "integer"
+          },
+          "executable_lines": {
+            "type": "integer"
+          },
+          "files": {
+            "type": "integer"
+          },
+          "generated_lines": {
+            "type": "integer"
+          },
+          "production_lines": {
+            "type": "integer"
+          },
+          "test_lines": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "files",
+          "bytes",
+          "production_lines",
+          "test_lines",
+          "generated_lines",
+          "executable_files",
+          "executable_lines"
+        ],
+        "type": "object"
+      },
+      "base_digest": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "before": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "type": "integer"
+          },
+          "executable_files": {
+            "type": "integer"
+          },
+          "executable_lines": {
+            "type": "integer"
+          },
+          "files": {
+            "type": "integer"
+          },
+          "generated_lines": {
+            "type": "integer"
+          },
+          "production_lines": {
+            "type": "integer"
+          },
+          "test_lines": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "files",
+          "bytes",
+          "production_lines",
+          "test_lines",
+          "generated_lines",
+          "executable_files",
+          "executable_lines"
+        ],
+        "type": "object"
+      },
+      "candidate_digest": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "checks": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "detail": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "name": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "const": "passed",
+                  "type": "string"
+                },
+                {
+                  "const": "skipped",
+                  "type": "string"
+                }
+              ]
+            }
+          },
+          "required": [
+            "name",
+            "status",
+            "detail"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "delta": {
+        "additionalProperties": false,
+        "properties": {
+          "bytes": {
+            "type": "integer"
+          },
+          "executable_files": {
+            "type": "integer"
+          },
+          "executable_lines": {
+            "type": "integer"
+          },
+          "files": {
+            "type": "integer"
+          },
+          "generated_lines": {
+            "type": "integer"
+          },
+          "production_lines": {
+            "type": "integer"
+          },
+          "test_lines": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "files",
+          "bytes",
+          "production_lines",
+          "test_lines",
+          "generated_lines",
+          "executable_files",
+          "executable_lines"
+        ],
+        "type": "object"
+      },
+      "plan_digest": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "residual_risks": {
+        "items": {
+          "minLength": 1,
+          "type": "string"
+        },
+        "type": "array"
+      },
+      "schema": {
+        "anyOf": [
+          {
+            "const": "runx.skill.validation_result.v1",
+            "type": "string"
+          }
+        ]
+      },
+      "target_dir": {
+        "minLength": 1,
+        "type": "string"
+      }
+    },
+    "required": [
+      "schema",
+      "target_dir",
+      "base_digest",
+      "plan_digest",
+      "candidate_digest",
+      "checks",
+      "before",
+      "after",
+      "delta",
+      "residual_risks"
+    ],
+    "type": "object",
+    "x-runx-schema": "runx.skill.validation_result.v1"
   } as JsonSchema,
   "source-packet.schema.json": {
     "$id": "https://schemas.runx.ai/runx/source-packet/v1.json",
@@ -55276,6 +57191,36 @@ export const runxSchemaArtifacts = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
+      "artifacts": {
+        "additionalProperties": false,
+        "properties": {
+          "emits": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "named_emits": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "packet": {
+            "type": "string"
+          },
+          "packets": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "type": "object"
+          },
+          "wrap_as": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
       "description": {
         "type": "string"
       },
@@ -55320,39 +57265,6 @@ export const runxSchemaArtifacts = {
       "name": {
         "type": "string"
       },
-      "output": {
-        "additionalProperties": true,
-        "properties": {
-          "named_emits": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object"
-          },
-          "outputs": {
-            "additionalProperties": {
-              "additionalProperties": true,
-              "properties": {
-                "packet": {
-                  "type": "string"
-                },
-                "wrap_as": {
-                  "type": "string"
-                }
-              },
-              "type": "object"
-            },
-            "type": "object"
-          },
-          "packet": {
-            "type": "string"
-          },
-          "wrap_as": {
-            "type": "string"
-          }
-        },
-        "type": "object"
-      },
       "retry": {
         "additionalProperties": false,
         "properties": {
@@ -55366,37 +57278,6 @@ export const runxSchemaArtifacts = {
         "type": "object"
       },
       "risk": {},
-      "runtime": {
-        "additionalProperties": false,
-        "properties": {
-          "args": {
-            "items": {
-              "type": "string"
-            },
-            "type": "array"
-          },
-          "command": {
-            "type": "string"
-          },
-          "cwd": {
-            "type": "string"
-          },
-          "env": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "type": "object"
-          }
-        },
-        "required": [
-          "command"
-        ],
-        "type": "object"
-      },
-      "runx": {
-        "additionalProperties": {},
-        "type": "object"
-      },
       "schema": {
         "anyOf": [
           {
@@ -55404,9 +57285,6 @@ export const runxSchemaArtifacts = {
             "type": "string"
           }
         ]
-      },
-      "schema_hash": {
-        "type": "string"
       },
       "scopes": {
         "items": {
@@ -55433,38 +57311,14 @@ export const runxSchemaArtifacts = {
             "additionalProperties": {},
             "type": "object"
           },
-          "catalog_ref": {
-            "type": "string"
-          },
           "command": {
             "type": "string"
           },
           "cwd": {
             "type": "string"
           },
-          "http": {
-            "additionalProperties": false,
-            "properties": {
-              "allow_private_network": {
-                "type": "boolean"
-              },
-              "headers": {
-                "additionalProperties": {
-                  "type": "string"
-                },
-                "type": "object"
-              },
-              "method": {
-                "type": "string"
-              },
-              "url": {
-                "type": "string"
-              }
-            },
-            "required": [
-              "url"
-            ],
-            "type": "object"
+          "export": {
+            "type": "string"
           },
           "input_mode": {
             "anyOf": [
@@ -55481,6 +57335,9 @@ export const runxSchemaArtifacts = {
                 "type": "string"
               }
             ]
+          },
+          "module": {
+            "type": "string"
           },
           "sandbox": {
             "additionalProperties": false,
@@ -55579,19 +57436,15 @@ export const runxSchemaArtifacts = {
                 "type": "string"
               },
               {
+                "const": "javascript",
+                "type": "string"
+              },
+              {
                 "const": "mcp",
                 "type": "string"
               },
               {
                 "const": "a2a",
-                "type": "string"
-              },
-              {
-                "const": "catalog",
-                "type": "string"
-              },
-              {
-                "const": "http",
                 "type": "string"
               }
             ]
@@ -55602,12 +57455,6 @@ export const runxSchemaArtifacts = {
         ],
         "type": "object"
       },
-      "source_hash": {
-        "type": "string"
-      },
-      "toolkit_version": {
-        "type": "string"
-      },
       "version": {
         "type": "string"
       }
@@ -55615,11 +57462,7 @@ export const runxSchemaArtifacts = {
     "required": [
       "schema",
       "name",
-      "source",
-      "runtime",
-      "output",
-      "source_hash",
-      "schema_hash"
+      "source"
     ],
     "type": "object",
     "x-runx-schema": "runx.tool.manifest.v1"

@@ -8,7 +8,6 @@ pub mod act;
 pub mod agent_context;
 pub mod artifact;
 pub mod authority;
-pub mod cli;
 pub mod credential_delivery;
 pub mod decision;
 pub mod dev;
@@ -19,6 +18,7 @@ pub mod fingerprint;
 pub mod fixture;
 pub mod handoff;
 pub mod host_protocol;
+pub mod javascript_worker;
 pub mod json;
 pub mod ledger;
 pub mod links;
@@ -30,16 +30,15 @@ pub mod output;
 pub mod packet_index;
 pub mod policy_proof;
 pub mod receipt;
-pub mod receipts;
 pub mod redaction;
 pub mod reference;
-pub mod registry;
 pub mod registry_binding;
 pub mod review;
 pub mod run_summary;
 pub mod schema;
 pub mod schema_artifacts;
 pub mod signal;
+pub mod skill_authoring;
 pub mod source_packet;
 pub mod suppression;
 pub mod thread_outbox_provider;
@@ -92,8 +91,9 @@ pub use doctor::{
     DoctorStatus, DoctorSummary,
 };
 pub use execution::{
-    ExecutionSemantics, GovernedDisposition, InputContextCapture, OutcomeState, ReceiptOutcome,
-    ReceiptSurfaceRef,
+    ArtifactContract, ExecutionSemantics, GovernedDisposition, IdempotencyPolicy,
+    InputContextCapture, InputDefinition, OutcomeState, ReceiptOutcome, ReceiptSurfaceRef,
+    RetryPolicy,
 };
 pub use external_adapter::{
     EXTERNAL_ADAPTER_PROTOCOL_VERSION, ExternalAdapterArtifactObservation,
@@ -123,8 +123,8 @@ pub use host_protocol::{
     ResolutionResponseActor,
 };
 pub use json::{
-    JsonNumber, JsonObject, JsonValue, json_bool_field, json_object, json_object_field,
-    json_string_field,
+    JsonNumber, JsonObject, JsonValue, MAX_PORTABLE_INTEGER, json_bool_field, json_object,
+    json_object_field, json_string_field,
 };
 pub use ledger::{
     LedgerCanonicalization, LedgerChain, LedgerChainVersion, LedgerEntry, LedgerEntryMeta,
@@ -194,6 +194,19 @@ pub use schema_artifacts::{SchemaArtifact, generated_schema_artifacts};
 pub use signal::{
     SIGNAL_SCHEMA, Signal, SignalAuthenticity, SignalSchema, SignalTrustLevel, signal_type,
 };
+pub use skill_authoring::{
+    SKILL_APPLY_RESULT_SCHEMA, SKILL_ARCHITECTURE_DECISION_SCHEMA, SKILL_ARCHITECTURE_PLAN_SCHEMA,
+    SKILL_CHANGE_BUNDLE_SCHEMA, SKILL_CHANGE_DRAFT_SCHEMA, SKILL_VALIDATION_RESULT_SCHEMA,
+    SkillApplyResult, SkillApplyResultSchema, SkillApplyVerdict, SkillApprovalRequirement,
+    SkillArchitectureDecision, SkillArchitectureDecisionSchema, SkillArchitectureDisposition,
+    SkillArchitecturePlan, SkillArchitecturePlanSchema, SkillBehaviorDecision, SkillChainPlan,
+    SkillChangeBundle, SkillChangeBundleSchema, SkillChangeDecision, SkillChangeDraft,
+    SkillChangeDraftSchema, SkillEffectClass, SkillEffectRequirement, SkillExecutionLane,
+    SkillExpectedOutput, SkillFileWrite, SkillKnowledgeContract, SkillNativeReuseEvidence,
+    SkillPackageDelta, SkillPackageMetrics, SkillProofKind, SkillProofRequirement,
+    SkillResourceBudget, SkillValidationCheck, SkillValidationCheckStatus, SkillValidationResult,
+    SkillValidationResultSchema,
+};
 pub use source_packet::{SOURCE_PACKET_SCHEMA, SourcePacket, SourcePacketSchema};
 pub use suppression::{SuppressionRecord, SuppressionRecordSchema, SuppressionScope};
 pub use thread_outbox_provider::{
@@ -215,8 +228,8 @@ pub use thread_outbox_provider::{
 };
 pub use tools::{
     RuntimeCommand, ToolCommandInputMode, ToolIdempotencyPolicy, ToolInput, ToolManifest,
-    ToolManifestSchema, ToolMcpServer, ToolOutput, ToolOutputBinding, ToolRetryPolicy, ToolSandbox,
-    ToolSandboxCwdPolicy, ToolSandboxProfile, ToolSource, ToolSourceType,
+    ToolManifestSchema, ToolMcpServer, ToolRetryPolicy, ToolSandbox, ToolSandboxCwdPolicy,
+    ToolSandboxProfile, ToolSource, ToolSourceType,
 };
 pub use verification::{
     ReceiptVerificationSummary, VERIFICATION_SCHEMA, Verification, VerificationCheck,

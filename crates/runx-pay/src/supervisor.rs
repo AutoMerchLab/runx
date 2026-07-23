@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because payment rail proof schemas, claim
+// Module rationale: payment rail proof schemas, claim
 // validation, evidence metadata, and receipt binding share one audited payment
 // trust boundary.
 use runx_contracts::{
@@ -86,7 +86,7 @@ pub struct PaymentSupervisorProofMatch<'a> {
     pub receipt_digest: &'a str,
 }
 
-// rust-style-allow: long-function because finality supervisor evidence is one
+// Function rationale: finality supervisor evidence is one
 // flat wire payload assembled from a strongly typed settlement record.
 pub fn payment_finality_supervisor_evidence_payload(
     evidence: &PaymentSupervisorSettlementEvidence,

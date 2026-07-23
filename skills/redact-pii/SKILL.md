@@ -46,3 +46,13 @@ redacted_content: string
 ```
 
 Scanner findings contain locations and rule names, never matched values. A clean scanner does not prove that semantic identifiers cannot exist; that uncertainty remains the reviewer agent's job and must produce `needs_review` when material.
+
+## Agent task contracts
+
+### `redact-pii-detect`
+
+Inspect only the supplied content. Return redaction_draft with decision (ready, needs_review, or
+blocked), detected spans as class, UTF-16 start/end offsets, and confidence, plus residual_risk
+with level and reason_code. Never include matched values. Use reason_code none,
+ambiguous_semantics, scrubbing_destroys_meaning, policy_block, or insufficient_context. The
+deterministic finalizer owns all replacements, scanning, digests, and the final pass gate.

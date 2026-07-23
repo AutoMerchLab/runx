@@ -1,0 +1,9 @@
+skill: issue-to-pr-push-outbox-provider
+version: "0.1.1"
+runners:
+  default:
+    default: true
+    type: thread-outbox-provider
+    thread_outbox_provider:
+      operation: push
+      manifest_path: manifest.json

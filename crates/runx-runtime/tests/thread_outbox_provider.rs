@@ -346,7 +346,9 @@ fn provider_front_dispatches_push_from_skill_source() -> Result<(), Box<dyn std:
 
     let output = ThreadOutboxProviderSkillAdapter::default().invoke(SkillInvocation {
         skill_name: "fixture-thread-outbox-provider-push".to_owned(),
-        source: thread_outbox_source("push", "push.json"),
+        artifacts: None,
+        allowed_tools: None,
+        source: thread_outbox_source("push", "push.json")?,
         inputs: JsonObject::new(),
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
@@ -395,7 +397,9 @@ fn provider_front_projects_runtime_output_envelope() -> Result<(), Box<dyn std::
 
     let output = ThreadOutboxProviderSkillAdapter::default().invoke(SkillInvocation {
         skill_name: "fixture-thread-outbox-provider-push".to_owned(),
-        source: thread_outbox_source("push", "push.json"),
+        artifacts: None,
+        allowed_tools: None,
+        source: thread_outbox_source("push", "push.json")?,
         inputs: JsonObject::new(),
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
@@ -466,7 +470,9 @@ fn provider_front_builds_dynamic_push_from_inputs() -> Result<(), Box<dyn std::e
 
     let output = ThreadOutboxProviderSkillAdapter::default().invoke(SkillInvocation {
         skill_name: "dynamic-thread-outbox-provider-push".to_owned(),
-        source: thread_outbox_dynamic_source("push"),
+        artifacts: None,
+        allowed_tools: None,
+        source: thread_outbox_dynamic_source("push")?,
         inputs,
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
@@ -512,7 +518,9 @@ fn provider_front_skips_dynamic_push_when_thread_is_missing()
 
     let output = ThreadOutboxProviderSkillAdapter::default().invoke(SkillInvocation {
         skill_name: "dynamic-thread-outbox-provider-push".to_owned(),
-        source: thread_outbox_dynamic_source("push"),
+        artifacts: None,
+        allowed_tools: None,
+        source: thread_outbox_dynamic_source("push")?,
         inputs,
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
@@ -578,7 +586,10 @@ fn fixture_script() -> Result<PathBuf, std::io::Error> {
 }
 
 #[cfg(feature = "thread-outbox-provider")]
-fn thread_outbox_source(operation: &str, frame_path: &str) -> runx_parser::SkillSource {
+fn thread_outbox_source(
+    operation: &str,
+    frame_path: &str,
+) -> Result<runx_parser::SkillSource, runx_parser::ValidationError> {
     let mut config = JsonObject::new();
     config.insert(
         "operation".to_owned(),
@@ -601,33 +612,13 @@ fn thread_outbox_source(operation: &str, frame_path: &str) -> runx_parser::Skill
         "thread_outbox_provider".to_owned(),
         JsonValue::Object(config),
     );
-    runx_parser::SkillSource {
-        act: None,
-        source_type: runx_parser::SourceKind::ThreadOutboxProvider,
-        command: None,
-        args: Vec::new(),
-        cwd: None,
-        timeout_seconds: None,
-        input_mode: None,
-        sandbox: None,
-        server: None,
-        catalog_ref: None,
-        tool: None,
-        arguments: None,
-        agent_card_url: None,
-        agent_identity: None,
-        agent: None,
-        task: None,
-        hook: None,
-        outputs: None,
-        graph: None,
-        http: None,
-        raw,
-    }
+    runx_parser::validate_skill_source(&raw, None)
 }
 
 #[cfg(feature = "thread-outbox-provider")]
-fn thread_outbox_dynamic_source(operation: &str) -> runx_parser::SkillSource {
+fn thread_outbox_dynamic_source(
+    operation: &str,
+) -> Result<runx_parser::SkillSource, runx_parser::ValidationError> {
     let mut config = JsonObject::new();
     config.insert(
         "operation".to_owned(),
@@ -646,29 +637,7 @@ fn thread_outbox_dynamic_source(operation: &str) -> runx_parser::SkillSource {
         "thread_outbox_provider".to_owned(),
         JsonValue::Object(config),
     );
-    runx_parser::SkillSource {
-        act: None,
-        source_type: runx_parser::SourceKind::ThreadOutboxProvider,
-        command: None,
-        args: Vec::new(),
-        cwd: None,
-        timeout_seconds: None,
-        input_mode: None,
-        sandbox: None,
-        server: None,
-        catalog_ref: None,
-        tool: None,
-        arguments: None,
-        agent_card_url: None,
-        agent_identity: None,
-        agent: None,
-        task: None,
-        hook: None,
-        outputs: None,
-        graph: None,
-        http: None,
-        raw,
-    }
+    runx_parser::validate_skill_source(&raw, None)
 }
 
 fn credential_delivery() -> Result<CredentialDelivery, Box<dyn std::error::Error>> {

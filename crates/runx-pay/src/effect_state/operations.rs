@@ -137,7 +137,7 @@ pub fn escalate_effect_mutation_in_store(
     store.escalate_mutation(family, key)
 }
 
-// rust-style-allow: long-function because effect state persistence binds
+// Function rationale: effect state persistence binds
 // authority, output, receipt, and recovery-state invariants in one transaction.
 pub fn persist_effect_step_state(
     env: &BTreeMap<String, String>,
@@ -153,7 +153,7 @@ pub fn persist_effect_step_state(
     persist_effect_step_state_in_store(store.as_mut(), input, outputs, receipt, supervisor_proof)
 }
 
-// rust-style-allow: long-function because effect state persistence binds
+// Function rationale: effect state persistence binds
 // authority, output, receipt, and recovery-state invariants in one transaction.
 pub fn persist_effect_step_state_in_store(
     store: &mut (impl EffectStateStore + ?Sized),

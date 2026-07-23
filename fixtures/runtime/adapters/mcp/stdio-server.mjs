@@ -1,7 +1,6 @@
 import { appendFileSync } from "node:fs";
 
 let input = Buffer.alloc(0);
-const MAX_RESPONSE_BYTES = 1024 * 1024;
 const startMarkerPath = process.env.RUNX_MCP_START_MARKER;
 if (typeof startMarkerPath === "string" && startMarkerPath.length > 0) {
   appendLifecycle(startMarkerPath, "start");
@@ -110,24 +109,6 @@ function handle(request) {
             additionalProperties: false,
           },
         },
-        {
-          name: "max-response",
-          description: "Return a response body exactly at the MCP client size limit.",
-          inputSchema: {
-            type: "object",
-            properties: {},
-            additionalProperties: false,
-          },
-        },
-        {
-          name: "oversized-response",
-          description: "Declare a response body over the MCP client size limit.",
-          inputSchema: {
-            type: "object",
-            properties: {},
-            additionalProperties: false,
-          },
-        },
       ],
     });
     return;
@@ -171,16 +152,6 @@ function handleToolCall(id, params) {
     return;
   }
 
-  if (params.name === "max-response") {
-    respondWithTextBodyLength(id, MAX_RESPONSE_BYTES);
-    return;
-  }
-
-  if (params.name === "oversized-response") {
-    writeRaw(MAX_RESPONSE_BYTES + 1, "{}");
-    return;
-  }
-
   if (params.name !== "echo") {
     respondError(id, -32601, "tool not found");
     return;
@@ -218,36 +189,6 @@ function respondError(id, code, message) {
 function write(message) {
   const body = JSON.stringify(message);
   writeRaw(Buffer.byteLength(body, "utf8"), body);
-}
-
-function respondWithTextBodyLength(id, targetLength) {
-  const empty = responseWithText(id, "");
-  const emptyLength = Buffer.byteLength(JSON.stringify(empty), "utf8");
-  const textLength = targetLength - emptyLength;
-  if (textLength < 0) {
-    throw new Error("target response length is too small");
-  }
-  const message = responseWithText(id, "x".repeat(textLength));
-  const body = JSON.stringify(message);
-  if (Buffer.byteLength(body, "utf8") !== targetLength) {
-    throw new Error("sized fixture response length mismatch");
-  }
-  writeRaw(targetLength, body);
-}
-
-function responseWithText(id, text) {
-  return {
-    jsonrpc: "2.0",
-    id,
-    result: {
-      content: [
-        {
-          type: "text",
-          text,
-        },
-      ],
-    },
-  };
 }
 
 function writeRaw(contentLength, body) {

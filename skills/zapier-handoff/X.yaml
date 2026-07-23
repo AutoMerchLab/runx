@@ -1,5 +1,5 @@
 skill: zapier-handoff
-version: "0.1.3"
+version: "0.1.5"
 catalog:
   kind: graph
   audience: operator
@@ -7,11 +7,12 @@ catalog:
   role: context
   execution: execute
   completion: provider_readback
-  requires_adapter: true
+  requires_adapter: false
   approval: required
 credentials:
   zapier:
     provider: zapier
+    audience: https://hooks.zapier.com
     auth:
       bearer:
         delivery:
@@ -168,18 +169,55 @@ runners:
             source: $input.source
             idempotency_key: $input.idempotency_key
             receiver: $input.receiver
+        - id: approve-handoff
+          run:
+            type: approval
+          inputs:
+            gate_id: zapier-handoff.send.approval
+            reason: Approve the exact outbound webhook handoff after its execution context has been validated.
+          context:
+            handoff_context: build-handoff-context.handoff_context.data
+          artifacts:
+            wrap_as: approval_decision
+            packet: runx.approval.decision.v1
+
         - id: post-to-zapier
-          tool: orchestrators.zapier_handoff
+          tool: http.execute
           mutation: true
+          idempotency_key: $input.event_id
           scopes:
             - orchestrator.zapier.workflow.invoke
+            - net:http
           inputs:
-            zapier_account_id: $input.zapier_account_id
-            zapier_hook_id: $input.zapier_hook_id
-            event_id: $input.event_id
-            handoff_scope: orchestrator.zapier.workflow.invoke
-            handoff_audience: $input.handoff_audience
-            execution_context: $input.execution_context
-            payload: $input.payload
-            source: $input.source
-            idempotency_key: $input.idempotency_key
+            requests:
+              - id: zapier-handoff
+                method: POST
+                url: https://hooks.zapier.com/hooks/catch/{zapier_account_id}/{zapier_hook_id}/
+                path:
+                  zapier_account_id: $input.zapier_account_id
+                  zapier_hook_id: $input.zapier_hook_id
+                headers:
+                  content-type: application/json
+                  x-runx-handoff-scope: orchestrator.zapier.workflow.invoke
+                  x-runx-handoff-audience: $input.handoff_audience
+                  x-runx-event-id: $input.event_id
+                body:
+                  event_id: $input.event_id
+                  handoff_scope: orchestrator.zapier.workflow.invoke
+                  handoff_audience: $input.handoff_audience
+                  execution_context: $input.execution_context
+                  payload: $input.payload
+                  source: $input.source
+                  idempotency_key: $input.idempotency_key
+            allowed_hosts:
+              - hooks.zapier.com
+            auth:
+              type: bearer
+              secret_env: ZAPIER_WEBHOOK_TOKEN
+            stop_on_error: true
+
+      policy:
+        guards:
+          - step: post-to-zapier
+            field: approve-handoff.approval_decision.data.approved
+            equals: true

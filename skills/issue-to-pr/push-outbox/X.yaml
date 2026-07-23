@@ -1,5 +1,5 @@
 skill: issue-to-pr-push-outbox
-version: "0.1.1"
+version: "0.1.3"
 
 catalog:
   kind: graph
@@ -55,3 +55,8 @@ runners:
             fixture: $input.fixture
             workspace_path: $input.workspace_path
             next_status: $input.next_status
+          artifacts:
+            named_emits:
+              thread: thread
+              outbox_entry: outbox_entry
+              push: push

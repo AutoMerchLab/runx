@@ -5,7 +5,7 @@ checked-in `examples/hello-world` package so the commands stay tied to the repo.
 
 ## Prerequisites
 
-- Rust 1.85 or newer for the native CLI path.
+- Rust 1.88 or newer for the native CLI path.
 - Node.js 20 or newer for the checked-in `hello-world` runner command. No
   TypeScript install is required for the native CLI path.
 - pnpm 10 or newer only when exercising the npm wrapper or TypeScript package
@@ -77,10 +77,12 @@ crates/target/debug/runx history <receipt-id> --json
 
 ## Next
 
-- Use `crates/target/debug/runx new docs-demo` to scaffold a native cli-tool
-  skill (SKILL.md + X.yaml + run.mjs, zero npm deps). To cold-start without
-  installing runx first, run `npx @runxhq/cli new docs-demo`; it downloads the
-  launcher and runs the same native scaffold.
+- Use `crates/target/debug/runx new docs-demo --objective "Create a bounded
+  documentation decision skill"` to enter the canonical Skill Lab build lane.
+  Runx inspects the catalog, returns an exact agent/resume handoff unless
+  `--managed-agent` was explicitly authorized, and writes only the validated
+  package. It never generates a placeholder module. To cold-start without
+  installing Runx first, use the same command through `npx @runxhq/cli`.
 - Compose the example into a graph with [Skill To Graph](./skill-to-graph.md).
 - Configure provider-backed skills once with
   [Credential Resolution](./credentials.md); agents and MCP use the same

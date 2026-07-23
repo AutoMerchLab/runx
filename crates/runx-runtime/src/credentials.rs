@@ -1,19 +1,20 @@
-// rust-style-allow: large-file - credential delivery is one secret-handling trust surface; secret
+// Module rationale: credential delivery is one secret-handling trust surface; secret
 // string/env types, redaction, material resolution, and the delivery boundary stay colocated so the
 // "secrets never leak" review happens against the whole module at once.
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 
 use runx_contracts::{
     CredentialDeliveryMode, CredentialDeliveryObservation, CredentialDeliveryObservationStatus,
-    CredentialDeliveryPurpose, CredentialEnvelopeKind, ProofKind, Reference, ReferenceType,
-    sha256_hex, sha256_prefixed,
+    CredentialDeliveryPurpose, CredentialEnvelopeKind, JsonObject, JsonValue, ProofKind, Reference,
+    ReferenceType, sha256_hex, sha256_prefixed,
 };
 use runx_core::policy::{CredentialBindingDecision, CredentialEnvelope};
 use serde::Deserialize;
 use thiserror::Error;
 
 const REDACTED_CREDENTIAL: &str = "[redacted-credential]";
+const MAX_STRUCTURED_REDACTION_DEPTH: usize = 128;
 pub const RUNX_HOSTED_CREDENTIAL_HANDLES_JSON_ENV: &str = "RUNX_HOSTED_CREDENTIAL_HANDLES_JSON";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -190,6 +191,7 @@ where
             delivery: CredentialDelivery {
                 secret_env: apply_profile(request.profile, &material)?,
                 public_observation: Some(request.observation),
+                destination_hosts: BTreeSet::new(),
             },
         })
     }
@@ -297,6 +299,7 @@ impl SecretEnv {
 pub struct CredentialDelivery {
     secret_env: SecretEnv,
     public_observation: Option<runx_contracts::CredentialDeliveryObservation>,
+    destination_hosts: BTreeSet<String>,
 }
 
 impl CredentialDelivery {
@@ -307,6 +310,7 @@ impl CredentialDelivery {
                 values: BTreeMap::new(),
             },
             public_observation: None,
+            destination_hosts: BTreeSet::new(),
         }
     }
 
@@ -378,7 +382,7 @@ impl CredentialDelivery {
         Ok(handles.first().map(|handle| handle.provider.clone()))
     }
 
-    // rust-style-allow: long-function because hosted handle delivery validates
+    // Function rationale: hosted handle delivery validates
     // one homogeneous credential batch before exposing any secret references.
     fn from_hosted_handles(
         handles: &[HostedCredentialHandle],
@@ -398,7 +402,10 @@ impl CredentialDelivery {
                     reference_type: handle.credential_ref.reference_type.as_str().to_owned(),
                 });
             }
-            if handle.provider.trim() != provider || handle.purpose != first.purpose {
+            if handle.provider.trim() != provider
+                || handle.purpose != first.purpose
+                || handle.audience != first.audience
+            {
                 return Err(CredentialDeliveryError::HostedCredentialHandlesMixed);
             }
         }
@@ -417,7 +424,7 @@ impl CredentialDelivery {
             refs.push(credential_ref);
         }
 
-        Ok(Self {
+        Self {
             secret_env: SecretEnv::default(),
             public_observation: Some(CredentialDeliveryObservation {
                 schema: runx_contracts::CredentialDeliveryObservationSchema::V1,
@@ -443,7 +450,9 @@ impl CredentialDelivery {
                 redaction_refs: None,
                 observed_at: crate::time::now_iso8601().into(),
             }),
-        })
+            destination_hosts: BTreeSet::new(),
+        }
+        .bind_audience(first.audience.as_deref())
     }
 
     pub fn from_allowed_binding<R: MaterialResolver>(
@@ -466,6 +475,23 @@ impl CredentialDelivery {
     #[must_use]
     pub fn secret_env(&self) -> &SecretEnv {
         &self.secret_env
+    }
+
+    pub(crate) fn bind_audience(
+        mut self,
+        audience: Option<&str>,
+    ) -> Result<Self, CredentialDeliveryError> {
+        if let Some(audience) = audience {
+            self.destination_hosts
+                .insert(credential_audience_host(audience)?);
+        }
+        Ok(self)
+    }
+
+    #[must_use]
+    #[cfg(feature = "async-http")]
+    pub(crate) fn destination_hosts(&self) -> &BTreeSet<String> {
+        &self.destination_hosts
     }
 
     pub fn reject_process_env_boundary(
@@ -513,11 +539,104 @@ impl CredentialDelivery {
         redacted
     }
 
+    /// Redact delivered credential material from every string-bearing JSON
+    /// position after decoding. This is the canonical structured-output
+    /// boundary for provider and adapter responses; callers must not redact a
+    /// serialized representation and then parse it, because JSON escapes can
+    /// otherwise reconstruct the secret after the redaction pass.
+    #[cfg(any(
+        feature = "async-http",
+        feature = "mcp",
+        feature = "thread-outbox-provider"
+    ))]
+    pub(crate) fn redact_json_value(&self, value: &mut JsonValue) {
+        self.redact_json_value_at_depth(value, 0);
+    }
+
+    fn redact_json_value_at_depth(&self, value: &mut JsonValue, depth: usize) {
+        if depth >= MAX_STRUCTURED_REDACTION_DEPTH {
+            *value = JsonValue::String(REDACTED_CREDENTIAL.to_owned());
+            return;
+        }
+        match value {
+            JsonValue::String(text) => {
+                *text = self.redact_output_text_at_depth(std::mem::take(text), depth + 1);
+            }
+            JsonValue::Array(values) => {
+                for child in values {
+                    self.redact_json_value_at_depth(child, depth + 1);
+                }
+            }
+            JsonValue::Object(object) => self.redact_json_object_at_depth(object, depth),
+            JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) => {}
+        }
+    }
+
+    #[cfg(feature = "external-adapter")]
+    pub(crate) fn redact_json_object(&self, object: &mut JsonObject) {
+        self.redact_json_object_at_depth(object, 0);
+    }
+
+    fn redact_json_object_at_depth(&self, object: &mut JsonObject, depth: usize) {
+        let mut redacted = JsonObject::new();
+        for (key, mut value) in std::mem::take(object) {
+            self.redact_json_value_at_depth(&mut value, depth + 1);
+            let base = self.redact_output_text_at_depth(key, depth + 1);
+            let mut candidate = base.clone();
+            let mut suffix = 2_u64;
+            while redacted.contains_key(&candidate) {
+                candidate = format!("{base}#{suffix}");
+                suffix = suffix.saturating_add(1);
+            }
+            redacted.insert(candidate, value);
+        }
+        *object = redacted;
+    }
+
+    /// Redact a final output string that may itself be a JSON document. JSON
+    /// strings nested inside that document are handled recursively because MCP
+    /// text content and process protocols can legitimately carry structured
+    /// output inside a string field.
     #[must_use]
+    pub(crate) fn redact_output_text(&self, text: impl Into<String>) -> String {
+        self.redact_output_text_at_depth(text.into(), 0)
+    }
+
+    fn redact_output_text_at_depth(&self, text: String, depth: usize) -> String {
+        if depth >= MAX_STRUCTURED_REDACTION_DEPTH {
+            return REDACTED_CREDENTIAL.to_owned();
+        }
+        if !matches!(
+            text.trim_start().as_bytes().first(),
+            Some(b'{') | Some(b'[') | Some(b'"')
+        ) {
+            return self.redact_text(text);
+        }
+        match serde_json::from_str::<JsonValue>(&text) {
+            Ok(mut value) => {
+                self.redact_json_value_at_depth(&mut value, depth);
+                // `JsonValue` serialization is infallible in practice. Keep this
+                // boundary fail-closed nevertheless: falling back to the encoded
+                // source text would recreate the escape bypass this branch exists
+                // to prevent.
+                match serde_json::to_string(&value) {
+                    Ok(serialized) => serialized,
+                    Err(_) => REDACTED_CREDENTIAL.to_owned(),
+                }
+            }
+            Err(_) => self.redact_text(text),
+        }
+    }
+
+    #[must_use]
+    /// Redact captured output without trusting its wire representation. Valid
+    /// JSON is decoded and redacted structurally before it is serialized again;
+    /// all other output is treated as text. This keeps every process-backed
+    /// adapter from having to reimplement the same escape-safe boundary.
     pub fn redact_bytes_to_string(&self, bytes: Vec<u8>, limit_bytes: usize) -> String {
-        let mut text = String::from_utf8_lossy(&bytes).into_owned();
-        text = self.redact_text(text);
-        truncate_utf8_string(&text, limit_bytes)
+        let text = String::from_utf8_lossy(&bytes).into_owned();
+        let redacted = self.redact_output_text(text);
+        truncate_utf8_string(&redacted, limit_bytes)
     }
 }
 
@@ -553,8 +672,10 @@ pub enum CredentialDeliveryError {
     ProcessEnvBoundaryUnsupported { boundary: String },
     #[error("invalid hosted credential handles: {reason}")]
     HostedCredentialHandlesInvalid { reason: String },
-    #[error("hosted credential handles must share one provider and purpose")]
+    #[error("hosted credential handles must share one provider, purpose, and audience")]
     HostedCredentialHandlesMixed,
+    #[error("credential audience is not a canonical HTTPS URL: {audience}")]
+    InvalidAudience { audience: String },
     #[error("hosted credential handle reference must be type credential, got '{reference_type}'")]
     HostedCredentialRefType { reference_type: String },
 }
@@ -565,6 +686,32 @@ struct HostedCredentialHandle {
     credential_ref: Reference,
     provider: String,
     purpose: CredentialDeliveryPurpose,
+    #[serde(default)]
+    audience: Option<String>,
+}
+
+pub(crate) fn credential_audience_host(audience: &str) -> Result<String, CredentialDeliveryError> {
+    let parsed =
+        url::Url::parse(audience).map_err(|_| CredentialDeliveryError::InvalidAudience {
+            audience: audience.to_owned(),
+        })?;
+    if parsed.scheme() != "https"
+        || !parsed.username().is_empty()
+        || parsed.password().is_some()
+        || parsed.query().is_some()
+        || parsed.fragment().is_some()
+    {
+        return Err(CredentialDeliveryError::InvalidAudience {
+            audience: audience.to_owned(),
+        });
+    }
+    parsed
+        .host_str()
+        .map(|host| host.trim_end_matches('.').to_ascii_lowercase())
+        .filter(|host| !host.is_empty())
+        .ok_or_else(|| CredentialDeliveryError::InvalidAudience {
+            audience: audience.to_owned(),
+        })
 }
 
 /// Build the non-secret observation that records a local per-run credential
@@ -683,6 +830,44 @@ fn truncate_utf8_string(text: &str, limit_bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn captured_json_uses_structured_credential_redaction() -> Result<(), Box<dyn std::error::Error>>
+    {
+        const SECRET: &str = "credential-redaction-sentinel-\"quoted\\slash\ncontrol";
+        const MARKER: &str = "credential-redaction-sentinel";
+        let delivery = CredentialDelivery::from_local_descriptor(
+            "example",
+            "api_key",
+            "EXAMPLE_TOKEN",
+            "local:example:test",
+            vec!["example:read".to_owned()],
+            SECRET,
+        )?;
+        let document = JsonValue::Object(JsonObject::from([
+            (SECRET.to_owned(), JsonValue::String(SECRET.to_owned())),
+            (
+                "nested".to_owned(),
+                JsonValue::Array(vec![JsonValue::String(SECRET.to_owned())]),
+            ),
+        ]));
+        let encoded = serde_json::to_vec(&JsonValue::Object(JsonObject::from([
+            ("document".to_owned(), document.clone()),
+            (
+                "embedded".to_owned(),
+                JsonValue::String(serde_json::to_string(&document)?),
+            ),
+        ])))?;
+
+        let output = delivery.redact_bytes_to_string(encoded, 64 * 1024);
+        let decoded = serde_json::from_str::<JsonValue>(&output)?;
+
+        assert!(output.contains(REDACTED_CREDENTIAL));
+        assert!(!output.contains(MARKER));
+        assert!(!format!("{decoded:?}").contains(MARKER));
+        assert_eq!(delivery.redact_output_text("1e3"), "1e3");
+        Ok(())
+    }
 
     #[test]
     fn optional_env_binding_is_skipped_when_material_role_is_missing()

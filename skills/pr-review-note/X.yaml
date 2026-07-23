@@ -1,11 +1,11 @@
 skill: pr-review-note
-version: "0.1.2"
+version: "0.2.0"
 
 catalog:
   kind: graph
   audience: public
   visibility: public
-  role: context
+  role: canonical
   execution: execute
   completion: provider_readback
   requires_adapter: true
@@ -21,6 +21,10 @@ harness:
         repository: runxhq/runx
         pr_number: "42"
         body: The reviewed path is sound; please add the missing harness case.
+        idempotency_key: runxhq-runx-pr-42-review-note-v1
+      caller:
+        approvals:
+          pr-review-note.comment.approval: true
       expect:
         status: sealed
         receipt:
@@ -28,6 +32,7 @@ harness:
           state: sealed
           disposition: closed
         steps:
+          - approve
           - review_note
         step_outputs:
           review_note:
@@ -54,7 +59,6 @@ harness:
 
 runners:
   comment:
-    default: true
     type: graph
     runx:
       category: code
@@ -71,15 +75,29 @@ runners:
         type: string
         required: true
         description: Review note body.
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for this exact PR comment.
     graph:
       name: pr-review-note-comment
       steps:
+        - id: approve
+          run:
+            type: approval
+          inputs:
+            gate_id: pr-review-note.comment.approval
+            reason: Approve this exact PR review comment before it reaches GitHub.
+          artifacts:
+            wrap_as: approval_decision
+            packet: runx.approval.decision.v1
+
         - id: review_note
           skill: ../../examples/github-mcp-hero/review-note
           scopes:
             - pr.comment
           mutation: true
-          idempotency_key: pr-review-note-comment
+          idempotency_key: "$input.idempotency_key"
           policy:
             provider_permission:
               grant_id: github-mcp-pr-comment
@@ -89,6 +107,90 @@ runners:
             pr_number: "$input.pr_number"
             body: "$input.body"
 
+      policy:
+        guards:
+          - step: review_note
+            field: approve.approval_decision.data.approved
+            equals: true
+
+  connect-comment:
+    default: true
+    type: graph
+    runx:
+      category: code
+    inputs:
+      repository:
+        type: string
+        required: true
+        description: Repository slug as owner/name.
+      pr_number:
+        type: string
+        required: true
+        description: Pull request number.
+      body:
+        type: string
+        required: true
+        description: Exact review note body.
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for this exact PR comment.
+    graph:
+      name: pr-review-note-connect-comment
+      steps:
+        - id: digest-body
+          tool: data.digest
+          inputs:
+            value: $input.body
+            encoding: utf8_text
+
+        - id: post-comment
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: $input.idempotency_key
+          scopes:
+            - pr.comment
+          policy:
+            provider_permission:
+              verb: write
+          inputs:
+            operation: pullrequest.comment
+            target: $input.repository
+            expected_provider: github
+            idempotency_key: $input.idempotency_key
+            expected_result:
+              repository: $input.repository
+              number: $input.pr_number
+            result_fields: [repository, number, comment_ref, body_digest]
+            input:
+              repository: $input.repository
+              pr_number: $input.pr_number
+              body: $input.body
+
+        - id: bind-body
+          tool: data.compare
+          context:
+            actual: post-comment.provider_operation.data.result.body_digest
+            expected: digest-body.digest_result.data.digest
+
+        - id: readback
+          when:
+            field: bind-body.comparison.data.equal
+            equals: true
+          tool: provider.read
+          scopes:
+            - pr.read
+          policy:
+            provider_permission:
+              verb: read
+          inputs:
+            operation: pullrequest.comment.read
+            target: $input.repository
+            expected_provider: github
+            result_fields: [repository, number, comment_ref, body_digest, state]
+          context:
+            expected_result: post-comment.provider_operation.data.result
+            input: post-comment.provider_operation.data.result
   merge-refused:
     type: graph
     inputs:

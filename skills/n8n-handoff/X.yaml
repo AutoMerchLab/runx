@@ -1,5 +1,5 @@
 skill: n8n-handoff
-version: "0.1.3"
+version: "0.1.5"
 catalog:
   kind: graph
   audience: operator
@@ -7,7 +7,7 @@ catalog:
   role: context
   execution: execute
   completion: provider_readback
-  requires_adapter: true
+  requires_adapter: false
   approval: required
 credentials:
   n8n:
@@ -169,18 +169,55 @@ runners:
             source: $input.source
             idempotency_key: $input.idempotency_key
             receiver: $input.receiver
+        - id: approve-handoff
+          run:
+            type: approval
+          inputs:
+            gate_id: n8n-handoff.send.approval
+            reason: Approve the exact outbound webhook handoff after its execution context has been validated.
+          context:
+            handoff_context: build-handoff-context.handoff_context.data
+          artifacts:
+            wrap_as: approval_decision
+            packet: runx.approval.decision.v1
+
         - id: post-to-n8n
-          tool: orchestrators.n8n_handoff
+          tool: http.execute
           mutation: true
+          idempotency_key: $input.event_id
           scopes:
             - orchestrator.n8n.workflow.invoke
+            - net:http
           inputs:
-            webhook_host: $input.webhook_host
-            workflow_slug: $input.workflow_slug
-            event_id: $input.event_id
-            handoff_scope: orchestrator.n8n.workflow.invoke
-            handoff_audience: $input.handoff_audience
-            execution_context: $input.execution_context
-            payload: $input.payload
-            source: $input.source
-            idempotency_key: $input.idempotency_key
+            requests:
+              - id: n8n-handoff
+                method: POST
+                url: https://{webhook_host}/webhook/{workflow_slug}
+                path:
+                  webhook_host: $input.webhook_host
+                  workflow_slug: $input.workflow_slug
+                headers:
+                  content-type: application/json
+                  x-runx-handoff-scope: orchestrator.n8n.workflow.invoke
+                  x-runx-handoff-audience: $input.handoff_audience
+                  x-runx-event-id: $input.event_id
+                body:
+                  event_id: $input.event_id
+                  handoff_scope: orchestrator.n8n.workflow.invoke
+                  handoff_audience: $input.handoff_audience
+                  execution_context: $input.execution_context
+                  payload: $input.payload
+                  source: $input.source
+                  idempotency_key: $input.idempotency_key
+            allowed_hosts:
+              - $input.webhook_host
+            auth:
+              type: bearer
+              secret_env: N8N_WEBHOOK_TOKEN
+            stop_on_error: true
+
+      policy:
+        guards:
+          - step: post-to-n8n
+            field: approve-handoff.approval_decision.data.approved
+            equals: true

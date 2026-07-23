@@ -1,10 +1,22 @@
-use std::path::PathBuf;
-
 use runx_contracts::AuthorityVerb;
 use runx_core::state_machine::FanoutSyncDecision;
 use thiserror::Error;
 
 use crate::credentials::CredentialDeliveryError;
+
+#[derive(Debug, Error)]
+#[error(
+    "context edge into step '{to_step}' input '{input}' from step '{from_step}' could not resolve path '{output_path}': segment '{missing_segment}' is absent; available keys there: [{}]",
+    .available_keys.join(", ")
+)]
+pub struct ContextEdgeUnresolvedError {
+    to_step: String,
+    input: String,
+    from_step: String,
+    output_path: String,
+    missing_segment: String,
+    available_keys: Vec<String>,
+}
 
 #[derive(Debug, Error)]
 pub enum RuntimeError {
@@ -18,6 +30,8 @@ pub enum RuntimeError {
     ParseGraph(#[from] runx_parser::ParseError),
     #[error("graph validation failed: {0}")]
     ValidateGraph(#[from] runx_parser::ValidationError),
+    #[error("skill package validation failed: {0}")]
+    SkillPackage(#[from] runx_parser::SkillPackageError),
     #[error("JSON serialization failed while {context}: {source}")]
     Json {
         context: String,
@@ -34,16 +48,8 @@ pub enum RuntimeError {
     UnsupportedRunStep { step_id: String, run_type: String },
     #[error("graph step '{step_id}' is blocked: {reason}")]
     GraphBlocked { step_id: String, reason: String },
-    #[error(
-        "context edge from step '{from_step}' could not resolve path '{output_path}': segment '{missing_segment}' is absent; available keys there: [{}]",
-        .available_keys.join(", ")
-    )]
-    ContextEdgeUnresolved {
-        from_step: String,
-        output_path: String,
-        missing_segment: String,
-        available_keys: Vec<String>,
-    },
+    #[error(transparent)]
+    ContextEdgeUnresolved(Box<ContextEdgeUnresolvedError>),
     #[error(
         "context edge from step '{from_step}' binds base/diagnostic field '{base_field}' (path '{output_path}'); base fields (raw/skill_claim/stdout/stderr/status) are not addressable, bind the step contract (a declared output or artifact packet) instead"
     )]
@@ -87,12 +93,20 @@ pub enum RuntimeError {
     MissingCommand,
     #[error("sandbox violation: {message}")]
     SandboxViolation { message: String },
+    #[error("deterministic JavaScript worker failed: {message}")]
+    JavaScriptWorker { message: String },
     #[error("credential delivery failed: {0}")]
     CredentialDelivery(#[from] CredentialDeliveryError),
     #[error("effect state failed while {context}: {message}")]
     EffectState { context: String, message: String },
-    #[error("skill file is missing at {path}")]
-    SkillFileMissing { path: PathBuf },
+    #[error(
+        "provider effect outcome is unknown for plan {plan_digest} with idempotency key {idempotency_key}: {reason}"
+    )]
+    ProviderEffectUnknown {
+        plan_digest: String,
+        idempotency_key: String,
+        reason: String,
+    },
     #[error("skill '{skill_name}' failed: {message}")]
     SkillFailed { skill_name: String, message: String },
     #[error("receipt validation failed: {message}")]
@@ -119,5 +133,23 @@ impl RuntimeError {
             context: context.into(),
             message: source.to_string(),
         }
+    }
+
+    pub(crate) fn context_edge_unresolved(
+        to_step: impl Into<String>,
+        input: impl Into<String>,
+        from_step: impl Into<String>,
+        output_path: impl Into<String>,
+        missing_segment: impl Into<String>,
+        available_keys: Vec<String>,
+    ) -> Self {
+        Self::ContextEdgeUnresolved(Box::new(ContextEdgeUnresolvedError {
+            to_step: to_step.into(),
+            input: input.into(),
+            from_step: from_step.into(),
+            output_path: output_path.into(),
+            missing_segment: missing_segment.into(),
+            available_keys,
+        }))
     }
 }

@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - the skill front owns source-type dispatch,
+// Module rationale: the skill front owns source-type dispatch,
 // domain-act frame construction, and shared sealed-output projection for all
 // first-class skill runners.
 //! The skill front: compiles a skill-run request into an execution (cli-tool,
@@ -44,19 +44,15 @@ pub(crate) use self::graph::graph_domain_act_receipt;
 #[cfg(feature = "cli-tool")]
 pub(crate) use self::inline_harness::run_package_harness_with_effects;
 
-use self::agent::execute_agent_skill_run;
+use self::agent::{AgentSkillExecutionContext, execute_agent_skill_run};
 use self::graph::execute_graph_skill_run;
-use self::runner_manifest::{
-    execute_cli_tool_skill_run, load_runner_manifest, resolve_skill_dir, runner_invocation,
-    selected_runner,
-};
+use self::runner_manifest::{execute_process_skill_run, runner_invocation, selected_runner};
 
 pub use super::operator_context::{
     SkillOperatorContextChain, SkillOperatorContextContextSkill, SkillOperatorContextDocument,
     SkillOperatorContextNode, SkillOperatorContextOptions, SkillOperatorContextPackage,
     SkillOperatorContextRegistry, SkillOperatorContextRunner, SkillOperatorContextStep,
-    SkillOperatorContextTarget, SkillOperatorContextTerminal, SkillOperatorContextTool,
-    load_skill_operator_context_chain,
+    SkillOperatorContextTerminal, SkillOperatorContextTool, load_skill_operator_context_chain,
 };
 pub use super::prepared_skill::{
     PREPARED_SKILL_REPORT_SCHEMA, PreparedCredentialSummary, PreparedEntryProvenance,
@@ -111,10 +107,16 @@ pub(crate) fn execute_skill_run_with_overrides(
     overrides: &SkillRunOverrides,
     effects: &RuntimeEffectRegistry,
 ) -> Result<JsonValue, SkillRunError> {
-    let skill_dir = resolve_skill_dir(&request.skill_path)?;
-    let manifest = load_runner_manifest(&skill_dir)?;
-    let runner = selected_runner(&manifest, overrides.runner.as_deref())?;
-    execute_skill_run_with_resolved(request, overrides, effects, &skill_dir, &manifest, runner)
+    let loaded = crate::load_validated_skill_package(&request.skill_path)?;
+    let skill_dir = &loaded.directory;
+    let manifest = loaded.manifest().ok_or_else(|| {
+        invalid(format!(
+            "skill package {} does not declare X.yaml runners",
+            skill_dir.display()
+        ))
+    })?;
+    let runner = selected_runner(manifest, overrides.runner.as_deref())?;
+    execute_skill_run_with_resolved(request, overrides, effects, skill_dir, manifest, runner)
 }
 
 pub(crate) fn execute_skill_run_with_resolved(
@@ -152,9 +154,58 @@ fn execute_skill_run_with_resolved_trust(
     runner: &SkillRunnerDefinition,
     trusted_prepared: bool,
 ) -> Result<JsonValue, SkillRunError> {
-    let mut request = request.clone();
-    apply_runner_input_defaults(&mut request.inputs, runner);
+    let (request, workspace, receipts) =
+        prepare_skill_execution(request, runner, trusted_prepared)?;
     let request = &request;
+    let skill_env = workspace.skill_env_for_skill(skill_dir);
+    validate_declared_credential(
+        manifest,
+        runner,
+        request.local_credential.as_ref(),
+        &skill_env,
+    )?;
+    let invocation = runner_invocation(
+        skill_dir,
+        runner,
+        &request.inputs,
+        &skill_env,
+        request.local_credential.as_ref(),
+    )?;
+    if matches!(
+        runner.source.source_type,
+        runx_parser::SourceKind::CliTool | runx_parser::SourceKind::JavaScript
+    ) {
+        return execute_process_skill_run(
+            request, &workspace, &receipts, manifest, runner, invocation,
+        );
+    }
+    if runner.source.source_type == runx_parser::SourceKind::Graph {
+        return execute_graph_skill_run(
+            request, overrides, effects, &workspace, &receipts, manifest, runner,
+        );
+    }
+
+    execute_agent_skill_run(
+        AgentSkillExecutionContext {
+            request,
+            overrides,
+            effects,
+            workspace: &workspace,
+            receipts: &receipts,
+            manifest,
+            runner,
+        },
+        invocation,
+    )
+}
+
+fn prepare_skill_execution(
+    request: &SkillRunRequest,
+    runner: &SkillRunnerDefinition,
+    trusted_prepared: bool,
+) -> Result<(SkillRunRequest, WorkspaceEnv, ReceiptServices), SkillRunError> {
+    let mut request = request.clone();
+    crate::input_contract::apply_defaults(&runner.inputs, &mut request.inputs);
     let raw_workspace = WorkspaceEnv::new(request.env.clone(), request.cwd.clone());
     let receipts = ReceiptServices::from_env_or_local_development(raw_workspace.env())
         .map_err(|error| SkillRunError::Invalid(error.to_string()))?;
@@ -170,34 +221,7 @@ fn execute_skill_run_with_resolved_trust(
         super::prepared_skill::strip_untrusted_prepared_env(&mut runtime_env);
     }
     let workspace = WorkspaceEnv::new(runtime_env, request.cwd.clone());
-    let skill_env = workspace.skill_env_for_skill(skill_dir);
-    validate_declared_credential(
-        manifest,
-        runner,
-        request.local_credential.as_ref(),
-        &skill_env,
-    )?;
-    let invocation = runner_invocation(
-        skill_dir,
-        runner,
-        &request.inputs,
-        &skill_env,
-        request.local_credential.as_ref(),
-    )?;
-    if runner.source.source_type == runx_parser::SourceKind::CliTool {
-        return execute_cli_tool_skill_run(
-            request, &workspace, &receipts, manifest, runner, invocation,
-        );
-    }
-    if runner.source.source_type == runx_parser::SourceKind::Graph {
-        return execute_graph_skill_run(
-            request, overrides, effects, &workspace, &receipts, manifest, runner,
-        );
-    }
-
-    execute_agent_skill_run(
-        request, overrides, &workspace, &receipts, manifest, runner, invocation,
-    )
+    Ok((request, workspace, receipts))
 }
 
 fn validate_declared_credential(
@@ -271,19 +295,6 @@ fn validate_hosted_credential(
         "hosted credential does not satisfy runner '{}' provider '{}'",
         runner.name, required_provider
     )))
-}
-
-pub(super) fn apply_runner_input_defaults(
-    inputs: &mut std::collections::BTreeMap<String, JsonValue>,
-    runner: &SkillRunnerDefinition,
-) {
-    for (name, input) in &runner.inputs {
-        if !inputs.contains_key(name)
-            && let Some(default) = &input.default
-        {
-            inputs.insert(name.clone(), default.clone());
-        }
-    }
 }
 
 /// Aggregate result of running a package's inline and conventional fixture
@@ -453,7 +464,7 @@ fn domain_act_frame(
 /// The core of [`domain_act_frame`], reusable by the graph path: build the domain
 /// act frame from a declared `act:` block, the trusted run inputs, the model's
 /// authored reason source, and the real governed effect.
-// rust-style-allow: long-function - act-frame construction is intentionally one
+// Function rationale: act-frame construction is intentionally one
 // branch table so each declared field, input fallback, and governed-effect
 // reference is visible in one receipt-shaping pass.
 fn build_domain_act_frame(

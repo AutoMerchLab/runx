@@ -43,3 +43,13 @@ receipt_notes:
 ```
 
 For `ready`, the supplied evidence must include `provider`, `generated_at`, `periods`, and at least one `source_ref` or `receipt_ref`. Missing `forecast_evidence` stops before agent interpretation. A missing optional horizon remains an empty string; the agent must not invent one.
+
+## Agent task contracts
+
+### `weather-forecast-interpret`
+
+Interpret only the supplied forecast evidence and return forecast_draft using the documented
+output fields. Preserve the requested location and horizon, provider, generated_at, source_refs,
+receipt_refs, and relevant period names. Summaries, hazards, uncertainty, and stop conditions
+require analyst judgment, but do not invent evidence. Return needs_more_evidence when freshness
+or coverage is insufficient. Return refused for life-safety use.

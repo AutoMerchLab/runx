@@ -22,6 +22,11 @@
       "phase1_state": "keep",
       "decision": "Policy and authority enforcement stay MIT; no brokerage or provider calls."
     },
+    "runx-js-worker": {
+      "class": "mit-oss",
+      "phase1_state": "keep",
+      "decision": "The resource-bounded deterministic JavaScript worker stays MIT; it has no host or provider capabilities."
+    },
     "runx-pay": {
       "class": "mit-oss",
       "phase1_state": "keep",

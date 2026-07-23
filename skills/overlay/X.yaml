@@ -1,5 +1,6 @@
 skill: overlay
-version: "0.2.0"
+version: "0.3.0"
+
 catalog:
   kind: graph
   audience: builder
@@ -9,6 +10,7 @@ catalog:
   completion: plan
   requires_adapter: false
   approval: none
+
 runners:
   generate:
     default: true
@@ -16,8 +18,8 @@ runners:
     inputs:
       skill_path:
         type: string
-        required: true
-        description: Workspace-relative path to the pinned upstream SKILL.md.
+        required: false
+        description: Workspace-relative or skill-relative path to the pinned upstream SKILL.md.
       upstream:
         type: json
         required: true
@@ -45,8 +47,8 @@ runners:
     graph:
       name: overlay-native-binding
       steps:
-        - id: inspect
-          label: inspect and pin upstream skill
+        - id: plan-source
+          label: normalize the pinned source request
           inputs:
             skill_path: $input.skill_path
             upstream: $input.upstream
@@ -54,40 +56,99 @@ runners:
             tags: $input.tags
             publication: $input.publication
           run:
-            type: cli-tool
-            command: node
-            args:
-              - ./inspect_source.mjs
+            type: javascript
+            module: overlay-source.mjs
+            export: planSource
             outputs:
-              source_evidence: object
+              source_request: object
           artifacts:
             named_emits:
-              source_evidence: source_evidence
-        - id: reject
-          label: seal rejected binding evidence
+              source_request: source_request
+
+        - id: reject-input
+          label: stop on an invalid source request
           when:
-            field: inspect.source_evidence.data.decision
+            field: plan-source.source_request.data.decision
             equals: reject
-          inputs:
-            skill_path: $input.skill_path
-          context:
-            source_evidence: inspect.source_evidence.data
           run:
-            type: cli-tool
-            command: node
-            args:
-              - ./finalize_binding.mjs
+            type: javascript
+            module: overlay-binding.mjs
+            export: finalizeBinding
             outputs:
               binding_bundle: object
+          context:
+            source_request: plan-source.source_request.data
           artifacts:
             named_emits:
               binding_bundle: binding_bundle
             packets:
               binding_bundle: runx.skill_overlay.v1
-        - id: profile
-          label: design bounded binding profile
+
+        - id: read-source
+          label: read the bounded upstream skill
           when:
-            field: inspect.source_evidence.data.decision
+            field: plan-source.source_request.data.decision
+            equals: read
+          tool: fs.read
+          scopes:
+            - fs.read
+          inputs:
+            max_bytes: 524288
+          context:
+            path_scope: plan-source.source_request.data.base
+            path: plan-source.source_request.data.path
+
+        - id: digest-source
+          label: bind source bytes to the canonical Git blob identity
+          when:
+            field: plan-source.source_request.data.decision
+            equals: read
+          tool: git.blob_digest
+          context:
+            contents: read-source.file_read.data.contents
+
+        - id: inspect-source
+          label: verify source identity and immutable pins
+          when:
+            field: plan-source.source_request.data.decision
+            equals: read
+          run:
+            type: javascript
+            module: overlay-source.mjs
+            export: inspectSource
+            outputs:
+              source_evidence: object
+          context:
+            source_request: plan-source.source_request.data
+            file_read: read-source.file_read.data
+            git_blob_digest: digest-source.git_blob_digest.data
+          artifacts:
+            named_emits:
+              source_evidence: source_evidence
+
+        - id: reject-source
+          label: stop on source or pin drift
+          when:
+            field: inspect-source.source_evidence.data.decision
+            equals: reject
+          run:
+            type: javascript
+            module: overlay-binding.mjs
+            export: finalizeBinding
+            outputs:
+              binding_bundle: object
+          context:
+            source_evidence: inspect-source.source_evidence.data
+          artifacts:
+            named_emits:
+              binding_bundle: binding_bundle
+            packets:
+              binding_bundle: runx.skill_overlay.v1
+
+        - id: profile
+          label: design the least-authority binding profile
+          when:
+            field: inspect-source.source_evidence.data.decision
             equals: ready
           run:
             type: agent-task
@@ -99,40 +160,139 @@ runners:
             objective: $input.objective
             scope_intent: $input.scope_intent
           context:
-            source_evidence: inspect.source_evidence.data
-          instructions: >
-            Read the bounded upstream SKILL.md identified by source_evidence.
-            Return profile_draft with decision, runner, harness_cases,
-            rationale, and blockers. The runner must contain name, agent, task,
-            inputs, outputs, scopes, allowed_tools, sandbox, category, and tags.
-            Use one agent-task runner only; do not add shell, provider, network,
-            or filesystem execution stages. Declare the least authority and an
-            explicit allowed_tools array. Add at least two mocked harness cases
-            that exercise the useful path and a missing-input, refusal, or
-            boundary path. Do not author binding provenance or publication
-            claims; deterministic code owns them.
-          allowed_tools:
-            - fs.read
+            source_evidence: inspect-source.source_evidence.data
+            upstream_skill: read-source.file_read.data.contents
+          allowed_tools: []
           artifacts:
             named_emits:
               profile_draft: profile_draft
-        - id: finalize
-          label: build and prove native binding bundle
+
+        - id: prepare-binding
+          label: build the exact standalone candidate
           when:
-            field: inspect.source_evidence.data.decision
+            field: inspect-source.source_evidence.data.decision
             equals: ready
-          inputs:
-            skill_path: $input.skill_path
-          context:
-            source_evidence: inspect.source_evidence.data
-            profile_draft: profile.profile_draft.data
           run:
-            type: cli-tool
-            command: node
-            args:
-              - ./finalize_binding.mjs
+            type: javascript
+            module: overlay-binding.mjs
+            export: prepareBinding
+            outputs:
+              binding_candidate: object
+          context:
+            source_evidence: inspect-source.source_evidence.data
+            profile_draft: profile.profile_draft.data
+            skill_markdown: read-source.file_read.data.contents
+          artifacts:
+            named_emits:
+              binding_candidate: binding_candidate
+
+        - id: reject-profile
+          label: stop on an invalid binding profile
+          when:
+            field: prepare-binding.binding_candidate.data.decision
+            equals: reject
+          run:
+            type: javascript
+            module: overlay-binding.mjs
+            export: finalizeBinding
             outputs:
               binding_bundle: object
+          context:
+            binding_candidate: prepare-binding.binding_candidate.data
+          artifacts:
+            named_emits:
+              binding_bundle: binding_bundle
+            packets:
+              binding_bundle: runx.skill_overlay.v1
+
+        - id: validate
+          label: inspect and harness the exact candidate natively
+          when:
+            field: prepare-binding.binding_candidate.data.decision
+            equals: ready
+          tool: runx.skill.validate
+          scopes:
+            - fs.read
+          inputs:
+            allow_execute_harness: false
+          context:
+            candidate_files: prepare-binding.binding_candidate.data.candidate_files
+
+        - id: assemble
+          label: bind native validation evidence into exact documents
+          when:
+            field: prepare-binding.binding_candidate.data.decision
+            equals: ready
+          run:
+            type: javascript
+            module: overlay-binding.mjs
+            export: assembleBinding
+            outputs:
+              binding_documents: object
+          context:
+            binding_candidate: prepare-binding.binding_candidate.data
+            skill_validation: validate.skill_validation.data
+          artifacts:
+            named_emits:
+              binding_documents: binding_documents
+
+        - id: reject-validation
+          label: stop when native candidate proof fails
+          when:
+            field: assemble.binding_documents.data.decision
+            equals: reject
+          run:
+            type: javascript
+            module: overlay-binding.mjs
+            export: finalizeBinding
+            outputs:
+              binding_bundle: object
+          context:
+            binding_candidate: prepare-binding.binding_candidate.data
+            binding_documents: assemble.binding_documents.data
+          artifacts:
+            named_emits:
+              binding_bundle: binding_bundle
+            packets:
+              binding_bundle: runx.skill_overlay.v1
+
+        - id: digest-profile
+          label: digest the exact native profile
+          when:
+            field: assemble.binding_documents.data.decision
+            equals: ready
+          tool: data.digest
+          inputs:
+            encoding: utf8_text
+          context:
+            value: assemble.binding_documents.data.profile_document
+
+        - id: digest-binding
+          label: digest the exact registry binding
+          when:
+            field: assemble.binding_documents.data.decision
+            equals: ready
+          tool: data.digest
+          inputs:
+            encoding: utf8_text
+          context:
+            value: assemble.binding_documents.data.binding_document
+
+        - id: finalize
+          label: release the proven binding bundle
+          when:
+            field: assemble.binding_documents.data.decision
+            equals: ready
+          run:
+            type: javascript
+            module: overlay-binding.mjs
+            export: finalizeBinding
+            outputs:
+              binding_bundle: object
+          context:
+            binding_documents: assemble.binding_documents.data
+            profile_digest: digest-profile.digest_result.data
+            binding_digest: digest-binding.digest_result.data
           artifacts:
             named_emits:
               binding_bundle: binding_bundle

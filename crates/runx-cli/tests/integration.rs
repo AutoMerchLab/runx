@@ -11,6 +11,7 @@
 
 mod connect;
 mod credential;
+mod data;
 mod doctor;
 mod export;
 mod harness;
@@ -20,6 +21,7 @@ mod local_credential;
 mod locality;
 mod mcp_dogfood;
 mod native_no_ts;
+mod new_skill_authoring;
 mod operator_journeys;
 mod parser;
 mod policy;

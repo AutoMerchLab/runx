@@ -86,18 +86,21 @@ For remote publishes the CLI sends a bounded skill package:
 - `SKILL.md` is the portable skill contract and is sent as the primary document.
 - `X.yaml`, when present, is the execution profile and is sent as the profile
   document.
-- Package files are selected by a small allowlist that mirrors what runx can
-  consume from a skill package:
-  - root-level `.js` / `.mjs` runner files referenced by `X.yaml`;
+- Package files are the exact parser-admitted material for the package:
+  - process entrypoints and their complete static local source closure;
+  - deterministic modules reachable from execution profiles;
   - nested `SKILL.md` / `X.yaml` files for graph stages, context skills, and
     local sub-skills called by the graph;
+  - harness-only support files explicitly declared in `harness.files`, confined
+    to the owning profile's `fixtures/` directory;
   - `references/**/*.md` advisory markdown;
-  - `tools/**/manifest.json` plus minimal `tools/**/run.js` or `run.mjs`
-    runtimes for local tool manifests.
+  - bundled tool manifests and their complete static local source closure.
 
-Nothing else is package material. Fixtures, source trees, build output,
-`node_modules`, assets, dotfiles, local registry state, repo metadata, and random
-helper files are not uploaded. Secret-looking allowed file names such as `.env`,
+Nothing else is package material. Undeclared fixtures, build output,
+`node_modules`, assets, dotfiles, local registry state, repo metadata, and
+random helper files are not uploaded. A `src/` directory is not special: only
+files proven reachable from an admitted entrypoint are included. Secret-looking
+admitted file names such as `.env`,
 `.npmrc`, credentials JSON, private keys, and certificate/key bundles still fail
 the publish before any remote upload.
 

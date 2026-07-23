@@ -136,10 +136,10 @@ fn process_command(spec: &ProcessSpec) -> Command {
 
 #[cfg(any(not(unix), test))]
 fn env_shimmed_process_parts(spec: &ProcessSpec) -> (&str, &[String]) {
-    if spec.command == "/usr/bin/env" {
-        if let Some((program, args)) = spec.args.split_first() {
-            return (program.as_str(), args);
-        }
+    if spec.command == "/usr/bin/env"
+        && let Some((program, args)) = spec.args.split_first()
+    {
+        return (program.as_str(), args);
     }
     (spec.command.as_str(), spec.args.as_slice())
 }

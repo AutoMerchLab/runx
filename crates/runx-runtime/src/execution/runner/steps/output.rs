@@ -11,23 +11,13 @@ use crate::execution::output_projection::{
     BASE_OUTPUT_FIELDS, StepOutputProjection, data_envelope, project_step_output,
 };
 
-/// Project a step's output using only the consuming step's own inline contract
-/// (`run.outputs` / `artifacts`). Used where the step kind carries its own
-/// contract material (inline cli-tool / agent-task / run steps).
-pub(super) fn step_output_projection(
-    step: &GraphStep,
-    output: &SkillOutput,
-) -> Result<StepOutputProjection, RuntimeError> {
-    build_step_output_projection(step, output, None)
-}
-
 /// Project a step's output from its producing runner contract.
 ///
 /// The addressable surface is sourced from the contract, never from the step
 /// kind: declared `run.outputs` plus the effective artifact packets. The
-/// effective artifact contract is the step's own inline `artifacts` when present
-/// (raw inline step), otherwise `extra_artifacts` (the invoked sub-skill / tool
-/// runner contract). Base/diagnostic keys (`raw`/`skill_claim`/`stdout`/`stderr`/
+/// effective artifact contract is the step's own inline `artifacts` when present,
+/// otherwise `extra_artifacts` (the invoked sub-skill / tool runner contract).
+/// Base/diagnostic keys (`raw`/`skill_claim`/`stdout`/`stderr`/
 /// `status`) are inserted by `project_step_output` for receipts and replay but are
 /// never part of the addressable contract.
 pub(super) fn build_step_output_projection(
@@ -46,11 +36,21 @@ pub(super) fn build_step_output_projection(
     Ok(projection)
 }
 
+/// Return only the step outputs declared by its runner or artifact contract.
+/// Effect supervisors must inspect this same addressable surface that downstream
+/// graph steps consume, never the adapter's transport-level stdout shape.
+pub(super) fn contract_output_claim(projection: &StepOutputProjection) -> JsonObject {
+    projection
+        .outputs
+        .iter()
+        .filter(|(name, _)| !BASE_OUTPUT_FIELDS.contains(&name.as_str()))
+        .map(|(name, value)| (name.clone(), value.clone()))
+        .collect()
+}
+
 /// Resolve the effective artifact contract for a step and expose its packets. The
-/// step's own inline `artifacts` (raw `JsonObject`) win; otherwise the producing
-/// runner's typed `SkillArtifactContract` is used. Both funnel through the single
-/// `expose_artifact_packets` helper so a raw inline declaration and a typed runner
-/// contract wrap identically.
+/// step's own inline contract wins; otherwise the producing runner's contract is
+/// used. Both have already crossed the parser-owned typed boundary.
 fn expose_effective_artifacts(
     step: &GraphStep,
     extra_artifacts: Option<&SkillArtifactContract>,
@@ -60,12 +60,7 @@ fn expose_effective_artifacts(
     if claim.is_empty() {
         return Ok(());
     }
-    if let Some(artifacts) = &step.artifacts {
-        let wrap_as = artifacts.get("wrap_as").and_then(JsonValue::as_str);
-        let named_emits = inline_named_emit_names(artifacts);
-        return expose_artifact_packets(step, wrap_as, named_emits.as_deref(), claim, outputs);
-    }
-    if let Some(artifacts) = extra_artifacts {
+    if let Some(artifacts) = step.artifacts.as_ref().or(extra_artifacts) {
         let named_emits = artifacts
             .named_emits
             .as_ref()
@@ -81,10 +76,9 @@ fn expose_effective_artifacts(
     Ok(())
 }
 
-/// The single artifact-exposure helper shared by the raw inline `step.artifacts`
-/// path and the typed `SkillArtifactContract` path. `wrap_as` exposes the whole
-/// claim as one `{ data: ... }` packet (idempotent via `data_envelope`), and each
-/// `named_emits` key exposes that claim field as its own `{ data: ... }` packet.
+/// `wrap_as` exposes the whole claim as one `{ data: ... }` packet (idempotent via
+/// `data_envelope`), and each `named_emits` key exposes that claim field as its own
+/// `{ data: ... }` packet.
 fn expose_artifact_packets(
     step: &GraphStep,
     wrap_as: Option<&str>,
@@ -112,13 +106,6 @@ fn expose_artifact_packets(
     Ok(())
 }
 
-fn inline_named_emit_names(artifacts: &JsonObject) -> Option<Vec<String>> {
-    let JsonValue::Object(named_emits) = artifacts.get("named_emits")? else {
-        return None;
-    };
-    Some(named_emits.keys().cloned().collect())
-}
-
 fn expose_declared_run_outputs(
     step: &GraphStep,
     claim: &JsonObject,
@@ -127,7 +114,7 @@ fn expose_declared_run_outputs(
     let Some(run) = &step.run else {
         return Ok(());
     };
-    let Some(JsonValue::Object(declared_outputs)) = run.get("outputs") else {
+    let Some(declared_outputs) = run.source().and_then(|source| source.outputs.as_ref()) else {
         return Ok(());
     };
     for name in declared_outputs.keys() {

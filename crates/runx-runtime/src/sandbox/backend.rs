@@ -74,6 +74,35 @@ pub(super) fn resolve_sandbox_runtime(
     )))
 }
 
+pub(super) fn resolve_javascript_worker_runtime() -> Result<Option<SandboxRuntime>, RuntimeError> {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    {
+        let runtime = platform_sandbox_runtime("deterministic-javascript");
+        if runtime.enforces() {
+            return Ok(Some(runtime));
+        }
+        Err(sandbox_violation(
+            "deterministic JavaScript requires the platform's deny-by-default host sandbox",
+        ))
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        // The worker installs a Windows Job Object before accepting protocol
+        // input. Boa exposes no host filesystem, network, process, or
+        // environment APIs, so no author-controlled OS authority enters the
+        // process on this target.
+        Ok(Some(SandboxRuntime::Direct))
+    }
+
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
+        Err(sandbox_violation(
+            "deterministic JavaScript has no confinement backend on this target",
+        ))
+    }
+}
+
 fn declared_policy_only_degradation_allowed(base_env: &BTreeMap<String, String>) -> bool {
     operator_allows_declared_policy_only(base_env)
 }

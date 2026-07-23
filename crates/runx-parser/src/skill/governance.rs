@@ -113,7 +113,7 @@ pub(super) fn validate_artifact_contract(
     }))
 }
 
-pub(super) fn validate_inputs(
+pub(crate) fn validate_inputs(
     inputs: JsonObject,
 ) -> Result<BTreeMap<String, SkillInput>, ValidationError> {
     inputs
@@ -121,22 +121,44 @@ pub(super) fn validate_inputs(
         .map(|(name, value)| {
             let field = format!("inputs.{name}");
             let input = FIELDS.required_object(Some(&value), &field)?;
-            Ok((
-                name.clone(),
-                SkillInput {
-                    input_type: FIELDS
-                        .optional_string(input.get("type"), &format!("{field}.type"))?
-                        .unwrap_or_else(|| "string".to_owned()),
-                    required: FIELDS
-                        .optional_bool(input.get("required"), &format!("{field}.required"))?
-                        .unwrap_or(false),
-                    description: FIELDS.optional_string(
-                        input.get("description"),
-                        &format!("{field}.description"),
-                    )?,
-                    default: input.get("default").cloned(),
-                },
-            ))
+            FIELDS.reject_unknown_fields(
+                input,
+                &field,
+                &["type", "required", "description", "default", "artifact"],
+            )?;
+            let input_type = FIELDS
+                .optional_string(input.get("type"), &format!("{field}.type"))?
+                .unwrap_or_else(|| "string".to_owned());
+            if !matches!(
+                input_type.as_str(),
+                "array" | "boolean" | "integer" | "json" | "number" | "object" | "string"
+            ) {
+                return Err(FIELDS.validation_error(format!(
+                    "{field}.type must be one of array, boolean, integer, json, number, object, or string"
+                )));
+            }
+            let validated = SkillInput {
+                input_type,
+                required: FIELDS
+                    .optional_bool(input.get("required"), &format!("{field}.required"))?
+                    .unwrap_or(false),
+                description: FIELDS.optional_string(
+                    input.get("description"),
+                    &format!("{field}.description"),
+                )?,
+                default: input.get("default").cloned(),
+                artifact: FIELDS
+                    .optional_bool(input.get("artifact"), &format!("{field}.artifact"))?,
+            };
+            if let Some(default) = &validated.default
+                && !validated.accepts_value(default)
+            {
+                return Err(FIELDS.validation_error(format!(
+                    "{field}.default must match declared type {}",
+                    validated.input_type
+                )));
+            }
+            Ok((name.clone(), validated))
         })
         .collect()
 }

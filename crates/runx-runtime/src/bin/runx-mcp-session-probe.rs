@@ -33,6 +33,10 @@ mod mcp_probe {
     use runx_runtime::sandbox::SandboxPlan;
     use serde_json::json;
 
+    const REUSE_WARMUP_CALL_COUNT: usize = 4;
+    const REUSE_SAMPLE_COUNT: usize = 20;
+    const REUSE_CALLS_PER_SAMPLE: usize = 10;
+
     pub(super) fn run() -> Result<(), String> {
         let mode = std::env::args()
             .nth(1)
@@ -49,10 +53,11 @@ mod mcp_probe {
             "source": "mcp_runtime",
             "unit": "iterations_per_second",
             "mean_ns": mean_ns,
+            "p50_ns": percentile(&sorted, 0.50),
             "p95_ns": percentile(&sorted, 0.95),
             "p99_ns": percentile(&sorted, 0.99),
             "throughput": 1_000_000_000_f64 / mean_ns,
-            "allocation_count": 0,
+            "sample_count": samples.durations_ns.len(),
             "spawn_count": samples.spawn_count,
             "call_count": samples.call_count,
         });
@@ -96,19 +101,24 @@ mod mcp_probe {
             .reset_session_pool()
             .map_err(|error| error.sanitized_message())?;
         transport.reset_spawn_count();
-        invoke_echo(transport, "reuse-scope", "warm")?;
+        for index in 0..REUSE_WARMUP_CALL_COUNT {
+            invoke_echo(transport, "reuse-scope", &format!("warm-{index}"))?;
+        }
         let mut durations_ns = Vec::new();
-        for index in 0..5 {
-            durations_ns.push(timed_echo(
-                transport,
-                "reuse-scope",
-                &format!("reuse-{index}"),
-            )?);
+        for sample in 0..REUSE_SAMPLE_COUNT {
+            let started = Instant::now();
+            for call in 0..REUSE_CALLS_PER_SAMPLE {
+                invoke_echo(transport, "reuse-scope", &format!("reuse-{sample}-{call}"))?;
+            }
+            durations_ns.push(
+                started.elapsed().as_secs_f64() * 1_000_000_000_f64 / REUSE_CALLS_PER_SAMPLE as f64,
+            );
         }
         Ok(ProbeSamples {
             durations_ns,
             spawn_count: transport.spawned_process_count(),
-            call_count: 6,
+            call_count: (REUSE_WARMUP_CALL_COUNT + REUSE_SAMPLE_COUNT * REUSE_CALLS_PER_SAMPLE)
+                as u64,
         })
     }
 

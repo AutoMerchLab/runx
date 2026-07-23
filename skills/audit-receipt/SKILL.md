@@ -148,3 +148,14 @@ investigate.
 
 At least one of `receipt_id` or `receipt_summary` is required; with neither, the
 skill returns `needs_more_evidence`.
+
+## Agent task contracts
+
+### `audit-receipt`
+
+Audit one run for authority over-reach, ungated mutation, unrecorded refusal, or exposed
+material. Native ledger evidence proves receipt identity, verification posture, signed
+authority, decisions, acts, artifacts, and lineage through its redacted detail projection. Treat
+receipt_summary and granted_scopes as supplemental operator context only. If a receipt id is not
+resolved, or native detail is insufficient, return needs_more_evidence rather than clean. Do not
+repair the skill or mutate the ledger.

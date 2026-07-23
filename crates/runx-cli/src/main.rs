@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - native CLI command dispatch remains one audited
+// Module rationale: native CLI command dispatch remains one audited
 // boundary so release shims and exit-code handling are visible in one place.
 use std::env;
 use std::ffi::OsString;
@@ -34,6 +34,7 @@ fn dispatch(action: RouterAction, workspace: Option<&runx_runtime::WorkspaceEnv>
             write_json_failure(&plan.message, &plan.code, plan.exit_code)
         }
         RouterAction::PrintHelp => write_stdout(&help_text()),
+        RouterAction::PrintHelpJson => write_command_catalog(),
         RouterAction::PrintCommandHelp(command) => {
             write_stdout(&command_help_text(command).unwrap_or_else(help_text))
         }
@@ -45,8 +46,8 @@ fn dispatch(action: RouterAction, workspace: Option<&runx_runtime::WorkspaceEnv>
         RouterAction::PrintVersion => {
             write_stdout_line(&format!("runx-cli {}", env!("CARGO_PKG_VERSION")))
         }
-        RouterAction::RunInit(plan) => runx_cli::scaffold::run_native_init(plan),
-        RouterAction::RunNew(plan) => runx_cli::scaffold::run_native_new(plan),
+        RouterAction::RunInit(plan) => runx_cli::run_native_init(plan),
+        RouterAction::RunNew(plan) => run_new(plan, workspace),
         RouterAction::RunHistory(plan) => run_native_history(plan.args),
         RouterAction::RunVerify(plan) => run_native_verify(plan.args),
         RouterAction::RunList(plan) => run_native_list(plan),
@@ -59,6 +60,7 @@ fn dispatch(action: RouterAction, workspace: Option<&runx_runtime::WorkspaceEnv>
         RouterAction::RunConfig(plan) => run_native_config(plan),
         RouterAction::RunConnect(plan) => runx_cli::connect::run_native_connect(plan),
         RouterAction::RunCredential(plan) => run_credential(plan, workspace),
+        RouterAction::RunData(plan) => run_data(plan, workspace),
         RouterAction::RunPolicy(plan) => runx_cli::policy::run_native_policy(plan),
         RouterAction::RunPublish(plan) => runx_cli::publish::run_native_publish(plan),
         RouterAction::RunRegistry(plan) => runx_cli::registry::run_native_registry(plan),
@@ -91,6 +93,30 @@ fn run_credential(
             runx_cli::credential::run_native_credential_with_workspace(plan, workspace)
         }
         None => runx_cli::credential::run_native_credential(plan),
+    }
+}
+
+fn run_data(
+    plan: runx_cli::data::DataPlan,
+    workspace: Option<&runx_runtime::WorkspaceEnv>,
+) -> ExitCode {
+    match workspace {
+        Some(workspace) => runx_cli::data::run_native_data(plan, workspace),
+        None => write_json_failure(
+            "data migration requires a resolved Runx workspace",
+            "workspace_required",
+            1,
+        ),
+    }
+}
+
+fn run_new(
+    plan: runx_cli::router::NewPlan,
+    workspace: Option<&runx_runtime::WorkspaceEnv>,
+) -> ExitCode {
+    match workspace {
+        Some(workspace) => runx_cli::run_native_new_with_workspace(plan, workspace),
+        None => runx_cli::run_native_new(plan),
     }
 }
 
@@ -143,7 +169,7 @@ fn command_uses_workspace_env(args: &[OsString]) -> bool {
     }
     matches!(
         args.first().and_then(|arg| arg.to_str()),
-        Some("skill" | "resume" | "mcp" | "credential")
+        Some("skill" | "resume" | "mcp" | "credential" | "data" | "new")
     )
 }
 
@@ -276,7 +302,15 @@ fn run_native_harness(plan: HarnessPlan) -> ExitCode {
 
 fn run_standalone_harness(fixture_paths: Vec<OsString>, receipt_dir: Option<OsString>) -> ExitCode {
     let mut outputs = Vec::new();
-    let orchestrator = runx_cli::runtime::local_orchestrator();
+    let orchestrator = match runx_cli::runtime::local_orchestrator() {
+        Ok(orchestrator) => orchestrator,
+        Err(error) => {
+            let _ignored = write_stderr_line(&format!(
+                "runx: failed to initialize runtime effects: {error}"
+            ));
+            return ExitCode::from(1);
+        }
+    };
     for fixture_path in fixture_paths {
         let request = runx_runtime::HarnessRunRequest {
             fixture_path: PathBuf::from(fixture_path),
@@ -362,7 +396,16 @@ fn run_package_harness(skill_path: &Path, receipt_dir: Option<&OsString>) -> Exi
         receipt_dir: receipt_dir.map(PathBuf::from),
         env: None,
     };
-    let report = match runx_cli::runtime::local_orchestrator().run_package_harness(&request) {
+    let orchestrator = match runx_cli::runtime::local_orchestrator() {
+        Ok(orchestrator) => orchestrator,
+        Err(error) => {
+            let _ignored = write_stderr_line(&format!(
+                "runx: failed to initialize runtime effects: {error}"
+            ));
+            return ExitCode::from(1);
+        }
+    };
+    let report = match orchestrator.run_package_harness(&request) {
         Ok(report) => report,
         Err(error) => {
             let error_message = error.to_string();
@@ -376,10 +419,10 @@ fn run_package_harness(skill_path: &Path, receipt_dir: Option<&OsString>) -> Exi
             return ExitCode::from(1);
         }
     };
-    if report.status == "failed" {
-        if let Some(hint) = package_harness_report_hint(&report) {
-            let _ignored = write_stderr_line(hint);
-        }
+    if report.status == "failed"
+        && let Some(hint) = package_harness_report_hint(&report)
+    {
+        let _ignored = write_stderr_line(hint);
     }
     let json = match serde_json::to_string_pretty(&report) {
         Ok(json) => json,
@@ -439,6 +482,18 @@ fn write_stdout(message: &str) -> ExitCode {
         ExitCode::SUCCESS
     } else {
         ExitCode::from(1)
+    }
+}
+
+fn write_command_catalog() -> ExitCode {
+    match runx_cli::command_spec::catalog_json() {
+        Ok(catalog) => write_stdout(&catalog),
+        Err(error) => {
+            let _ignored = write_stderr_line(&format!(
+                "runx: failed to serialize the command catalog: {error}"
+            ));
+            ExitCode::from(1)
+        }
     }
 }
 

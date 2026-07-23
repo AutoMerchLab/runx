@@ -1,5 +1,5 @@
 skill: governed-outbound
-version: "0.2.0"
+version: "0.2.1"
 catalog:
   kind: graph
   audience: public
@@ -205,10 +205,8 @@ runners:
             approval: approve-send.approval_decision.data
             send_plan: plan-notice.send_plan.data
           run:
-            type: cli-tool
-            command: node
-            args:
-              - ./validate_plan.mjs
+            type: javascript
+            module: governed-outbound.mjs
             outputs:
               outbound_plan: object
           artifacts:

@@ -1,5 +1,5 @@
 skill: prior-art
-version: "0.2.0"
+version: "0.2.1"
 catalog:
   kind: graph
   audience: builder
@@ -56,7 +56,10 @@ harness:
       expect:
         status: sealed
         steps:
-          - inspect
+          - plan
+          - catalog
+          - read
+          - index
           - research
           - validate
         step_outputs:
@@ -103,7 +106,10 @@ harness:
       expect:
         status: sealed
         steps:
-          - inspect
+          - plan
+          - catalog
+          - read
+          - index
           - research
           - validate
         step_outputs:
@@ -149,18 +155,52 @@ runners:
     graph:
       name: prior-art
       steps:
-        - id: inspect
-          label: index bounded repository and catalog evidence
+        - id: plan
+          label: derive the bounded source set
           inputs:
             decomposition: $input.decomposition
             source_paths: $input.source_paths
           run:
-            type: cli-tool
-            command: node
-            args:
-              - ./inspect_sources.mjs
+            type: javascript
+            module: prior-art.mjs
+            export: planSources
+            outputs:
+              paths: array
+              limits: object
+          artifacts:
+            named_emits:
+              paths: paths
+              limits: limits
+        - id: catalog
+          label: inspect the native skill catalog
+          tool: runx.skill.inspect
+          scopes:
+            - fs.read
+          inputs:
+            repo_root: .
+        - id: read
+          label: read and digest the bounded source set
+          tool: fs.read_bundle
+          scopes:
+            - fs.read
+          inputs:
+            repo_root: .
+            max_bytes: 262144
+            on_missing: report
+          context:
+            paths: plan.paths.data
+        - id: index
+          label: bind catalog and file evidence
+          run:
+            type: javascript
+            module: prior-art.mjs
+            export: indexSources
             outputs:
               evidence_index: object
+          context:
+            limits: plan.limits.data
+            authoring_context: catalog.authoring_context.data
+            file_read_bundle: read.file_read_bundle.data
           artifacts:
             named_emits:
               evidence_index: evidence_index
@@ -179,15 +219,7 @@ runners:
             audience: $input.audience
             artifact_contract: $input.artifact_contract
           context:
-            evidence_index: inspect.evidence_index.data
-          instructions: >
-            Use the deterministic evidence index to select and read only the
-            bounded local sources needed for the objective. Return prior_art_draft
-            with decision, findings, catalog_fit, quality_bar, recommended_flow,
-            sources, and risks. Cite repo-relative paths exactly. Mark a finding
-            verified only when its source appears in inspected_sources or the
-            catalog index. Prefer reuse or amendment over duplicate primitives.
-            Return needs_more_evidence when requested sources are missing.
+            evidence_index: index.evidence_index.data
           allowed_tools:
             - fs.read
           artifacts:
@@ -196,13 +228,12 @@ runners:
         - id: validate
           label: validate citations and catalog fit
           context:
-            evidence_index: inspect.evidence_index.data
+            evidence_index: index.evidence_index.data
             prior_art_draft: research.prior_art_draft.data
           run:
-            type: cli-tool
-            command: node
-            args:
-              - ./validate_prior_art.mjs
+            type: javascript
+            module: prior-art.mjs
+            export: validatePriorArt
             outputs:
               decision: string
               findings: array

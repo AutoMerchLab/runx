@@ -396,6 +396,7 @@ describe("@runxhq/contracts", () => {
     expect(validateAgentContextEnvelopeContract({
       run_id: "rx_contract",
       skill: "demo.skill",
+      instructions_sha256: `sha256:${"a".repeat(64)}`,
       instructions: "Do the work.",
       inputs: {},
       allowed_tools: ["fs.read"],
@@ -416,6 +417,7 @@ describe("@runxhq/contracts", () => {
     expect(() => validateAgentContextEnvelopeContract({
       run_id: "rx_contract",
       skill: "demo.skill",
+      instructions_sha256: `sha256:${"a".repeat(64)}`,
       instructions: "Do the work.",
       inputs: {},
       allowed_tools: [],
@@ -432,6 +434,7 @@ describe("@runxhq/contracts", () => {
       run_id: "rx_contract",
       step_id: "plan",
       skill: "demo.plan",
+      instructions_sha256: `sha256:${"a".repeat(64)}`,
       instructions: "Do the work.",
       inputs: {},
       allowed_tools: ["fs.read"],
@@ -971,6 +974,36 @@ describe("@runxhq/contracts", () => {
         case_count: 1,
       },
     })).toMatchObject({ schema: "runx.registry_binding.v1" });
+
+    expect(() => validateRegistryBindingContract({
+      schema: "runx.registry_binding.v1",
+      state: "registry_bound",
+      skill: {
+        id: "runx/sourcey",
+        name: "sourcey",
+        description: "Docs skill.",
+      },
+      upstream: {
+        host: "github.com",
+        owner: "runxhq",
+        repo: "runx",
+        path: "skills/sourcey",
+        commit: "abc123",
+        blob_sha: "def456",
+        source_of_truth: false,
+      },
+      registry: {
+        owner: "runx",
+        trust_tier: "first_party",
+        version: "1.0.0",
+        profile_path: "X.yaml",
+        materialized_package_is_registry_artifact: true,
+      },
+      harness: {
+        status: "harness_verified",
+        case_count: 1,
+      },
+    })).toThrow(/registry-binding\.schema\.json/);
   });
 
   it("owns generic post-handoff contracts for reusable outreach state", () => {

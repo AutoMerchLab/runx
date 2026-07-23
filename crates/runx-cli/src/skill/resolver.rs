@@ -1,4 +1,4 @@
-// rust-style-allow: large-file - skill resolution centralizes local, official, installed, and registry paths.
+// Module rationale: skill resolution centralizes local, official, installed, and registry paths.
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -189,7 +189,7 @@ fn resolve_registry_skill(
     )
 }
 
-// rust-style-allow: long-function - registry materialization is kept atomic around trust, cache, and digest checks.
+// Function rationale: registry materialization is kept atomic around trust, cache, and digest checks.
 fn materialize_trusted_registry_skill(
     request: RegistryMaterializationRequest<'_>,
     options: SkillResolverOptions<'_>,
@@ -464,7 +464,7 @@ fn restore_runner_manifest_from_profile_state(skill_dir: &Path) -> Result<(), St
     })
 }
 
-// rust-style-allow: long-function - asset sync preserves packaged official-skill cache invariants in one pass.
+// Function rationale: asset sync preserves packaged official-skill cache invariants in one pass.
 fn sync_packaged_official_skill_assets(
     target_skill_dir: &Path,
     skill_id: &str,

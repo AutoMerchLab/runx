@@ -1,14 +1,17 @@
-// rust-style-allow: large-file - skill CLI parsing keeps shared state and
+// Module rationale: skill CLI parsing keeps shared state and
 // option finalization in one module until the native parser surface stabilizes.
 use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::path::{Path, PathBuf};
 
 use runx_contracts::JsonValue;
-use runx_runtime::{DEFAULT_MANAGED_AGENT_MAX_ROUNDS, ManagedAgentPolicy, WorkspaceEnv};
+use runx_runtime::WorkspaceEnv;
 
-use super::inputs::{parse_direct_input_arg, parse_input_arg, parse_json_input_arg};
+use super::inputs::{
+    parse_direct_input_arg, parse_input_arg, parse_input_document_arg, parse_json_input_arg,
+};
 use super::{SkillAction, SkillPlan};
+use crate::managed_agent::{managed_agent_policy, parse_boolean_flag, parse_managed_agent_rounds};
 
 pub fn parse_skill_plan(args: &[OsString]) -> Result<SkillPlan, String> {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
@@ -28,6 +31,13 @@ pub fn parse_skill_plan_with_workspace(
         index += 1;
     }
 
+    if state.input_document.is_some() && !state.inputs.is_empty() {
+        return Err(
+            "runx skill --inputs cannot be combined with -i, --input, --input-json, or direct --name inputs"
+                .to_owned(),
+        );
+    }
+
     let Some(skill_path) = state.skill_path.as_ref() else {
         return Err("runx skill requires a skill package path".to_owned());
     };
@@ -38,7 +48,8 @@ pub fn parse_skill_plan_with_workspace(
     } else {
         SkillAction::Run
     };
-    let managed_agent = managed_agent_policy(state.managed_agent, state.managed_agent_rounds)?;
+    let managed_agent =
+        managed_agent_policy("skill", state.managed_agent, state.managed_agent_rounds)?;
 
     Ok(SkillPlan {
         action,
@@ -55,6 +66,7 @@ pub fn parse_skill_plan_with_workspace(
         full_operator_context: state.full_operator_context,
         approve_operator_context: state.approve_operator_context,
         inputs: state.inputs,
+        input_document: state.input_document,
         credential_profile: state.credential_profile,
         managed_agent,
     })
@@ -77,6 +89,7 @@ struct SkillParseState {
     inspect: bool,
     force_run: bool,
     inputs: BTreeMap<String, JsonValue>,
+    input_document: Option<crate::document_input::DocumentInputSource>,
     credential_profile: Option<String>,
     managed_agent: bool,
     managed_agent_rounds: Option<u32>,
@@ -105,7 +118,7 @@ fn is_skill_management_action(skill_path: &Path) -> bool {
     )
 }
 
-// rust-style-allow: long-function because this is the single skill-flag dispatch
+// Function rationale: this is the single skill-flag dispatch
 // match (--receipt-dir/--json/--profile and positionals); splitting the
 // arms would scatter the CLI parse contract.
 fn parse_skill_arg(
@@ -203,6 +216,14 @@ fn parse_skill_arg(
                 &mut state.inputs,
             )?;
         }
+        value if value.starts_with("--inputs=") => {
+            index = parse_input_document_arg(
+                args,
+                index,
+                Some(value.trim_start_matches("--inputs=")),
+                &mut state.input_document,
+            )?;
+        }
         value if value.starts_with("-i=") => {
             index = parse_input_arg(
                 args,
@@ -213,6 +234,9 @@ fn parse_skill_arg(
         }
         "--input" => index = parse_input_arg(args, index, None, &mut state.inputs)?,
         "--input-json" => index = parse_json_input_arg(args, index, None, &mut state.inputs)?,
+        "--inputs" => {
+            index = parse_input_document_arg(args, index, None, &mut state.input_document)?;
+        }
         "-i" => index = parse_input_arg(args, index, None, &mut state.inputs)?,
         "--run" => state.force_run = true,
         value
@@ -270,12 +294,14 @@ fn parse_skill_arg(
         }
         value if value.starts_with("--skip-operator-context=") => {
             state.skip_operator_context = parse_boolean_flag(
+                "skill",
                 "--skip-operator-context",
                 value.trim_start_matches("--skip-operator-context="),
             )?;
         }
         value if value.starts_with("--no-operator-context=") => {
             state.skip_operator_context = parse_boolean_flag(
+                "skill",
                 "--no-operator-context",
                 value.trim_start_matches("--no-operator-context="),
             )?;
@@ -285,6 +311,7 @@ fn parse_skill_arg(
         }
         value if value.starts_with("--full-operator-context=") => {
             state.full_operator_context = parse_boolean_flag(
+                "skill",
                 "--full-operator-context",
                 value.trim_start_matches("--full-operator-context="),
             )?;
@@ -292,6 +319,7 @@ fn parse_skill_arg(
         "--full-operator-context" => state.full_operator_context = true,
         value if value.starts_with("--managed-agent=") => {
             state.managed_agent = parse_boolean_flag(
+                "skill",
                 "--managed-agent",
                 value.trim_start_matches("--managed-agent="),
             )?;
@@ -299,13 +327,16 @@ fn parse_skill_arg(
         "--managed-agent" => state.managed_agent = true,
         value if value.starts_with("--managed-agent-rounds=") => {
             state.managed_agent_rounds = Some(parse_managed_agent_rounds(
+                "skill",
                 value.trim_start_matches("--managed-agent-rounds="),
             )?);
         }
         "--managed-agent-rounds" => {
             index += 1;
-            state.managed_agent_rounds =
-                Some(parse_managed_agent_rounds(&string_arg(args, index)?)?);
+            state.managed_agent_rounds = Some(parse_managed_agent_rounds(
+                "skill",
+                &string_arg(args, index)?,
+            )?);
         }
         "--non-interactive" => state.non_interactive = true,
         value if value.starts_with("--") => {
@@ -332,35 +363,6 @@ fn non_empty_flag_value(flag: &str, value: &str) -> Result<String, String> {
         return Err(format!("runx skill {flag} requires a non-empty value"));
     }
     Ok(value.to_owned())
-}
-
-fn parse_boolean_flag(flag: &str, value: &str) -> Result<bool, String> {
-    match value.trim().to_ascii_lowercase().as_str() {
-        "true" | "1" => Ok(true),
-        "false" | "0" => Ok(false),
-        _ => Err(format!("runx skill {flag} expects true or false")),
-    }
-}
-
-fn managed_agent_policy(
-    enabled: bool,
-    max_rounds: Option<u32>,
-) -> Result<ManagedAgentPolicy, String> {
-    if !enabled {
-        if max_rounds.is_some() {
-            return Err("runx skill --managed-agent-rounds requires --managed-agent".to_owned());
-        }
-        return Ok(ManagedAgentPolicy::HostDriven);
-    }
-    ManagedAgentPolicy::inline(max_rounds.unwrap_or(DEFAULT_MANAGED_AGENT_MAX_ROUNDS))
-        .map_err(|error| format!("runx skill {error}"))
-}
-
-fn parse_managed_agent_rounds(value: &str) -> Result<u32, String> {
-    value
-        .trim()
-        .parse::<u32>()
-        .map_err(|_| "runx skill --managed-agent-rounds expects a positive integer".to_owned())
 }
 
 fn skill_resume_flag_error() -> String {

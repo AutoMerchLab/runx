@@ -52,7 +52,7 @@ local dogfood and live protocol conformance.
 
 Native CLI:
 
-- Rust 1.85+
+- Rust 1.88+
 - The native Rust CLI path must stay useful without Node, pnpm, tsx, or
   TypeScript packages installed.
 
@@ -99,7 +99,7 @@ Recommended flows:
 ```bash
 runx init
 runx init -g --prefetch official
-runx new docs-demo
+runx new docs-demo --objective "Create a bounded documentation decision skill"
 runx list skills
 runx registry search sourcey --json
 runx skill sourcey/sourcey@1.0.0 --registry https://runx.example.test --project . --json
@@ -138,6 +138,29 @@ Provider-backed skills declare requirements in `X.yaml`; configure them with
 [Credential Resolution](credentials.md) for the exact precedence and storage
 contract.
 
+### Structured input documents
+
+Use per-key `--input` and `--input-json` flags for small interactive calls. For
+generated or reusable input, pass the complete runner input object through one
+workspace-contained JSON document:
+
+```bash
+runx skill ./skills/research research --inputs request.json --json
+cat request.json | runx skill ./skills/research research --inputs - --json
+```
+
+`--inputs` is exclusive with every per-key input form. A file path is resolved
+relative to the invocation workspace and must identify one contained, regular,
+UTF-8 file. File and stdin input are capped at 64 MiB, must decode to exactly
+one JSON object, and then enter the same selected-runner defaulting and type
+validation as inline inputs. Runx does not echo a rejected document in its
+diagnostic.
+
+This is a control-document transport, not a high-volume execution profile. Put
+large immutable content behind the digest-bound artifact/page boundary and put
+durable histories behind data cursors rather than carrying either through graph
+context.
+
 The global link points at `oss/packages/cli` in this checkout. Rebuild with
 `pnpm --dir oss build`; do not reinstall.
 
@@ -156,16 +179,16 @@ boundary map:
 - `runx-cli`: native `runx` binary over the runtime.
 - `runx-sdk`: blocking CLI-backed SDK over stable contracts.
 
-The TypeScript package graph is the client, authoring, wrapper, and generated
-contract layer:
+The TypeScript package graph is the client, protocol-extension, wrapper, and
+generated-contract layer:
 
 - `@runxhq/contracts`: generated validators and TypeScript types over the
   Rust-owned schema artifacts.
 - `@runxhq/cli`: npm distribution wrapper and client presentation around the
   native CLI.
-- `@runxhq/authoring`, `@runxhq/host-adapters`, and `@runxhq/langchain`:
-  authoring, host presentation, and bridge packages over language-neutral
-  contracts.
+- `@runxhq/contracts`, `@runxhq/extension-sdk`, `@runxhq/host-adapters`, and `@runxhq/langchain`:
+  generated contracts plus narrow process/protocol, host-presentation, and
+  bridge packages over language-neutral contracts.
 
 For the generated package export index, see [docs/api-surface.md](docs/api-surface.md).
 
@@ -176,8 +199,8 @@ supervision for the native CLI path. OS sandbox enforcement remains a separate
 runtime hardening lane and must not be assumed from sandbox declarations alone.
 
 TypeScript remains for generated contracts, CLI/client wrappers,
-cloud/product integrations, host adapters, authoring tooling, and helper SDKs
-over language-neutral protocols. Host adapters can shape host responses over
+cloud/product integrations, host adapters, and protocol helper SDKs over
+language-neutral protocols. Host adapters can shape host responses over
 the runx host protocol; they do not own local execution. External execution
 adapter authors target manifests and wire protocols, so they do not need Rust,
 `runx-core`, `runx-runtime`, or a fork of the core repository. Source-event
@@ -193,39 +216,70 @@ Command-surface ownership:
 | `runx harness <fixture.yaml>` | Rust harness replay | tests and wrapper views |
 | receipts and history | Rust receipt store and journal | display/client views |
 | policy, authority, payment, x402 | Rust core/runtime policy | published type mirrors and product UX |
-| governed data operations | skill graphs plus provider adapters | generated types, helper SDKs, provider glue |
+| governed data operations | typed native operations plus external provider adapters | generated types, helper SDKs, provider glue |
 | external execution-adapter protocol | `runx-runtime` supervisor | generated types, helper SDKs, host/client wrappers |
 | non-execution extension protocols | lane-specific Rust/cloud owners | generated types, helper SDKs, provider glue |
-| marketplace and docs tooling | TypeScript/scafld until separately cut over | canonical for authoring UX |
+| skill authoring and `runx new` | `runx-runtime` authoring service plus `skill-lab` | npm launcher only |
+| marketplace and docs projection | Rust-owned catalog/contracts | generated docs and client views |
 
 Stateful product work should use the governed data-plane shape in
 [docs/governed-data-plane.md](docs/governed-data-plane.md): domain skills own
 meaning, while provider adapters execute bounded reads, append-only event
 writes, and projection reads.
 
-The generic graph tool ref for provider choice is `data.source`. It reads the
-step's `data_source_ref`, resolves it through `RUNX_DATA_SOURCES` or
-`.runx/data-sources.json`, injects the non-secret binding metadata into the
-adapter input, and invokes the configured adapter. Unbound `local://...` refs
-default to bundled durable SQLite; `store_id` opts into the bundled JSON fixture
-adapter for deterministic harnesses.
+Graphs call exact native operations: `data.append_event`, `data.read_events`,
+`data.read_projection`, and `data.list_stream_heads`. Runx resolves each
+operation's `data_source_ref` through `RUNX_DATA_SOURCES` or
+`.runx/data-sources.json`. Unbound `local://...` refs use native durable SQLite;
+a binding may route the same operation to a conforming external provider such
+as `data.redis`. Binding metadata is runtime-owned and is not part of the
+native operation's public input schema.
+
+Legacy native SQLite stores migrate only through the offline runtime service:
+
+```bash
+runx data migrate \
+  --database .runx/data/events.sqlite \
+  --source local://events \
+  --json
+```
+
+The command requires exclusive access, accepts only workspace-relative paths,
+creates a SQLite-consistent backup before changing a recognized legacy schema,
+rebuilds stream heads and digests, and independently verifies counts and
+readback. A current store returns an idempotent `current` proof without another
+backup. An unknown or partial schema is left byte-identical and fails with
+recovery guidance.
+
+Large local inputs use `artifact.admit` and `artifact.read`. Admission snapshots
+one contained regular file, binds its media type, byte count, and whole-file
+digest to an opaque invocation-scoped reference, and never exposes the host
+path. The current total admission ceiling is 512 MiB. Reads return exact
+offsets, range and whole-file digests, `next_offset`, and `eof` in pages of at
+most 1 MiB using base64, character-safe UTF-8, or JSON-array record framing.
+The 1 MiB limit is a page ceiling, not a total-file ceiling. `fs.read` and
+`fs.read_bundle` share the same containment and hashing owner for bounded text;
+they are not alternate large-file transports.
 
 ### Local Sandbox Posture
 
-`cli-tool` skills declare sandbox intent in `SKILL.md`: profile, cwd policy,
-env allowlist, network intent, and writable paths. Receipts record both the
-declared policy and the actual local enforcement mode.
+`cli-tool` and `javascript` sources declare sandbox intent in `X.yaml`: profile,
+cwd policy, environment allowlist, network intent, and writable paths. Receipts
+record both the declared policy and the actual local enforcement mode.
 
-The current OSS runtime is `declared-policy-only` for local sandbox isolation:
-runx applies admission, cwd, environment shaping, input delivery, and receipt
-metadata, but it does not enforce filesystem, network, process-tree, or resource
-isolation with OS primitives. Receipts mark filesystem and network isolation as
-`not-enforced-local`.
+For every restricted profile, Runx selects a trusted OS enforcer: Bubblewrap on
+Linux or `sandbox-exec` on macOS. Filesystem and network policy are applied by
+that enforcer and the exact backend is recorded in the receipt. If no usable
+backend exists, restricted execution fails closed by default. A scoped local
+development run may explicitly opt into declared-policy-only degradation with
+`RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY=local`; the receipt then records
+filesystem and network isolation as `not-enforced-local`.
 
-Set `sandbox.require_enforcement: true` in a skill, or
-`RUNX_SANDBOX_REQUIRE_ENFORCEMENT=true` in the environment, when a run must fail
-unless a future OS-level sandbox enforcer is available. In the current OSS
-runtime, that setting fails closed.
+Set `sandbox.require_enforcement: true` when even that explicit local
+degradation must remain unavailable. JavaScript-module sources always
+materialize this requirement together with a read-only skill-directory cwd, no
+network, no writable paths, no extra environment, and no credentials; a host
+without the OS backend cannot execute them.
 
 ## Capability Packs
 
@@ -251,19 +305,32 @@ publish policy. See [docs/issue-to-pr.md](docs/issue-to-pr.md).
 
 ## Standalone Skill Packages
 
-`runx new <name>` scaffolds a native cli-tool skill (SKILL.md + X.yaml +
-run.mjs, zero npm deps, no build step):
+`runx new <name> --objective <outcome>` is a thin client of the canonical Skill
+Lab build lane. It inspects the target and catalog, requests a closed
+architecture decision and change draft, binds both to the inspected package
+digest in native code, stages and harnesses the exact candidate, then applies
+the same bytes transactionally. The command owns no templates and never adds a
+placeholder JavaScript module:
 
 ```bash
-runx new docs-demo
+runx new docs-demo --objective "Create a bounded documentation decision skill"
 ```
 
-To cold-start without installing runx first, run `npx @runxhq/cli new docs-demo`;
-it downloads the launcher and runs the same native scaffold.
+Without `--managed-agent`, the command stops at `needs_agent`, prints an answers
+template and exact `runx resume` command, and leaves the target untouched. Add
+`--managed-agent` only when this run should use the configured in-process model
+loop. To cold-start without installing Runx first, invoke the same command
+through `npx @runxhq/cli`.
 
-Community skills should be authored and published as standalone packages created
-this way. The main `runx` repo is the first-party lane for official skills and
-runtime code, not the community package catalog.
+Community skills should be authored and published as standalone packages
+through this lane. The main `runx` repo is the first-party lane for official
+skills and runtime code, not the community package catalog.
+
+Prefer declarative graphs composed from native tools and existing skills. When
+irreducible deterministic domain computation needs JavaScript, declare
+`type: javascript`; the module receives resolved inputs and returns JSON while
+Runx owns the process protocol. Use `cli-tool` only for a real executable or
+protocol boundary. See [Skill Author Runtime Contract](skill-author-runtime-contract.md).
 
 Registry search and install now normalize public trust into three tiers:
 `first_party`, `verified`, and `community`. Richer provenance and attestation
@@ -290,6 +357,12 @@ skills/sourcey/
 Direct execution accepts the package directory or `SKILL.md` inside it. Flat
 `foo.md` skill files are no longer a supported execution surface.
 
+In a workspace that owns a `skills/` catalog, a root `SKILL.md` is the
+workspace operator manual exported to agents; it is not an executable package
+boundary around the repository. Executable package discovery starts at
+`skills/*/SKILL.md`. A standalone workspace root remains a package, and a root
+`X.yaml` explicitly opts a catalog workspace root into package ownership.
+
 Execution profiles use a strict YAML subset: no anchors, aliases, merge keys,
 custom tags, multi-document markers, duplicate mapping keys, or unknown profile
 fields. Keep capability and receipt mappings explicit in the runner that uses
@@ -310,19 +383,30 @@ design and improvement, and the named downstream execution lane for mutation.
 
 ## Tool Authoring
 
-First-party tools are authored from source in:
+Reusable Runx mechanics and security boundaries belong in the native Rust tool
+catalog. Skills should compose those native tools instead of shipping request,
+filesystem, Git, hashing, packet, approval, credential, or receipt wrappers.
+Use `runx tool inspect <name> --json` to inspect the contract that both graphs
+and managed agents execute.
+
+The repository-level tool package shape remains for a genuinely separate
+executable or protocol boundary that should be callable as a tool:
 
 ```text
 tools/<namespace>/<tool>/
-  src/index.ts
+  src/index.mjs
   fixtures/*.yaml
   manifest.json
   run.mjs
 ```
 
-`src/index.ts` is the source of truth and uses `defineTool()` from
-`@runxhq/authoring`. `manifest.json` and `run.mjs` are generated runtime
-artifacts:
+`manifest.json` is the execution contract and sole owner of the tool name,
+source, inputs, defaults, artifact projection, scopes, and governance metadata.
+Process code contains only the domain behavior the native catalog cannot
+express.
+`defineTool()` from `@runxhq/extension-sdk` may transport the already
+materialized input object and structured failures over the local process
+protocol; it does not declare or regenerate the manifest.
 
 ```bash
 runx tool build --all --json
@@ -330,8 +414,13 @@ runx dev --lane deterministic --json
 runx dev --lane repo-integration --json
 ```
 
-`run.mjs` is intentionally checked in as the thin runtime shim that imports the
-authored source. Do not hand-edit generated `manifest.json` or `run.mjs`.
+When a `run.mjs` entrypoint is needed, it is a thin process shim and owns no
+contract metadata. `runx tool build` is read-only: it validates the source
+manifest and reports hashes derived from the manifest and its declared source
+files without rewriting either. Do not create one of these packages merely to
+wrap a capability already owned by the native catalog. The declared entrypoint
+must run directly on the supported Node runtime; do not probe for build output
+or import uncompiled TypeScript.
 
 ## Official Packages
 
@@ -433,7 +522,8 @@ runx publish ./.runx/receipts/<receipt-id>.json
 with `publish: true`, then prints the public `/r` link and content hash returned
 by the notary. Configure the hosted API with `RUNX_PUBLIC_API_BASE_URL` (default
 `https://api.runx.ai`) and authenticate with `RUNX_PUBLIC_API_TOKEN` or `--token`
-(or run `runx login`).
+(or run `runx login`). Runx requires HTTPS for non-loopback API origins so the
+bearer token cannot be sent to a public plaintext endpoint.
 
 For local hosted dogfood only, point at a loopback API and opt into the private
 network escape explicitly:
@@ -519,15 +609,33 @@ expect:
         status: awaiting_approval
 ```
 
+A receipt-dependent fixture may seed a bounded set of existing receipts from
+its own package:
+
+```yaml
+setup:
+  receipts:
+    - fixtures/receipt-store/sha256-example.json
+```
+
+Each path must be a normalized package-relative `.json` path. Runx parses and
+verifies every seeded receipt under the fixture's configured signature policy
+before placing it in that case's isolated store. Seed data is evidence for the
+case, not proof of a provider action; the fixture must still assert only what
+the verified receipts and runner output establish.
+
 Supplied `caller.answers` are semantic oracles, not inert model stubs. Native
 replay fails unless every supplied answer is observable in the root or step
 output. For stateful work, use one graph fixture to prove the transition and
 durable readback; do not depend on fixture filename order.
 
 Package replay uses a disposable project-owned workspace below `.runx/harness`
-and cleans it after the run. Receipts are durable and go to `.runx/receipts`, or
-to the directory selected by `--receipt-dir`. An explicit `RUNX_CWD` identifies
-the owning project but does not disable harness isolation.
+and a separate receipt store for every case, then cleans that scratch state.
+Cases therefore cannot satisfy each other through filename order or ambient
+receipt history. Receipts produced by each case are verified and copied to the
+durable `.runx/receipts` store, or to the directory selected by
+`--receipt-dir`. An explicit `RUNX_CWD` identifies the owning project but does
+not disable harness isolation.
 
 ## Doctor And Dogfood
 

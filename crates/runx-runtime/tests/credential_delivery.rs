@@ -294,6 +294,8 @@ fn cli_tool_delivers_and_redacts_declared_credential() -> Result<(), Box<dyn std
     let delivery = allowed_delivery()?;
     let output = CliToolAdapter.invoke(SkillInvocation {
         skill_name: "credential.echo".to_owned(),
+        artifacts: None,
+        allowed_tools: None,
         source: cli_source(),
         inputs: Default::default(),
         resolved_inputs: Default::default(),
@@ -313,6 +315,8 @@ fn cli_tool_delivers_and_redacts_declared_credential() -> Result<(), Box<dyn std
 fn cli_tool_omits_truncated_output_before_redaction() -> Result<(), Box<dyn std::error::Error>> {
     let output = CliToolAdapter.invoke(SkillInvocation {
         skill_name: "credential.large-output".to_owned(),
+        artifacts: None,
+        allowed_tools: None,
         source: large_output_cli_source(),
         inputs: Default::default(),
         resolved_inputs: Default::default(),
@@ -352,6 +356,8 @@ fn mcp_adapter_delivers_secret_env_and_redacts_tool_result()
     );
     let output = McpAdapter::new(FixtureMcpTransport).invoke(SkillInvocation {
         skill_name: "credential.mcp".to_owned(),
+        artifacts: None,
+        allowed_tools: None,
         source: mcp_source(),
         inputs,
         resolved_inputs: Default::default(),
@@ -378,6 +384,8 @@ fn mcp_process_transport_rejects_process_env_credential_delivery()
     );
     let output = McpAdapter::new(ProcessMcpTransport::default()).invoke(SkillInvocation {
         skill_name: "credential.mcp.process".to_owned(),
+        artifacts: None,
+        allowed_tools: None,
         source: mcp_process_source()?,
         inputs,
         resolved_inputs: Default::default(),
@@ -470,6 +478,9 @@ fn cli_source() -> SkillSource {
         act: None,
         source_type: runx_parser::SourceKind::CliTool,
         command: Some("sh".to_owned()),
+        module: None,
+        javascript_export: None,
+        pages: None,
         args: vec![
             "-c".to_owned(),
             "printf '%s\\n' \"$GITHUB_TOKEN\"".to_owned(),
@@ -479,17 +490,16 @@ fn cli_source() -> SkillSource {
         input_mode: None,
         sandbox: Some(readonly_sandbox()),
         server: None,
-        catalog_ref: None,
         tool: None,
         arguments: None,
         agent_card_url: None,
         agent_identity: None,
         agent: None,
         task: None,
-        hook: None,
         outputs: None,
         graph: None,
-        http: None,
+        external_adapter: None,
+        thread_outbox_provider: None,
         raw: Default::default(),
     }
 }
@@ -499,7 +509,7 @@ fn large_output_cli_source() -> SkillSource {
     source.command = Some("node".to_owned());
     source.args = vec![
         "-e".to_owned(),
-        "process.stdout.write('x'.repeat(1024 * 1024 + 1));".to_owned(),
+        "process.stdout.write('x'.repeat(8 * 1024 * 1024 + 1));".to_owned(),
     ];
     source
 }

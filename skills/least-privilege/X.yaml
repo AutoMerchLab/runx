@@ -1,5 +1,5 @@
 skill: least-privilege
-version: "0.3.0"
+version: "0.3.1"
 catalog:
   kind: graph
   audience: operator
@@ -67,10 +67,8 @@ runners:
           context:
             ledger_evidence: evidence.ledger_answer_packet.data
           run:
-            type: cli-tool
-            command: node
-            args:
-              - run.mjs
+            type: javascript
+            module: least-privilege.mjs
           outputs:
             audit_report: object
             attenuation_proposals: array

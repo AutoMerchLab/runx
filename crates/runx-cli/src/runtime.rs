@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because CLI runtime wiring binds payment
+// Module rationale: CLI runtime wiring binds payment
 // finality supervisor selection, external adapter translation, and receipt
 // metadata persistence at one audited command boundary.
 use std::env;
@@ -30,18 +30,17 @@ pub const RUNX_PAYMENT_FINALITY_SUPERVISOR_MANIFEST_ENV: &str =
     "RUNX_PAYMENT_FINALITY_SUPERVISOR_MANIFEST";
 const PAYMENT_FINALITY_SUPERVISOR_SKILL_REF: &str = "runx/payment-finality-supervisor";
 
-#[must_use]
-pub fn local_orchestrator() -> LocalOrchestrator {
-    LocalOrchestrator::with_effects(payment_effect_registry())
+pub fn local_orchestrator() -> Result<LocalOrchestrator, runx_runtime::RuntimeEffectError> {
+    payment_effect_registry().map(LocalOrchestrator::with_effects)
 }
 
-#[must_use]
-pub fn payment_effect_registry() -> RuntimeEffectRegistry {
+pub fn payment_effect_registry() -> Result<RuntimeEffectRegistry, runx_runtime::RuntimeEffectError>
+{
     let mut registry = RuntimeEffectRegistry::with_effect(PaymentRuntimeEffect::new(
         ConfiguredPaymentFinalitySupervisor::from_env(),
-    ));
-    let _ = registry.register_effect(ProviderPermissionEffect);
-    registry
+    ))?;
+    registry.register_effect(ProviderPermissionEffect::default())?;
+    Ok(registry)
 }
 
 pub fn persist_payment_ledger_projection(output: &HarnessReplayOutput) -> Result<(), String> {

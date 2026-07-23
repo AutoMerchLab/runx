@@ -1,13 +1,12 @@
 use std::io::Write;
 
-use runx_contracts::JsonValue;
 use runx_runtime::skill_front::{
     PreparedSkillRunReport, SkillOperatorContextContextSkill, SkillOperatorContextDocument,
-    SkillOperatorContextNode, SkillOperatorContextStep, SkillOperatorContextTarget,
-    SkillOperatorContextTerminal, SkillOperatorContextTool,
+    SkillOperatorContextNode, SkillOperatorContextStep, SkillOperatorContextTerminal,
+    SkillOperatorContextTool,
 };
 
-// rust-style-allow: long-function - compact and full modes share one ordered
+// Function rationale: compact and full modes share one ordered
 // operator-facing rendering contract so decision fields cannot drift.
 pub(super) fn write_operator_context(
     report: &PreparedSkillRunReport,
@@ -147,7 +146,7 @@ fn list_or_none(values: &[String]) -> String {
     }
 }
 
-// rust-style-allow: long-function - a recursive skill node is rendered as one
+// Function rationale: a recursive skill node is rendered as one
 // ordered packet so child contracts, tools, context, and steps stay adjacent.
 fn append_node(
     out: &mut String,
@@ -212,22 +211,27 @@ fn append_node(
 }
 
 fn append_step(out: &mut String, step: &SkillOperatorContextStep) -> Result<(), String> {
+    let definition = &step.definition;
     out.push_str(&format!("\n--- graph step: {} ---\n", step.node_path));
     out.push_str(&format!(
         "step_id: {}\ntarget: {}\nmutation: {}\n",
-        step.id,
-        target_label(&step.target),
-        step.mutating,
+        definition.id,
+        step.target_label(),
+        definition.mutating,
     ));
-    append_string_list(out, "allowed_tools", &step.allowed_tools);
+    append_string_list(
+        out,
+        "allowed_tools",
+        definition.allowed_tools.as_deref().unwrap_or_default(),
+    );
     append_string_list(out, "tool_refs", &step.tool_refs);
     append_json_block(
         out,
-        &format!("graph step raw: {}", step.node_path),
-        &step.raw,
+        &format!("graph step contract: {}", step.node_path),
+        definition,
     )?;
     for context in &step.context_skills {
-        append_context_skill(out, &step.node_path, context);
+        append_context_skill(out, &step.node_path, context)?;
     }
     if let Some(child) = &step.child {
         append_node(out, child, false)?;
@@ -239,17 +243,19 @@ fn append_context_skill(
     out: &mut String,
     step_path: &str,
     context: &SkillOperatorContextContextSkill,
-) {
+) -> Result<(), String> {
     out.push_str(&format!(
-        "\ncontext_attachment: {step_path}\ncontext_ref: {}\ncontext_source: {}\ncontext_name: {}\n",
-        context.reference, context.source, context.name,
+        "\ncontext_attachment: {step_path}\ncontext_ref: {}\ncontext_summary_sha256: {}\ncontext_summary_bytes: {}\n",
+        context.reference, context.summary_sha256, context.summary_bytes,
     ));
-    append_document(
+    append_json_block(
         out,
-        format!("context skill: {} at {step_path}", context.reference),
-        &context.document,
-        "markdown",
-    );
+        &format!(
+            "context skill summary: {} at {step_path}",
+            context.reference
+        ),
+        &context.summary,
+    )
 }
 
 fn append_tools(out: &mut String, node_path: &str, tools: &[SkillOperatorContextTool]) {
@@ -290,7 +296,11 @@ fn append_document(
     ));
 }
 
-fn append_json_block(out: &mut String, label: &str, value: &JsonValue) -> Result<(), String> {
+fn append_json_block(
+    out: &mut String,
+    label: &str,
+    value: &impl serde::Serialize,
+) -> Result<(), String> {
     let contents = serde_json::to_string_pretty(value)
         .map_err(|error| format!("could not render {label} as JSON: {error}"))?;
     out.push_str(&format!("\n--- {label} ---\n\n```json\n{contents}\n```\n"));
@@ -305,21 +315,9 @@ fn append_string_list(out: &mut String, label: &str, values: &[String]) {
     }
 }
 
-fn target_label(target: &SkillOperatorContextTarget) -> String {
-    match target {
-        SkillOperatorContextTarget::Skill { reference, runner } => match runner {
-            Some(runner) => format!("skill {reference} runner {runner}"),
-            None => format!("skill {reference}"),
-        },
-        SkillOperatorContextTarget::Tool { name } => format!("tool {name}"),
-        SkillOperatorContextTarget::Run { source_type } => format!("run {source_type}"),
-    }
-}
-
 fn terminal_label(terminal: &SkillOperatorContextTerminal) -> &'static str {
     match terminal {
         SkillOperatorContextTerminal::ExpandedGraph => "expanded-graph",
         SkillOperatorContextTerminal::Runner => "terminal-runner",
-        SkillOperatorContextTerminal::LegacyMarkdown => "legacy-markdown",
     }
 }

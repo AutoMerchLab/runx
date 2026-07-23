@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because the x402 payment ledger projection,
+// Module rationale: the x402 payment ledger projection,
 // idempotent local event append, and receipt artifact assembly remain one
 // audited boundary until the payment state modules are split.
 use std::collections::HashSet;
@@ -210,7 +210,7 @@ impl From<PaymentPacketError> for PaymentLedgerProjectionError {
     }
 }
 
-// rust-style-allow: long-function because the projection validates reservation,
+// Function rationale: the projection validates reservation,
 // settlement/refusal evidence, child receipts, and accrual in one audited pass.
 pub fn build_payment_ledger_projection(
     input: PaymentLedgerProjectionInput<'_>,
@@ -289,7 +289,7 @@ pub fn build_payment_ledger_projection(
     })
 }
 
-// rust-style-allow: long-function because artifact path derivation, JSON
+// Function rationale: artifact path derivation, JSON
 // serialization, hashing, and reference construction must stay byte-aligned.
 pub fn write_payment_ledger_projection_artifact(
     receipt_dir: impl AsRef<Path>,
@@ -428,7 +428,7 @@ pub fn build_x402_payment_ledger_projection_from_steps(
     })
 }
 
-// rust-style-allow: long-function because append is the idempotency boundary:
+// Function rationale: append is the idempotency boundary:
 // read existing events, compare semantic identity, reject conflicts, then write.
 pub fn append_payment_ledger_projected_event(
     receipt_dir: impl AsRef<Path>,

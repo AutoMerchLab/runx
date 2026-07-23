@@ -1,4 +1,4 @@
-use runx_contracts::{JsonNumber, JsonObject, JsonValue, Reference};
+use runx_contracts::{JsonNumber, JsonObject, JsonValue, ProofKind, Reference, ReferenceType};
 use runx_runtime::{
     EffectAdmission, EffectOutputRequest, EffectReceiptRequest, EffectReplay,
     EffectReplayOutputRequest, EffectReplayReceiptRequest, RuntimeEffectError, SkillOutput,
@@ -18,10 +18,11 @@ use crate::packets::{
 };
 use crate::supervisor::{
     PAYMENT_RAIL_SUPERVISOR_EVIDENCE_METADATA, PaymentSupervisorProofMatch,
-    PaymentSupervisorVerificationInput, insert_payment_supervisor_proof_metadata,
-    payment_supervisor_evidence_from_payload, payment_supervisor_evidence_metadata_value,
-    payment_supervisor_evidence_reference, payment_supervisor_proof_reference,
-    validate_payment_supervisor_proof, verify_payment_rail_supervisor_proof,
+    PaymentSupervisorSettlementEvidence, PaymentSupervisorVerificationInput,
+    insert_payment_supervisor_proof_metadata, payment_supervisor_evidence_from_payload,
+    payment_supervisor_evidence_metadata_value, payment_supervisor_evidence_reference,
+    payment_supervisor_proof_reference, validate_payment_supervisor_proof,
+    verify_payment_rail_supervisor_proof,
 };
 
 pub(super) fn prepare_payment_output(
@@ -49,6 +50,17 @@ pub(super) fn prepare_payment_output(
         .result
         .as_ref()
         .and_then(|result| result.status.as_deref());
+    let evidence = supervise_payment_output(supervisor, payment, claim, status)?;
+    attach_payment_output_evidence(request.output, payment, &evidence)?;
+    redact_transient_payment_output(request.output)
+}
+
+fn supervise_payment_output(
+    supervisor: &dyn PaymentFinalitySupervisor,
+    payment: &StepPaymentAuthorityContext,
+    claim: &PaymentRailProof,
+    status: Option<&str>,
+) -> Result<PaymentSupervisorSettlementEvidence, RuntimeEffectError> {
     let supervisor_evidence = supervisor
         .supervise(supervisor_request(payment, claim, status))
         .map_err(|source| {
@@ -62,24 +74,41 @@ pub(super) fn prepare_payment_output(
             supervisor_evidence.family, PAYMENT_EFFECT_FAMILY
         )));
     }
-    let evidence = payment_supervisor_evidence_from_payload(&supervisor_evidence.payload).map_err(
-        |source| {
-            denied(format!(
-                "supervisor-verified rail proof is required: {source}"
-            ))
-        },
-    )?;
-    let value = payment_supervisor_evidence_metadata_value(&evidence)
+    payment_supervisor_evidence_from_payload(&supervisor_evidence.payload).map_err(|source| {
+        denied(format!(
+            "supervisor-verified rail proof is required: {source}"
+        ))
+    })
+}
+
+fn attach_payment_output_evidence(
+    output: &mut SkillOutput,
+    payment: &StepPaymentAuthorityContext,
+    evidence: &PaymentSupervisorSettlementEvidence,
+) -> Result<(), RuntimeEffectError> {
+    let value = payment_supervisor_evidence_metadata_value(evidence)
         .map_err(|source| failed("encoding supervisor evidence", source))?;
-    request
-        .output
+    output
         .metadata
         .insert(PAYMENT_RAIL_SUPERVISOR_EVIDENCE_METADATA.to_owned(), value);
     insert_effect_verification_ref(
-        &mut request.output.metadata,
-        payment_supervisor_evidence_reference(&evidence),
+        &mut output.metadata,
+        payment_supervisor_evidence_reference(evidence),
     )?;
-    redact_transient_payment_output(request.output)?;
+    if let Some(identity) = payment.settlement_identity.as_ref() {
+        insert_effect_verification_ref(
+            &mut output.metadata,
+            Reference {
+                reference_type: ReferenceType::Target,
+                uri: format!("runx:money_movement:{}", identity.money_movement_id).into(),
+                provider: Some(payment.rail.clone().into()),
+                locator: None,
+                label: Some("verified payment movement".into()),
+                observed_at: None,
+                proof_kind: Some(ProofKind::EffectFinality),
+            },
+        )?;
+    }
     Ok(())
 }
 
@@ -224,7 +253,13 @@ fn redact_transient_payment_output(output: &mut SkillOutput) -> Result<(), Runti
     let Ok(JsonValue::Object(mut payload)) = serde_json::from_str(&output.stdout) else {
         return Ok(());
     };
-    if !redact_payment_transient_material(&mut payload) {
+    let redacted_packet = redact_payment_transient_material(&mut payload);
+    let redacted_root = match payload.get_mut("rail_proof") {
+        Some(JsonValue::Object(proof)) => proof.remove("rail_session_material_ref").is_some(),
+        _ => false,
+    };
+    let redacted = redacted_packet || redacted_root;
+    if !redacted {
         return Ok(());
     }
     output.stdout = serde_json::to_string(&JsonValue::Object(payload))

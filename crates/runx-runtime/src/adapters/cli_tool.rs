@@ -8,10 +8,12 @@ use crate::adapter::{
 };
 use crate::adapter_pipeline::{AdapterCapture, AdapterProjection};
 use crate::credentials::CredentialDelivery;
-use crate::process::{CapturedOutput, ProcessOutcome, ProcessSpec, ProcessStdin, run_process};
+use crate::process::{
+    CapturedOutput, ProcessOutcome, ProcessSpec, ProcessStdin, STANDARD_PROCESS_OUTPUT_BYTES,
+    run_process,
+};
 use crate::services::SandboxServices;
 
-const OUTPUT_LIMIT_BYTES: usize = 1024 * 1024;
 const DEFAULT_TIMEOUT_SECONDS: u64 = 60;
 #[cfg(test)]
 static DEFAULT_TIMEOUT_OVERRIDE_SECONDS: std::sync::atomic::AtomicU64 =
@@ -20,12 +22,12 @@ static DEFAULT_TIMEOUT_OVERRIDE_SECONDS: std::sync::atomic::AtomicU64 =
 #[derive(Clone, Copy, Debug, Default)]
 pub struct CliToolAdapter;
 
-impl SkillAdapter for CliToolAdapter {
-    fn adapter_type(&self) -> &'static str {
-        "cli-tool"
-    }
-
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+impl CliToolAdapter {
+    pub(crate) fn invoke_with_output_limit(
+        &self,
+        request: SkillInvocation,
+        output_limit_bytes: usize,
+    ) -> Result<SkillOutput, RuntimeError> {
         let credential_delivery = request.credential_delivery.clone();
         let mut sandbox = SandboxServices.process_plan(
             &request.source,
@@ -39,7 +41,7 @@ impl SkillAdapter for CliToolAdapter {
         let stdin = cli_tool_stdin(&request)?;
         let sandbox = sandbox.into_process_plan();
         let mut outcome = run_process(
-            ProcessSpec::new("cli-tool", sandbox.command, OUTPUT_LIMIT_BYTES)
+            ProcessSpec::new("cli-tool", sandbox.command, output_limit_bytes)
                 .args(sandbox.args)
                 .cwd(sandbox.cwd)
                 .env(sandbox.env)
@@ -53,7 +55,12 @@ impl SkillAdapter for CliToolAdapter {
             }
         })?;
         let cleanup_errors = std::mem::take(&mut outcome.cleanup_errors);
-        let mut output = cli_tool_output(outcome, &credential_delivery, sandbox.metadata);
+        let mut output = cli_tool_output(
+            outcome,
+            &credential_delivery,
+            sandbox.metadata,
+            output_limit_bytes,
+        );
         if !cleanup_errors.is_empty() {
             output.metadata.insert(
                 "cleanup_errors".to_owned(),
@@ -61,6 +68,16 @@ impl SkillAdapter for CliToolAdapter {
             );
         }
         Ok(output)
+    }
+}
+
+impl SkillAdapter for CliToolAdapter {
+    fn adapter_type(&self) -> &'static str {
+        "cli-tool"
+    }
+
+    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+        self.invoke_with_output_limit(request, STANDARD_PROCESS_OUTPUT_BYTES)
     }
 
     fn fanout_execution_mode(&self, source: &runx_parser::SkillSource) -> FanoutExecutionMode {
@@ -103,6 +120,7 @@ fn cli_tool_stdin(request: &SkillInvocation) -> Result<Option<ProcessStdin>, Run
 fn redacted_capture(
     output: CapturedOutput,
     credential_delivery: &CredentialDelivery,
+    output_limit_bytes: usize,
 ) -> CapturedText {
     if output.truncated {
         return CapturedText {
@@ -111,7 +129,7 @@ fn redacted_capture(
         };
     }
     CapturedText {
-        text: credential_delivery.redact_bytes_to_string(output.bytes, OUTPUT_LIMIT_BYTES),
+        text: credential_delivery.redact_bytes_to_string(output.bytes, output_limit_bytes),
         truncated: false,
     }
 }
@@ -120,16 +138,17 @@ fn cli_tool_output(
     outcome: ProcessOutcome,
     credential_delivery: &CredentialDelivery,
     metadata: runx_contracts::JsonObject,
+    output_limit_bytes: usize,
 ) -> SkillOutput {
-    let stdout = redacted_capture(outcome.stdout, credential_delivery);
-    let stderr = redacted_capture(outcome.stderr, credential_delivery);
+    let stdout = redacted_capture(outcome.stdout, credential_delivery, output_limit_bytes);
+    let stderr = redacted_capture(outcome.stderr, credential_delivery, output_limit_bytes);
     let output_truncated = stdout.truncated || stderr.truncated;
     let success = outcome.status.success() && !outcome.timed_out && !output_truncated;
     let (stdout, stderr) = if output_truncated {
         (
             String::new(),
             format!(
-                "runx cli-tool output exceeded {OUTPUT_LIMIT_BYTES} byte capture limit; stdout/stderr omitted"
+                "runx cli-tool output exceeded {output_limit_bytes} byte capture limit; stdout/stderr omitted"
             ),
         )
     } else {
@@ -192,10 +211,15 @@ mod tests {
         DEFAULT_TIMEOUT_OVERRIDE_SECONDS.store(1, std::sync::atomic::Ordering::SeqCst);
         let output = CliToolAdapter.invoke(SkillInvocation {
             skill_name: "default-timeout".to_owned(),
+            artifacts: None,
+            allowed_tools: None,
             source: runx_parser::SkillSource {
                 act: None,
                 source_type: runx_parser::SourceKind::CliTool,
                 command: Some("/bin/sh".to_owned()),
+                module: None,
+                javascript_export: None,
+                pages: None,
                 args: vec!["-c".to_owned(), "sleep 10".to_owned()],
                 cwd: None,
                 timeout_seconds: None,
@@ -211,17 +235,16 @@ mod tests {
                     raw: JsonObject::new(),
                 }),
                 server: None,
-                catalog_ref: None,
                 tool: None,
                 arguments: None,
                 agent_card_url: None,
                 agent_identity: None,
                 agent: None,
                 task: None,
-                hook: None,
                 outputs: None,
                 graph: None,
-                http: None,
+                external_adapter: None,
+                thread_outbox_provider: None,
                 raw: JsonObject::new(),
             },
             inputs: JsonObject::new(),

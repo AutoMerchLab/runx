@@ -100,6 +100,37 @@ fn doctor_authority_json_redacts_secret_values_and_reports_state_path()
 }
 
 #[test]
+fn doctor_authority_reports_connect_grant_discovery_without_exposing_token()
+-> Result<(), Box<dyn std::error::Error>> {
+    let output = authority_doctor_command()
+        .args(["doctor", "authority", "--json"])
+        .env("RUNX_PUBLIC_API_BASE_URL", "https://api.runx.test")
+        .env("RUNX_PUBLIC_API_TOKEN", "rxk-secret-token")
+        .output()?;
+
+    assert!(output.status.success());
+    assert_eq!(String::from_utf8(output.stderr)?, "");
+    let report = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    let provider = report["diagnostics"]
+        .as_array()
+        .and_then(|diagnostics| {
+            diagnostics
+                .iter()
+                .find(|diagnostic| diagnostic["id"] == "runx.authority.provider_grant")
+        })
+        .ok_or_else(|| std::io::Error::other("provider grant diagnostic is missing"))?;
+    assert_eq!(provider["severity"], "info");
+    assert_eq!(provider["evidence"]["connect_discovery"], true);
+    assert!(
+        provider["message"]
+            .as_str()
+            .is_some_and(|message| { message.contains("unique active provider/scope grant") })
+    );
+    assert!(!serde_json::to_string(&report)?.contains("rxk-secret-token"));
+    Ok(())
+}
+
+#[test]
 fn doctor_authority_json_reports_unsupported_hosted_effect_state_backend()
 -> Result<(), Box<dyn std::error::Error>> {
     let output = authority_doctor_command()

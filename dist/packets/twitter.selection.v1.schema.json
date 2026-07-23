@@ -2,15 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.runx.ai/runx/twitter/selection/v1.json",
   "x-runx-packet-id": "twitter.selection.v1",
-  "x-runx-generated-from": "skills/twitter/X.yaml#root.runners.select",
-  "type": "object",
-  "required": [
-    "twitter_selection"
-  ],
-  "properties": {
-    "twitter_selection": {
-      "type": "object"
-    }
-  },
-  "additionalProperties": false
+  "x-runx-generated-from": "skills/twitter/X.yaml#root.runners.select.graph.steps.5",
+  "type": "object"
 }

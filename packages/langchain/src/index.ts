@@ -12,25 +12,6 @@ export type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue | undefined };
 
-export interface LangChainToolLike {
-  readonly name: string;
-  readonly description: string;
-  readonly schema?: unknown;
-  readonly invoke: StructuredToolInterface["invoke"];
-}
-
-export interface LangChainToolCatalogAdapterOptions {
-  readonly source: string;
-  readonly label: string;
-  readonly namespace: string;
-  readonly baseDirectory: string;
-  readonly tools:
-    | readonly LangChainToolLike[]
-    | { readonly getTools: () => readonly LangChainToolLike[] }
-    | (() => Promise<readonly LangChainToolLike[]> | readonly LangChainToolLike[]);
-  readonly tags?: readonly string[];
-}
-
 export interface RunxSkillExecutionResult {
   readonly stdout?: string;
   readonly stderr?: string;
@@ -108,12 +89,6 @@ export interface RunxLangChainToolOptions {
   readonly runOptions?: Omit<RunxSkillCliRunOptions, "skillPath" | "inputs">;
   readonly mapInput?: (input: unknown) => Readonly<Record<string, unknown>>;
   readonly formatOutput?: (result: RunxSkillCliResult) => unknown;
-}
-
-export function createLangChainToolCatalogAdapter(_options: LangChainToolCatalogAdapterOptions): never {
-  throw new Error(
-    "createLangChainToolCatalogAdapter was sunset with the Rust runtime takeover. The Rust CLI has no in-process LangChain tool-catalog adapter boundary; publish runx tool manifests and use `runx tool search|inspect --json`, or wrap a governed skill with createRunxLangChainTool.",
-  );
 }
 
 export function createRunxCliSkillRunner(options: RunxCliBoundaryOptions = {}): RunxCliSkillRunner {

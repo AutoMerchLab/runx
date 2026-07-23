@@ -1,0 +1,29 @@
+name: sandbox-harden-rejects-unbound-egress
+kind: skill
+target: ..
+runner: sandbox-harden
+inputs:
+  workload:
+    skill_ref: runx/example@1.0.0
+    class: cli
+    requirements:
+      source_ref: requirements:cli:v1
+      source_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      observed_at: "2026-07-17T10:00:00Z"
+      network: true
+      writable_paths: []
+      allowed_egress_hosts: [example.com]
+  as_of: "2026-07-17T12:00:00Z"
+expect:
+  status: sealed
+  steps: [plan]
+  step_outputs:
+    plan:
+      subset:
+        hardening_profile:
+          data:
+            decision: unsupported_runtime_shape
+            applied: false
+            validation: { status: fail }
+  receipt: { schema: runx.receipt.v1 }
+metadata: { public_skill: sandbox-harden, source_case: unbound-posture, source: skills-fixture }

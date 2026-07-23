@@ -1,5 +1,5 @@
 skill: stripe-pay
-version: "0.1.4"
+version: "0.2.0"
 catalog:
   kind: graph
   audience: operator
@@ -24,7 +24,7 @@ runners:
       parent_payment_authority:
         type: object
         required: true
-        description: Parent payment authority term or authority reference.
+        description: Full typed parent payment AuthorityTerm; a reference alone is refused.
       rail_profile_ref:
         type: string
         required: true
@@ -37,18 +37,10 @@ runners:
         type: string
         required: false
         description: Authority realm.
-      spend_policy:
-        type: object
-        required: false
-        description: Policy limits and approval thresholds.
-      approval_context:
-        type: object
-        required: false
-        description: Prior approval evidence.
       idempotency_seed:
         type: string
-        required: false
-        description: Stable idempotency material.
+        required: true
+        description: Stable caller-owned idempotency material.
     graph:
       name: stripe-pay
       steps:
@@ -56,11 +48,9 @@ runners:
           skill: ../spend
           runner: stripe-spt
           inputs:
-            payment_signal: "$input.payment_signal"
-            parent_payment_authority: "$input.parent_payment_authority"
-            rail_profile_ref: "$input.rail_profile_ref"
-            payment_admission: "$input.payment_admission"
-            realm: "$input.realm"
-            spend_policy: "$input.spend_policy"
-            approval_context: "$input.approval_context"
-            idempotency_seed: "$input.idempotency_seed"
+            payment_signal: $input.payment_signal
+            parent_payment_authority: $input.parent_payment_authority
+            rail_profile_ref: $input.rail_profile_ref
+            payment_admission: $input.payment_admission
+            realm: $input.realm
+            idempotency_seed: $input.idempotency_seed

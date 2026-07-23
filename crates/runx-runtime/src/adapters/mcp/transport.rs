@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because the client-side transport keeps stdio
+// Module rationale: the client-side transport keeps stdio
 // framing, response buffering, and bounded read/write helpers adjacent to the
 // transport implementations they coordinate.
 use std::collections::{BTreeMap, VecDeque};
@@ -23,7 +23,11 @@ use super::types::{
     McpListToolsRequest, McpToolCallRequest, McpToolDescriptor, McpTransport, McpTransportError,
 };
 
-const MAX_CLIENT_RESPONSE_BYTES: usize = 1024 * 1024;
+// MCP may carry a fully serialized native data result plus JSON-RPC framing.
+// Keep that protocol envelope bounded without imposing the old 1 MiB ceiling
+// on otherwise valid operator results.
+const MAX_CLIENT_RESPONSE_BYTES: usize = 32 * 1024 * 1024;
+const MAX_CLIENT_STDERR_BYTES: usize = 256 * 1024;
 const FORCE_KILL_GRACE: Duration = Duration::from_millis(100);
 const MAX_POOLED_MCP_SESSIONS: usize = 8;
 const MAX_POOLED_MCP_SESSION_IDLE: Duration = Duration::from_secs(300);
@@ -558,10 +562,10 @@ impl McpStderrDiagnostic {
         self.read_total = self
             .read_total
             .saturating_add(u64::try_from(chunk.len()).unwrap_or(u64::MAX));
-        if chunk.len() >= MAX_CLIENT_RESPONSE_BYTES {
+        if chunk.len() >= MAX_CLIENT_STDERR_BYTES {
             self.tail.clear();
             self.tail.extend(
-                chunk[chunk.len() - MAX_CLIENT_RESPONSE_BYTES..]
+                chunk[chunk.len() - MAX_CLIENT_STDERR_BYTES..]
                     .iter()
                     .copied(),
             );
@@ -571,7 +575,7 @@ impl McpStderrDiagnostic {
             .tail
             .len()
             .saturating_add(chunk.len())
-            .saturating_sub(MAX_CLIENT_RESPONSE_BYTES);
+            .saturating_sub(MAX_CLIENT_STDERR_BYTES);
         for _ in 0..excess {
             let _ = self.tail.pop_front();
         }
@@ -686,11 +690,11 @@ mod rmcp_transport_tests {
     use tokio::io::AsyncWriteExt;
 
     use super::{
-        MAX_CLIENT_RESPONSE_BYTES, RmcpContentLengthTransport, RmcpTransportErrorState,
-        serve_rmcp_transport, spawn_stderr_drain,
+        MAX_CLIENT_RESPONSE_BYTES, MAX_CLIENT_STDERR_BYTES, RmcpContentLengthTransport,
+        RmcpTransportErrorState, serve_rmcp_transport, spawn_stderr_drain,
     };
 
-    // rust-style-allow: long-function because these adjacent transport
+    // Function rationale: these adjacent transport
     // regression tests share one in-memory Content-Length fixture.
     #[test]
     fn rmcp_receive_records_malformed_json_as_transport_error() {
@@ -716,14 +720,12 @@ mod rmcp_transport_tests {
 
     #[test]
     fn rmcp_receive_records_oversized_body_as_transport_error() {
-        let message = receive_error_message(b"Content-Length: 1048577\r\n\r\n{}");
+        let message = receive_error_message_with_limit(b"Content-Length: 9\r\n\r\n{}", 8);
 
         assert_eq!(message.as_deref(), Some("MCP message exceeded size limit."));
     }
 
     #[test]
-    // rust-style-allow: long-function -- the style scanner counts the literal
-    // "{" in this malformed-frame fixture as an opening brace.
     fn rmcp_initialize_surfaces_recorded_transport_error() {
         let message = initialize_error_message(b"Content-Length: 1\r\n\r\n{");
 
@@ -736,7 +738,7 @@ mod rmcp_transport_tests {
     }
 
     #[test]
-    // rust-style-allow: long-function -- the stderr-drain test drives a bounded
+    // Function rationale: the stderr-drain test drives a bounded
     // async pipe end-to-end to prove bytes are drained beyond the retained tail.
     fn mcp_stderr_drain_continues_after_retained_tail_limit() -> Result<(), String> {
         tokio::runtime::Builder::new_current_thread()
@@ -747,7 +749,7 @@ mod rmcp_transport_tests {
             .block_on(async move {
                 let (mut writer, reader) = tokio::io::duplex(4096);
                 let drain = spawn_stderr_drain(reader);
-                let total_bytes = MAX_CLIENT_RESPONSE_BYTES + (64 * 1024);
+                let total_bytes = MAX_CLIENT_STDERR_BYTES + (64 * 1024);
                 let chunk = vec![b'x'; 8192];
                 let snapshot = tokio::time::timeout(Duration::from_secs(2), async move {
                     let mut remaining = total_bytes;
@@ -777,7 +779,7 @@ mod rmcp_transport_tests {
                     u64::try_from(total_bytes)
                         .map_err(|error| format!("test byte count fits in u64: {error}"))?
                 );
-                assert_eq!(snapshot.retained_bytes, MAX_CLIENT_RESPONSE_BYTES);
+                assert_eq!(snapshot.retained_bytes, MAX_CLIENT_STDERR_BYTES);
                 Ok(())
             })
     }
@@ -808,20 +810,25 @@ mod rmcp_transport_tests {
     }
 
     fn receive_error_message(bytes: &'static [u8]) -> Option<String> {
+        receive_error_message_with_limit(bytes, MAX_CLIENT_RESPONSE_BYTES)
+    }
+
+    fn receive_error_message_with_limit(bytes: &[u8], response_limit: usize) -> Option<String> {
+        let bytes = bytes.to_vec();
         tokio::runtime::Builder::new_current_thread()
             .enable_io()
             .build()
             .ok()?
             .block_on(async move {
                 let (mut writer, reader) = tokio::io::duplex(bytes.len().max(1));
-                writer.write_all(bytes).await.ok()?;
+                writer.write_all(&bytes).await.ok()?;
                 drop(writer);
 
                 let error_state = RmcpTransportErrorState::default();
                 let mut transport = RmcpContentLengthTransport::new(
                     reader,
                     tokio::io::sink(),
-                    MAX_CLIENT_RESPONSE_BYTES,
+                    response_limit,
                     error_state.clone(),
                 );
 

@@ -1,0 +1,30 @@
+name: slack-refuses-reply-plan-drift-before-approval
+kind: skill
+target: ..
+runner: deliver_reply
+inputs:
+  send_plan:
+    decision: ready
+    provider: { name: slack }
+    channel: chat
+    audience: { type: thread, ref: "slack://T123ABC/C123ABC/1750000000.000001" }
+    content:
+      digest: sha256:8604f5c08db8d76b6fa8066c769fbdc6a4992101373d0d17bcfe426cf8e77647
+    gates: { human_approval_required: true }
+  thread_locator: slack://T123ABC/C123ABC/1750000000.000001
+  text: changed
+  idempotency_key: 123e4567-e89b-42d3-a456-426614174000
+expect:
+  status: sealed
+  steps: [digest, bind-plan, bind-content]
+  step_outputs:
+    bind-content:
+      subset:
+        comparison:
+          data:
+            equal: false
+  receipt: { schema: runx.receipt.v1 }
+metadata:
+  public_skill: slack
+  source_case: reply-plan-drift
+  source: skills-fixture

@@ -2,7 +2,6 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.runx.ai/runx/effect/evidence/v1.json",
   "x-runx-packet-id": "runx.effect.evidence.v1",
-  "x-runx-generated-from": "skills/spend/graph/pay-fulfill-rail/X.yaml#root.runners.mock",
   "type": "object",
   "required": [
     "credential_envelope",
@@ -26,6 +25,12 @@
     },
     "redactions": {
       "type": "array"
+    },
+    "settlement_proof": {
+      "type": "object"
+    },
+    "kernel_token": {
+      "type": "object"
     }
   },
   "additionalProperties": false

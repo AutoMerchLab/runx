@@ -10,10 +10,10 @@ inputs:
 expect:
   status: sealed
   steps:
-    - inspect
-    - reject
+    - plan-source
+    - reject-input
   step_outputs:
-    reject:
+    reject-input:
       subset:
         binding_bundle:
           data:

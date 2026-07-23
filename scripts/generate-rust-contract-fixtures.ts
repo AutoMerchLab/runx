@@ -825,6 +825,7 @@ function agentActResolutionRequest(): Readonly<Record<string, unknown>> {
         historical_context: [],
         inputs: {},
         instructions: "Summarize receipt",
+        instructions_sha256: sha256Prefixed("Summarize receipt"),
         provenance: [],
         run_id: "run_1",
         skill: "review-receipt",

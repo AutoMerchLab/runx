@@ -1,0 +1,20 @@
+skill: sandbox-workspace-write
+version: "0.1.0"
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: sh
+    args:
+      - ./run.sh
+    timeout_seconds: 10
+    sandbox:
+      profile: workspace-write
+      env_allowlist:
+        - PATH
+      writable_paths:
+        - "{{output_path}}"
+    inputs:
+      output_path:
+        type: string
+        required: true

@@ -28,7 +28,7 @@ const rustKernelBin = path.join(
 );
 const dogfoodEnv = {
   ...process.env,
-  RUNX_KERNEL_EVAL_BIN: rustKernelBin,
+  RUNX_RUST_CLI_BIN: rustKernelBin,
   RUNX_RECEIPT_SIGN_KID: process.env.RUNX_RECEIPT_SIGN_KID ?? "runx-dogfood-test-key",
   RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64:
     process.env.RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64 ?? "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
@@ -50,17 +50,17 @@ const steps = [
   {
     label: "prove rust payment runtime",
     command: cargo,
-    args: ["test", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-runtime", "--test", "payment_execution"],
+    args: ["test", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-pay", "--test", "integration", "--", "execution"],
   },
   {
     label: "prove rust Stripe SPT payment runtime",
     command: cargo,
-    args: ["test", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-runtime", "--test", "stripe_spt_payment"],
+    args: ["test", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-pay", "--test", "integration", "--", "stripe_spt"],
   },
   {
     label: "prove native x402 mock dogfood CLI",
     command: cargo,
-    args: ["test", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-cli", "--test", "x402_native_dogfood"],
+    args: ["test", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-cli", "--test", "integration", "--", "x402_native_dogfood"],
   },
   {
     label: "build workspace packages",
@@ -78,9 +78,14 @@ const steps = [
     args: ["exec", "vitest", "run", "tests/payment-skill-profile-validation.test.ts"],
   },
   {
-    label: "prove official skills with a fresh caller",
-    command: pnpm,
-    args: ["exec", "vitest", "run", "tests/external-skill-proving-ground.test.ts"],
+    label: "prove official skills with a fresh isolated caller",
+    command: process.execPath,
+    args: [
+      "scripts/harness-sweep.mjs",
+      "--no-build",
+      "--runx-bin",
+      rustKernelBin,
+    ],
   },
 ];
 

@@ -1,4 +1,4 @@
-// rust-style-allow: large-file because the process supervisor, contract
+// Module rationale: the process supervisor, contract
 // validation, timeout handling, and frame normalization must stay adjacent to
 // keep the external adapter boundary auditable.
 
@@ -7,7 +7,7 @@ mod redaction;
 use std::collections::BTreeMap;
 
 use redaction::redact_response;
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use runx_contracts::{
@@ -20,24 +20,21 @@ use runx_contracts::{
     JsonObject, JsonValue, Reference, ReferenceType,
 };
 use runx_core::policy::{CwdPolicy, SandboxProfile};
-use runx_parser::{SkillSandbox, SkillSource, SourceKind};
+use runx_parser::{SkillExternalAdapterManifest, SkillSandbox, SkillSource, SourceKind};
 use thiserror::Error;
 
 use crate::RuntimeError;
 use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
-use crate::adapter_pipeline::{AdapterCapture, AdapterInvocationPlan, AdapterProjection};
+use crate::adapter_pipeline::{AdapterCapture, AdapterProjection};
 use crate::credentials::CredentialDelivery;
-use crate::process::{ProcessOutcome, ProcessSpec, ProcessStdin, run_process};
+use crate::process::{
+    ProcessOutcome, ProcessSpec, ProcessStdin, STANDARD_PROCESS_OUTPUT_BYTES, run_process,
+};
 use crate::receipts::paths::RUNX_RECEIPT_DIR_ENV;
 use crate::redaction::trim_ascii_whitespace;
 use crate::sandbox::{SandboxPlan, prepare_process_sandbox};
 use crate::time::now_iso8601;
 
-const MANIFEST_INLINE_FIELD: &str = "external_adapter_manifest";
-const MANIFEST_PATH_FIELD: &str = "external_adapter_manifest_path";
-const MANIFEST_NESTED_FIELD: &str = "external_adapter";
-const MANIFEST_NESTED_MANIFEST_FIELD: &str = "manifest";
-const MANIFEST_NESTED_PATH_FIELD: &str = "manifest_path";
 const INVOCATION_SCHEMA: &str = "runx.external_adapter.invocation.v1";
 const MANIFEST_SCHEMA: &str = "runx.external_adapter.manifest.v1";
 const RESPONSE_SCHEMA: &str = "runx.external_adapter.response.v1";
@@ -46,7 +43,6 @@ const HOST_RESOLUTION_SCHEMA: &str = "runx.external_adapter.host_resolution.v1";
 const CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA: &str = "credential_delivery_observations";
 const HOST_RESOLUTION_FRAME_ID_METADATA: &str = "external_adapter_host_resolution_frame_id";
 const HOST_RESOLUTION_REQUEST_METADATA: &str = "external_adapter_host_resolution_request";
-const RESPONSE_LIMIT_BYTES: usize = 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct ExternalAdapterProcessOutcome {
@@ -98,14 +94,12 @@ where
     }
 
     fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
-        let plan = AdapterInvocationPlan::from_invocation(self.adapter_type(), &request);
-        debug_assert_eq!(plan.adapter_type(), self.adapter_type());
         if request.source.source_type != runx_parser::SourceKind::ExternalAdapter {
             return Err(RuntimeError::UnsupportedAdapter {
-                adapter_type: plan.source_type().to_owned(),
+                adapter_type: request.source.source_type.as_str().to_owned(),
             });
         }
-        let skill_name = plan.skill_name().to_owned();
+        let skill_name = request.skill_name.clone();
         invoke_external_adapter_skill(request, &self.manifest_resolver, &self.supervisor).map_err(
             |error| RuntimeError::SkillFailed {
                 skill_name,
@@ -155,31 +149,22 @@ impl ExternalAdapterManifestResolver for InlineExternalAdapterManifestResolver {
         &self,
         request: &SkillInvocation,
     ) -> Result<ExternalAdapterManifest, ExternalAdapterSkillAdapterError> {
-        if let Some(value) = inline_manifest_value(&request.source.raw) {
-            let JsonValue::Object(_) = value else {
-                return Err(ExternalAdapterSkillAdapterError::InvalidInlineManifestShape);
-            };
-            return manifest_from_value(value);
+        match request.source.external_adapter.as_ref() {
+            Some(SkillExternalAdapterManifest::Inline(manifest)) => Ok(manifest.as_ref().clone()),
+            Some(SkillExternalAdapterManifest::Path(relative_path)) => {
+                manifest_from_path(&request.skill_directory, relative_path)
+            }
+            None => Err(ExternalAdapterSkillAdapterError::MissingManifest),
         }
-        if let Some(relative_path) = manifest_path_value(&request.source.raw)? {
-            return manifest_from_path(&request.skill_directory, &relative_path);
-        }
-        Err(ExternalAdapterSkillAdapterError::MissingManifest)
     }
 }
 
 #[derive(Debug, Error)]
 pub enum ExternalAdapterSkillAdapterError {
     #[error(
-        "external adapter source is missing a manifest at source.external_adapter.manifest, source.external_adapter.manifest_path, source.external_adapter_manifest, or source.external_adapter_manifest_path"
+        "external adapter source is missing source.external_adapter.manifest or source.external_adapter.manifest_path"
     )]
     MissingManifest,
-    #[error("external adapter inline manifest must be an object")]
-    InvalidInlineManifestShape,
-    #[error(
-        "external adapter manifest_path must be a relative path below the skill directory: '{path}'"
-    )]
-    InvalidManifestPath { path: String },
     #[error(
         "external adapter manifest_path '{path}' escapes the skill directory '{skill_directory}'"
     )]
@@ -193,8 +178,6 @@ pub enum ExternalAdapterSkillAdapterError {
         #[source]
         source: std::io::Error,
     },
-    #[error("external adapter source metadata '{field}' must be a string when present")]
-    InvalidSourceMetadata { field: &'static str },
     #[error(
         "external adapter response exit_code {actual} does not fit in a runtime process exit code"
     )]
@@ -335,12 +318,12 @@ impl ExternalAdapterProcessSupervisor {
             return Err(ExternalAdapterSupervisorError::ProcessFailed {
                 exit_status: status.to_string(),
                 stderr: credential_delivery
-                    .redact_bytes_to_string(stderr.bytes, RESPONSE_LIMIT_BYTES),
+                    .redact_bytes_to_string(stderr.bytes, STANDARD_PROCESS_OUTPUT_BYTES),
             });
         }
         if stdout.truncated {
             return Err(ExternalAdapterSupervisorError::ResponseTooLarge {
-                limit_bytes: RESPONSE_LIMIT_BYTES,
+                limit_bytes: STANDARD_PROCESS_OUTPUT_BYTES,
             });
         }
         let response = parse_response(&stdout.bytes, credential_delivery)?;
@@ -369,53 +352,10 @@ where
     skill_output_from_outcome(outcome, &request.credential_delivery)
 }
 
-fn inline_manifest_value(source: &JsonObject) -> Option<&JsonValue> {
-    source.get(MANIFEST_INLINE_FIELD).or_else(|| {
-        let JsonValue::Object(external_adapter) = source.get(MANIFEST_NESTED_FIELD)? else {
-            return None;
-        };
-        external_adapter.get(MANIFEST_NESTED_MANIFEST_FIELD)
-    })
-}
-
-fn manifest_path_value(
-    source: &JsonObject,
-) -> Result<Option<String>, ExternalAdapterSkillAdapterError> {
-    if let Some(value) = source.get(MANIFEST_PATH_FIELD) {
-        let JsonValue::String(path) = value else {
-            return Err(ExternalAdapterSkillAdapterError::InvalidSourceMetadata {
-                field: MANIFEST_PATH_FIELD,
-            });
-        };
-        return Ok(Some(path.clone()));
-    }
-    let Some(JsonValue::Object(external_adapter)) = source.get(MANIFEST_NESTED_FIELD) else {
-        return Ok(None);
-    };
-    match external_adapter.get(MANIFEST_NESTED_PATH_FIELD) {
-        Some(JsonValue::String(path)) => Ok(Some(path.clone())),
-        Some(_) => Err(ExternalAdapterSkillAdapterError::InvalidSourceMetadata {
-            field: MANIFEST_NESTED_PATH_FIELD,
-        }),
-        None => Ok(None),
-    }
-}
-
-fn manifest_from_value(
-    value: &JsonValue,
-) -> Result<ExternalAdapterManifest, ExternalAdapterSkillAdapterError> {
-    let value = serde_json::to_value(value).map_err(|source| {
-        json_adapter_error("serializing external adapter inline manifest", source)
-    })?;
-    serde_json::from_value(value)
-        .map_err(|source| json_adapter_error("validating external adapter inline manifest", source))
-}
-
 fn manifest_from_path(
     skill_directory: &Path,
     relative_path: &str,
 ) -> Result<ExternalAdapterManifest, ExternalAdapterSkillAdapterError> {
-    validate_manifest_relative_path(relative_path)?;
     let skill_directory_display = skill_directory.to_string_lossy().into_owned();
     let skill_directory = skill_directory.canonicalize().map_err(|source| {
         ExternalAdapterSkillAdapterError::ManifestRead {
@@ -448,41 +388,17 @@ fn manifest_from_path(
         .map_err(|source| json_adapter_error("validating external adapter manifest file", source))
 }
 
-fn validate_manifest_relative_path(
-    relative_path: &str,
-) -> Result<(), ExternalAdapterSkillAdapterError> {
-    let path = Path::new(relative_path);
-    let valid = !relative_path.trim().is_empty()
-        && path.is_relative()
-        && path
-            .components()
-            .all(|component| matches!(component, Component::Normal(_)));
-    if valid {
-        Ok(())
-    } else {
-        Err(ExternalAdapterSkillAdapterError::InvalidManifestPath {
-            path: relative_path.to_owned(),
-        })
-    }
-}
-
 fn skill_invocation_contract(
     request: &SkillInvocation,
     manifest: &ExternalAdapterManifest,
 ) -> Result<ExternalAdapterInvocation, ExternalAdapterSkillAdapterError> {
-    let invocation_id = optional_source_string(&request.source.raw, "invocation_id")?
-        .unwrap_or_else(|| {
-            format!(
-                "external_adapter.{}.invoke",
-                identifier_segment(&request.skill_name)
-            )
-        });
-    let run_id = optional_source_string(&request.source.raw, "run_id")?
-        .unwrap_or_else(|| format!("run_{}", identifier_segment(&request.skill_name)));
-    let step_id = optional_source_string(&request.source.raw, "step_id")?
-        .unwrap_or_else(|| identifier_segment(&request.skill_name));
-    let skill_ref = optional_source_string(&request.source.raw, "skill_ref")?
-        .unwrap_or_else(|| request.skill_name.clone());
+    let invocation_id = format!(
+        "external_adapter.{}.invoke",
+        identifier_segment(&request.skill_name)
+    );
+    let run_id = format!("run_{}", identifier_segment(&request.skill_name));
+    let step_id = identifier_segment(&request.skill_name);
+    let skill_ref = request.skill_name.clone();
     Ok(ExternalAdapterInvocation {
         schema: ExternalAdapterInvocationSchema::V1,
         protocol_version: ExternalAdapterProtocolVersion::V1,
@@ -537,17 +453,6 @@ const fn external_adapter_credential_purpose(
         CredentialDeliveryPurpose::WebhookVerification => {
             ExternalAdapterCredentialPurpose::WebhookVerification
         }
-    }
-}
-
-fn optional_source_string(
-    source: &JsonObject,
-    field: &'static str,
-) -> Result<Option<String>, ExternalAdapterSkillAdapterError> {
-    match source.get(field) {
-        Some(JsonValue::String(value)) => Ok(Some(value.clone())),
-        Some(_) => Err(ExternalAdapterSkillAdapterError::InvalidSourceMetadata { field }),
-        None => Ok(None),
     }
 }
 
@@ -807,7 +712,7 @@ fn run_external_adapter_process(
     let spec = ProcessSpec::new(
         "external adapter",
         sandbox.command.clone(),
-        RESPONSE_LIMIT_BYTES,
+        STANDARD_PROCESS_OUTPUT_BYTES,
     )
     .args(sandbox.args.clone())
     .cwd(sandbox.cwd.clone())
@@ -894,23 +799,25 @@ fn external_adapter_sandbox_source(
         act: None,
         source_type: SourceKind::ExternalAdapter,
         command: Some(command.to_owned()),
+        module: None,
+        javascript_export: None,
+        pages: None,
         args: manifest.transport.args.clone().unwrap_or_default(),
         cwd: None,
         timeout_seconds: None,
         input_mode: None,
         sandbox: Some(external_adapter_skill_sandbox(manifest, base_env)?),
         server: None,
-        catalog_ref: None,
         tool: None,
         arguments: None,
         agent_card_url: None,
         agent_identity: None,
         agent: None,
         task: None,
-        hook: None,
         outputs: None,
         graph: None,
-        http: None,
+        external_adapter: None,
+        thread_outbox_provider: None,
         raw: JsonObject::new(),
     })
 }

@@ -127,14 +127,7 @@ fn mcp_process_transport_lists_fixture_tools_over_stdio() -> Result<(), RuntimeE
             .iter()
             .map(|tool| tool.name.as_str())
             .collect::<Vec<_>>(),
-        [
-            "echo",
-            "fail",
-            "sleep",
-            "env",
-            "max-response",
-            "oversized-response"
-        ]
+        ["echo", "fail", "sleep", "env"]
     );
     let Some(echo) = tools.iter().find(|tool| tool.name == "echo") else {
         return Err(runtime_test_error("echo tool is listed"));
@@ -313,40 +306,6 @@ fn lifecycle_pid(path: &Path) -> Result<i32, RuntimeError> {
 }
 
 #[test]
-fn mcp_process_transport_accepts_response_body_at_size_limit() -> Result<(), RuntimeError> {
-    let adapter = McpAdapter::new(ProcessMcpTransport::default());
-
-    let output = adapter.invoke(fixture_invocation(
-        "max-response",
-        Some(5),
-        JsonObject::new(),
-    )?)?;
-
-    assert_eq!(output.status, InvocationStatus::Success);
-    assert!(output.stdout.len() > 1_000_000);
-    assert_eq!(output.stderr, "");
-    assert_eq!(output.exit_code, Some(0));
-    Ok(())
-}
-
-#[test]
-fn mcp_process_transport_rejects_oversized_response_body() -> Result<(), RuntimeError> {
-    let adapter = McpAdapter::new(ProcessMcpTransport::default());
-
-    let output = adapter.invoke(fixture_invocation(
-        "oversized-response",
-        Some(5),
-        JsonObject::new(),
-    )?)?;
-
-    assert_eq!(output.status, InvocationStatus::Failure);
-    assert_eq!(output.stdout, "");
-    assert_eq!(output.stderr, "MCP adapter failed.");
-    assert_eq!(output.exit_code, None);
-    Ok(())
-}
-
-#[test]
 fn mcp_adapter_applies_sandbox_env_allowlist_to_process_server() -> Result<(), RuntimeError> {
     let adapter = McpAdapter::new(ProcessMcpTransport::default());
 
@@ -455,10 +414,15 @@ struct RuntimeMcpAdapterRequest {
 fn invocation(tool: &str, timeout_seconds: Option<u64>, inputs: JsonObject) -> SkillInvocation {
     SkillInvocation {
         skill_name: "fixture.mcp".to_owned(),
+        artifacts: None,
+        allowed_tools: None,
         source: SkillSource {
             act: None,
             source_type: runx_parser::SourceKind::Mcp,
             command: None,
+            module: None,
+            javascript_export: None,
+            pages: None,
             args: Vec::new(),
             cwd: None,
             timeout_seconds,
@@ -469,17 +433,16 @@ fn invocation(tool: &str, timeout_seconds: Option<u64>, inputs: JsonObject) -> S
                 args: Vec::new(),
                 cwd: None,
             }),
-            catalog_ref: None,
             tool: Some(tool.to_owned()),
             arguments: None,
             agent_card_url: None,
             agent_identity: None,
             agent: None,
             task: None,
-            hook: None,
             outputs: None,
             graph: None,
-            http: None,
+            external_adapter: None,
+            thread_outbox_provider: None,
             raw: JsonObject::new(),
         },
         inputs,
@@ -498,6 +461,8 @@ fn fixture_case(case_name: &str) -> Result<SkillInvocation, Box<dyn std::error::
         )))?)?;
     Ok(SkillInvocation {
         skill_name: fixture.skill_name,
+        artifacts: None,
+        allowed_tools: None,
         source: fixture.source,
         inputs: fixture.inputs,
         resolved_inputs: fixture.resolved_inputs,

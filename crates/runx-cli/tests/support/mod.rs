@@ -4,11 +4,14 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use serde_norway::{Mapping, Value};
+use runx_contracts::ReceiptSchema;
+use runx_runtime::harness::{HarnessFixture, ReceiptExpectation};
 
 const FIXTURE_SIGNING_SEED: &str = "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=";
+static NEXT_TEMP_ROOT: AtomicU64 = AtomicU64::new(0);
 
 pub fn repo_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -17,10 +20,7 @@ pub fn repo_root() -> Result<PathBuf, Box<dyn std::error::Error>> {
 }
 
 pub fn temp_root(prefix: &str) -> PathBuf {
-    let nanos = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_nanos());
-    let root = std::env::temp_dir().join(format!("{prefix}-{}-{nanos}", std::process::id()));
+    let root = std::env::temp_dir().join(format!("{prefix}-{}", unique_temp_suffix()));
     if root.exists() {
         let _ignored = fs::remove_dir_all(&root);
     }
@@ -28,15 +28,22 @@ pub fn temp_root(prefix: &str) -> PathBuf {
 }
 
 pub fn isolated_target_temp_root(prefix: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let nanos = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
     let path = repo_root()?
         .join("crates")
         .join("target")
         .join(prefix)
-        .join(format!("{}-{nanos}", std::process::id()));
+        .join(unique_temp_suffix());
     fs::remove_dir_all(&path).ok();
     fs::create_dir_all(&path)?;
     Ok(path)
+}
+
+fn unique_temp_suffix() -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_nanos());
+    let sequence = NEXT_TEMP_ROOT.fetch_add(1, Ordering::Relaxed);
+    format!("{}-{nanos}-{sequence}", std::process::id())
 }
 
 pub fn signed_runx_command(signing_key_id: &str) -> Command {
@@ -113,7 +120,6 @@ pub fn governed_harness_fixture(
 ) -> Result<GovernedHarnessFixture, Box<dyn std::error::Error>> {
     let repo = repo_root()?;
     let source_path = repo.join(fixture);
-    let source = fs::read_to_string(&source_path)?;
     let parent = source_path
         .parent()
         .ok_or("harness fixture path has no parent")?;
@@ -122,7 +128,8 @@ pub fn governed_harness_fixture(
         .file_name()
         .ok_or("harness fixture path has no file name")?;
     let path = root.join(file_name);
-    fs::write(&path, governed_harness_yaml(&source, parent)?)?;
+    let fixture = runx_runtime::load_harness_fixture(&source_path)?;
+    fs::write(&path, governed_harness_document(fixture, parent)?)?;
     Ok(GovernedHarnessFixture { path, root })
 }
 
@@ -154,53 +161,37 @@ runners:
     Ok(skill_dir)
 }
 
-fn governed_harness_yaml(
-    source: &str,
+fn governed_harness_document(
+    mut fixture: HarnessFixture,
     fixture_parent: &Path,
 ) -> Result<String, Box<dyn std::error::Error>> {
-    let mut document = serde_norway::from_str::<Value>(source)?;
-    let root = document
-        .as_mapping_mut()
-        .ok_or("harness fixture root must be a mapping")?;
-    rewrite_harness_target(root, fixture_parent)?;
-    rewrite_receipt_expectation(root)?;
-    Ok(serde_norway::to_string(&document)?)
-}
-
-fn rewrite_harness_target(
-    root: &mut Mapping,
-    fixture_parent: &Path,
-) -> Result<(), Box<dyn std::error::Error>> {
-    let Some(target) = root.get_mut("target") else {
-        return Ok(());
-    };
-    let target_path = target
-        .as_str()
-        .ok_or("harness fixture target must be a string")?;
-    let absolute_target = if Path::new(target_path).is_absolute() {
-        PathBuf::from(target_path)
-    } else {
-        fixture_parent.join(target_path)
+    if !fixture.target.is_empty() {
+        let target = Path::new(&fixture.target);
+        fixture.target = if target.is_absolute() {
+            target.to_path_buf()
+        } else {
+            fixture_parent.join(target)
+        }
+        .canonicalize()?
+        .to_string_lossy()
+        .into_owned();
     }
-    .canonicalize()?;
-    *target = Value::String(absolute_target.to_string_lossy().into_owned());
-    Ok(())
-}
-
-fn rewrite_receipt_expectation(root: &mut Mapping) -> Result<(), Box<dyn std::error::Error>> {
-    let Some(expect) = root.get_mut("expect") else {
-        return Ok(());
-    };
-    let expect = expect
-        .as_mapping_mut()
-        .ok_or("harness fixture expect must be a mapping")?;
-    if expect.contains_key("receipt") {
-        let mut receipt = Mapping::new();
-        receipt.insert(
-            Value::String("schema".to_owned()),
-            Value::String("runx.receipt.v1".to_owned()),
-        );
-        expect.insert(Value::String("receipt".to_owned()), Value::Mapping(receipt));
+    if fixture.expect.receipt.is_some() {
+        fixture.expect.receipt = Some(ReceiptExpectation {
+            schema: ReceiptSchema::V1,
+            body_digest: None,
+            receipt_id: None,
+            receipt_digest: None,
+            harness_id: None,
+            state: None,
+            disposition: None,
+            reason_code: None,
+            act_ids: Vec::new(),
+            decision_ids: Vec::new(),
+            child_receipt_refs: Vec::new(),
+            child_receipt_count: None,
+            verification_refs: Vec::new(),
+        });
     }
-    Ok(())
+    Ok(serde_json::to_string(&fixture)?)
 }

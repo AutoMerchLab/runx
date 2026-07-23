@@ -63,7 +63,7 @@ The full DCO text (reproduced here for reference):
 
 ## Development setup
 
-The native Rust CLI needs Rust 1.85 or newer and stays useful without Node, pnpm, tsx, or TypeScript installed. The workspace and the npm wrapper need Node.js 20 or newer and pnpm 10 or newer.
+The native Rust CLI needs Rust 1.88 or newer and stays useful without Node, pnpm, tsx, or TypeScript installed. The workspace and the npm wrapper need Node.js 20 or newer and pnpm 10 or newer.
 
 From the OSS workspace:
 
@@ -114,10 +114,12 @@ Re-run `pnpm build` after source changes that affect compiled package output.
 
 ## Skill authoring paths
 
-Use `runx new <name>` when you already have the runx CLI available locally and want a standalone skill package:
+Use `runx new <name> --objective <outcome>` when you already have the Runx CLI
+available locally and want a standalone skill package. The command enters Skill
+Lab and leaves the target untouched until the exact package validates:
 
 ```bash
-runx new docs-demo
+runx new docs-demo --objective "Create a bounded documentation decision skill"
 ```
 
 Community skills should be authored as standalone packages; the runx repo itself is the first-party lane for official skills, runtime code, tests, and examples.

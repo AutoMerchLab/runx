@@ -501,6 +501,10 @@
                       "minLength": 1,
                       "type": "string"
                     },
+                    "instructions_sha256": {
+                      "minLength": 1,
+                      "type": "string"
+                    },
                     "output": {
                       "additionalProperties": {
                         "anyOf": [
@@ -671,6 +675,7 @@
                   "required": [
                     "run_id",
                     "skill",
+                    "instructions_sha256",
                     "instructions",
                     "inputs",
                     "allowed_tools",

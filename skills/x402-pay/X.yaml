@@ -1,5 +1,5 @@
 skill: x402-pay
-version: "0.1.2"
+version: "0.3.0"
 catalog:
   kind: graph
   audience: operator
@@ -11,7 +11,7 @@ catalog:
   execution: plan
   completion: plan
   requires_adapter: false
-  approval: required
+  approval: none
 runners:
   x402:
     default: true
@@ -24,38 +24,24 @@ runners:
       parent_payment_authority:
         type: object
         required: true
-        description: Parent payment authority term or authority reference.
-      rail_profile_ref:
-        type: string
-        required: true
-        description: Configured rail profile reference.
+        description: Full typed parent payment AuthorityTerm; a reference alone is refused.
       realm:
         type: string
         required: false
         description: Authority realm.
-      spend_policy:
-        type: object
-        required: false
-        description: Policy limits and approval thresholds.
-      approval_context:
-        type: object
-        required: false
-        description: Prior approval evidence.
       idempotency_seed:
         type: string
-        required: false
-        description: Stable idempotency material.
+        required: true
+        description: Stable caller-owned idempotency material.
     graph:
       name: x402-pay
       steps:
         - id: spend
           skill: ../spend
-          runner: x402
+          runner: plan
           inputs:
-            payment_signal: "$input.payment_signal"
-            parent_payment_authority: "$input.parent_payment_authority"
-            rail_profile_ref: "$input.rail_profile_ref"
-            realm: "$input.realm"
-            spend_policy: "$input.spend_policy"
-            approval_context: "$input.approval_context"
-            idempotency_seed: "$input.idempotency_seed"
+            payment_signal: $input.payment_signal
+            parent_payment_authority: $input.parent_payment_authority
+            rail_preferences: [x402]
+            realm: $input.realm
+            idempotency_seed: $input.idempotency_seed

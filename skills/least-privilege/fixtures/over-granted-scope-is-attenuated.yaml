@@ -43,28 +43,30 @@ expect:
   step_outputs:
     evidence:
       subset:
-        skill_claim:
-          ledger_answer:
-            decision: answered
-          chain_verification:
-            checked: true
+        ledger_answer_packet:
+          data:
+            ledger_answer:
+              decision: answered
+            chain_verification:
+              checked: true
     analyze:
       subset:
-        skill_claim:
-          audit_report:
-            status: attenuation_proposed
-            subject: growth/lifecycle-campaign-send
-            attenuated_grant:
-              - email:send
-              - repo:read
-            removed_scopes:
-              - payment:spend
-            receipt_expectations:
-              classification_counts:
-                keep: 1
-                narrow: 1
-                remove: 1
-              stop_status: attenuation_proposed
+        least_privilege_packet:
+          data:
+            audit_report:
+              status: attenuation_proposed
+              subject: growth/lifecycle-campaign-send
+              attenuated_grant:
+                - email:send
+                - repo:read
+              removed_scopes:
+                - payment:spend
+              receipt_expectations:
+                classification_counts:
+                  keep: 1
+                  narrow: 1
+                  remove: 1
+                stop_status: attenuation_proposed
 metadata:
   public_skill: least-privilege
   source_case: over-granted-scope-is-attenuated

@@ -26,7 +26,7 @@ pub(super) struct ParallelFanoutSchedule<'a> {
 pub(super) struct ScheduledFanoutStep<'a> {
     pub(super) step_id: &'a str,
     pub(super) attempt: u32,
-    pub(super) can_run_parallel: bool,
+    pub(super) parallel_limit: Option<usize>,
 }
 
 impl FanoutScheduler {
@@ -40,25 +40,27 @@ impl FanoutScheduler {
         if self.max_concurrency <= 1 || steps.len() <= 1 {
             return FanoutSchedule::Serial(steps);
         }
-        if !steps.iter().all(|step| step.can_run_parallel) {
+        let Some(step_limit) = steps.iter().try_fold(usize::MAX, |limit, step| {
+            step.parallel_limit.map(|step_limit| limit.min(step_limit))
+        }) else {
             return FanoutSchedule::Serial(steps);
-        }
+        };
         FanoutSchedule::Parallel(ParallelFanoutSchedule {
             steps,
-            max_concurrency: self.max_concurrency,
+            max_concurrency: self.max_concurrency.min(step_limit),
         })
     }
 }
 
 pub(super) fn scheduled_step<'a>(
     step_id: &'a str,
-    attempts: &'a BTreeMap<String, u32>,
-    can_run_parallel: bool,
+    attempt: u32,
+    parallel_limit: Option<usize>,
 ) -> ScheduledFanoutStep<'a> {
     ScheduledFanoutStep {
         step_id,
-        attempt: attempts.get(step_id).copied().unwrap_or(1),
-        can_run_parallel,
+        attempt,
+        parallel_limit,
     }
 }
 
@@ -69,7 +71,7 @@ pub(super) fn parallel_safe_step_shape(step: &GraphStep, effects: &RuntimeEffect
         && effects.allows_parallel_step(step)
 }
 
-fn configured_max_concurrency(env: &BTreeMap<String, String>) -> usize {
+pub(super) fn configured_max_concurrency(env: &BTreeMap<String, String>) -> usize {
     env.get(RUNX_MAX_FANOUT_CONCURRENCY_ENV)
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|value| *value > 0)
@@ -111,17 +113,43 @@ mod tests {
             ScheduledFanoutStep {
                 step_id: "a",
                 attempt: 1,
-                can_run_parallel: true,
+                parallel_limit: Some(HARD_MAX_FANOUT_CONCURRENCY),
             },
             ScheduledFanoutStep {
                 step_id: "b",
                 attempt: 1,
-                can_run_parallel: false,
+                parallel_limit: None,
             },
         ];
         assert!(matches!(
             scheduler.schedule(steps),
             FanoutSchedule::Serial(_)
+        ));
+    }
+
+    #[test]
+    fn clamps_parallel_schedule_to_the_narrowest_adapter_limit() {
+        let scheduler = FanoutScheduler {
+            max_concurrency: HARD_MAX_FANOUT_CONCURRENCY,
+        };
+        let schedule = scheduler.schedule(vec![
+            ScheduledFanoutStep {
+                step_id: "a",
+                attempt: 1,
+                parallel_limit: Some(4),
+            },
+            ScheduledFanoutStep {
+                step_id: "b",
+                attempt: 1,
+                parallel_limit: Some(8),
+            },
+        ]);
+        assert!(matches!(
+            schedule,
+            FanoutSchedule::Parallel(ParallelFanoutSchedule {
+                max_concurrency: 4,
+                ..
+            })
         ));
     }
 }

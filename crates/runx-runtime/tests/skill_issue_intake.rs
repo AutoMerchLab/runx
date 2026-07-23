@@ -22,6 +22,10 @@ fn issue_intake_generated_fixtures_replay_to_receipts() -> Result<(), Box<dyn st
         assert_eq!(output.receipt.seal.disposition, ClosureDisposition::Closed);
         validate_receipt(&output.receipt)
             .map_err(|verification| format!("{case_name}: {:?}", verification.findings))?;
+        assert!(
+            output.receipt.id.starts_with("sha256:"),
+            "{case_name}: receipt id must be content-addressed"
+        );
         assert_eq!(output.receipt.acts.len(), 1);
         assert_eq!(output.receipt.decisions.len(), 1);
 

@@ -1,36 +1,25 @@
-import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
-import path from "node:path";
-
 import { describe, expect, it } from "vitest";
 
-const root = process.cwd();
+import { finalizePolicy, preparePolicy } from "../skills/policy-author/policy-author.mjs";
 
-describe("policy-author deterministic validation", () => {
+describe("policy-author domain validation", () => {
   it("rejects authority widening before native lint", () => {
     const existing = policy(["issue-intake"]);
     const proposed = policy(["issue-intake", "issue-to-pr"]);
-    const result = spawnSync(process.execPath, [path.join(root, "skills/policy-author/validate_policy.mjs")], {
-      cwd: root,
-      env: {
-        ...process.env,
-        RUNX_INPUTS_JSON: JSON.stringify({
-          existing_policy: existing,
-          policy_proposal: {
-            decision: "ready",
-            policy: proposed,
-            rationale: "Add issue-to-pr.",
-            blockers: [],
-            needs_input: [],
-            success_checkpoint: {},
-          },
-        }),
+    const prepared = preparePolicy({
+      existing_policy: existing,
+      policy_proposal: {
+        decision: "ready",
+        policy: proposed,
+        rationale: "Add issue-to-pr.",
+        blockers: [],
+        needs_input: [],
+        success_checkpoint: {},
       },
-      encoding: "utf8",
-    });
+    }).policy_context;
+    const proposal = finalizePolicy({ policy_context: prepared }).policy_proposal;
 
-    expect(result.status).toBe(0);
-    const proposal = JSON.parse(result.stdout).policy_proposal;
+    expect(prepared.path).toBe("stop");
     expect(proposal.decision).toBe("reject");
     expect(proposal.validation.status).toBe("fail");
     expect(proposal.validation.findings).toContainEqual({
@@ -40,37 +29,34 @@ describe("policy-author deterministic validation", () => {
     });
   });
 
-  it("fails closed when native lint rejects the authored policy", () => {
-    const invalidPolicy = JSON.parse(readFileSync(
-      path.join(root, "fixtures/operational-policy/invalid-secret-field.json"),
-      "utf8",
-    ));
-    const result = spawnSync(process.execPath, [path.join(root, "skills/policy-author/validate_policy.mjs")], {
-      cwd: root,
-      env: {
-        ...process.env,
-        PATH: [path.join(root, "crates/target/debug"), process.env.PATH].filter(Boolean).join(path.delimiter),
-        RUNX_CWD: root,
-        RUNX_INPUTS_JSON: JSON.stringify({
-          policy_proposal: {
-            decision: "ready",
-            policy: invalidPolicy,
-            rationale: "Exercise the native rejection path.",
-            blockers: [],
-            needs_input: [],
-            success_checkpoint: {},
-          },
-        }),
+  it("fails closed when native lint rejects the exact candidate", () => {
+    const prepared = preparePolicy({
+      policy_proposal: {
+        decision: "ready",
+        policy: policy(["issue-intake"]),
+        rationale: "Exercise the native rejection path.",
+        blockers: [],
+        needs_input: [],
+        success_checkpoint: {},
       },
-      encoding: "utf8",
-    });
+    }).policy_context;
+    const proposal = finalizePolicy({
+      policy_context: prepared,
+      policy_lint: {
+        status: "fail",
+        findings: [{
+          code: "policy.native_lint.invalid",
+          path: "$",
+          message: "The proposal could not be parsed or validated by the native policy engine.",
+        }],
+        readback: null,
+      },
+    }).policy_proposal;
 
-    expect(result.status).toBe(0);
-    const proposal = JSON.parse(result.stdout).policy_proposal;
     expect(proposal.decision).toBe("reject");
     expect(proposal.validation).toMatchObject({
       status: "fail",
-      engine: "runx policy lint",
+      engine: "runx policy",
       readback: null,
     });
     expect(proposal.validation.findings).toContainEqual({

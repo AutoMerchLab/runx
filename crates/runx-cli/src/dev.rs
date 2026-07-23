@@ -2,8 +2,9 @@ use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use runx_runtime::dev::DevLane;
-use runx_runtime::{DevLoopOptions, DevReport, DevReportStatus, render_dev_result, run_dev_once};
+use runx_runtime::{
+    DevFixtureLane, DevLoopOptions, DevReport, DevReportStatus, render_dev_result, run_dev_once,
+};
 
 use crate::router::DevPlan;
 
@@ -24,7 +25,18 @@ pub fn run_native_dev(plan: DevPlan) -> ExitCode {
         .as_ref()
         .map(|path| resolve_unit_path(&root, path));
     if let Some(lane) = &plan.lane {
-        options.lane = DevLane::from(lane.as_str());
+        options.lane = if lane == "all" {
+            None
+        } else {
+            match lane.parse::<DevFixtureLane>() {
+                Ok(lane) => Some(lane),
+                Err(error) => {
+                    let _ignored =
+                        crate::cli_io::write_stderr(&format!("runx: invalid dev lane: {error}\n"));
+                    return ExitCode::from(2);
+                }
+            }
+        };
     }
     let report = match run_dev_once(&options) {
         Ok(report) => report,

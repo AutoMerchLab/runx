@@ -1,0 +1,15 @@
+skill: pay-fulfill-rail
+version: "0.1.0"
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: sh
+    args: [./run.sh]
+    timeout_seconds: 10
+    sandbox:
+      profile: readonly
+      cwd_policy: skill-directory
+    artifacts:
+      named_emits:
+        effect_evidence_packet: runx.payment.effect_evidence_packet.v1

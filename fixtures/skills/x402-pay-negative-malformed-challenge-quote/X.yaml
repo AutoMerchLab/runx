@@ -1,0 +1,15 @@
+skill: pay-quote
+version: "0.1.0"
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: sh
+    args: [./run.sh]
+    timeout_seconds: 10
+    sandbox:
+      profile: readonly
+      cwd_policy: skill-directory
+    artifacts:
+      named_emits:
+        payment_refusal_packet: runx.payment.payment_refusal_packet.v1

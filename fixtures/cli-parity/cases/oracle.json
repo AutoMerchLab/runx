@@ -39,7 +39,7 @@
     },
     {
       "id": "config.list.execute",
-      "commandId": "config.list",
+      "commandId": "config",
       "mode": "execute",
       "argv": [
         "config",
@@ -152,7 +152,10 @@
       "commandId": "new",
       "mode": "validate",
       "proves": [
-        "scaffold",
+        "skill-authoring",
+        "graph-runtime",
+        "caller-mediated-resolution",
+        "receipts",
         "cli-presentation"
       ]
     },
@@ -161,8 +164,17 @@
       "commandId": "init",
       "mode": "validate",
       "proves": [
-        "scaffold",
+        "workspace-init",
         "official-skills"
+      ]
+    },
+    {
+      "id": "verify.validate",
+      "commandId": "verify",
+      "mode": "validate",
+      "proves": [
+        "receipts",
+        "cli-presentation"
       ]
     },
     {
@@ -177,17 +189,17 @@
       ]
     },
     {
-      "id": "verify.validate",
-      "commandId": "verify",
+      "id": "login.validate",
+      "commandId": "login",
       "mode": "validate",
       "proves": [
-        "receipts",
+        "config",
         "cli-presentation"
       ]
     },
     {
       "id": "config.set.validate",
-      "commandId": "config.set",
+      "commandId": "config",
       "mode": "validate",
       "proves": [
         "config",
@@ -196,7 +208,7 @@
     },
     {
       "id": "config.get.validate",
-      "commandId": "config.get",
+      "commandId": "config",
       "mode": "validate",
       "proves": [
         "config",
@@ -214,17 +226,8 @@
       ]
     },
     {
-      "id": "login.validate",
-      "commandId": "login",
-      "mode": "validate",
-      "proves": [
-        "config",
-        "cli-presentation"
-      ]
-    },
-    {
       "id": "policy.inspect.validate",
-      "commandId": "policy.inspect",
+      "commandId": "policy",
       "mode": "validate",
       "proves": [
         "policy",
@@ -233,7 +236,7 @@
     },
     {
       "id": "policy.lint.validate",
-      "commandId": "policy.lint",
+      "commandId": "policy",
       "mode": "validate",
       "proves": [
         "policy",
@@ -250,20 +253,20 @@
       ]
     },
     {
-      "id": "payment.validate",
-      "commandId": "payment",
-      "mode": "validate",
-      "proves": [
-        "authority",
-        "cli-presentation"
-      ]
-    },
-    {
       "id": "kernel.validate",
       "commandId": "kernel",
       "mode": "validate",
       "proves": [
         "graph-runtime",
+        "cli-presentation"
+      ]
+    },
+    {
+      "id": "payment.validate",
+      "commandId": "payment",
+      "mode": "validate",
+      "proves": [
+        "authority",
         "cli-presentation"
       ]
     },
@@ -306,7 +309,7 @@
     },
     {
       "id": "mcp.serve.validate",
-      "commandId": "mcp.serve",
+      "commandId": "mcp",
       "mode": "validate",
       "proves": [
         "mcp",
@@ -315,7 +318,7 @@
     },
     {
       "id": "skill.run.validate",
-      "commandId": "skill.run",
+      "commandId": "skill",
       "mode": "validate",
       "proves": [
         "skill-resolution",
@@ -325,49 +328,29 @@
         "authority",
         "caller-mediated-resolution",
         "adapter-cli-tool",
-        "adapter-a2a",
-        "adapter-agent"
-      ]
-    },
-    {
-      "id": "skill.inspect.validate",
-      "commandId": "skill.inspect",
-      "mode": "validate",
-      "proves": [
-        "skill-resolution",
+        "adapter-agent",
         "cli-presentation"
       ]
     },
     {
-      "id": "tool.build.validate",
-      "commandId": "tool.build",
+      "id": "skill.inspect.validate",
+      "commandId": "skill",
       "mode": "validate",
       "proves": [
-        "tool-catalog",
-        "authoring"
+        "skill-resolution",
+        "graph-runtime",
+        "receipts",
+        "sandbox",
+        "authority",
+        "caller-mediated-resolution",
+        "adapter-cli-tool",
+        "adapter-agent",
+        "cli-presentation"
       ]
     },
     {
-      "id": "tool.search.validate",
-      "commandId": "tool.search",
-      "mode": "validate",
-      "proves": [
-        "tool-catalog",
-        "adapter-catalog"
-      ]
-    },
-    {
-      "id": "tool.inspect.validate",
-      "commandId": "tool.inspect",
-      "mode": "validate",
-      "proves": [
-        "tool-catalog",
-        "adapter-catalog"
-      ]
-    },
-    {
-      "id": "registry.validate",
-      "commandId": "registry",
+      "id": "add.validate",
+      "commandId": "add",
       "mode": "validate",
       "proves": [
         "registry",
@@ -375,8 +358,35 @@
       ]
     },
     {
-      "id": "add.validate",
-      "commandId": "add",
+      "id": "tool.build.validate",
+      "commandId": "tool",
+      "mode": "validate",
+      "proves": [
+        "tool-catalog",
+        "extension-sdk"
+      ]
+    },
+    {
+      "id": "tool.search.validate",
+      "commandId": "tool",
+      "mode": "validate",
+      "proves": [
+        "tool-catalog",
+        "extension-sdk"
+      ]
+    },
+    {
+      "id": "tool.inspect.validate",
+      "commandId": "tool",
+      "mode": "validate",
+      "proves": [
+        "tool-catalog",
+        "extension-sdk"
+      ]
+    },
+    {
+      "id": "registry.validate",
+      "commandId": "registry",
       "mode": "validate",
       "proves": [
         "registry",

@@ -1,6 +1,5 @@
-// rust-style-allow: large-file - skill command keeps parse, inspect, registry provenance, and execution wiring together until the native skill UX settles.
+// Module rationale: skill command keeps parse, inspect, registry provenance, and execution wiring together until the native skill UX settles.
 use std::collections::BTreeMap;
-use std::fs;
 use std::io::{self, IsTerminal, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -21,14 +20,19 @@ mod inputs;
 mod operator_context;
 mod output;
 mod parser;
+mod provider_readiness;
 mod resolver;
 
 use credential::{
     inspect_context as inspect_credential_context, write_required as write_needs_credential,
 };
+use inputs::read_input_document;
 use operator_context::write_operator_context;
 use output::{SkillOutputResume, skill_result_exit_code, write_skill_output};
 pub use parser::{parse_skill_plan, parse_skill_plan_with_workspace};
+use provider_readiness::{
+    append_text as append_provider_readiness_text, inspect as inspect_provider_readiness,
+};
 use resolver::{RegistryTrustState, ResolvedSkillRef, resolve_skill_ref_details};
 
 #[derive(Debug, PartialEq)]
@@ -47,6 +51,7 @@ pub struct SkillPlan {
     pub full_operator_context: bool,
     pub approve_operator_context: Option<String>,
     pub inputs: BTreeMap<String, JsonValue>,
+    pub input_document: Option<crate::document_input::DocumentInputSource>,
     /// Optional stored profile selector. Secret resolution happens only after
     /// the selected runner's manifest credential requirement is known.
     pub credential_profile: Option<String>,
@@ -59,7 +64,7 @@ pub enum SkillAction {
     Run,
 }
 
-// rust-style-allow: long-function - the top-level command path owns resolve/inspect/run/failure presentation in one explicit dispatch.
+// Function rationale: the top-level command path owns resolve/inspect/run/failure presentation in one explicit dispatch.
 pub fn run_native_skill(plan: SkillPlan) -> ExitCode {
     let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
     let workspace = match WorkspaceEnv::load_process(cwd) {
@@ -71,7 +76,7 @@ pub fn run_native_skill(plan: SkillPlan) -> ExitCode {
     run_native_skill_with_workspace(plan, &workspace)
 }
 
-// rust-style-allow: long-function - the top-level command path owns resolve/inspect/run/failure presentation in one explicit dispatch.
+// Function rationale: the top-level command path owns resolve/inspect/run/failure presentation in one explicit dispatch.
 pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv) -> ExitCode {
     let cwd = workspace.cwd().to_path_buf();
     let mut env = workspace.env().clone();
@@ -129,6 +134,8 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
             plan.json,
             registry_provenance(&resolved),
             credential.as_ref(),
+            &env,
+            &cwd,
         );
     }
     if let Some(context) = credential.as_ref()
@@ -136,6 +143,21 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
     {
         return write_needs_credential(&context.request, plan.json);
     }
+    let inputs = match plan.input_document.as_ref() {
+        Some(source) => match read_input_document(source, &env, &cwd) {
+            Ok(inputs) => inputs,
+            Err(error) => {
+                return write_skill_failure(
+                    &error,
+                    plan.json,
+                    "input_error",
+                    1,
+                    registry_provenance(&resolved),
+                );
+            }
+        },
+        None => plan.inputs.clone(),
+    };
     let resume = SkillOutputResume {
         skill_ref: Some(&resume_skill_ref),
         selected_runner: plan.runner.as_deref(),
@@ -147,7 +169,7 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
         receipt_dir: plan.receipt_dir.clone(),
         run_id: plan.run_id.clone(),
         answers_path: plan.answers.clone(),
-        inputs: plan.inputs.clone(),
+        inputs,
         env,
         cwd,
         managed_agent: plan.managed_agent.clone(),
@@ -155,7 +177,18 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
             .as_ref()
             .and_then(|context| context.resolution.descriptor().cloned()),
     };
-    let orchestrator = crate::runtime::local_orchestrator();
+    let orchestrator = match crate::runtime::local_orchestrator() {
+        Ok(orchestrator) => orchestrator,
+        Err(error) => {
+            return write_skill_failure(
+                &format!("failed to initialize runtime effects: {error}"),
+                plan.json,
+                "skill_error",
+                1,
+                registry_provenance(&resolved),
+            );
+        }
+    };
     let result = if plan.skip_operator_context {
         match plan.runner.as_deref() {
             Some(runner) => orchestrator.run_skill_with_runner(&request, runner),
@@ -404,8 +437,10 @@ fn write_skill_inspection(
     json: bool,
     provenance: Option<JsonObject>,
     credential: Option<&SkillCredentialContext>,
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
 ) -> ExitCode {
-    match inspect_skill(skill_path, runner, provenance, credential) {
+    match inspect_skill(skill_path, runner, provenance, credential, env, cwd) {
         Ok(value) if json => crate::cli_io::write_stdout_code(
             &format!(
                 "{}\n",
@@ -418,120 +453,67 @@ fn write_skill_inspection(
     }
 }
 
-// rust-style-allow: long-function - inspection assembles one public JSON contract from SKILL.md, X.yaml, fixtures, and selected runner metadata.
+// Function rationale: inspection assembles one public JSON contract from SKILL.md, X.yaml, fixtures, and selected runner metadata.
 fn inspect_skill(
     skill_path: &Path,
     selected_runner: Option<&str>,
     provenance: Option<JsonObject>,
     credential: Option<&SkillCredentialContext>,
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
 ) -> Result<JsonValue, String> {
-    let skill_dir = skill_directory(skill_path);
-    let skill_md = fs::read_to_string(skill_dir.join("SKILL.md")).map_err(|error| {
-        format!(
-            "could not read skill markdown {}: {error}",
-            skill_dir.join("SKILL.md").display()
-        )
-    })?;
-    let frontmatter = parse_skill_frontmatter(&skill_md)?;
-    let x_yaml_path = skill_dir.join("X.yaml");
-    let profile = match fs::read_to_string(&x_yaml_path) {
-        Ok(contents) => parse_yaml_object(&contents, &x_yaml_path)?,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => JsonObject::new(),
-        Err(error) => {
-            return Err(format!("could not read {}: {error}", x_yaml_path.display()));
-        }
+    let mut output = runx_runtime::inspect_skill_package(skill_path, selected_runner)?;
+    let JsonValue::Object(object) = &mut output else {
+        return Err("native skill inspection returned a non-object".to_owned());
     };
-    let runners = profile
-        .get("runners")
-        .and_then(JsonValue::as_object)
-        .cloned()
-        .unwrap_or_default();
-    let mut output = JsonObject::new();
-    output.insert(
-        "schema".to_owned(),
-        JsonValue::String("runx.skill.inspect.v1".to_owned()),
-    );
-    output.insert("status".to_owned(), JsonValue::String("ok".to_owned()));
-    insert_frontmatter_string(&mut output, &frontmatter, "name", "name");
-    insert_frontmatter_string(&mut output, &frontmatter, "description", "description");
-    if let Some(version) = profile.get("version").and_then(JsonValue::as_str) {
-        output.insert("version".to_owned(), JsonValue::String(version.to_owned()));
-    }
-    if let Some(capabilities) = inspect_catalog_capabilities(&profile) {
-        output.insert("capabilities".to_owned(), capabilities);
-    }
     if let Some(provenance) = provenance {
-        output.insert(
+        object.insert(
             "registry_provenance".to_owned(),
             JsonValue::Object(provenance),
         );
     }
-    output.insert(
-        "skill_path".to_owned(),
-        JsonValue::String(skill_dir.to_string_lossy().into_owned()),
-    );
-    output.insert(
-        "runners".to_owned(),
-        JsonValue::Array(
-            runners
-                .keys()
-                .map(|runner| JsonValue::String(runner.clone()))
-                .collect(),
-        ),
-    );
-    let selected_runner = selected_runner.or_else(|| default_runner_name(&runners));
-    if let Some(runner) = selected_runner {
-        let runner_def = runners
-            .get(runner)
-            .and_then(JsonValue::as_object)
-            .ok_or_else(|| format!("skill has no runner '{runner}'"))?;
-        output.insert("runner".to_owned(), inspect_runner(runner, runner_def));
-        if let Some(credential) = credential {
-            let credential = inspect_credential_context(credential);
-            let ready = credential
-                .as_object()
-                .and_then(|value| value.get("status"))
-                .and_then(JsonValue::as_str)
-                == Some("ready");
-            output.insert("credential".to_owned(), credential);
-            output.insert(
+    if object.get("runner").is_some()
+        && let Some(provider) = inspect_provider_readiness(object, env, cwd)
+    {
+        let status = provider
+            .as_object()
+            .and_then(|value| value.get("status"))
+            .and_then(JsonValue::as_str)
+            .unwrap_or("provider_readiness_unknown")
+            .to_owned();
+        object.insert("provider".to_owned(), provider);
+        object.insert(
+            "readiness".to_owned(),
+            JsonValue::Object(JsonObject::from([(
+                "status".to_owned(),
+                JsonValue::String(status),
+            )])),
+        );
+    }
+    if object.get("runner").is_some()
+        && let Some(credential) = credential
+    {
+        let credential = inspect_credential_context(credential);
+        let ready = credential
+            .as_object()
+            .and_then(|value| value.get("status"))
+            .and_then(JsonValue::as_str)
+            == Some("ready");
+        object.insert("credential".to_owned(), credential);
+        if !ready {
+            object.insert(
                 "readiness".to_owned(),
                 JsonValue::Object(JsonObject::from([(
                     "status".to_owned(),
-                    JsonValue::String(if ready { "ready" } else { "needs_credential" }.to_owned()),
-                )])),
-            );
-        } else {
-            output.insert(
-                "readiness".to_owned(),
-                JsonValue::Object(JsonObject::from([(
-                    "status".to_owned(),
-                    JsonValue::String("ready".to_owned()),
+                    JsonValue::String("needs_credential".to_owned()),
                 )])),
             );
         }
-        output.insert(
-            "examples".to_owned(),
-            JsonValue::Array(fixture_examples(&skill_dir, runner)),
-        );
-        output.insert(
-            "resume".to_owned(),
-            JsonValue::Object(JsonObject::from([
-                (
-                    "may_pause".to_owned(),
-                    JsonValue::Bool(runner_may_pause(runner_def)),
-                ),
-                (
-                    "command".to_owned(),
-                    JsonValue::String("runx resume <run-id> answers.json".to_owned()),
-                ),
-            ])),
-        );
     }
-    Ok(JsonValue::Object(output))
+    Ok(output)
 }
 
-// rust-style-allow: long-function - text rendering mirrors the inspect JSON shape and is kept adjacent to avoid presentation drift.
+// Function rationale: text rendering mirrors the inspect JSON shape and is kept adjacent to avoid presentation drift.
 fn write_inspection_text(value: &JsonValue) -> ExitCode {
     let Some(object) = value.as_object() else {
         return crate::cli_io::write_stdout_code("{}\n", 0);
@@ -560,6 +542,7 @@ fn write_inspection_text(value: &JsonValue) -> ExitCode {
         {
             out.push_str(&format!("readiness: {status}\n"));
         }
+        append_provider_readiness_text(&mut out, object);
         if let Some(credential) = object.get("credential").and_then(JsonValue::as_object) {
             out.push_str(&format!(
                 "credential: {} ({})\n",
@@ -574,20 +557,20 @@ fn write_inspection_text(value: &JsonValue) -> ExitCode {
                 }
             }
         }
-        if let Some(inputs) = runner.get("inputs").and_then(JsonValue::as_array) {
-            if !inputs.is_empty() {
-                out.push_str("inputs:\n");
-                for input in inputs {
-                    if let Some(input) = input.as_object() {
-                        let name = object_string(input, "name").unwrap_or("<unknown>");
-                        let kind = object_string(input, "type").unwrap_or("json");
-                        let required = input
-                            .get("required")
-                            .and_then(JsonValue::as_bool)
-                            .unwrap_or(false);
-                        let marker = if required { "required" } else { "optional" };
-                        out.push_str(&format!("  - {name}: {kind} ({marker})\n"));
-                    }
+        if let Some(inputs) = runner.get("inputs").and_then(JsonValue::as_array)
+            && !inputs.is_empty()
+        {
+            out.push_str("inputs:\n");
+            for input in inputs {
+                if let Some(input) = input.as_object() {
+                    let name = object_string(input, "name").unwrap_or("<unknown>");
+                    let kind = object_string(input, "type").unwrap_or("json");
+                    let required = input
+                        .get("required")
+                        .and_then(JsonValue::as_bool)
+                        .unwrap_or(false);
+                    let marker = if required { "required" } else { "optional" };
+                    out.push_str(&format!("  - {name}: {kind} ({marker})\n"));
                 }
             }
         }
@@ -637,145 +620,6 @@ fn write_inspection_text(value: &JsonValue) -> ExitCode {
     crate::cli_io::write_stdout_code(&out, 0)
 }
 
-fn skill_directory(skill_path: &Path) -> PathBuf {
-    if skill_path.file_name().and_then(|name| name.to_str()) == Some("SKILL.md") {
-        return skill_path.parent().unwrap_or(skill_path).to_path_buf();
-    }
-    skill_path.to_path_buf()
-}
-
-fn parse_skill_frontmatter(markdown: &str) -> Result<JsonObject, String> {
-    let Some(rest) = markdown.strip_prefix("---") else {
-        return Ok(JsonObject::new());
-    };
-    let Some((frontmatter, _body)) = rest.split_once("\n---") else {
-        return Ok(JsonObject::new());
-    };
-    serde_norway::from_str::<JsonValue>(frontmatter)
-        .map_err(|error| format!("skill frontmatter is invalid YAML: {error}"))
-        .map(|value| match value {
-            JsonValue::Object(object) => object,
-            _ => JsonObject::new(),
-        })
-}
-
-fn parse_yaml_object(contents: &str, path: &Path) -> Result<JsonObject, String> {
-    serde_norway::from_str::<JsonValue>(contents)
-        .map_err(|error| format!("{} is invalid YAML: {error}", path.display()))
-        .and_then(|value| match value {
-            JsonValue::Object(object) => Ok(object),
-            _ => Err(format!("{} must contain a YAML object", path.display())),
-        })
-}
-
-fn insert_frontmatter_string(
-    output: &mut JsonObject,
-    frontmatter: &JsonObject,
-    source_key: &str,
-    output_key: &str,
-) {
-    if let Some(value) = object_string(frontmatter, source_key) {
-        output.insert(output_key.to_owned(), JsonValue::String(value.to_owned()));
-    }
-}
-
-fn inspect_runner(name: &str, runner: &JsonObject) -> JsonValue {
-    let mut output = JsonObject::new();
-    output.insert("name".to_owned(), JsonValue::String(name.to_owned()));
-    if let Some(kind) = runner_string(runner, "type") {
-        output.insert("type".to_owned(), JsonValue::String(kind.to_owned()));
-    }
-    let inputs = runner_value(runner, "inputs")
-        .and_then(JsonValue::as_object)
-        .map(|inputs| {
-            inputs
-                .iter()
-                .map(|(name, input)| inspect_input(name, input))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    output.insert("inputs".to_owned(), JsonValue::Array(inputs));
-    let outputs = runner_value(runner, "outputs")
-        .and_then(JsonValue::as_object)
-        .map(|outputs| {
-            outputs
-                .iter()
-                .map(|(name, declaration)| inspect_output(name, declaration))
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default();
-    output.insert("outputs".to_owned(), JsonValue::Array(outputs));
-    if let Some(artifacts) = runner_value(runner, "artifacts").and_then(JsonValue::as_object) {
-        output.insert("artifacts".to_owned(), JsonValue::Object(artifacts.clone()));
-    }
-    for field in ["allowed_tools", "scopes"] {
-        if let Some(value) = runner_value(runner, field) {
-            output.insert(field.to_owned(), value.clone());
-        }
-    }
-    if let Some(value) = runner_value(runner, "mutating").and_then(JsonValue::as_bool) {
-        output.insert("mutating".to_owned(), JsonValue::Bool(value));
-    }
-    JsonValue::Object(output)
-}
-
-fn default_runner_name(runners: &JsonObject) -> Option<&str> {
-    let mut defaults = runners.iter().filter_map(|(name, runner)| {
-        runner
-            .as_object()
-            .and_then(|runner| runner.get("default"))
-            .and_then(JsonValue::as_bool)
-            .is_some_and(|default| default)
-            .then_some(name.as_str())
-    });
-    let selected = defaults.next()?;
-    defaults.next().is_none().then_some(selected)
-}
-
-fn inspect_catalog_capabilities(profile: &JsonObject) -> Option<JsonValue> {
-    let catalog = profile.get("catalog")?.as_object()?;
-    let mut capabilities = JsonObject::new();
-    for key in ["execution", "completion", "requires_adapter", "approval"] {
-        if let Some(value) = catalog.get(key) {
-            capabilities.insert(key.to_owned(), value.clone());
-        }
-    }
-    (!capabilities.is_empty()).then_some(JsonValue::Object(capabilities))
-}
-
-fn inspect_output(name: &str, declaration: &JsonValue) -> JsonValue {
-    let mut output = JsonObject::new();
-    output.insert("name".to_owned(), JsonValue::String(name.to_owned()));
-    match declaration {
-        JsonValue::String(kind) => {
-            output.insert("type".to_owned(), JsonValue::String(kind.clone()));
-        }
-        JsonValue::Object(details) => {
-            if let Some(kind) = object_string(details, "type") {
-                output.insert("type".to_owned(), JsonValue::String(kind.to_owned()));
-            }
-            if let Some(required) = details.get("required").and_then(JsonValue::as_bool) {
-                output.insert("required".to_owned(), JsonValue::Bool(required));
-            }
-        }
-        _ => {}
-    }
-    JsonValue::Object(output)
-}
-
-fn runner_value<'a>(runner: &'a JsonObject, key: &str) -> Option<&'a JsonValue> {
-    runner.get(key).or_else(|| {
-        runner
-            .get("source")
-            .and_then(JsonValue::as_object)
-            .and_then(|source| source.get(key))
-    })
-}
-
-fn runner_string<'a>(runner: &'a JsonObject, key: &str) -> Option<&'a str> {
-    runner_value(runner, key).and_then(JsonValue::as_str)
-}
-
 fn display_json_scalar(value: &JsonValue) -> String {
     value
         .as_str()
@@ -783,73 +627,8 @@ fn display_json_scalar(value: &JsonValue) -> String {
         .unwrap_or_else(|| serde_json::to_string(value).unwrap_or_else(|_| "null".to_owned()))
 }
 
-fn inspect_input(name: &str, value: &JsonValue) -> JsonValue {
-    let mut output = JsonObject::new();
-    output.insert("name".to_owned(), JsonValue::String(name.to_owned()));
-    if let Some(input) = value.as_object() {
-        if let Some(kind) = object_string(input, "type") {
-            output.insert("type".to_owned(), JsonValue::String(kind.to_owned()));
-        }
-        output.insert(
-            "required".to_owned(),
-            JsonValue::Bool(
-                input
-                    .get("required")
-                    .and_then(JsonValue::as_bool)
-                    .unwrap_or(false),
-            ),
-        );
-        if let Some(description) = object_string(input, "description") {
-            output.insert(
-                "description".to_owned(),
-                JsonValue::String(description.to_owned()),
-            );
-        }
-    }
-    JsonValue::Object(output)
-}
-
 fn object_string<'a>(object: &'a JsonObject, key: &str) -> Option<&'a str> {
     object.get(key).and_then(JsonValue::as_str)
-}
-
-fn fixture_examples(skill_dir: &Path, runner: &str) -> Vec<JsonValue> {
-    let fixtures_dir = skill_dir.join("fixtures");
-    let Ok(entries) = fs::read_dir(fixtures_dir) else {
-        return Vec::new();
-    };
-    let mut fixtures = entries
-        .filter_map(Result::ok)
-        .filter_map(|entry| {
-            let path = entry.path();
-            let name = path.file_name()?.to_str()?.to_owned();
-            (name.ends_with(".yaml") && fixture_targets_runner(&path, runner)).then_some(name)
-        })
-        .map(JsonValue::String)
-        .collect::<Vec<_>>();
-    fixtures.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
-    fixtures
-}
-
-fn fixture_targets_runner(path: &Path, runner: &str) -> bool {
-    fs::read_to_string(path)
-        .ok()
-        .and_then(|contents| serde_norway::from_str::<JsonValue>(&contents).ok())
-        .and_then(|value| value.as_object().cloned())
-        .and_then(|object| {
-            object
-                .get("runner")
-                .and_then(JsonValue::as_str)
-                .map(str::to_owned)
-        })
-        .is_some_and(|fixture_runner| fixture_runner == runner)
-}
-
-fn runner_may_pause(runner: &JsonObject) -> bool {
-    matches!(
-        runner_string(runner, "type"),
-        Some("agent") | Some("agent-task") | Some("graph")
-    )
 }
 
 fn attach_registry_provenance(output: &mut JsonValue, resolved: &ResolvedSkillRef) {

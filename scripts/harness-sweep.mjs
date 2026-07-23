@@ -296,10 +296,7 @@ function harnessEnv(runxBin, tempRoot, workspaceDir) {
     NO_COLOR: "1",
     RUNX_HOME: runxHome,
     RUNX_CWD: workspaceDir,
-    RUNX_KERNEL_EVAL_BIN: runxBin,
-    RUNX_PARSER_EVAL_BIN: runxBin,
     RUNX_RUST_CLI_BIN: runxBin,
-    RUNX_DEV_RUST_CLI_BIN: runxBin,
     RUNX_TOOL_ROOTS: process.env.RUNX_TOOL_ROOTS
       ? `${process.env.RUNX_TOOL_ROOTS}${path.delimiter}${toolRoots}`
       : toolRoots,

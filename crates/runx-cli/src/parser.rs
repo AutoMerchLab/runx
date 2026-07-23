@@ -1,24 +1,21 @@
 use std::collections::BTreeMap;
 use std::env;
 use std::fmt;
-use std::fs;
-use std::io::{self, Read};
-use std::path::{Path, PathBuf};
+use std::io;
+use std::path::Path;
 use std::process::ExitCode;
 
-use runx_runtime::{ParserEvalError, ParserEvalOutput, evaluate_parser_document_str};
+use runx_parser::{ParserEvalError, ParserEvalOutput, evaluate_parser_document_str};
 use serde::Serialize;
+
+use crate::document_input::{DocumentInputError, read_document_input};
+
+pub use crate::document_input::DocumentInputSource as ParserInputSource;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ParserPlan {
     pub input: ParserInputSource,
     pub json: bool,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum ParserInputSource {
-    Path(PathBuf),
-    Stdin,
 }
 
 pub fn run_native_parser(plan: ParserPlan) -> ExitCode {
@@ -47,7 +44,7 @@ pub fn run_parser_command(
         ));
     }
 
-    let raw = read_parser_input(&plan.input, env, cwd)?;
+    let raw = read_document_input(&plan.input, env, cwd).map_err(ParserCliError::Input)?;
     let result = evaluate_parser_document_str(&raw)?;
     let stdout = serde_json::to_string_pretty(&ParserJsonEnvelope {
         status: "success",
@@ -71,8 +68,7 @@ pub struct ParserCliOutput {
 pub enum ParserCliError {
     CurrentDirectory(io::Error),
     InvalidArgs(String),
-    Read(PathBuf, io::Error),
-    ReadStdin(io::Error),
+    Input(DocumentInputError),
     Eval(ParserEvalError),
     Serialize(serde_json::Error),
 }
@@ -82,8 +78,8 @@ impl ParserCliError {
         match self {
             Self::CurrentDirectory(_) => "current_directory",
             Self::InvalidArgs(_) => "invalid_args",
-            Self::Read(_, _) => "read_input",
-            Self::ReadStdin(_) => "read_stdin",
+            Self::Input(error) if error.is_stdin() => "read_stdin",
+            Self::Input(_) => "read_input",
             Self::Eval(error) => error.code(),
             Self::Serialize(_) => "serialize_output",
         }
@@ -92,11 +88,7 @@ impl ParserCliError {
     fn exit_code(&self) -> u8 {
         match self {
             Self::InvalidArgs(_) => 64,
-            Self::CurrentDirectory(_)
-            | Self::Read(_, _)
-            | Self::ReadStdin(_)
-            | Self::Eval(_)
-            | Self::Serialize(_) => 1,
+            Self::CurrentDirectory(_) | Self::Input(_) | Self::Eval(_) | Self::Serialize(_) => 1,
         }
     }
 }
@@ -106,16 +98,7 @@ impl fmt::Display for ParserCliError {
         match self {
             Self::CurrentDirectory(error) => write!(formatter, "failed to resolve cwd: {error}"),
             Self::InvalidArgs(message) => formatter.write_str(message),
-            Self::Read(path, error) => {
-                write!(
-                    formatter,
-                    "failed to read parser input {}: {error}",
-                    path.display()
-                )
-            }
-            Self::ReadStdin(error) => {
-                write!(formatter, "failed to read parser input stdin: {error}")
-            }
+            Self::Input(error) => write!(formatter, "failed to read parser input {error}"),
             Self::Eval(error) => write!(formatter, "{error}"),
             Self::Serialize(error) => {
                 write!(formatter, "failed to serialize parser result: {error}")
@@ -136,33 +119,6 @@ impl From<ParserEvalError> for ParserCliError {
 struct ParserJsonEnvelope<'a> {
     status: &'static str,
     result: &'a ParserEvalOutput,
-}
-
-fn read_parser_input(
-    source: &ParserInputSource,
-    env: &BTreeMap<String, String>,
-    cwd: &Path,
-) -> Result<String, ParserCliError> {
-    match source {
-        ParserInputSource::Path(path) => {
-            let resolved = resolve_parser_path(path, env, cwd);
-            fs::read_to_string(&resolved).map_err(|error| ParserCliError::Read(resolved, error))
-        }
-        ParserInputSource::Stdin => {
-            let mut raw = String::new();
-            io::stdin()
-                .read_to_string(&mut raw)
-                .map_err(ParserCliError::ReadStdin)?;
-            Ok(raw)
-        }
-    }
-}
-
-fn resolve_parser_path(path: &Path, env: &BTreeMap<String, String>, cwd: &Path) -> PathBuf {
-    if path.is_absolute() {
-        return path.to_path_buf();
-    }
-    runx_runtime::resolve_runx_workspace_base(env, cwd).join(path)
 }
 
 fn write_error(error: &ParserCliError, json: bool) -> ExitCode {

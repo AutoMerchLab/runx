@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://schemas.runx.ai/runx/history_report/v1.json",
   "x-runx-packet-id": "runx.history_report.v1",
-  "x-runx-generated-from": "skills/run-history/X.yaml#root.runners.report",
+  "x-runx-generated-from": "skills/run-history/X.yaml#root.runners.report.graph.steps.3",
   "type": "object",
   "required": [
     "history_report"

@@ -1,5 +1,5 @@
 skill: knowledge-router
-version: "0.2.1"
+version: "0.2.2"
 
 catalog:
   kind: graph
@@ -64,6 +64,7 @@ harness:
         receipt:
           schema: runx.receipt.v1
         steps:
+          - digest
           - propose
           - validate
         step_outputs:
@@ -116,6 +117,7 @@ harness:
         receipt:
           schema: runx.receipt.v1
         steps:
+          - digest
           - propose
           - validate
 
@@ -145,6 +147,11 @@ runners:
     graph:
       name: knowledge-router
       steps:
+        - id: digest
+          tool: data.digest
+          inputs:
+            value: $input.available_sources
+
         - id: propose
           label: propose bounded knowledge route
           run:
@@ -153,16 +160,6 @@ runners:
             task: knowledge-router-propose
             outputs:
               route_proposal: object
-          instructions: >
-            Route the question through only the supplied knowledge catalog.
-            Return route_proposal with verdict, route, source_matches,
-            owner_recommendation, and next_skill. Every selected source_ref,
-            owner_ref, and skill_ref must exactly match a supplied id. Choose the
-            smallest useful source set. Use needs_more_context with no selected
-            refs when the catalog cannot support a route. Use manual_review for
-            consequential legal, billing, security, privacy, or destructive
-            decisions, not merely because the topic belongs to those domains.
-            Do not answer the question or perform the follow-up skill.
           artifacts:
             named_emits:
               route_proposal: route_proposal
@@ -175,11 +172,10 @@ runners:
             constraints: $input.constraints
           context:
             route_proposal: propose.route_proposal.data
+            catalog_digest: digest.digest_result.data.digest
           run:
-            type: cli-tool
-            command: node
-            args:
-              - ./validate_route.mjs
+            type: javascript
+            module: knowledge-router.mjs
             outputs:
               knowledge_route: object
           artifacts:

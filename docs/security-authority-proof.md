@@ -61,14 +61,28 @@ The local runner applies authority in this order:
 grant id, and the authority verb. It must not declare `granted_scopes`; granted
 scopes come only from operator-carried runtime grant evidence.
 
-Provider-permission steps fail closed unless the operator supplies both:
+Legacy provider-permission and MCP host steps fail closed unless the operator
+supplies both:
 
 - `RUNX_PROVIDER_PERMISSION_GRANT_ID`
 - `RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES`
 
-This is intentional. Older local runs that relied on an implicit grant id must
-set `RUNX_PROVIDER_PERMISSION_GRANT_ID` explicitly before executing
-provider-permission steps.
+Native `provider.read` and `provider.mutate` steps use the same evidence model
+without requiring that setup in the common Connect path. They authenticate the
+operator, read active grant metadata from Connect, and select the unique grant
+whose provider and authoritative scopes cover the declared step. The selection
+is cached for the run. No provider token or credential body crosses into the
+skill.
+
+The native boundary can also require exact `expected_result` identity fields
+and project only declared `result_fields` before the result enters a receipt.
+This prevents a correctly scoped call from being mistaken for the wrong
+resource and keeps undeclared secret-adjacent material out of skill output.
+
+When more than one active grant matches, resolution fails as ambiguous. Set
+`RUNX_PROVIDER_PERMISSION_GRANT_ID` to select one; Runx then reads that grant's
+current scopes from Connect. A host may continue to inject both variables to
+carry already-resolved grant evidence without a discovery call.
 
 When a provider-permission effect is admitted, the sealed step receipt records
 the operator grant as a typed `runx:grant:*` reference under
@@ -159,9 +173,9 @@ view before exercising privileged effects. It reports:
 - the consequence when `RUNX_EFFECT_STATE_PATH` is unset: cross-run spend caps,
   payment idempotency, and effect replay recovery are not durable without a
   configured state path
-- provider-permission grant readiness, naming
-  `RUNX_PROVIDER_PERMISSION_GRANT_ID` and
-  `RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES`
+- provider-permission grant readiness, reporting either authenticated Connect
+  discovery or the host-injected `RUNX_PROVIDER_PERMISSION_GRANT_ID` and
+  `RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES` path
 
 The diagnostic may show key ids and resolved filesystem paths. It must not show
 signing seeds, public key material, provider scope values, grant ids, or

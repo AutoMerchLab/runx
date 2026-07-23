@@ -1,5 +1,5 @@
 skill: review-receipt
-version: "0.3.1"
+version: "0.3.2"
 
 catalog:
   kind: graph
@@ -190,20 +190,6 @@ runners:
               failure_summary: string
               improvement_proposals: array
               next_harness_checks: array
-          instructions: >
-            Diagnose one failure from native redacted receipt detail plus the
-            supplied summary or harness output. Treat needs_agent or a deferred
-            receipt as a healthy suspension unless another concrete failure
-            signal exists. Ground authority, acts, decisions, criteria, and seal
-            posture in receipt_evidence.receipt_details; treat caller summaries
-            as supplemental evidence, never as a replacement for native facts.
-            Distinguish input, scope, tool, schema, timeout, policy, review, and
-            harness failures. If receipt_id was supplied but native evidence did
-            not match it, return blocked unless the supplied harness output alone
-            proves the defect. Return verdict, a concise failure_summary, at most
-            three bounded improvement_proposals, and replayable
-            next_harness_checks. Each proposal must name target, change,
-            rationale, and risk. Do not write files or weaken a refusal.
           allowed_tools:
             - fs.read
           context:

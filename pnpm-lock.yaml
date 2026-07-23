@@ -8,12 +8,12 @@ importers:
 
   .:
     devDependencies:
-      '@runxhq/authoring':
-        specifier: workspace:*
-        version: link:packages/authoring
       '@runxhq/contracts':
         specifier: workspace:^0.3.0
         version: link:packages/contracts
+      '@runxhq/extension-sdk':
+        specifier: workspace:^0.1.0
+        version: link:packages/extension-sdk
       '@runxhq/host-adapters':
         specifier: workspace:^0.1.1
         version: link:packages/host-adapters
@@ -29,18 +29,6 @@ importers:
       vitest:
         specifier: ^4.1.9
         version: 4.1.9(@types/node@26.0.1)(vite@7.3.2(@types/node@26.0.1)(tsx@4.22.4)(yaml@2.9.0))
-      yaml:
-        specifier: ^2.9.0
-        version: 2.9.0
-
-  packages/authoring:
-    dependencies:
-      '@runxhq/contracts':
-        specifier: workspace:^0.3.0
-        version: link:../contracts
-      '@sinclair/typebox':
-        specifier: ^0.34.41
-        version: 0.34.49
 
   packages/cli: {}
 
@@ -49,6 +37,12 @@ importers:
       ajv:
         specifier: ^8.20.0
         version: 8.20.0
+
+  packages/extension-sdk:
+    dependencies:
+      '@runxhq/contracts':
+        specifier: workspace:^0.3.0
+        version: link:../contracts
 
   packages/host-adapters:
     dependencies:
@@ -513,9 +507,6 @@ packages:
     resolution: {integrity: sha512-lWMnixq/QzxyhTV6NjQJ4SFo1J6PvOX8vUx5Wb4bBPsEb+8xZ89Bz6kOXpfXj9ak9AHTQVQzlgzBEc1SyM27xQ==}
     cpu: [x64]
     os: [win32]
-
-  '@sinclair/typebox@0.34.49':
-    resolution: {integrity: sha512-brySQQs7Jtn0joV8Xh9ZV/hZb9Ozb0pmazDIASBkYKCjXrXU3mpcFahmK/z4YDhGkQvP9mWJbVyahdtU5wQA+A==}
 
   '@standard-schema/spec@1.1.0':
     resolution: {integrity: sha512-l2aFy5jALhniG5HgqrD6jXLi/rUWrKvqN/qJx6yoJsgKhblVd+iqqU4RCXavm/jPityDo5TCvKMnpjKnOriy0w==}
@@ -1086,8 +1077,6 @@ snapshots:
   '@rollup/rollup-win32-x64-msvc@4.60.1':
     optional: true
 
-  '@sinclair/typebox@0.34.49': {}
-
   '@standard-schema/spec@1.1.0': {}
 
   '@types/chai@5.2.3':
@@ -1389,6 +1378,7 @@ snapshots:
       siginfo: 2.0.0
       stackback: 0.0.2
 
-  yaml@2.9.0: {}
+  yaml@2.9.0:
+    optional: true
 
   zod@4.4.3: {}

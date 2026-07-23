@@ -140,10 +140,7 @@ function harnessEnv(runxBin, tempRoot, workspaceDir) {
     NO_COLOR: "1",
     RUNX_HOME: path.join(tempRoot, "runx-home"),
     RUNX_CWD: workspaceDir,
-    RUNX_KERNEL_EVAL_BIN: runxBin,
-    RUNX_PARSER_EVAL_BIN: runxBin,
     RUNX_RUST_CLI_BIN: runxBin,
-    RUNX_DEV_RUST_CLI_BIN: runxBin,
     RUNX_RECEIPT_SIGN_KID: process.env.RUNX_RECEIPT_SIGN_KID ?? "inline-harness-snapshot-key",
     RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64:
       process.env.RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64
