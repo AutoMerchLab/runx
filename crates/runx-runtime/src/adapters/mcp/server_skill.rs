@@ -223,7 +223,7 @@ fn execute_mcp_server_graph(
         ReceiptServices::from_env(&env).map_err(|error| RuntimeError::ReceiptInvalid {
             message: error.to_string(),
         })?;
-    let runtime = Runtime::with_javascript(
+    let runtime = Runtime::with_native_services(
         McpServerGraphAdapter {
             javascript: javascript.clone(),
         },
