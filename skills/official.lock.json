@@ -85,8 +85,8 @@
   },
   {
     "skill_id": "runx/extract",
-    "version": "sha-ed3543746e78",
-    "digest": "7d0906a46fcf532c7903a3c0645174b7fd15a91682b782173d92b676df6ff7a9",
+    "version": "sha-f6f93c2454a8",
+    "digest": "2f35b36a441ae48d706a88644f1dd47b257ceca08ea0917d065a79957d904486",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },
@@ -127,8 +127,8 @@
   },
   {
     "skill_id": "runx/helpdesk",
-    "version": "sha-1a11b3d73eff",
-    "digest": "d386485916fad9392810d97e814e19c402c9eb6a13637b8a80deb0621c7956d3",
+    "version": "sha-64342fd795d4",
+    "digest": "466709c95a9863851587e5e0c29662428b89bdc81a58f82da9fac79db5a78fd2",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },

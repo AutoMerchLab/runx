@@ -7,6 +7,8 @@ runx:
   category: ops
 ---
 
+# Helpdesk
+
 ## What this skill does
 
 Classify one bounded support request, choose the safest next path, and draft a

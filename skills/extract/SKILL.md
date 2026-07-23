@@ -8,6 +8,8 @@ runx:
     - provenance
 ---
 
+# Extract
+
 ## What this skill does
 
 Extract structured JSON from a bounded HTML or plain-text source inside the

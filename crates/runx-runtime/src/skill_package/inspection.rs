@@ -1,13 +1,14 @@
-use std::collections::BTreeSet;
-use std::path::{Component, Path, PathBuf};
+mod execution_closure;
+mod runner;
+
+use std::path::Path;
 
 use runx_contracts::{JsonObject, JsonValue};
-use runx_parser::{
-    CatalogMetadata, GraphStep, SkillInput, SkillRunnerDefinition, SourceKind,
-    ValidatedSkillPackage,
-};
+use runx_parser::{CatalogMetadata, SkillRunnerDefinition, SourceKind};
 
 use super::LoadedSkillPackage;
+use execution_closure::inspect_execution_closure;
+use runner::{catalog_capabilities, fixture_examples, inspect_runner};
 
 /// Project one already-validated package into the stable operator inspection
 /// envelope. No source document is reparsed here.
@@ -190,502 +191,13 @@ fn inspect_catalog(catalog: &CatalogMetadata) -> JsonValue {
     JsonValue::Object(output)
 }
 
-#[derive(Default)]
-struct ExecutionClosure {
-    components: BTreeSet<String>,
-    skill_edges: BTreeSet<String>,
-    profiles: BTreeSet<String>,
-    agent_acts: usize,
-    declared_artifact: bool,
-}
-
-fn inspect_execution_closure(
-    loaded: &LoadedSkillPackage,
-    runner: &SkillRunnerDefinition,
-) -> Result<JsonValue, String> {
-    let mut closure = ExecutionClosure::default();
-    let mut visited = BTreeSet::new();
-    walk_runner_execution(loaded, "X.yaml", runner, &mut closure, &mut visited)?;
-    let components = closure.components.into_iter().collect::<Vec<_>>();
-    let summary = execution_summary(&components, closure.agent_acts, closure.declared_artifact);
-    let agent_acts = u64::try_from(closure.agent_acts).unwrap_or(u64::MAX);
-    Ok(JsonValue::Object(JsonObject::from([
-        ("summary".to_owned(), JsonValue::String(summary)),
-        (
-            "components".to_owned(),
-            JsonValue::Array(components.into_iter().map(JsonValue::String).collect()),
-        ),
-        (
-            "skill_edges".to_owned(),
-            JsonValue::Array(
-                closure
-                    .skill_edges
-                    .into_iter()
-                    .map(JsonValue::String)
-                    .collect(),
-            ),
-        ),
-        (
-            "agent_acts".to_owned(),
-            JsonValue::Number(runx_contracts::JsonNumber::U64(agent_acts)),
-        ),
-        (
-            "declared_artifact".to_owned(),
-            JsonValue::Bool(closure.declared_artifact),
-        ),
-        (
-            "profiles".to_owned(),
-            JsonValue::Array(
-                closure
-                    .profiles
-                    .into_iter()
-                    .map(JsonValue::String)
-                    .collect(),
-            ),
-        ),
-    ])))
-}
-
-fn walk_runner_execution(
-    loaded: &LoadedSkillPackage,
-    profile_path: &str,
-    runner: &SkillRunnerDefinition,
-    closure: &mut ExecutionClosure,
-    visited: &mut BTreeSet<String>,
-) -> Result<(), String> {
-    let identity_directory = loaded.directory.canonicalize().map_err(|error| {
-        format!(
-            "canonicalizing inspected skill {}: {error}",
-            loaded.directory.display()
-        )
-    })?;
-    let identity = format!("{}#{}", identity_directory.display(), runner.name);
-    if !visited.insert(identity) {
-        return Ok(());
-    }
-    closure
-        .profiles
-        .insert(format!("{profile_path}#{}", runner.name));
-    walk_source_execution(
-        loaded,
-        profile_path,
-        &runner.source,
-        runner.artifacts.is_some(),
-        closure,
-        visited,
-    )?;
-    Ok(())
-}
-
-fn walk_source_execution(
-    loaded: &LoadedSkillPackage,
-    profile_path: &str,
-    source: &runx_parser::SkillSource,
-    declared_artifact: bool,
-    closure: &mut ExecutionClosure,
-    visited: &mut BTreeSet<String>,
-) -> Result<(), String> {
-    match source.source_type {
-        SourceKind::Graph => {
-            let graph = source
-                .graph
-                .as_ref()
-                .ok_or_else(|| "graph source omitted its validated graph".to_owned())?;
-            for step in &graph.steps {
-                if let Some(tool) = &step.tool {
-                    closure.components.insert(format!("tool:{tool}"));
-                }
-                if let Some(reference) = &step.skill {
-                    if let Some(nested) = load_local_referenced_skill(loaded, reference)? {
-                        let nested_profile = nested_profile_path(profile_path, reference)?;
-                        let nested_runner = select_inspection_runner(
-                            nested.manifest().ok_or_else(|| {
-                                format!(
-                                    "sub-skill {} has no executable manifest",
-                                    nested.directory.display()
-                                )
-                            })?,
-                            step.runner.as_deref(),
-                        )
-                        .cloned()
-                        .ok_or_else(|| {
-                            format!(
-                                "sub-skill {} has no selected runner for step {}",
-                                nested.directory.display(),
-                                step.id
-                            )
-                        })?;
-                        closure.skill_edges.insert(format!(
-                            "{}#{}",
-                            nested.package.skill.name, nested_runner.name
-                        ));
-                        walk_runner_execution(
-                            &nested,
-                            &nested_profile,
-                            &nested_runner,
-                            closure,
-                            visited,
-                        )?;
-                    } else {
-                        closure.skill_edges.insert(format!(
-                            "{reference}#{}",
-                            step.runner.as_deref().unwrap_or("default")
-                        ));
-                    }
-                }
-                if let Some(run) = &step.run
-                    && let Some(run_source) = run.source()
-                {
-                    walk_source_execution(
-                        loaded,
-                        profile_path,
-                        run_source,
-                        step.artifacts.is_some(),
-                        closure,
-                        visited,
-                    )?;
-                }
-            }
-        }
-        SourceKind::Agent | SourceKind::AgentStep => {
-            closure.agent_acts = closure.agent_acts.saturating_add(1);
-            closure.declared_artifact |= declared_artifact;
-        }
-        SourceKind::JavaScript => {
-            closure.components.insert("javascript".to_owned());
-        }
-        SourceKind::CliTool => {
-            let component = source.command.as_deref().map_or_else(
-                || "cli-tool".to_owned(),
-                |command| format!("cli-tool:{command}"),
-            );
-            closure.components.insert(component);
-        }
-        SourceKind::Mcp => {
-            let component = source
-                .tool
-                .as_deref()
-                .map_or_else(|| "mcp".to_owned(), |tool| format!("mcp:{tool}"));
-            closure.components.insert(component);
-        }
-        SourceKind::A2a => {
-            closure.components.insert("a2a".to_owned());
-        }
-        SourceKind::ExternalAdapter => {
-            closure.components.insert("external-adapter".to_owned());
-        }
-        SourceKind::ThreadOutboxProvider => {
-            closure
-                .components
-                .insert("thread-outbox-provider".to_owned());
-        }
-    }
-    Ok(())
-}
-
-fn load_local_referenced_skill(
-    loaded: &LoadedSkillPackage,
-    reference: &str,
-) -> Result<Option<LoadedSkillPackage>, String> {
-    if is_external_or_dynamic_skill_reference(reference) {
-        return Ok(None);
-    }
-    super::load_validated_skill_package(&loaded.directory.join(reference))
-        .map(Some)
-        .map_err(|error| {
-            format!(
-                "loading referenced sub-skill {reference} from {}: {error}",
-                loaded.directory.display()
-            )
-        })
-}
-
-fn is_external_or_dynamic_skill_reference(reference: &str) -> bool {
-    reference.starts_with('$')
-        || reference.starts_with("registry:")
-        || reference.starts_with("runx-registry:")
-        || reference.starts_with("runx://skill/")
-}
-
-fn nested_profile_path(current_profile: &str, reference: &str) -> Result<String, String> {
-    let current_dir = Path::new(current_profile)
-        .parent()
-        .unwrap_or_else(|| Path::new(""));
-    normalize_relative_path(current_dir.join(reference).join("X.yaml")).ok_or_else(|| {
-        format!("sub-skill reference {reference} escapes the inspected execution closure")
-    })
-}
-
-fn normalize_relative_path(path: PathBuf) -> Option<String> {
-    let mut normalized: Vec<String> = Vec::new();
-    for component in path.components() {
-        match component {
-            Component::Normal(value) => normalized.push(value.to_string_lossy().into_owned()),
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if normalized.last().is_some_and(|segment| segment != "..") {
-                    normalized.pop();
-                } else {
-                    normalized.push("..".to_owned());
-                }
-            }
-            Component::Prefix(_) | Component::RootDir => return None,
-        }
-    }
-    Some(normalized.join("/"))
-}
-
-fn select_inspection_runner<'a>(
-    manifest: &'a runx_parser::SkillRunnerManifest,
-    selected: Option<&str>,
-) -> Option<&'a SkillRunnerDefinition> {
-    if let Some(selected) = selected {
-        return manifest.runners.get(selected);
-    }
-    manifest
-        .runners
-        .values()
-        .find(|runner| runner.default)
-        .or_else(|| {
-            (manifest.runners.len() == 1)
-                .then(|| manifest.runners.values().next())
-                .flatten()
-        })
-}
-
-fn execution_summary(components: &[String], agent_acts: usize, declared_artifact: bool) -> String {
-    let agent_summary = match (agent_acts, declared_artifact) {
-        (0, _) => None,
-        (1, true) => Some("1 agent act -> declared artifact".to_owned()),
-        (count, true) => Some(format!("{count} agent acts -> declared artifact")),
-        (1, false) => Some("1 agent act".to_owned()),
-        (count, false) => Some(format!("{count} agent acts")),
-    };
-    match (components.is_empty(), agent_summary) {
-        (true, Some(agent)) => agent,
-        (false, Some(agent)) => format!("{}; {agent}", components.join(", ")),
-        (false, None) => components.join(", "),
-        (true, None) => "none".to_owned(),
-    }
-}
-
-fn inspect_runner(runner: &SkillRunnerDefinition) -> Result<JsonValue, String> {
-    let mut output = JsonObject::from([
-        ("name".to_owned(), JsonValue::String(runner.name.clone())),
-        (
-            "type".to_owned(),
-            JsonValue::String(runner.source.source_type.as_str().to_owned()),
-        ),
-        (
-            "inputs".to_owned(),
-            JsonValue::Array(
-                runner
-                    .inputs
-                    .iter()
-                    .map(|(name, input)| inspect_input(name, input))
-                    .collect(),
-            ),
-        ),
-        (
-            "outputs".to_owned(),
-            JsonValue::Array(
-                runner
-                    .source
-                    .outputs
-                    .iter()
-                    .flat_map(|outputs| outputs.iter())
-                    .map(|(name, declaration)| inspect_output(name, declaration))
-                    .collect(),
-            ),
-        ),
-    ]);
-    insert_runner_contract_metadata(&mut output, runner)?;
-    let provider_requirements = inspect_provider_requirements(runner);
-    if !provider_requirements.is_empty() {
-        output.insert(
-            "provider_requirements".to_owned(),
-            JsonValue::Array(provider_requirements),
-        );
-    }
-    Ok(JsonValue::Object(output))
-}
-
-fn insert_runner_contract_metadata(
-    output: &mut JsonObject,
-    runner: &SkillRunnerDefinition,
-) -> Result<(), String> {
-    if let Some(artifacts) = &runner.artifacts {
-        output.insert(
-            "artifacts".to_owned(),
-            serde_json::to_value(artifacts)
-                .and_then(serde_json::from_value)
-                .map_err(|error| format!("serializing runner artifacts: {error}"))?,
-        );
-    }
-    if let Some(allowed_tools) = &runner.allowed_tools {
-        output.insert(
-            "allowed_tools".to_owned(),
-            JsonValue::Array(
-                allowed_tools
-                    .iter()
-                    .cloned()
-                    .map(JsonValue::String)
-                    .collect(),
-            ),
-        );
-    }
-    if !runner.scopes.is_empty() {
-        output.insert(
-            "scopes".to_owned(),
-            JsonValue::Array(
-                runner
-                    .scopes
-                    .iter()
-                    .cloned()
-                    .map(JsonValue::String)
-                    .collect(),
-            ),
-        );
-    }
-    if let Some(mutating) = runner.mutating {
-        output.insert("mutating".to_owned(), JsonValue::Bool(mutating));
-    }
-    Ok(())
-}
-
-fn inspect_provider_requirements(runner: &SkillRunnerDefinition) -> Vec<JsonValue> {
-    runner
-        .source
-        .graph
-        .iter()
-        .flat_map(|graph| graph.steps.iter())
-        .filter_map(inspect_provider_requirement)
-        .collect()
-}
-
-fn inspect_provider_requirement(step: &GraphStep) -> Option<JsonValue> {
-    let tool = step.tool.as_deref()?;
-    let access = match tool {
-        "provider.read" => "read",
-        "provider.mutate" => "mutate",
-        _ => return None,
-    };
-    let provider = step.inputs.get("expected_provider")?.as_str()?;
-    if provider.trim().is_empty() || provider.starts_with('$') {
-        return None;
-    }
-    let mut requirement = JsonObject::from([
-        ("step_id".to_owned(), JsonValue::String(step.id.clone())),
-        (
-            "provider".to_owned(),
-            JsonValue::String(provider.to_owned()),
-        ),
-        ("access".to_owned(), JsonValue::String(access.to_owned())),
-        (
-            "scopes".to_owned(),
-            JsonValue::Array(step.scopes.iter().cloned().map(JsonValue::String).collect()),
-        ),
-    ]);
-    if let Some(operation) = step.inputs.get("operation").and_then(JsonValue::as_str) {
-        requirement.insert(
-            "operation".to_owned(),
-            JsonValue::String(operation.to_owned()),
-        );
-    }
-    Some(JsonValue::Object(requirement))
-}
-
-fn catalog_capabilities(catalog: &CatalogMetadata) -> Option<JsonValue> {
-    Some(JsonValue::Object(JsonObject::from([
-        (
-            "execution".to_owned(),
-            JsonValue::String(catalog.execution?.as_str().to_owned()),
-        ),
-        (
-            "completion".to_owned(),
-            JsonValue::String(catalog.completion?.as_str().to_owned()),
-        ),
-        (
-            "requires_adapter".to_owned(),
-            JsonValue::Bool(catalog.requires_adapter?),
-        ),
-        (
-            "approval".to_owned(),
-            JsonValue::String(catalog.approval?.as_str().to_owned()),
-        ),
-    ])))
-}
-
-fn inspect_input(name: &str, input: &SkillInput) -> JsonValue {
-    let mut output = JsonObject::from([
-        ("name".to_owned(), JsonValue::String(name.to_owned())),
-        (
-            "type".to_owned(),
-            JsonValue::String(input.input_type.clone()),
-        ),
-        ("required".to_owned(), JsonValue::Bool(input.required)),
-    ]);
-    if let Some(description) = &input.description {
-        output.insert(
-            "description".to_owned(),
-            JsonValue::String(description.clone()),
-        );
-    }
-    JsonValue::Object(output)
-}
-
-fn inspect_output(name: &str, declaration: &JsonValue) -> JsonValue {
-    let mut output = JsonObject::from([("name".to_owned(), JsonValue::String(name.to_owned()))]);
-    match declaration {
-        JsonValue::String(kind) => {
-            output.insert("type".to_owned(), JsonValue::String(kind.clone()));
-        }
-        JsonValue::Object(details) => {
-            if let Some(kind) = details.get("type").and_then(JsonValue::as_str) {
-                output.insert("type".to_owned(), JsonValue::String(kind.to_owned()));
-            }
-            if let Some(required) = details.get("required").and_then(JsonValue::as_bool) {
-                output.insert("required".to_owned(), JsonValue::Bool(required));
-            }
-        }
-        _ => {}
-    }
-    JsonValue::Object(output)
-}
-
-fn fixture_examples(
-    package: &ValidatedSkillPackage,
-    manifest: Option<&runx_parser::SkillRunnerManifest>,
-    runner: &str,
-) -> Vec<JsonValue> {
-    let mut examples = manifest
-        .and_then(|manifest| manifest.harness.as_ref())
-        .into_iter()
-        .flat_map(|harness| harness.cases.iter())
-        .filter(|case| case.runner.as_deref().is_none_or(|name| name == runner))
-        .map(|case| JsonValue::String(case.name.clone()))
-        .chain(
-            package
-                .source
-                .files
-                .keys()
-                .filter(|path| path.starts_with("fixtures/") && path.ends_with(".yaml"))
-                .cloned()
-                .map(JsonValue::String),
-        )
-        .collect::<Vec<_>>();
-    examples.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
-    examples.dedup();
-    examples
-}
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
 
     use std::fs;
 
-    use runx_contracts::JsonValue;
+    use runx_contracts::{JsonObject, JsonValue};
 
     use super::inspect_skill_package;
 
@@ -753,11 +265,80 @@ runners:
             )]))
         );
         assert_eq!(
+            closure.get("direct_external_skill_edges"),
+            Some(&JsonValue::Array(Vec::new()))
+        );
+        assert_eq!(
             closure.get("profiles"),
             Some(&JsonValue::Array(vec![
                 JsonValue::String("X.yaml#inspect".to_owned()),
                 JsonValue::String("child/X.yaml#read".to_owned()),
             ]))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn execution_closure_distinguishes_direct_external_skills_from_private_stages()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir().expect("temporary skill catalog");
+        let root = temp.path().join("root");
+        let internal = root.join("internal");
+        let external = temp.path().join("research");
+        fs::create_dir_all(&internal).expect("internal skill directory");
+        fs::create_dir_all(&external).expect("external skill directory");
+        fs::write(root.join("SKILL.md"), ROOT_MANUAL).expect("root manual");
+        fs::write(
+            root.join("X.yaml"),
+            r#"
+skill: root
+runners:
+  inspect:
+    default: true
+    type: graph
+    graph:
+      name: root
+      steps:
+        - id: internal
+          skill: internal
+        - id: research
+          skill: ../research
+          runner: brief
+"#,
+        )
+        .expect("root manifest");
+        for (directory, name, runner) in [
+            (&internal, "internal", "read"),
+            (&external, "research", "brief"),
+        ] {
+            fs::write(
+                directory.join("SKILL.md"),
+                format!("---\nname: {name}\ndescription: Inspection fixture.\n---\n\n# {name}\n"),
+            )
+            .expect("child manual");
+            fs::write(
+                directory.join("X.yaml"),
+                format!(
+                    "skill: {name}\nrunners:\n  {runner}:\n    default: true\n    type: graph\n    graph:\n      name: {name}\n      steps:\n        - id: digest\n          tool: data.digest\n          inputs:\n            value: inspected\n"
+                ),
+            )
+            .expect("child manifest");
+        }
+
+        let inspected = inspect_skill_package(&root, None).expect("valid inspection");
+        let closure = inspected
+            .as_object()
+            .and_then(|value| value.get("execution_closure"))
+            .and_then(JsonValue::as_object)
+            .expect("execution closure");
+        assert_eq!(
+            closure.get("direct_external_skill_edges"),
+            Some(&JsonValue::Array(vec![JsonValue::Object(
+                JsonObject::from([
+                    ("runner".to_owned(), JsonValue::String("brief".to_owned())),
+                    ("skill".to_owned(), JsonValue::String("research".to_owned())),
+                ])
+            )]))
         );
         Ok(())
     }

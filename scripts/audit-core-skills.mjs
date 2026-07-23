@@ -50,6 +50,7 @@ function buildReport(options) {
   const review = readProductReview();
   const catalog = readNativeCatalog(runx);
   const findings = validateCoverage({ official, review, catalog });
+  const officialSkillNames = new Set(official.map(officialName));
   const entries = [];
 
   for (const record of official) {
@@ -57,6 +58,7 @@ function buildReport(options) {
     const decision = review.get(name);
     const catalogItem = catalog.get(name);
     const inspection = inspectSkill(runx, name);
+    const runnerInspections = inspectSkillRunners(runx, name, inspection);
     if (inspection.status !== "ok") {
       findings.push(`${name}: native inspection returned ${inspection.status ?? "no status"}`);
     }
@@ -64,7 +66,22 @@ function buildReport(options) {
       findings.push(`${name}: native inspection returned name ${inspection.name ?? "<missing>"}`);
     }
     findings.push(
-      ...validateInspectionClaims({ name, record, decision, inspection }),
+      ...validateInspectionClaims({
+        name,
+        record,
+        decision,
+        inspection,
+        runnerInspections,
+      }),
+    );
+    findings.push(
+      ...validatePublicManual({
+        name,
+        record,
+        runnerInspections,
+        officialSkillNames,
+        source: readFileSync(path.join(root, "skills", name, "SKILL.md"), "utf8"),
+      }),
     );
     const canonicalCatalogRole =
       `${inspection.catalog?.visibility ?? "<missing>"}/${inspection.catalog?.role ?? "<missing>"}`;
@@ -90,6 +107,10 @@ function buildReport(options) {
         catalog: inspection.catalog ?? null,
         package_digest: inspection.package_digest ?? null,
         manual_digest: inspection.manual_digest ?? null,
+        runners: runnerInspections.map((runnerInspection) => ({
+          runner: runnerInspection.runner?.name ?? null,
+          execution_closure: runnerInspection.execution_closure ?? null,
+        })),
       },
     });
   }
@@ -200,8 +221,21 @@ function readNativeCatalog(runx) {
   return topLevel;
 }
 
-function inspectSkill(runx, name) {
-  return runJson(runx, ["skill", "inspect", `skills/${name}`, "--json"]);
+function inspectSkill(runx, name, runner) {
+  const args = ["skill", "inspect", `skills/${name}`];
+  if (runner !== undefined) args.push(runner);
+  args.push("--json");
+  return runJson(runx, args);
+}
+
+function inspectSkillRunners(runx, name, inspection) {
+  if (!Array.isArray(inspection.runners)) return [];
+  return inspection.runners.map((runner) => {
+    if (typeof runner !== "string" || runner.length === 0) {
+      throw new Error(`${name}: native inspection returned a malformed runner name`);
+    }
+    return inspectSkill(runx, name, runner);
+  });
 }
 
 function validateCoverage({ official, review, catalog }) {
@@ -243,7 +277,13 @@ function validateCoverage({ official, review, catalog }) {
   return findings;
 }
 
-function validateInspectionClaims({ name, record, decision, inspection }) {
+function validateInspectionClaims({
+  name,
+  record,
+  decision,
+  inspection,
+  runnerInspections,
+}) {
   const findings = [];
   const nativeVisibility = inspection.catalog?.visibility;
   const nativeRole = inspection.catalog?.role;
@@ -258,21 +298,97 @@ function validateInspectionClaims({ name, record, decision, inspection }) {
     );
   }
   const closure = inspection.execution_closure;
-  if (
-    typeof closure?.summary !== "string"
-    || !Array.isArray(closure?.components)
-    || !Array.isArray(closure?.skill_edges)
-    || !Array.isArray(closure?.profiles)
-    || !Number.isInteger(closure?.agent_acts)
-    || typeof closure?.declared_artifact !== "boolean"
-  ) {
+  if (!hasCanonicalExecutionClosure(closure)) {
     findings.push(`${name}: native inspection omitted the canonical execution closure`);
   } else if (decision?.execution !== closure.summary) {
     findings.push(
       `${name}: review execution ${decision?.execution ?? "<missing>"} does not match native closure ${closure.summary}`,
     );
   }
+  if (!Array.isArray(inspection.runners)) {
+    findings.push(`${name}: native inspection omitted its runner catalog`);
+    return findings;
+  }
+  if (runnerInspections.length !== inspection.runners.length) {
+    findings.push(`${name}: native inspection did not inspect every declared runner`);
+  }
+  for (const [index, runnerInspection] of runnerInspections.entries()) {
+    const expectedRunner = inspection.runners[index];
+    if (
+      runnerInspection.status !== "ok"
+      || runnerInspection.name !== name
+      || runnerInspection.runner?.name !== expectedRunner
+    ) {
+      findings.push(`${name}#${expectedRunner}: native runner inspection identity mismatch`);
+    }
+    if (!hasCanonicalExecutionClosure(runnerInspection.execution_closure)) {
+      findings.push(`${name}#${expectedRunner}: native inspection omitted the execution closure`);
+    }
+  }
   return findings;
+}
+
+function hasCanonicalExecutionClosure(closure) {
+  return typeof closure?.summary === "string"
+    && Array.isArray(closure?.components)
+    && Array.isArray(closure?.skill_edges)
+    && Array.isArray(closure?.direct_external_skill_edges)
+    && Array.isArray(closure?.profiles)
+    && Number.isInteger(closure?.agent_acts)
+    && typeof closure?.declared_artifact === "boolean";
+}
+
+function validatePublicManual({
+  name,
+  record,
+  runnerInspections,
+  officialSkillNames,
+  source,
+}) {
+  if (record.catalog_visibility !== "public") return [];
+  const findings = [];
+  const body = source.replace(/^---[\s\S]*?---\s*/u, "").trim();
+  const taskContract = /^#{2,6}\s+Agent task contracts?\s*$/imu.exec(body);
+  const guide = taskContract ? body.slice(0, taskContract.index).trim() : body;
+  const guideSections = guide.match(/^##\s+\S.*$/gmu) ?? [];
+  const hasExplanation = guide.split(/\r?\n/u).some((line) => {
+    const trimmed = line.trim();
+    return trimmed.length > 0
+      && !trimmed.startsWith("#")
+      && !trimmed.startsWith("```")
+      && !/^[-*]\s*$/u.test(trimmed);
+  });
+  if (!/^#\s+\S.*$/mu.test(guide) || guideSections.length === 0 || !hasExplanation) {
+    findings.push(
+      `${name}: public manual needs an operator guide before any agent task contracts`,
+    );
+  }
+
+  const edges = runnerInspections.flatMap(
+    (inspection) => inspection.execution_closure?.direct_external_skill_edges ?? [],
+  ).filter((edge) => officialSkillNames.has(edge?.skill));
+  for (const edge of edges) {
+    if (
+      typeof edge?.skill !== "string"
+      || edge.skill.length === 0
+      || typeof edge?.runner !== "string"
+      || edge.runner.length === 0
+    ) {
+      findings.push(`${name}: native direct external skill edge is malformed`);
+      continue;
+    }
+    if (!containsSkillName(guide, edge.skill)) {
+      findings.push(
+        `${name}: operator guide does not name directly composed core skill ${edge.skill}`,
+      );
+    }
+  }
+  return findings;
+}
+
+function containsSkillName(source, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+  return new RegExp(`(^|[^a-z0-9-])${escaped}([^a-z0-9-]|$)`, "iu").test(source);
 }
 
 function countBy(entries, selector) {
@@ -365,11 +481,16 @@ function runSelfTests() {
     "catalog-role drift must fail",
   );
   const inspection = {
+    status: "ok",
+    name: "alpha",
+    runners: ["default"],
+    runner: { name: "default" },
     catalog: { visibility: "public", role: "canonical" },
     execution_closure: {
       summary: "tool:data.read",
       components: ["tool:data.read"],
       skill_edges: [],
+      direct_external_skill_edges: [],
       profiles: ["X.yaml#default"],
       agent_acts: 0,
       declared_artifact: false,
@@ -381,6 +502,7 @@ function runSelfTests() {
       record: official[0],
       decision: { execution: "javascript" },
       inspection,
+      runnerInspections: [inspection],
     }).some((finding) => finding.includes("does not match native closure")),
     "execution-closure drift must fail",
   );
@@ -390,8 +512,58 @@ function runSelfTests() {
       record: official[0],
       decision: { execution: "tool:data.read" },
       inspection,
+      runnerInspections: [inspection],
     }).length === 0,
     "matching catalog and execution claims must pass",
+  );
+  const guideInspection = {
+    ...inspection,
+    execution_closure: {
+      ...inspection.execution_closure,
+      direct_external_skill_edges: [{ skill: "research", runner: "brief" }],
+    },
+  };
+  const validGuide = [
+    "---",
+    "name: alpha",
+    "description: Test a manual.",
+    "---",
+    "",
+    "# Alpha",
+    "",
+    "## Operating model",
+    "",
+    "Compose `research` evidence before making the decision.",
+    "",
+    "## Agent task contracts",
+    "",
+    "Return the bounded decision.",
+  ].join("\n");
+  assert(
+    validatePublicManual({
+      name: "alpha",
+      record: official[0],
+      runnerInspections: [guideInspection],
+      officialSkillNames: new Set(["alpha", "research"]),
+      source: validGuide,
+    }).length === 0,
+    "a real guide before task contracts with direct composition names must pass",
+  );
+  const invalidGuide = validGuide.replace("## Operating model\n\nCompose `research` evidence before making the decision.\n\n", "");
+  const guideFindings = validatePublicManual({
+    name: "alpha",
+    record: official[0],
+    runnerInspections: [guideInspection],
+    officialSkillNames: new Set(["alpha", "research"]),
+    source: invalidGuide,
+  });
+  assert(
+    guideFindings.some((finding) => finding.includes("operator guide")),
+    "task contracts must not substitute for an operator guide",
+  );
+  assert(
+    guideFindings.some((finding) => finding.includes("research")),
+    "directly composed skills must be named in the operator guide",
   );
   let missingRunxPathRejected = false;
   try {

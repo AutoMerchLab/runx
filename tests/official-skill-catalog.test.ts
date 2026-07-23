@@ -193,9 +193,6 @@ describe("official skill catalog", () => {
       }
       const skillMarkdownPath = path.join(path.dirname(manifestPath), "SKILL.md");
       expect(existsSync(skillMarkdownPath), manifestPath).toBe(true);
-      const skillMarkdown = readFileSync(skillMarkdownPath, "utf8");
-      const body = skillMarkdown.replace(/^---[\s\S]*?---\s*/, "").trim();
-      expect(body.length, `${skillMarkdownPath} needs operating instructions`).toBeGreaterThan(0);
     }
   });
 

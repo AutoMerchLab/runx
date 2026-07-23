@@ -165,10 +165,14 @@ agent act; they never substitute for the guide.
 
 The catalog audit enforces this as an anti-stub floor: a public guide must carry
 substantive operator context before any agent task contracts, and it must name
-each core skill its executable runners compose directly. The floor is not a
-prose score and must never be met with filler. Review still judges whether the
-manual explains the capability accurately, naturally, and with enough domain
-weight for a cold operator.
+each official core skill any of its executable runners compose directly. The
+audit obtains runner names and direct composition edges from native
+`runx skill inspect`; it does not parse `X.yaml` through a parallel JavaScript
+model. Private nested stages and non-catalog examples remain visible in native
+execution closure evidence but do not create false public-manual requirements.
+The floor is not a prose score and must never be met with filler. Review still
+judges whether the manual explains the capability accurately, naturally, and
+with enough domain weight for a cold operator.
 
 ## Content bar
 
