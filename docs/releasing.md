@@ -148,16 +148,23 @@ package.
 ## Cutting a release
 
 ```bash
-# 1. from the workspace root, prepare cloud/status together:
-pnpm release:prepare -- --version X.Y.Z
-pnpm release:check
-pnpm release:check:live # required before claiming public package channels are live
-
-# 2. dry-run from the Actions tab (workflow_dispatch, version = X.Y.Z)
-# 3. tag and push:
+# 1. on a green OSS main commit with real release notes already landed:
 git tag cli-vX.Y.Z
 git push origin cli-vX.Y.Z
+
+# 2. wait for the tag workflow, then verify GitHub and npm are live.
+
+# 3. from the workspace root, reconcile cloud/status against the published npm
+#    packages (the lockfile cannot resolve an unpublished release):
+pnpm release:prepare -- --version X.Y.Z
+pnpm release:check
+pnpm release:check:live
 ```
+
+Use `workflow_dispatch` with a version only when a release-pipeline change
+needs a no-publish matrix rehearsal. Do not duplicate the complete platform
+build for an ordinary release: the tag workflow builds and smokes every target
+before creating the GitHub Release or publishing npm.
 
 Never move a published semver tag. Never bump a new patch just to repair channel
 drift; fix the existing channel artifact or workflow unless the binary itself is
