@@ -685,6 +685,36 @@ describe("GitHub thread helper", () => {
     }
   });
 
+  it("reads every REST comment page before deciding which thread comments are missing", async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-frantic-github-rest-snapshot-"));
+    const curlBin = path.join(tempDir, "curl");
+    const logPath = path.join(tempDir, "curl.log");
+
+    try {
+      await writeFile(curlBin, fakeCurlScript(logPath));
+      await chmod(curlBin, 0o700);
+      const snapshot = readGitHubThreadSnapshot({
+        adapterRef: "github://auscaster/frantic-board/issues/7",
+        env: {
+          ...process.env,
+          PATH: `${tempDir}:${process.env.PATH ?? ""}`,
+          GITHUB_TOKEN: "test-token",
+          GH_FAKE_LOG: logPath,
+        },
+      });
+
+      expect(snapshot.comment_markers).toContain("late-page:thread.comment");
+      expect(snapshot.comment_bodies).toHaveLength(101);
+      const calls = JSON.parse(await readFile(logPath, "utf8"));
+      const urls = calls.map((call: { url: string }) => call.url);
+      expect(urls).toContain("https://api.github.com/repos/auscaster/frantic-board/issues/7/comments?per_page=100&page=1");
+      expect(urls).toContain("https://api.github.com/repos/auscaster/frantic-board/issues/7/comments?per_page=100&page=2");
+      expect(urls.some((url: string) => url.includes("page=3"))).toBe(false);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
   it("lists GitHub issues carrying any managed label without duplicates", async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), "runx-frantic-github-list-"));
     const ghBin = path.join(tempDir, "fake-gh.mjs");
@@ -1045,6 +1075,7 @@ if (args[0] === "issue" && args[1] === "list") {
   process.stdout.write(JSON.stringify(filtered));
   process.exit(0);
 }
+
 if (args[0] === "issue" && args[1] === "create") {
   process.stdout.write("https://github.com/auscaster/frantic-board/issues/91\\n");
   process.exit(0);
@@ -1065,6 +1096,43 @@ if (args[0] === "label" && args[1] === "list") {
   process.exit(0);
 }
 process.stdout.write("");
+`;
+}
+
+function fakeCurlScript(logPath: string): string {
+  return `#!/usr/bin/env node
+import { readFileSync, writeFileSync } from "node:fs";
+
+const args = process.argv.slice(2);
+const urlIndex = args.indexOf("--url");
+const url = urlIndex >= 0 ? args[urlIndex + 1] : "";
+const logPath = process.env.GH_FAKE_LOG || ${JSON.stringify(logPath)};
+let calls = [];
+try {
+  calls = JSON.parse(readFileSync(logPath, "utf8"));
+} catch {}
+calls.push({ url });
+writeFileSync(logPath, JSON.stringify(calls));
+
+let body;
+if (url.endsWith("/repos/auscaster/frantic-board/issues/7")) {
+  body = { title: "Fixture issue", body: "Fixture body", state: "open", labels: [] };
+} else if (url.includes("/repos/auscaster/frantic-board/issues/7/comments?")) {
+  const page = Number(new URL(url).searchParams.get("page") || "1");
+  body = page === 1
+    ? Array.from({ length: 100 }, (_, index) => ({ body: \`comment \${index + 1}\` }))
+    : [{
+        body: [
+          "late comment",
+          "",
+          "<!-- runx-outbox-envelope: v1 -->",
+          "<!-- runx-outbox-entry: late-page:thread.comment -->",
+        ].join("\\n"),
+      }];
+} else {
+  body = { message: "not found" };
+}
+process.stdout.write(JSON.stringify(body) + "\\n200");
 `;
 }
 

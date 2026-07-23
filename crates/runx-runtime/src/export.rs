@@ -99,6 +99,11 @@ pub fn load_export_skills_with_options(
         }
         skills.push(export_skill(directory, package, manifest)?);
     }
+    validate_unique_export_names(&mut skills)?;
+    Ok(skills)
+}
+
+fn validate_unique_export_names(skills: &mut [RunxExportSkill]) -> Result<(), RunxExportLoadError> {
     skills.sort_by(|left, right| left.name.cmp(&right.name));
     for pair in skills.windows(2) {
         if pair[0].name == pair[1].name {
@@ -108,7 +113,7 @@ pub fn load_export_skills_with_options(
             )));
         }
     }
-    Ok(skills)
+    Ok(())
 }
 
 fn export_skill(
@@ -277,7 +282,6 @@ fn manifest_visibility(
         .and_then(|manifest| manifest.catalog.as_ref())
         .map(|catalog| catalog.visibility)
 }
-
 #[cfg(test)]
 mod tests {
     #![allow(clippy::expect_used)]
