@@ -12,10 +12,9 @@ pub const MAX_FRAME_BYTES: usize = 10 * 1024 * 1024;
 pub const MAX_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_QUEUED_JOBS: u32 = 4_096;
 pub const MAX_WALL_MILLISECONDS: u64 = 2_000;
-/// Each worker has its own process-wide heap and address-space ceiling. The
-/// runtime pool stays deliberately small so concurrent JavaScript cannot turn
-/// those per-process bounds into unbounded host memory.
-pub const MAX_CONCURRENT_INVOCATIONS: usize = 4;
+/// Maximum number of isolated JavaScript worker processes retained by one
+/// runtime. Each process executes exactly one invocation at a time.
+pub const MAX_WORKER_POOL_SIZE: usize = 4;
 pub const JAVASCRIPT_HEAP_BYTES: u64 = 64 * 1024 * 1024;
 pub const JAVASCRIPT_STACK_BYTES: usize = 4 * 1024 * 1024;
 // glibc can reserve 64-128 MiB of non-committed address space for allocator
@@ -23,6 +22,9 @@ pub const JAVASCRIPT_STACK_BYTES: usize = 4 * 1024 * 1024;
 // headroom; the working-set limit below is the committed-memory boundary.
 pub const WORKER_VIRTUAL_ADDRESS_SPACE_BYTES: u64 = 1024 * 1024 * 1024;
 pub const WORKER_WORKING_SET_BYTES: u64 = 160 * 1024 * 1024;
+/// Explicit host working-set budget implied by the bounded worker pool.
+pub const AGGREGATE_WORKER_WORKING_SET_BYTES: u64 =
+    WORKER_WORKING_SET_BYTES * MAX_WORKER_POOL_SIZE as u64;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

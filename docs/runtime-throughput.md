@@ -116,6 +116,10 @@ counter. These rows include `spawn_count`. The MCP reuse and native launch gates
 require `spawn_count <= 1` and no p99 regression above the declared budget. MCP
 owns a pooled protocol session; deterministic JavaScript owns a separate
 runtime-scoped bounded worker pool with a fresh engine context per invocation.
+The pool ceiling is four processes. Each process has a 160 MiB working-set
+ceiling, so the explicit aggregate JavaScript working-set budget is 640 MiB;
+the contract exposes both values rather than hiding the multiplication behind
+an invocation-count constant.
 External adapters remain one-shot until a reset-capable wire contract and
 negative isolation tests exist.
 

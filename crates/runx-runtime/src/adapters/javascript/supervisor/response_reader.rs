@@ -3,9 +3,9 @@ use std::sync::mpsc;
 
 use runx_contracts::javascript_worker::{MAX_FRAME_BYTES, WorkerResponse, read_frame};
 
-pub(super) type WorkerRead = Result<WorkerResponse, String>;
+pub(super) type WorkerFrameResult = Result<WorkerResponse, String>;
 
-pub(super) fn read_responses(stdout: impl Read, responses: mpsc::Sender<WorkerRead>) {
+pub(super) fn read_responses(stdout: impl Read, responses: mpsc::Sender<WorkerFrameResult>) {
     let mut reader = BufReader::new(stdout);
     loop {
         match read_frame::<WorkerResponse>(&mut reader, MAX_FRAME_BYTES) {

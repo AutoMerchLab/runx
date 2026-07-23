@@ -71,8 +71,10 @@ impl JavaScriptWorkerSupervisor {
             limits: invocation.limits,
         };
         let mut lease = self.pool.acquire()?;
-        let isolation = lease.session().isolation.clone();
-        let result = lease.session().invoke(&invocation_id, &request, timeout);
+        let isolation = lease.session_mut().isolation.as_ref().clone();
+        let result = lease
+            .session_mut()
+            .invoke(&invocation_id, &request, timeout);
         match result {
             Ok(response) => {
                 let discard = matches!(
@@ -82,15 +84,18 @@ impl JavaScriptWorkerSupervisor {
                         ..
                     }
                 );
-                if !discard {
-                    lease.mark_reusable();
+                if discard {
+                    lease.poison();
                 }
                 Ok(WorkerInvocationOutcome {
                     result: response,
                     isolation,
                 })
             }
-            Err(error) => Err(error),
+            Err(error) => {
+                lease.poison();
+                Err(error)
+            }
         }
     }
 
@@ -99,7 +104,7 @@ impl JavaScriptWorkerSupervisor {
     }
 
     pub(super) fn peak_in_flight(&self) -> usize {
-        self.pool.peak_active()
+        self.pool.peak_in_flight()
     }
 }
 

@@ -582,7 +582,7 @@ impl McpServerState {
             options,
             next_run_sequence: AtomicU64::new(0),
             javascript: crate::adapters::javascript::JavaScriptAdapter::with_max_concurrency(
-                runx_contracts::javascript_worker::MAX_CONCURRENT_INVOCATIONS,
+                runx_contracts::javascript_worker::MAX_WORKER_POOL_SIZE,
             ),
         }
     }

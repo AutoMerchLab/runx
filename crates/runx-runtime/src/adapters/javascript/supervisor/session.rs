@@ -1,5 +1,4 @@
 use std::process::{Child, ChildStdin, Command, Stdio};
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
@@ -11,7 +10,7 @@ use runx_contracts::javascript_worker::{
 use crate::RuntimeError;
 
 use super::process::{BoundedStderr, capture_stderr, resolve_worker_path, spawn_child, stop_child};
-use super::response_reader::{WorkerRead, read_responses};
+use super::response_reader::{WorkerFrameResult, read_responses};
 use super::{WorkerInvocationResult, lock, worker_error};
 
 // This bounds process startup and the protocol handshake, not JavaScript
@@ -21,19 +20,26 @@ use super::{WorkerInvocationResult, lock, worker_error};
 const WORKER_START_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(super) struct WorkerSession {
-    child: Mutex<Option<Child>>,
+    child: Option<Child>,
     _active_process: crate::interrupt::ActiveProcessGroup,
-    stdin: Mutex<Option<ChildStdin>>,
-    responses: Mutex<mpsc::Receiver<WorkerRead>>,
+    stdin: Option<ChildStdin>,
+    responses: mpsc::Receiver<WorkerFrameResult>,
     stderr: Arc<Mutex<BoundedStderr>>,
     response_reader: Option<JoinHandle<()>>,
     stderr_reader: Option<JoinHandle<()>>,
-    pub(super) isolation: runx_contracts::JsonObject,
-    terminated: AtomicBool,
+    pub(super) isolation: Arc<runx_contracts::JsonObject>,
+    terminated: bool,
 }
 
-impl WorkerSession {
-    pub(super) fn start() -> Result<Self, RuntimeError> {
+pub(super) struct WorkerLaunchPlan {
+    command: String,
+    args: Vec<String>,
+    cwd: std::path::PathBuf,
+    pub(super) isolation: Arc<runx_contracts::JsonObject>,
+}
+
+impl WorkerLaunchPlan {
+    pub(super) fn prepare() -> Result<Self, RuntimeError> {
         crate::process::ensure_host_process_containment()
             .map_err(|source| RuntimeError::io("installing host process containment", source))?;
         let worker_path = resolve_worker_path()?;
@@ -44,10 +50,21 @@ impl WorkerSession {
                 "deterministic JavaScript worker sandbox must not carry environment or host cleanup paths",
             ));
         }
-        let mut command = Command::new(&sandbox.command);
+        Ok(Self {
+            command: sandbox.command,
+            args: sandbox.args,
+            cwd: sandbox.cwd,
+            isolation: Arc::new(sandbox.metadata),
+        })
+    }
+}
+
+impl WorkerSession {
+    pub(super) fn start(plan: &WorkerLaunchPlan) -> Result<Self, RuntimeError> {
+        let mut command = Command::new(&plan.command);
         command
-            .args(&sandbox.args)
-            .current_dir(&sandbox.cwd)
+            .args(&plan.args)
+            .current_dir(&plan.cwd)
             .env_clear()
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -71,15 +88,15 @@ impl WorkerSession {
         let (response_tx, response_rx) = mpsc::channel();
         let stderr = Arc::new(Mutex::new(BoundedStderr::default()));
         let mut session = Self {
-            child: Mutex::new(Some(starting.take()?)),
+            child: Some(starting.take()?),
             _active_process: active_process,
-            stdin: Mutex::new(Some(stdin)),
-            responses: Mutex::new(response_rx),
+            stdin: Some(stdin),
+            responses: response_rx,
             stderr: stderr.clone(),
             response_reader: None,
             stderr_reader: None,
-            isolation: sandbox.metadata,
-            terminated: AtomicBool::new(false),
+            isolation: plan.isolation.clone(),
+            terminated: false,
         };
         session.response_reader = Some(
             thread::Builder::new()
@@ -118,12 +135,12 @@ impl WorkerSession {
     }
 
     pub(super) fn invoke(
-        &self,
+        &mut self,
         invocation_id: &str,
         request: &WorkerRequest,
         timeout: Duration,
     ) -> Result<WorkerInvocationResult, RuntimeError> {
-        if self.terminated.load(Ordering::Acquire) {
+        if self.terminated {
             return Err(worker_error(
                 "deterministic JavaScript worker session is closed",
             ));
@@ -172,17 +189,16 @@ impl WorkerSession {
         }
     }
 
-    fn receive_response(&self, timeout: Duration) -> Result<WorkerRead, mpsc::RecvTimeoutError> {
-        let responses = self
-            .responses
-            .lock()
-            .map_err(|_| mpsc::RecvTimeoutError::Disconnected)?;
-        responses.recv_timeout(timeout)
+    fn receive_response(
+        &mut self,
+        timeout: Duration,
+    ) -> Result<WorkerFrameResult, mpsc::RecvTimeoutError> {
+        self.responses.recv_timeout(timeout)
     }
 
-    fn write_request(&self, request: &WorkerRequest) -> Result<(), RuntimeError> {
-        let mut stdin = lock(&self.stdin, "locking JavaScript worker stdin")?;
-        let stdin = stdin
+    fn write_request(&mut self, request: &WorkerRequest) -> Result<(), RuntimeError> {
+        let stdin = self
+            .stdin
             .as_mut()
             .ok_or_else(|| worker_error("deterministic JavaScript worker stdin is closed"))?;
         write_frame(stdin, request, MAX_FRAME_BYTES)
@@ -195,7 +211,7 @@ impl WorkerSession {
             .unwrap_or_else(|error| error.to_string())
     }
 
-    fn failure_with_stderr(&self, message: impl std::fmt::Display) -> RuntimeError {
+    fn failure_with_stderr(&mut self, message: impl std::fmt::Display) -> RuntimeError {
         let mut message = message.to_string();
         if let Some(status) = self.exited_status() {
             message.push_str(&format!("; exit status: {status}"));
@@ -207,9 +223,8 @@ impl WorkerSession {
         worker_error(message)
     }
 
-    fn exited_status(&self) -> Option<String> {
-        let mut child = self.child.lock().ok()?;
-        let child = child.as_mut()?;
+    fn exited_status(&mut self) -> Option<String> {
+        let child = self.child.as_mut()?;
         child
             .try_wait()
             .ok()
@@ -217,16 +232,13 @@ impl WorkerSession {
             .map(|status| status.to_string())
     }
 
-    pub(super) fn terminate(&self) {
-        if self.terminated.swap(true, Ordering::AcqRel) {
+    pub(super) fn terminate(&mut self) {
+        if self.terminated {
             return;
         }
-        if let Ok(mut stdin) = self.stdin.lock() {
-            stdin.take();
-        }
-        if let Ok(mut child) = self.child.lock()
-            && let Some(child) = child.as_mut()
-        {
+        self.terminated = true;
+        self.stdin.take();
+        if let Some(child) = self.child.as_mut() {
             stop_child(child);
         }
     }

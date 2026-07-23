@@ -171,7 +171,7 @@ fn wait_for_exit(
         if crate::interrupt::was_interrupted() {
             signal_process(child, ProcessSignal::Force, spec)?;
             let status = child
-                .reap_after_signal(PROCESS_REAP_TIMEOUT)
+                .reap_with_timeout(PROCESS_REAP_TIMEOUT)
                 .map_err(|source| {
                     ProcessSupervisorError::io(wait_interrupted_context(spec.label), source)
                 })?;
@@ -187,7 +187,7 @@ fn wait_for_exit(
             thread::sleep(DEFAULT_FORCE_KILL_GRACE);
             signal_process(child, ProcessSignal::Force, spec)?;
             let status = child
-                .reap_after_signal(PROCESS_REAP_TIMEOUT)
+                .reap_with_timeout(PROCESS_REAP_TIMEOUT)
                 .map_err(|source| {
                     ProcessSupervisorError::io(wait_timed_out_context(spec.label), source)
                 })?;
@@ -213,7 +213,7 @@ fn cleanup_child_after_startup_error(
     stderr: Option<CaptureHandle>,
 ) {
     let _ = signal_process(child, ProcessSignal::Force, spec);
-    let _ = child.reap_after_signal(PROCESS_REAP_TIMEOUT);
+    let _ = child.reap_with_timeout(PROCESS_REAP_TIMEOUT);
     if let Some(stdout) = stdout {
         let _ = join_capture(stdout, collect_context(spec.label, "stdout"));
     }

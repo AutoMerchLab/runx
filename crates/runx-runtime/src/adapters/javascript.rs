@@ -5,7 +5,7 @@ mod supervisor;
 use std::sync::Arc;
 use std::time::Instant;
 
-use runx_contracts::javascript_worker::MAX_CONCURRENT_INVOCATIONS;
+use runx_contracts::javascript_worker::MAX_WORKER_POOL_SIZE;
 use runx_contracts::{JsonObject, JsonValue};
 
 use self::bundle::validated_module;
@@ -75,7 +75,7 @@ impl JavaScriptAdapter {
 
     #[must_use]
     pub fn with_max_concurrency(max_concurrency: usize) -> Self {
-        let max_concurrency = max_concurrency.clamp(1, MAX_CONCURRENT_INVOCATIONS);
+        let max_concurrency = max_concurrency.clamp(1, MAX_WORKER_POOL_SIZE);
         Self {
             supervisor: Arc::new(JavaScriptWorkerSupervisor::new(max_concurrency)),
             max_concurrency,

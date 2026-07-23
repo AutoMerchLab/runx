@@ -11,6 +11,7 @@
 
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::Arc;
 
 use runx_contracts::{ClosureDisposition, FanoutReceiptSyncPoint, JsonObject, JsonValue, Receipt};
 use runx_core::state_machine::{GraphStatus, SequentialGraphState, StepAdmissionWitness};
@@ -223,10 +224,14 @@ pub struct GraphCheckpoint {
 }
 
 pub struct Runtime<A> {
-    adapter: A,
+    // The configured adapter owns pluggable source kinds. JavaScript execution
+    // and local artifacts remain concrete runtime services because their
+    // isolation, credential projection, and receipt semantics are enforced by
+    // the native runtime rather than delegated to an adapter.
+    configured_adapter: A,
     javascript: crate::adapters::javascript::JavaScriptAdapter,
     local_artifacts: crate::services::LocalArtifactService,
-    options: RuntimeOptions,
+    options: Arc<RuntimeOptions>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -242,31 +247,31 @@ where
     pub fn new(adapter: A, options: RuntimeOptions) -> Self {
         let max_concurrency = scheduler::configured_max_concurrency(&options.env);
         Self {
-            adapter,
+            configured_adapter: adapter,
             javascript: crate::adapters::javascript::JavaScriptAdapter::with_max_concurrency(
                 max_concurrency,
             ),
             local_artifacts: crate::services::LocalArtifactService::default(),
-            options,
+            options: Arc::new(options),
         }
     }
 
-    pub(crate) fn with_javascript(
+    pub(crate) fn with_native_services(
         adapter: A,
-        options: RuntimeOptions,
+        options: impl Into<Arc<RuntimeOptions>>,
         javascript: crate::adapters::javascript::JavaScriptAdapter,
         local_artifacts: crate::services::LocalArtifactService,
     ) -> Self {
         Self {
-            adapter,
+            configured_adapter: adapter,
             javascript,
             local_artifacts,
-            options,
+            options: options.into(),
         }
     }
 
     pub(crate) fn options(&self) -> &RuntimeOptions {
-        &self.options
+        self.options.as_ref()
     }
 
     #[must_use]

@@ -2503,6 +2503,7 @@ dependencies = [
  "serde_json",
  "serde_path_to_error",
  "sha2",
+ "subtle",
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
@@ -2510,6 +2511,7 @@ dependencies = [
  "url",
  "wait-timeout",
  "win32job",
+ "zeroize",
 ]
 
 [[package]]

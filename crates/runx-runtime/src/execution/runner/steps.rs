@@ -401,12 +401,12 @@ where
             source_kind: "graph runner without source.graph".to_owned(),
         })?;
     let graph = materialize_graph_parameter_inputs(graph, &invocation.inputs);
-    let mut child_options = runtime.options.clone();
+    let mut child_options = runtime.options.as_ref().clone();
     child_options.env = invocation.env.clone();
     child_options.credential_delivery = invocation.credential_delivery.clone();
     let child_adapter: Box<dyn SkillAdapter + '_> =
-        Box::new(BorrowedSkillAdapter::new(&runtime.adapter));
-    let child_runtime = Runtime::with_javascript(
+        Box::new(BorrowedSkillAdapter::new(&runtime.configured_adapter));
+    let child_runtime = Runtime::with_native_services(
         child_adapter,
         child_options,
         runtime.javascript.clone(),
@@ -521,7 +521,7 @@ where
             .javascript
             .invoke_with_artifacts(invocation, &runtime.local_artifacts)?
     } else {
-        runtime.adapter.invoke(invocation)?
+        runtime.configured_adapter.invoke(invocation)?
     };
     route_external_adapter_host_resolution(step, host, &mut output)?;
     let provisional_projection = build_step_output_projection(step, &output, extra_artifacts)?;

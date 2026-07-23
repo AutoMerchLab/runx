@@ -3,7 +3,7 @@ use std::io::BufReader;
 use std::process::{Command, Stdio};
 
 use runx_js_worker::protocol::{
-    InvocationLimits, MAX_CONCURRENT_INVOCATIONS, MAX_FRAME_BYTES, PROTOCOL_VERSION, WorkerRequest,
+    InvocationLimits, MAX_FRAME_BYTES, MAX_WORKER_POOL_SIZE, PROTOCOL_VERSION, WorkerRequest,
     WorkerResponse, read_frame, write_frame,
 };
 
@@ -99,7 +99,7 @@ fn packaged_worker_serves_back_to_back_invocations() -> Result<(), Box<dyn std::
     ));
 
     let rounds = 1_000_000_u64;
-    for value in 0..MAX_CONCURRENT_INVOCATIONS {
+    for value in 0..MAX_WORKER_POOL_SIZE {
         write_frame(
             &mut stdin,
             &WorkerRequest::Invoke {
@@ -121,7 +121,7 @@ fn packaged_worker_serves_back_to_back_invocations() -> Result<(), Box<dyn std::
     // One worker is one wall-time kill boundary, so requests are served in
     // order. Native pool slots provide concurrency across worker processes.
     let mut outputs = BTreeMap::new();
-    for _ in 0..MAX_CONCURRENT_INVOCATIONS {
+    for _ in 0..MAX_WORKER_POOL_SIZE {
         let Some(response) = read_frame::<WorkerResponse>(&mut stdout, MAX_FRAME_BYTES)? else {
             drop(stdin);
             drop(stdout);
@@ -147,7 +147,7 @@ fn packaged_worker_serves_back_to_back_invocations() -> Result<(), Box<dyn std::
     for value in 0..rounds {
         digest = (digest + value) % 1_000_003;
     }
-    let expected = (0..MAX_CONCURRENT_INVOCATIONS)
+    let expected = (0..MAX_WORKER_POOL_SIZE)
         .map(|value| {
             (
                 format!("invoke-{value}"),

@@ -164,7 +164,7 @@ fn enforce_response_limit(
 #[derive(Clone, Debug)]
 pub struct ReqwestHttpTransport {
     #[cfg(feature = "async-http")]
-    pub(super) client: std::sync::Arc<reqwest::Client>,
+    pub(super) client: reqwest::Client,
     #[cfg(feature = "async-http")]
     pub(super) allow_private_networks: bool,
     #[cfg(feature = "async-http")]

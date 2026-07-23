@@ -12,7 +12,7 @@ use std::net::SocketAddr;
 #[cfg(any(feature = "async-http", test))]
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[cfg(feature = "async-http")]
-use std::sync::{Arc, OnceLock};
+use std::sync::{Mutex, OnceLock};
 #[cfg(feature = "async-http")]
 use std::time::Duration;
 
@@ -44,64 +44,105 @@ const DEFAULT_SAFE_READ_RETRY_DELAY: Duration = Duration::from_millis(100);
 #[cfg(feature = "async-http")]
 const MAX_SAFE_READ_RETRY_DELAY: Duration = Duration::from_secs(2);
 #[cfg(feature = "async-http")]
-static HTTP_CLIENT_RUNTIME: OnceLock<Result<tokio::runtime::Runtime, String>> = OnceLock::new();
+static HTTP_CLIENT_RUNTIME: RetryableCell<tokio::runtime::Runtime> = RetryableCell::new();
 #[cfg(feature = "async-http")]
-static STANDARD_PUBLIC_CLIENT: OnceLock<Result<Arc<reqwest::Client>, String>> = OnceLock::new();
+const HTTP_CLIENT_PROFILE_COUNT: usize = 3;
 #[cfg(feature = "async-http")]
-static STANDARD_PRIVATE_CLIENT: OnceLock<Result<Arc<reqwest::Client>, String>> = OnceLock::new();
+static HTTP_CLIENTS: [RetryableCell<reqwest::Client>; HTTP_CLIENT_PROFILE_COUNT] =
+    [const { RetryableCell::new() }; HTTP_CLIENT_PROFILE_COUNT];
+
 #[cfg(feature = "async-http")]
-static MANAGED_AGENT_PUBLIC_CLIENT: OnceLock<Result<Arc<reqwest::Client>, String>> =
-    OnceLock::new();
+struct RetryableCell<T> {
+    value: OnceLock<T>,
+    initialize: Mutex<()>,
+}
+
+#[cfg(feature = "async-http")]
+impl<T> RetryableCell<T> {
+    const fn new() -> Self {
+        Self {
+            value: OnceLock::new(),
+            initialize: Mutex::new(()),
+        }
+    }
+
+    fn get_or_try_init<E>(&self, initialize: impl FnOnce() -> Result<T, E>) -> Result<&T, E> {
+        if let Some(value) = self.value.get() {
+            return Ok(value);
+        }
+        let _guard = self
+            .initialize
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(value) = self.value.get() {
+            return Ok(value);
+        }
+        let value = initialize()?;
+        Ok(self.value.get_or_init(|| value))
+    }
+}
+
+#[cfg(feature = "async-http")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[repr(usize)]
+enum TransportProfile {
+    PublicStandard = 0,
+    PrivateStandard = 1,
+    PublicPatient = 2,
+}
 
 #[cfg(feature = "async-http")]
 #[derive(Clone, Copy)]
-enum HttpClientProfile {
-    StandardPublic,
-    StandardPrivate,
-    ManagedAgentPublic,
+struct TransportConfig {
+    request_timeout: Duration,
+    connect_timeout: Duration,
+    allow_private_networks: bool,
+}
+
+#[cfg(feature = "async-http")]
+impl TransportProfile {
+    const fn config(self) -> TransportConfig {
+        match self {
+            Self::PublicStandard => TransportConfig {
+                request_timeout: DEFAULT_HTTP_REQUEST_TIMEOUT,
+                connect_timeout: DEFAULT_HTTP_CONNECT_TIMEOUT,
+                allow_private_networks: false,
+            },
+            Self::PrivateStandard => TransportConfig {
+                request_timeout: DEFAULT_HTTP_REQUEST_TIMEOUT,
+                connect_timeout: DEFAULT_HTTP_CONNECT_TIMEOUT,
+                allow_private_networks: true,
+            },
+            Self::PublicPatient => TransportConfig {
+                request_timeout: MANAGED_AGENT_REQUEST_TIMEOUT,
+                connect_timeout: DEFAULT_HTTP_CONNECT_TIMEOUT,
+                allow_private_networks: false,
+            },
+        }
+    }
+
+    fn cache(self) -> &'static RetryableCell<reqwest::Client> {
+        &HTTP_CLIENTS[self as usize]
+    }
 }
 
 #[cfg(feature = "async-http")]
 impl ReqwestHttpTransport {
     pub fn new() -> Result<Self, RuntimeHttpError> {
-        Self::from_profile(HttpClientProfile::StandardPublic)
+        Self::from_profile(TransportProfile::PublicStandard)
     }
 
-    fn from_profile(profile: HttpClientProfile) -> Result<Self, RuntimeHttpError> {
-        let (request_timeout, connect_timeout, allow_private_networks, client) = match profile {
-            HttpClientProfile::StandardPublic => (
-                DEFAULT_HTTP_REQUEST_TIMEOUT,
-                DEFAULT_HTTP_CONNECT_TIMEOUT,
-                false,
-                &STANDARD_PUBLIC_CLIENT,
-            ),
-            HttpClientProfile::StandardPrivate => (
-                DEFAULT_HTTP_REQUEST_TIMEOUT,
-                DEFAULT_HTTP_CONNECT_TIMEOUT,
-                true,
-                &STANDARD_PRIVATE_CLIENT,
-            ),
-            HttpClientProfile::ManagedAgentPublic => (
-                MANAGED_AGENT_REQUEST_TIMEOUT,
-                DEFAULT_HTTP_CONNECT_TIMEOUT,
-                false,
-                &MANAGED_AGENT_PUBLIC_CLIENT,
-            ),
-        };
-        let client = match client.get_or_init(|| {
-            build_http_client(request_timeout, connect_timeout, allow_private_networks)
-        }) {
-            Ok(client) => client.clone(),
-            Err(message) => {
-                return Err(RuntimeHttpError::Transport {
-                    message: message.clone(),
-                });
-            }
-        };
+    fn from_profile(profile: TransportProfile) -> Result<Self, RuntimeHttpError> {
+        let config = profile.config();
+        let client = profile
+            .cache()
+            .get_or_try_init(|| build_http_client(config))
+            .map_err(|message| RuntimeHttpError::Transport { message })?
+            .clone();
         Ok(Self {
             client,
-            allow_private_networks,
-            request_timeout,
+            allow_private_networks: config.allow_private_networks,
+            request_timeout: config.request_timeout,
         })
     }
 
@@ -111,8 +152,12 @@ impl ReqwestHttpTransport {
         connect_timeout: Duration,
         allow_private_networks: bool,
     ) -> Result<Self, RuntimeHttpError> {
-        let client = build_http_client(request_timeout, connect_timeout, allow_private_networks)
-            .map_err(|message| RuntimeHttpError::Transport { message })?;
+        let client = build_http_client(TransportConfig {
+            request_timeout,
+            connect_timeout,
+            allow_private_networks,
+        })
+        .map_err(|message| RuntimeHttpError::Transport { message })?;
         Ok(Self {
             client,
             allow_private_networks,
@@ -125,7 +170,7 @@ impl ReqwestHttpTransport {
     /// must require an operator-declared opt-in before choosing it, never as a
     /// default.
     pub fn with_private_network_access() -> Result<Self, RuntimeHttpError> {
-        Self::from_profile(HttpClientProfile::StandardPrivate)
+        Self::from_profile(TransportProfile::PrivateStandard)
     }
 
     /// Build the model-provider transport for managed-agent calls. These calls can
@@ -133,7 +178,7 @@ impl ReqwestHttpTransport {
     /// provider thinks and emits tool use, but they still keep the same public-DNS
     /// guard and short connect timeout.
     pub fn for_managed_agent() -> Result<Self, RuntimeHttpError> {
-        Self::from_profile(HttpClientProfile::ManagedAgentPublic)
+        Self::from_profile(TransportProfile::PublicPatient)
     }
 
     #[cfg(test)]
@@ -151,11 +196,7 @@ impl ReqwestHttpTransport {
 }
 
 #[cfg(feature = "async-http")]
-fn build_http_client(
-    request_timeout: Duration,
-    connect_timeout: Duration,
-    allow_private_networks: bool,
-) -> Result<Arc<reqwest::Client>, String> {
+fn build_http_client(config: TransportConfig) -> Result<reqwest::Client, String> {
     // reqwest is built with `rustls-no-provider`, so the process needs a
     // default crypto provider before a TLS client can be constructed.
     // Install ring once; an Err means another transport already set it.
@@ -166,20 +207,19 @@ fn build_http_client(
     // bytes (read_limited_response_body), so a decompression bomb stays bounded.
     let builder = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
-        .timeout(request_timeout)
-        .connect_timeout(connect_timeout)
+        .timeout(config.request_timeout)
+        .connect_timeout(config.connect_timeout)
         .gzip(true)
         .brotli(true)
         .deflate(true)
         .zstd(true);
-    let builder = if allow_private_networks {
+    let builder = if config.allow_private_networks {
         builder
     } else {
         builder.dns_resolver(GuardedDnsResolver::new(TokioDnsResolver))
     };
     builder
         .build()
-        .map(Arc::new)
         .map_err(|error| transport_error_message(&error))
 }
 
@@ -285,7 +325,7 @@ fn reqwest_headers(
 
 #[cfg(feature = "async-http")]
 async fn send_reqwest_with_safe_read_retries(
-    client: Arc<reqwest::Client>,
+    client: reqwest::Client,
     request: RuntimeHttpRequest,
     headers: reqwest::header::HeaderMap,
     response_limit: usize,
@@ -735,19 +775,16 @@ where
 
 #[cfg(feature = "async-http")]
 fn http_runtime() -> Result<&'static tokio::runtime::Runtime, RuntimeHttpError> {
-    match HTTP_CLIENT_RUNTIME.get_or_init(|| {
-        tokio::runtime::Builder::new_multi_thread()
-            .worker_threads(2)
-            .thread_name("runx-http")
-            .enable_all()
-            .build()
-            .map_err(|error| error.to_string())
-    }) {
-        Ok(runtime) => Ok(runtime),
-        Err(message) => Err(RuntimeHttpError::AsyncRuntimeUnavailable {
-            message: message.clone(),
-        }),
-    }
+    HTTP_CLIENT_RUNTIME
+        .get_or_try_init(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(2)
+                .thread_name("runx-http")
+                .enable_all()
+                .build()
+                .map_err(|error| error.to_string())
+        })
+        .map_err(|message| RuntimeHttpError::AsyncRuntimeUnavailable { message })
 }
 
 #[cfg(feature = "async-http")]
@@ -788,8 +825,8 @@ mod tests {
     use super::RuntimeHttpTransport;
     #[cfg(feature = "async-http")]
     use super::{
-        GuardedDnsResolver, ReqwestHttpTransport, STANDARD_HTTP_RESPONSE_BYTES, block_on_http,
-        http_runtime,
+        GuardedDnsResolver, ReqwestHttpTransport, STANDARD_HTTP_RESPONSE_BYTES, TransportProfile,
+        block_on_http, http_runtime,
     };
     use super::{HttpMethod, RuntimeHttpError, RuntimeHttpHeader, RuntimeHttpRequest};
     #[cfg(feature = "async-http")]
@@ -905,35 +942,51 @@ mod tests {
 
     #[test]
     #[cfg(feature = "async-http")]
-    fn canonical_http_profiles_reuse_clients_without_crossing_policy_boundaries()
-    -> Result<(), RuntimeHttpTestError> {
-        let public_first = ReqwestHttpTransport::new()?;
-        let public_second = ReqwestHttpTransport::new()?;
-        let private_first = ReqwestHttpTransport::with_private_network_access()?;
-        let private_second = ReqwestHttpTransport::with_private_network_access()?;
-        let managed_first = ReqwestHttpTransport::for_managed_agent()?;
-        let managed_second = ReqwestHttpTransport::for_managed_agent()?;
+    fn retryable_cell_does_not_memoize_transient_initialization_failure() {
+        let attempts = std::cell::Cell::new(0);
+        let cell = super::RetryableCell::new();
+        let first: Result<&u8, &str> = cell.get_or_try_init(|| {
+            attempts.set(attempts.get() + 1);
+            Err("transient")
+        });
+        let second: Result<&u8, &str> = cell.get_or_try_init(|| {
+            attempts.set(attempts.get() + 1);
+            Ok(7)
+        });
+        let third: Result<&u8, &str> = cell.get_or_try_init(|| {
+            attempts.set(attempts.get() + 1);
+            Ok(8)
+        });
 
-        assert!(std::sync::Arc::ptr_eq(
-            &public_first.client,
-            &public_second.client
-        ));
-        assert!(std::sync::Arc::ptr_eq(
-            &private_first.client,
-            &private_second.client
-        ));
-        assert!(std::sync::Arc::ptr_eq(
-            &managed_first.client,
-            &managed_second.client
-        ));
-        assert!(!std::sync::Arc::ptr_eq(
-            &public_first.client,
-            &private_first.client
-        ));
-        assert!(!std::sync::Arc::ptr_eq(
-            &public_first.client,
-            &managed_first.client
-        ));
+        assert_eq!(first, Err("transient"));
+        assert_eq!(second, Ok(&7));
+        assert_eq!(third, Ok(&7));
+        assert_eq!(attempts.get(), 2);
+    }
+
+    #[test]
+    #[cfg(feature = "async-http")]
+    fn canonical_http_profiles_populate_distinct_policy_cache_slots()
+    -> Result<(), RuntimeHttpTestError> {
+        let _public_first = ReqwestHttpTransport::new()?;
+        let _public_second = ReqwestHttpTransport::new()?;
+        let _private_first = ReqwestHttpTransport::with_private_network_access()?;
+        let _private_second = ReqwestHttpTransport::with_private_network_access()?;
+        let _managed_first = ReqwestHttpTransport::for_managed_agent()?;
+        let _managed_second = ReqwestHttpTransport::for_managed_agent()?;
+
+        let (Some(public), Some(private), Some(patient)) = (
+            TransportProfile::PublicStandard.cache().value.get(),
+            TransportProfile::PrivateStandard.cache().value.get(),
+            TransportProfile::PublicPatient.cache().value.get(),
+        ) else {
+            return Err(RuntimeHttpError::Transport {
+                message: "canonical HTTP profile client was not cached".to_owned(),
+            }
+            .into());
+        };
+        assert!(!std::ptr::eq(public, private));
+        assert!(!std::ptr::eq(public, patient));
         Ok(())
     }
 

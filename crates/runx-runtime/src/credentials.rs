@@ -3,6 +3,7 @@
 // "secrets never leak" review happens against the whole module at once.
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
+use std::sync::Arc;
 
 use runx_contracts::{
     CredentialDeliveryMode, CredentialDeliveryObservation, CredentialDeliveryObservationStatus,
@@ -11,7 +12,9 @@ use runx_contracts::{
 };
 use runx_core::policy::{CredentialBindingDecision, CredentialEnvelope};
 use serde::Deserialize;
+use subtle::ConstantTimeEq;
 use thiserror::Error;
+use zeroize::Zeroize;
 
 const REDACTED_CREDENTIAL: &str = "[redacted-credential]";
 const MAX_STRUCTURED_REDACTION_DEPTH: usize = 128;
@@ -188,11 +191,11 @@ where
             });
         }
         Ok(CredentialResolution {
-            delivery: CredentialDelivery {
-                secret_env: apply_profile(request.profile, &material)?,
-                public_observation: Some(request.observation),
-                destination_hosts: BTreeSet::new(),
-            },
+            delivery: CredentialDelivery::from_parts(
+                apply_profile(request.profile, &material)?,
+                Some(request.observation),
+                BTreeSet::new(),
+            ),
         })
     }
 }
@@ -254,7 +257,7 @@ impl ResolvedCredentialMaterial {
     }
 }
 
-#[derive(Clone, PartialEq, Eq)]
+#[derive(Clone)]
 pub struct SecretString(String);
 
 impl SecretString {
@@ -270,6 +273,20 @@ impl SecretString {
 impl fmt::Debug for SecretString {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         formatter.write_str(REDACTED_CREDENTIAL)
+    }
+}
+
+impl PartialEq for SecretString {
+    fn eq(&self, other: &Self) -> bool {
+        bool::from(self.0.as_bytes().ct_eq(other.0.as_bytes()))
+    }
+}
+
+impl Eq for SecretString {}
+
+impl Drop for SecretString {
+    fn drop(&mut self) {
+        self.0.zeroize();
     }
 }
 
@@ -297,6 +314,11 @@ impl SecretEnv {
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct CredentialDelivery {
+    inner: Arc<CredentialDeliveryState>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct CredentialDeliveryState {
     secret_env: SecretEnv,
     public_observation: Option<runx_contracts::CredentialDeliveryObservation>,
     destination_hosts: BTreeSet<String>,
@@ -304,13 +326,21 @@ pub struct CredentialDelivery {
 
 impl CredentialDelivery {
     #[must_use]
-    pub const fn none() -> Self {
+    pub fn none() -> Self {
+        Self::from_parts(SecretEnv::default(), None, BTreeSet::new())
+    }
+
+    fn from_parts(
+        secret_env: SecretEnv,
+        public_observation: Option<runx_contracts::CredentialDeliveryObservation>,
+        destination_hosts: BTreeSet<String>,
+    ) -> Self {
         Self {
-            secret_env: SecretEnv {
-                values: BTreeMap::new(),
-            },
-            public_observation: None,
-            destination_hosts: BTreeSet::new(),
+            inner: Arc::new(CredentialDeliveryState {
+                secret_env,
+                public_observation,
+                destination_hosts,
+            }),
         }
     }
 
@@ -424,9 +454,9 @@ impl CredentialDelivery {
             refs.push(credential_ref);
         }
 
-        Self {
-            secret_env: SecretEnv::default(),
-            public_observation: Some(CredentialDeliveryObservation {
+        Self::from_parts(
+            SecretEnv::default(),
+            Some(CredentialDeliveryObservation {
                 schema: runx_contracts::CredentialDeliveryObservationSchema::V1,
                 observation_id: format!("hosted-credential-delivery/{handles_id}").into(),
                 request_id: format!("hosted-credential-handles/{handles_id}").into(),
@@ -450,8 +480,8 @@ impl CredentialDelivery {
                 redaction_refs: None,
                 observed_at: crate::time::now_iso8601().into(),
             }),
-            destination_hosts: BTreeSet::new(),
-        }
+            BTreeSet::new(),
+        )
         .bind_audience(first.audience.as_deref())
     }
 
@@ -474,7 +504,7 @@ impl CredentialDelivery {
 
     #[must_use]
     pub fn secret_env(&self) -> &SecretEnv {
-        &self.secret_env
+        &self.inner.secret_env
     }
 
     pub(crate) fn bind_audience(
@@ -482,7 +512,8 @@ impl CredentialDelivery {
         audience: Option<&str>,
     ) -> Result<Self, CredentialDeliveryError> {
         if let Some(audience) = audience {
-            self.destination_hosts
+            Arc::make_mut(&mut self.inner)
+                .destination_hosts
                 .insert(credential_audience_host(audience)?);
         }
         Ok(self)
@@ -491,14 +522,14 @@ impl CredentialDelivery {
     #[must_use]
     #[cfg(feature = "async-http")]
     pub(crate) fn destination_hosts(&self) -> &BTreeSet<String> {
-        &self.destination_hosts
+        &self.inner.destination_hosts
     }
 
     pub fn reject_process_env_boundary(
         &self,
         boundary: &'static str,
     ) -> Result<(), CredentialDeliveryError> {
-        if self.secret_env.is_empty() {
+        if self.inner.secret_env.is_empty() {
             return Ok(());
         }
         Err(CredentialDeliveryError::ProcessEnvBoundaryUnsupported {
@@ -511,26 +542,30 @@ impl CredentialDelivery {
         mut self,
         observation: runx_contracts::CredentialDeliveryObservation,
     ) -> Self {
-        self.public_observation = Some(observation);
+        Arc::make_mut(&mut self.inner).public_observation = Some(observation);
         self
     }
 
     #[must_use]
     pub fn public_observation(&self) -> Option<&runx_contracts::CredentialDeliveryObservation> {
-        self.public_observation.as_ref()
+        self.inner.public_observation.as_ref()
     }
 
     #[must_use]
     pub fn credential_refs(&self) -> Option<Vec<runx_contracts::Reference>> {
-        self.public_observation.as_ref().and_then(|observation| {
-            (!observation.credential_refs.is_empty()).then(|| observation.credential_refs.clone())
-        })
+        self.inner
+            .public_observation
+            .as_ref()
+            .and_then(|observation| {
+                (!observation.credential_refs.is_empty())
+                    .then(|| observation.credential_refs.clone())
+            })
     }
 
     #[must_use]
     pub fn redact_text(&self, text: impl Into<String>) -> String {
         let mut redacted = text.into();
-        for value in self.secret_env.values.values() {
+        for value in self.inner.secret_env.values.values() {
             let secret = value.expose();
             if !secret.is_empty() {
                 redacted = redacted.replace(secret, REDACTED_CREDENTIAL);
@@ -603,7 +638,7 @@ impl CredentialDelivery {
     }
 
     fn redact_output_text_at_depth(&self, text: String, depth: usize) -> String {
-        if self.secret_env.is_empty() {
+        if self.inner.secret_env.is_empty() {
             return text;
         }
         if depth >= MAX_STRUCTURED_REDACTION_DEPTH {
@@ -1000,6 +1035,27 @@ mod tests {
             Some("ghp_secret_value")
         );
         assert!(!format!("{delivery:?}").contains("ghp_secret_value"));
+        Ok(())
+    }
+
+    #[test]
+    fn credential_delivery_clones_share_one_zeroizing_secret_owner()
+    -> Result<(), CredentialDeliveryError> {
+        let delivery = CredentialDelivery::from_local_descriptor(
+            "github",
+            "api_key",
+            "GITHUB_TOKEN",
+            "local:github:shared",
+            vec!["repo:read".to_owned()],
+            "ghp_secret_value",
+        )?;
+        let clone = delivery.clone();
+
+        assert!(Arc::ptr_eq(&delivery.inner, &clone.inner));
+        assert_eq!(
+            clone.secret_env().get("GITHUB_TOKEN"),
+            Some("ghp_secret_value")
+        );
         Ok(())
     }
 

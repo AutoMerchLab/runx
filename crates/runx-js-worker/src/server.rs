@@ -87,6 +87,9 @@ pub fn serve() -> Result<(), WorkerServerError> {
             break;
         }
 
+        // This thread exists solely to give Boa the bounded 4 MiB stack that
+        // the process main thread cannot acquire retroactively. The immediate
+        // join is intentional: one worker process executes one invocation.
         let evaluation = thread::Builder::new()
             .name("runx-js-invocation".to_owned())
             .stack_size(JAVASCRIPT_STACK_BYTES)
