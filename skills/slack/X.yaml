@@ -1,5 +1,5 @@
 skill: slack
-version: "0.2.0"
+version: "0.2.1"
 
 catalog:
   kind: graph
@@ -54,7 +54,6 @@ runners:
       cursor:
         type: string
         required: false
-        default: ""
         description: Opaque cursor returned by the preceding thread page.
     graph:
       name: slack-read-thread
@@ -92,7 +91,6 @@ runners:
       cursor:
         type: string
         required: false
-        default: ""
         description: Opaque cursor returned by the preceding thread page.
     graph:
       name: slack-read-link
