@@ -272,7 +272,13 @@ IFS= read -r _invocation
   /bin/sleep 3
   printf survived > "$RUNX_DESCENDANT_SENTINEL"
 ) &
-echo $! > "$RUNX_DESCENDANT_PIDFILE"
+child_pid=$!
+if [ -r "/proc/$child_pid/status" ]; then
+  host_pid=$(/usr/bin/awk '/^NSpid:/ { print $2 }' "/proc/$child_pid/status")
+else
+  host_pid=$child_pid
+fi
+echo "$host_pid" > "$RUNX_DESCENDANT_PIDFILE"
 /bin/sleep 10
 "#,
     )?;
@@ -949,6 +955,10 @@ runners:
   external-smoke:
     default: true
     type: external-adapter
+    inputs:
+      issue_number:
+        type: integer
+        required: true
     external_adapter:
       manifest_path: manifest.json
 "#,

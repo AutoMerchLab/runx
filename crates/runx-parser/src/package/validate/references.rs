@@ -55,7 +55,18 @@ fn collect_source_references(
             .insert(package_relative(profile_dir, module));
     }
     if source.source_type == SourceKind::CliTool {
-        collect_cli_execution_files(profile_dir, source, &mut references.execution_files);
+        collect_process_execution_files(
+            profile_dir,
+            source.command.iter().chain(&source.args),
+            &mut references.execution_files,
+        );
+    }
+    if let Some(server) = &source.server {
+        collect_process_execution_files(
+            profile_dir,
+            std::iter::once(&server.command).chain(&server.args),
+            &mut references.execution_files,
+        );
     }
     if let Some(declaration) = source.external_adapter.as_ref() {
         collect_external_adapter_files(
@@ -116,12 +127,12 @@ fn collect_external_adapter_files(
     Ok(())
 }
 
-fn collect_cli_execution_files(
+fn collect_process_execution_files<'a>(
     profile_dir: &str,
-    source: &SkillSource,
+    values: impl IntoIterator<Item = &'a String>,
     files: &mut BTreeSet<String>,
 ) {
-    for value in source.command.iter().chain(&source.args) {
+    for value in values {
         if let Some(path) = process_script_path(profile_dir, value) {
             files.insert(path);
         }

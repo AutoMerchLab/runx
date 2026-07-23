@@ -9,6 +9,7 @@ mod policy;
 mod template;
 
 use std::collections::BTreeMap;
+use std::fs::OpenOptions;
 use std::path::{Path, PathBuf};
 
 use runx_contracts::JsonObject;
@@ -18,6 +19,7 @@ use runx_parser::{SkillMcpServer, SkillSource};
 
 use crate::RuntimeError;
 
+use self::backend::SandboxRuntime;
 use self::backend::resolve_javascript_worker_runtime;
 use self::backend::resolve_sandbox_runtime;
 use self::command::javascript_worker_spawn_command;
@@ -127,6 +129,11 @@ pub fn prepare_process_sandbox(
             return Err(error);
         }
     };
+    prepare_writable_bind_sources_or_cleanup(
+        runtime.as_ref(),
+        &validated_writable_paths,
+        &cleanup_paths,
+    )?;
     let (command, args) = sandbox_spawn_command(SandboxSpawnCommand {
         runtime: runtime.as_ref(),
         command,
@@ -189,6 +196,11 @@ pub(crate) fn prepare_native_command_sandbox(
     )?;
     let mut env = sandbox_child_base_env(Some(&sandbox), &sandbox_base_env)?;
     env.extend(explicit_env.clone());
+    prepare_writable_bind_sources_or_cleanup(
+        runtime.as_ref(),
+        &validated_writable_paths,
+        &cleanup_paths,
+    )?;
     let (command, args) = sandbox_spawn_command(SandboxSpawnCommand {
         runtime: runtime.as_ref(),
         command,
@@ -310,6 +322,11 @@ pub fn prepare_mcp_process_sandbox(
             return Err(error);
         }
     };
+    prepare_writable_bind_sources_or_cleanup(
+        runtime.as_ref(),
+        &validated_writable_paths,
+        &cleanup_paths,
+    )?;
     let (command, args) = sandbox_spawn_command(SandboxSpawnCommand {
         runtime: runtime.as_ref(),
         command: server.command.clone(),
@@ -336,6 +353,63 @@ pub fn prepare_mcp_process_sandbox(
     })
 }
 
+// Bubblewrap bind sources must exist on the host. A missing exact writable path
+// is therefore materialized as a file before spawn; writable directories must
+// already exist so the runtime never guesses a broader directory grant.
+fn prepare_writable_bind_sources(
+    runtime: Option<&SandboxRuntime>,
+    writable_paths: &[PathBuf],
+) -> Result<(), RuntimeError> {
+    if !matches!(runtime, Some(SandboxRuntime::Bubblewrap { .. })) {
+        return Ok(());
+    }
+    let mut created_paths = Vec::new();
+    let result = writable_paths.iter().try_for_each(|path| {
+        if path.exists() {
+            return Ok(());
+        }
+        if !path.parent().is_some_and(Path::is_dir) {
+            return Err(RuntimeError::io(
+                format!("materializing sandbox writable file {}", path.display()),
+                std::io::Error::new(
+                    std::io::ErrorKind::NotFound,
+                    "writable file parent directory does not exist",
+                ),
+            ));
+        }
+        OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(path)
+            .map_err(|source| {
+                RuntimeError::io(
+                    format!("materializing sandbox writable file {}", path.display()),
+                    source,
+                )
+            })?;
+        created_paths.push(path.clone());
+        Ok(())
+    });
+    if result.is_err() {
+        for path in created_paths {
+            let _ignored = std::fs::remove_file(path);
+        }
+    }
+    result
+}
+
+fn prepare_writable_bind_sources_or_cleanup(
+    runtime: Option<&SandboxRuntime>,
+    writable_paths: &[PathBuf],
+    cleanup_paths: &[PathBuf],
+) -> Result<(), RuntimeError> {
+    if let Err(error) = prepare_writable_bind_sources(runtime, writable_paths) {
+        cleanup_paths_quietly(cleanup_paths);
+        return Err(error);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -352,6 +426,45 @@ mod tests {
     };
     use super::env::{cleanup_paths_quietly, prepare_sandbox_tmp_env};
     use super::policy::{resolved_writable_paths, validated_writable_paths};
+
+    #[test]
+    fn bubblewrap_materializes_a_missing_exact_writable_file() -> Result<(), String> {
+        let temp = tempfile::tempdir().map_err(|source| source.to_string())?;
+        let output = temp.path().join("output.json");
+        let runtime = SandboxRuntime::Bubblewrap {
+            path: PathBuf::from("/usr/bin/bwrap"),
+        };
+
+        prepare_writable_bind_sources(Some(&runtime), std::slice::from_ref(&output))
+            .map_err(|source| source.to_string())?;
+
+        assert!(output.is_file());
+        Ok(())
+    }
+
+    #[test]
+    fn bubblewrap_rolls_back_files_when_a_writable_parent_is_missing() -> Result<(), String> {
+        let temp = tempfile::tempdir().map_err(|source| source.to_string())?;
+        let materialized = temp.path().join("output.json");
+        let output = temp.path().join("missing/output.json");
+        let runtime = SandboxRuntime::Bubblewrap {
+            path: PathBuf::from("/usr/bin/bwrap"),
+        };
+
+        let error =
+            prepare_writable_bind_sources(Some(&runtime), &[materialized.clone(), output.clone()])
+                .err()
+                .ok_or_else(|| "missing writable parent unexpectedly materialized".to_owned())?;
+
+        assert!(
+            error
+                .to_string()
+                .contains("parent directory does not exist")
+        );
+        assert!(!materialized.exists());
+        assert!(!output.exists());
+        Ok(())
+    }
 
     #[test]
     fn writable_paths_omit_unresolved_optional_templates() {

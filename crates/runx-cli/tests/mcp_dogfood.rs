@@ -366,7 +366,11 @@ impl McpProcess {
     ) -> Result<Value, Box<dyn std::error::Error>> {
         match self.stdout.recv_timeout(timeout) {
             Ok(Ok(value)) => Ok(value),
-            Ok(Err(error)) => Err(format!("{label}: {error}").into()),
+            Ok(Err(error)) => {
+                let _ignored = self.child.kill();
+                let _ignored = self.child.wait();
+                Err(format!("{label}: {error}; stderr: {}", self.stderr_string()?).into())
+            }
             Err(RecvTimeoutError::Timeout) => {
                 let _ignored = self.child.kill();
                 Err(format!(
@@ -538,8 +542,7 @@ fn read_json_file(path: &Path) -> Result<Value, Box<dyn std::error::Error>> {
 
 fn write_unenforced_mcp_echo_skill() -> Result<TestTempDir, Box<dyn std::error::Error>> {
     let skill_dir = TestTempDir::new("runx-mcp-dogfood-skill")?;
-    let server_path = repo_root()?.join("fixtures/runtime/adapters/mcp/stdio-server.mjs");
-    let server_arg = serde_json::to_string(&server_path.display().to_string())?;
+    copy_mcp_fixture_server(skill_dir.path())?;
     fs::write(
         skill_dir.path().join("SKILL.md"),
         r#"---
@@ -552,8 +555,7 @@ Echo the provided message through a local MCP server fixture.
     )?;
     fs::write(
         skill_dir.path().join("X.yaml"),
-        format!(
-            r#"skill: mcp-echo
+        r#"skill: mcp-echo
 runners:
   default:
     default: true
@@ -561,22 +563,21 @@ runners:
     server:
       command: node
       args:
-        - {server_arg}
+        - ./stdio-server.mjs
     tool: echo
     arguments:
-      message: "{{{{message}}}}"
+      message: "{{message}}"
     timeout_seconds: 15
     sandbox:
       profile: readonly
-      cwd_policy: workspace
+      cwd_policy: skill-directory
       require_enforcement: false
     inputs:
       message:
         type: string
         required: true
         description: Message to echo through MCP
-"#
-        ),
+"#,
     )?;
     Ok(skill_dir)
 }
@@ -584,8 +585,7 @@ runners:
 fn write_workspace_env_mcp_skill(workspace: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let skill_dir = workspace.join("mcp-workspace-env");
     fs::create_dir_all(&skill_dir)?;
-    let server_path = repo_root()?.join("fixtures/runtime/adapters/mcp/stdio-server.mjs");
-    let server_arg = serde_json::to_string(&server_path.display().to_string())?;
+    copy_mcp_fixture_server(&skill_dir)?;
     fs::write(
         skill_dir.join("SKILL.md"),
         r#"---
@@ -598,8 +598,7 @@ Return the allowlisted workspace marker.
     )?;
     fs::write(
         skill_dir.join("X.yaml"),
-        format!(
-            r#"skill: mcp-workspace-env
+        r#"skill: mcp-workspace-env
 runners:
   default:
     default: true
@@ -607,21 +606,28 @@ runners:
     server:
       command: node
       args:
-        - {server_arg}
+        - ./stdio-server.mjs
     tool: env
     arguments:
       name: MCP_DOGFOOD_MARKER
     timeout_seconds: 15
     sandbox:
       profile: readonly
-      cwd_policy: workspace
+      cwd_policy: skill-directory
       env_allowlist:
         - MCP_DOGFOOD_MARKER
       require_enforcement: false
-"#
-        ),
+"#,
     )?;
     Ok(skill_dir)
+}
+
+fn copy_mcp_fixture_server(skill_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
+    fs::copy(
+        repo_root()?.join("fixtures/runtime/adapters/mcp/stdio-server.mjs"),
+        skill_dir.join("stdio-server.mjs"),
+    )?;
+    Ok(())
 }
 
 fn write_credential_mcp_skill(workspace: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {

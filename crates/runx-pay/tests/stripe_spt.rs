@@ -582,18 +582,28 @@ impl StripeSptFixture {
             &temp.path().join("quote"),
             "pay-quote",
             "Quote a Stripe SPT payment fixture.",
+            &[("payment_signal", "object")],
             Some("payment_quote_packet"),
         )?;
         write_cli_tool_skill(
             &temp.path().join("reserve"),
             "pay-reserve",
             "Reserve a Stripe SPT payment fixture.",
+            &[("payment_quote_packet", "object")],
             Some("payment_reservation_packet"),
         )?;
         write_cli_tool_skill(
             &temp.path().join("fulfill"),
             "pay-fulfill-rail",
             "Fulfill a Stripe SPT payment fixture.",
+            &[
+                ("reserved_payment_authority", "object"),
+                ("spend_capability_ref", "object"),
+                ("idempotency", "object"),
+                ("quote_packet", "object"),
+                ("payment_challenge", "object"),
+                ("rail_profile_ref", "string"),
+            ],
             Some("effect_evidence_packet"),
         )?;
         let graph_path = temp.path().join("graph.yaml");

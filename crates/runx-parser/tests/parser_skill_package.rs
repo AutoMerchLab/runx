@@ -106,7 +106,7 @@ Use this evidence when reviewing a run.
 }
 
 #[test]
-fn skill_package_tracks_declared_cli_process_scripts_outside_module_bundle() {
+fn skill_package_tracks_declared_process_scripts_outside_module_bundle() {
     let source = package([
         ("SKILL.md", manual("process-script")),
         (
@@ -119,28 +119,33 @@ runners:
     command: node
     args:
       - ./run.mjs
+  serve:
+    type: mcp
+    server:
+      command: node
+      args:
+        - ./server.mjs
+    tool: echo
 "#
             .to_owned(),
         ),
         ("run.mjs", "console.log('{}');\n".to_owned()),
+        ("server.mjs", "console.log('{}');\n".to_owned()),
     ]);
 
     let validated = validate_skill_package(source).expect("process script package must validate");
 
     assert_eq!(
         validated.execution_files,
-        BTreeSet::from(["run.mjs".to_owned()])
+        BTreeSet::from(["run.mjs".to_owned(), "server.mjs".to_owned()])
     );
     assert!(validated.javascript_modules.is_empty());
 }
 
 #[test]
-fn skill_package_rejects_missing_declared_cli_process_script() {
-    let source = package([
-        ("SKILL.md", manual("missing-process-script")),
-        (
-            "X.yaml",
-            r#"skill: missing-process-script
+fn skill_package_rejects_missing_declared_process_scripts() {
+    let manifests = [
+        r#"skill: missing-process-script
 runners:
   run:
     default: true
@@ -148,18 +153,32 @@ runners:
     command: node
     args:
       - ./missing.mjs
-"#
-            .to_owned(),
-        ),
-    ]);
+"#,
+        r#"skill: missing-process-script
+runners:
+  serve:
+    default: true
+    type: mcp
+    server:
+      command: node
+      args:
+        - ./missing.mjs
+    tool: echo
+"#,
+    ];
 
-    let error = validate_skill_package(source).expect_err("missing process script must fail");
-
-    assert!(
-        error
-            .to_string()
-            .contains("declared execution sidecar is missing")
-    );
+    for manifest in manifests {
+        let source = package([
+            ("SKILL.md", manual("missing-process-script")),
+            ("X.yaml", manifest.to_owned()),
+        ]);
+        let error = validate_skill_package(source).expect_err("missing process script must fail");
+        assert!(
+            error
+                .to_string()
+                .contains("declared execution sidecar is missing")
+        );
+    }
 }
 
 #[test]

@@ -1717,6 +1717,11 @@ impl GraphFixture {
             &fulfill_dir,
             skill_name,
             "Fulfill approved payment.",
+            &[
+                ("reserved_payment_authority", "object"),
+                ("spend_capability_ref", "object"),
+                ("idempotency", "object"),
+            ],
             Some("effect_evidence_packet"),
         )?;
         let graph_path = temp.path().join("graph.yaml");
@@ -1744,24 +1749,36 @@ impl PaidEchoFixture {
             &temp.path().join("quote"),
             "pay-quote",
             "Quote a payment fixture.",
+            &[("payment_signal", "object")],
             Some("payment_quote_packet"),
         )?;
         write_cli_tool_skill(
             &temp.path().join("reserve"),
             "pay-reserve",
             "Reserve a payment fixture.",
+            &[("payment_quote_packet", "object")],
             Some("payment_reservation_packet"),
         )?;
         write_cli_tool_skill(
             &temp.path().join("fulfill"),
             "pay-fulfill-rail",
             "Fulfill a payment fixture.",
+            &[
+                ("reserved_payment_authority", "object"),
+                ("spend_capability_ref", "object"),
+                ("idempotency", "object"),
+            ],
             Some("effect_evidence_packet"),
         )?;
         write_cli_tool_skill(
             &temp.path().join("echo"),
             "paid-echo",
             "Return the paid fixture result.",
+            &[
+                ("message", "string"),
+                ("payment_credential_ref", "string"),
+                ("payment_proof_ref", "string"),
+            ],
             None,
         )?;
         let graph_path = temp.path().join("graph.yaml");

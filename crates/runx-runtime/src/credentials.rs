@@ -603,6 +603,9 @@ impl CredentialDelivery {
     }
 
     fn redact_output_text_at_depth(&self, text: String, depth: usize) -> String {
+        if self.secret_env.is_empty() {
+            return text;
+        }
         if depth >= MAX_STRUCTURED_REDACTION_DEPTH {
             return REDACTED_CREDENTIAL.to_owned();
         }
@@ -830,6 +833,16 @@ fn truncate_utf8_string(text: &str, limit_bytes: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn credential_free_output_preserves_exact_bytes() {
+        let output = b"{\"message\":\"hello\"}\n".to_vec();
+
+        assert_eq!(
+            CredentialDelivery::none().redact_bytes_to_string(output, 64 * 1024),
+            "{\"message\":\"hello\"}\n"
+        );
+    }
 
     #[test]
     fn captured_json_uses_structured_credential_redaction() -> Result<(), Box<dyn std::error::Error>>

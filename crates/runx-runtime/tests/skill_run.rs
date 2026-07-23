@@ -2964,6 +2964,10 @@ runners:
   graph:
     default: true
     type: graph
+    inputs:
+      thread_title:
+        type: string
+        required: true
     graph:
       name: parent-board
       steps:
@@ -2986,6 +2990,10 @@ runners:
   graph:
     default: true
     type: graph
+    inputs:
+      message:
+        type: string
+        required: true
     graph:
       name: child-data
       steps:
@@ -3342,6 +3350,10 @@ runners:
   child-echo:
     default: true
     type: cli-tool
+    inputs:
+      message:
+        type: string
+        required: true
     command: node
     args:
       - run.mjs
@@ -3374,6 +3386,10 @@ runners:
   graph:
     default: true
     type: graph
+    inputs:
+      thread_title:
+        type: string
+        required: true
     graph:
       name: graph-nested-cli
       steps:
@@ -3438,6 +3454,10 @@ runners:
   child-echo:
     default: true
     type: cli-tool
+    inputs:
+      message:
+        type: string
+        required: true
     command: node
     args:
       - run.mjs
@@ -3466,6 +3486,10 @@ runners:
   graph:
     default: true
     type: graph
+    inputs:
+      thread_title:
+        type: string
+        required: true
     graph:
       name: graph-stage-cli
       steps:
@@ -3495,6 +3519,10 @@ runners:
   child-counter:
     default: true
     type: cli-tool
+    inputs:
+      count_file:
+        type: string
+        required: true
     command: node
     args:
       - run.mjs
@@ -3531,6 +3559,10 @@ runners:
   graph:
     default: true
     type: graph
+    inputs:
+      count_file:
+        type: string
+        required: true
     graph:
       name: graph-nested-cli-counter
       steps:
@@ -3559,6 +3591,10 @@ runners:
   child-cli:
     default: true
     type: cli-tool
+    inputs:
+      message:
+        type: string
+        required: true
     command: node
     args:
       - run.mjs
@@ -3588,6 +3624,10 @@ runners:
   graph:
     default: true
     type: graph
+    inputs:
+      thread_title:
+        type: string
+        required: true
     graph:
       name: graph-nested-x-yaml-cli
       steps:
