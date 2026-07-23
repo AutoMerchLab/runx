@@ -121,6 +121,11 @@ jobs:
       - name: Build release binary
         working-directory: crates
         run: cargo build --release --locked --target ${{ matrix.target }} -p runx-cli -p runx-js-worker
+      - name: Prove the optimized worker starts on the release runner
+        working-directory: crates
+        env:
+          RUNX_JS_WORKER_PATH: ${{ github.workspace }}/crates/target/${{ matrix.target }}/release/${{ matrix.worker }}
+        run: cargo test --locked -p runx-runtime --test integration 'javascript_worker::javascript_worker_reuses_a_process_without_reusing_javascript_state' -- --exact
       - name: Record deterministic module platform evidence
         shell: bash
         run: |
