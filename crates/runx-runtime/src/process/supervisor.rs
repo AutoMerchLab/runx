@@ -366,11 +366,18 @@ mod tests {
                     ]
                     .join(""),
                 ])
+                .env(windows_process_env())
                 .timeout(Some(Duration::from_millis(250))),
         )
         .map_err(|error| error.to_string())?;
 
-        assert!(outcome.timed_out);
+        if !outcome.timed_out {
+            return Err(format!(
+                "Windows timeout fixture exited early with {}: {}",
+                outcome.status,
+                String::from_utf8_lossy(&outcome.stderr.bytes)
+            ));
+        }
         let descendant = output_pid(&outcome)?;
         assert_process_exits(&node, descendant)
     }
@@ -392,14 +399,29 @@ mod tests {
                     ]
                     .join(""),
                 ])
+                .env(windows_process_env())
                 .timeout(Some(Duration::from_secs(5))),
         )
         .map_err(|error| error.to_string())?;
 
-        assert!(!outcome.timed_out);
-        assert!(outcome.status.success());
+        if outcome.timed_out || !outcome.status.success() {
+            return Err(format!(
+                "Windows root-exit fixture failed with {} (timed_out={}): {}",
+                outcome.status,
+                outcome.timed_out,
+                String::from_utf8_lossy(&outcome.stderr.bytes)
+            ));
+        }
         let descendant = output_pid(&outcome)?;
         assert_process_exits(&node, descendant)
+    }
+
+    #[cfg(windows)]
+    fn windows_process_env() -> std::collections::BTreeMap<String, String> {
+        ["PATH", "SystemRoot", "PATHEXT"]
+            .into_iter()
+            .filter_map(|key| std::env::var(key).ok().map(|value| (key.to_owned(), value)))
+            .collect()
     }
 
     #[cfg(windows)]

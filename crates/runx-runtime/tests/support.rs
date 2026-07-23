@@ -166,11 +166,11 @@ fn process_is_terminal(pid: i32) -> bool {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         let path = format!("/proc/{pid}/stat");
-        return std::fs::read_to_string(path)
+        std::fs::read_to_string(path)
             .ok()
             .and_then(|stat| stat.rsplit_once(") ").map(|(_, tail)| tail.to_owned()))
             .and_then(|tail| tail.chars().next())
-            .is_some_and(|state| matches!(state, 'Z' | 'X'));
+            .is_some_and(|state| matches!(state, 'Z' | 'X'))
     }
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
