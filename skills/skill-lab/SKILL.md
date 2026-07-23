@@ -93,10 +93,11 @@ approval rules.
 - Express orchestration through `X.yaml`; keep all static agent operating
   knowledge and task contracts in `SKILL.md`. Never put model instructions in
   manifests, fixtures, or duplicated prompt fragments.
-- Declare any harness-only executable support file explicitly in
-  `harness.files` using a normalized profile-relative path under `fixtures/`.
-  Runx never guesses dependencies from arbitrary harness input strings; do not
-  turn the declaration into a second source tree or include unconsumed helpers.
+- Declare every harness-only support file explicitly in `harness.files` using a
+  normalized profile-relative path under `fixtures/`. Runx stages only those
+  declared files into the isolated harness workspace; it never guesses
+  dependencies from arbitrary input strings. Do not turn the declaration into
+  a second source tree or include unconsumed helpers.
 - Put every typed output and packet contract on the step that actually produces
   it. A graph runner is composition and its receipt proves that composition; it
   must not declare a second runner-level `outputs` or `artifacts` contract with

@@ -156,6 +156,7 @@ pub(super) fn execute_process_skill_run(
             summary: format!("{} {} completed", source_type.as_str(), runner.name),
             disposition,
         },
+        None,
         receipts.signature_config(),
         workspace.env(),
     )?;

@@ -81,6 +81,7 @@ pub fn step_receipt_with_authority_grant_refs(
         &projection,
         authority_grant_refs,
         Vec::new(),
+        None,
         RuntimeReceiptSignaturePolicy::local_development(),
     )
 }
@@ -136,6 +137,7 @@ pub(crate) fn step_receipt_with_disposition_and_policy(
         &projection,
         Vec::new(),
         Vec::new(),
+        None,
         signature_policy,
     )
 }
@@ -145,6 +147,7 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
     projection: &StepOutputProjection,
     authority_grant_refs: Vec<Reference>,
     authority_scope_refs: Vec<Reference>,
+    receipt_metadata: Option<JsonObject>,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<Receipt, RuntimeError> {
     let StepReceiptWithDisposition {
@@ -196,6 +199,7 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
         previous: None,
     });
     bind_step_output_identity(&mut receipt, output)?;
+    receipt.metadata = receipt_metadata;
     seal_receipt_unvalidated(&mut receipt, signature_policy)?;
     Ok(receipt)
 }
@@ -217,6 +221,9 @@ pub(crate) struct StepSeal<'a> {
     pub(crate) authority_scope_refs: Vec<Reference>,
     pub(crate) operator_refs: Vec<Reference>,
     pub(crate) closure: Option<StepSealClosure>,
+    /// Runtime-authored, public receipt metadata. Adapter-owned `output.metadata`
+    /// is deliberately not copied wholesale across this trust boundary.
+    pub(crate) receipt_metadata: Option<JsonObject>,
 }
 
 /// A step's own disposition, reason, and summary when it does not derive them
@@ -256,6 +263,7 @@ pub(crate) fn seal_step(
         authority_scope_refs,
         operator_refs,
         closure,
+        receipt_metadata,
     } = params;
     let StepSealClosure {
         disposition,
@@ -290,6 +298,7 @@ pub(crate) fn seal_step(
         &projection,
         authority_grant_refs,
         authority_scope_refs,
+        receipt_metadata,
         signature_policy,
     )
 }

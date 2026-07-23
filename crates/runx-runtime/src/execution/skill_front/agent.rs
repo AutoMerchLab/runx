@@ -17,6 +17,8 @@ use crate::config::ManagedAgentConfig;
 use crate::effects::RuntimeEffectRegistry;
 use crate::execution::orchestrator::SkillRunRequest;
 use crate::journal::{PausedRunCheckpoint, append_paused_run_checkpoint};
+#[cfg(feature = "agent")]
+use crate::receipts::StepSealClosure;
 use crate::receipts::{DomainActReceiptRequest, domain_act_receipt};
 use crate::services::{ReceiptServices, WorkspaceEnv};
 use runx_parser::{SkillRunnerDefinition, SkillRunnerManifest};
@@ -38,7 +40,7 @@ pub(super) struct AgentSkillExecutionContext<'a> {
 // public skill output envelope.
 pub(super) fn execute_agent_skill_run(
     context: AgentSkillExecutionContext<'_>,
-    invocation: SkillInvocation,
+    mut invocation: SkillInvocation,
 ) -> Result<JsonValue, SkillRunError> {
     let AgentSkillExecutionContext {
         request,
@@ -51,7 +53,11 @@ pub(super) fn execute_agent_skill_run(
     } = context;
     let source_type = agent_invocation_source_type(runner.source.source_type.as_str())?;
     let request_id = agent_act_invocation_id(&invocation, source_type);
-    let run_id = agent_run_id(request, &request_id)?;
+    let run_id = agent_run_id(request, manifest, runner, &request_id)?;
+    invocation.env.insert(
+        crate::execution::runner::RUNX_RUN_ID_ENV.to_owned(),
+        run_id.clone(),
+    );
     let resolution_request = agent_request(&invocation, source_type)?;
 
     // Seeded answers (inline, single pass) take priority over the file-based
@@ -68,6 +74,18 @@ pub(super) fn execute_agent_skill_run(
                 match try_inline_agent_resolution(&invocation, &request.managed_agent, effects)? {
                     #[cfg(feature = "agent")]
                     InlineAgentOutcome::Resolved { payload, effect } => (payload, effect),
+                    #[cfg(feature = "agent")]
+                    InlineAgentOutcome::Failed(error) => {
+                        return seal_managed_agent_failure(ManagedAgentFailureContext {
+                            request,
+                            workspace,
+                            receipts,
+                            manifest,
+                            runner,
+                            run_id: &run_id,
+                            error: &error,
+                        });
+                    }
                     InlineAgentOutcome::HostDrives => {
                         write_paused_agent_checkpoint(
                             request,
@@ -191,6 +209,10 @@ enum InlineAgentOutcome {
         payload: JsonValue,
         effect: Option<JsonValue>,
     },
+    /// The explicitly opted-in loop ran but failed within a bounded native
+    /// boundary. The caller seals this outcome so local history cannot lose it.
+    #[cfg(feature = "agent")]
+    Failed(crate::adapters::agent::AgentResolverError),
     /// No in-process provider is configured; yield to the host loop.
     HostDrives,
 }
@@ -234,9 +256,10 @@ fn try_inline_agent_resolution(
             max_rounds,
         },
     );
-    let resolution = resolver
-        .resolve(request)
-        .map_err(|error| SkillRunError::Invalid(error.sanitized_message().to_owned()))?;
+    let resolution = match resolver.resolve(request) {
+        Ok(resolution) => resolution,
+        Err(error) => return Ok(InlineAgentOutcome::Failed(error)),
+    };
     Ok(InlineAgentOutcome::Resolved {
         payload: resolution.response.payload,
         effect: resolution.governed_effect,
@@ -266,6 +289,67 @@ fn managed_agent_attempt(
         .map(|config| (max_rounds, source_type, config)))
 }
 
+#[cfg(feature = "agent")]
+struct ManagedAgentFailureContext<'a> {
+    request: &'a SkillRunRequest,
+    workspace: &'a WorkspaceEnv,
+    receipts: &'a ReceiptServices,
+    manifest: &'a SkillRunnerManifest,
+    runner: &'a SkillRunnerDefinition,
+    run_id: &'a str,
+    error: &'a crate::adapters::agent::AgentResolverError,
+}
+
+#[cfg(feature = "agent")]
+fn seal_managed_agent_failure(
+    context: ManagedAgentFailureContext<'_>,
+) -> Result<JsonValue, SkillRunError> {
+    let payload = context.error.public_failure_projection();
+    let metadata = context.error.receipt_metadata();
+    let payload = JsonValue::Object(payload);
+    let stdout = serde_json::to_string(&payload).map_err(|error| {
+        SkillRunError::Invalid(format!(
+            "failed to serialize managed-agent failure: {error}"
+        ))
+    })?;
+    let output = SkillOutput {
+        status: InvocationStatus::Failure,
+        stdout,
+        stderr: context.error.sanitized_message().to_owned(),
+        exit_code: None,
+        duration_ms: 0,
+        metadata,
+    };
+    let reason_code = format!("managed_agent_{}", context.error.reason_code());
+    let receipt = super::seal_skill_output(
+        context.run_id,
+        context.runner,
+        &output,
+        StepSealClosure {
+            disposition: ClosureDisposition::Failed,
+            reason_code,
+            summary: format!("managed agent failed ({})", context.error.reason_code()),
+        },
+        Some(context.error.receipt_metadata()),
+        context.receipts.signature_config(),
+        context.workspace.env(),
+    )?;
+    write_skill_receipt(
+        context.request,
+        context.workspace,
+        context.receipts,
+        &receipt,
+    )?;
+    Ok(JsonValue::Object(sealed_output(
+        context.manifest,
+        context.run_id,
+        &output,
+        &payload,
+        &receipt,
+        contract_json_value(&receipt)?,
+    )))
+}
+
 #[cfg(not(feature = "agent"))]
 fn try_inline_agent_resolution(
     _invocation: &SkillInvocation,
@@ -275,7 +359,12 @@ fn try_inline_agent_resolution(
     Ok(InlineAgentOutcome::HostDrives)
 }
 
-fn agent_run_id(request: &SkillRunRequest, request_id: &str) -> Result<String, SkillRunError> {
+fn agent_run_id(
+    request: &SkillRunRequest,
+    manifest: &SkillRunnerManifest,
+    runner: &SkillRunnerDefinition,
+    request_id: &str,
+) -> Result<String, SkillRunError> {
     match (&request.run_id, &request.answers_path) {
         (Some(run_id), Some(_)) => Ok(run_id.clone()),
         (Some(_), None) => Err(invalid(
@@ -284,7 +373,41 @@ fn agent_run_id(request: &SkillRunRequest, request_id: &str) -> Result<String, S
         (None, Some(_)) => Err(invalid(
             "skill continuation requires both run_id and answers",
         )),
-        (None, None) => Ok(format!("run_{}", identifier_segment(request_id))),
+        (None, None) => {
+            let identity = JsonValue::Object(JsonObject::from([
+                (
+                    "schema".to_owned(),
+                    JsonValue::String("runx.agent_run_identity.v1".to_owned()),
+                ),
+                (
+                    "skill".to_owned(),
+                    JsonValue::String(
+                        manifest
+                            .skill
+                            .clone()
+                            .unwrap_or_else(|| runner.name.clone()),
+                    ),
+                ),
+                ("runner".to_owned(), JsonValue::String(runner.name.clone())),
+                (
+                    "request_id".to_owned(),
+                    JsonValue::String(request_id.to_owned()),
+                ),
+                (
+                    "inputs".to_owned(),
+                    JsonValue::Object(request.inputs.clone()),
+                ),
+            ]));
+            let identity = serde_json::to_vec(&identity).map_err(|error| {
+                invalid(format!("failed to derive agent run identity: {error}"))
+            })?;
+            let digest = runx_contracts::sha256_prefixed(&identity);
+            let suffix = digest
+                .strip_prefix("sha256:")
+                .and_then(|value| value.get(..16))
+                .ok_or_else(|| invalid("failed to derive agent run identity digest"))?;
+            Ok(format!("run_{}_{}", identifier_segment(request_id), suffix))
+        }
     }
 }
 
@@ -309,5 +432,103 @@ fn agent_skill_output(
         exit_code: succeeded.then_some(0),
         duration_ms: 0,
         metadata: verification_metadata,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "agent")]
+    mod managed_agent {
+
+        use super::super::*;
+        use crate::LocalReceiptStore;
+        use crate::adapters::agent::{
+            AgentExecutionTelemetry, AgentResolverError, AgentToolExecutionTrace,
+        };
+        use crate::journal::{HistoryFilter, list_local_history};
+        use runx_parser::{parse_runner_manifest_yaml, validate_runner_manifest};
+
+        #[test]
+        fn managed_agent_failure_is_sealed_and_visible_in_local_history()
+        -> Result<(), Box<dyn std::error::Error>> {
+            let temp = tempfile::tempdir()?;
+            let receipt_dir = temp.path().join("receipts");
+            let skill_dir = temp.path().join("skill");
+            std::fs::create_dir_all(&skill_dir)?;
+            let manifest = validate_runner_manifest(parse_runner_manifest_yaml(
+                r#"skill: managed-agent-failure-fixture
+runners:
+  managed-agent-failure:
+    default: true
+    type: agent
+"#,
+            )?)?;
+            let runner = manifest
+                .runners
+                .get("managed-agent-failure")
+                .ok_or("fixture runner missing")?;
+            let request = SkillRunRequest {
+                skill_path: skill_dir,
+                receipt_dir: Some(receipt_dir.clone()),
+                run_id: None,
+                answers_path: None,
+                inputs: Default::default(),
+                env: Default::default(),
+                cwd: temp.path().to_path_buf(),
+                managed_agent: Default::default(),
+                local_credential: None,
+            };
+            let workspace = WorkspaceEnv::new(Default::default(), temp.path().to_path_buf());
+            let receipts = ReceiptServices::from_env_or_local_development(workspace.env())?;
+            let error = AgentResolverError::bounded_failure(
+                "round_budget_exhausted",
+                "Managed agent exceeded 3 tool-call rounds without finalizing.",
+                AgentExecutionTelemetry {
+                    rounds: Some(3),
+                    model_calls: Some(3),
+                    tool_calls: Some(3),
+                    tools: Some(vec!["fs.read".to_owned()]),
+                    tool_executions: Some(vec![AgentToolExecutionTrace {
+                        tool: "fs.read".to_owned(),
+                        status: "success".to_owned(),
+                        receipt_id: None,
+                        resolution_kind: None,
+                    }]),
+                },
+            );
+
+            let output = seal_managed_agent_failure(ManagedAgentFailureContext {
+                request: &request,
+                workspace: &workspace,
+                receipts: &receipts,
+                manifest: &manifest,
+                runner,
+                run_id: "run_managed-agent-failure",
+                error: &error,
+            })?;
+
+            let output_json = serde_json::to_string(&output)?;
+            assert!(output_json.contains("\"status\":\"sealed\""));
+            assert!(output_json.contains("\"reason_code\":\"round_budget_exhausted\""));
+            assert!(output_json.contains("\"rounds\":3"));
+            assert!(output_json.contains("\"model_calls\":3"));
+            assert!(!output_json.contains("prompt"));
+            assert!(!output_json.contains("credential"));
+            let history = list_local_history(
+                &LocalReceiptStore::new(&receipt_dir),
+                temp.path(),
+                &temp.path().join(".runx"),
+                &HistoryFilter::default(),
+            )?;
+            assert_eq!(history.receipts.len(), 1);
+            assert_eq!(history.receipts[0].status, "failed");
+            assert!(
+                history.receipts[0]
+                    .summary
+                    .contains("round_budget_exhausted")
+            );
+            assert!(history.pending_runs.is_empty());
+            Ok(())
+        }
     }
 }

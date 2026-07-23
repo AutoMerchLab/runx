@@ -246,8 +246,13 @@ impl<T: RuntimeHttpTransport + Clone> AgentResolver for AnthropicAgentResolver<T
             max_empty_turn_resamples: MAX_EMPTY_TURN_RESAMPLES,
             final_result_tool: FINAL_RESULT_TOOL.to_owned(),
         };
-        run_agent_loop(&config, &model, &executor, prompt)
-            .map_err(|error| AgentResolverError::sanitized(error.to_string()))
+        run_agent_loop(&config, &model, &executor, prompt).map_err(|error| {
+            AgentResolverError::bounded_failure(
+                error.reason().as_str(),
+                error.sanitized_message(),
+                error.telemetry().clone(),
+            )
+        })
     }
 }
 

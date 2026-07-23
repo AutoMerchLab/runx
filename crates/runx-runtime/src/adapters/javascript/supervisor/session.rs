@@ -23,6 +23,7 @@ const WORKER_START_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(super) struct WorkerSession {
     child: Mutex<Option<Child>>,
+    _active_process: crate::interrupt::ActiveProcessGroup,
     stdin: Mutex<Option<ChildStdin>>,
     pending: Arc<Mutex<PendingResponses>>,
     stderr: Arc<Mutex<BoundedStderr>>,
@@ -35,6 +36,8 @@ pub(super) struct WorkerSession {
 
 impl WorkerSession {
     pub(super) fn start(max_concurrency: usize) -> Result<Self, RuntimeError> {
+        crate::process::ensure_host_process_containment()
+            .map_err(|source| RuntimeError::io("installing host process containment", source))?;
         let worker_path = resolve_worker_path()?;
         let sandbox =
             crate::sandbox::prepare_javascript_worker_sandbox(&worker_path)?.into_process_plan();
@@ -53,6 +56,8 @@ impl WorkerSession {
             .stderr(Stdio::piped());
         crate::process::configure_process_group(&mut command);
         let mut starting = spawn_child(command)?;
+        let active_process =
+            crate::interrupt::ActiveProcessGroup::register(starting.child_mut()?.id());
         let stdin =
             starting.child_mut()?.stdin.take().ok_or_else(|| {
                 worker_error("deterministic JavaScript worker stdin was not piped")
@@ -70,6 +75,7 @@ impl WorkerSession {
         let stderr = Arc::new(Mutex::new(BoundedStderr::default()));
         let mut session = Self {
             child: Mutex::new(Some(starting.take()?)),
+            _active_process: active_process,
             stdin: Mutex::new(Some(stdin)),
             pending: pending.clone(),
             stderr: stderr.clone(),

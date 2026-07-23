@@ -126,6 +126,10 @@ agent execution requires explicit per-run `--managed-agent` consent, displays
 the act count and round budget before execution, and remains bounded. Available
 model credentials are capability, not consent. A review must not spend model
 tokens merely to prove a deterministic boundary or a supplied-answer contract.
+Every managed run records logical rounds, actual model calls, tool-call counts,
+and bounded tool statuses. A provider, tool, empty-turn, or round-budget failure
+is sealed into local history with a sanitized reason and exits nonzero; prompts,
+credentials, and raw provider or tool bodies are never failure telemetry.
 
 Prepared context is always digest-bound and drift-checked, but it is not always
 an approval gate. Safe reads, analysis, planning, and artifact generation are

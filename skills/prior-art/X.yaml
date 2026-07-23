@@ -1,5 +1,5 @@
 skill: prior-art
-version: "0.2.1"
+version: "0.2.2"
 catalog:
   kind: graph
   audience: builder
@@ -10,10 +10,14 @@ catalog:
   requires_adapter: false
   approval: none
 harness:
+  files:
+    - fixtures/workspace/skills/moltbook/SKILL.md
+    - fixtures/workspace/skills/moltbook/X.yaml
   cases:
     - name: prior-art-recommends-catalog-reuse
       inputs:
         objective: Add a Moltbook opportunity scan to an existing governed pipeline.
+        repo_root: fixtures/workspace
         source_paths:
           - skills/moltbook/X.yaml
         decomposition:
@@ -81,6 +85,7 @@ harness:
     - name: prior-art-missing-source-stops
       inputs:
         objective: Verify a nonexistent local design note.
+        repo_root: fixtures/workspace
         source_paths:
           - docs/does-not-exist.md
       caller:
@@ -152,6 +157,11 @@ runners:
         type: json
         required: false
         description: Bounded repo-relative files to inspect in addition to catalog manifests derived from decomposition.
+      repo_root:
+        type: string
+        required: false
+        default: .
+        description: Workspace root used for native catalog and bounded file inspection.
     graph:
       name: prior-art
       steps:
@@ -177,14 +187,14 @@ runners:
           scopes:
             - fs.read
           inputs:
-            repo_root: .
+            repo_root: $input.repo_root
         - id: read
           label: read and digest the bounded source set
           tool: fs.read_bundle
           scopes:
             - fs.read
           inputs:
-            repo_root: .
+            repo_root: $input.repo_root
             max_bytes: 262144
             on_missing: report
           context:

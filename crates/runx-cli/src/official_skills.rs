@@ -67,7 +67,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/ecosystem-brief",
-        version: "sha-a1d448438c40",
+        version: "sha-e4a748fe147b",
         digest: "e8a138e6c05bb8f51c0012733e43aa6f7756aacb7f4c3c6c67282e4a663b099d",
     },
     OfficialSkillLockEntry {
@@ -77,7 +77,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/ghostwrite",
-        version: "sha-2037027913a0",
+        version: "sha-d52e2e35857e",
         digest: "037e4ebc23cdb31bdaa14b498ea705ceb23764efba0904eb743915f1fbf48ef9",
     },
     OfficialSkillLockEntry {
@@ -237,7 +237,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/prior-art",
-        version: "sha-797940512288",
+        version: "sha-9d3b5be81123",
         digest: "4aa9584eaa2611908cb2f676b2d81149893f0e0778e974434ab615e95e053c21",
     },
     OfficialSkillLockEntry {
@@ -277,7 +277,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/run-history",
-        version: "sha-0a001ba64fd8",
+        version: "sha-60e6f667dacc",
         digest: "6a87c41e9a7bfb26632be26efbc04de8a7f455de6d766553138505b394e051ce",
     },
     OfficialSkillLockEntry {
@@ -302,8 +302,8 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/skill-lab",
-        version: "sha-49e3021e0480",
-        digest: "dc6acfb5b149b25bb761ae397ae4ccd6c11e33c0c9c21c1c5fb71ee073adcd6a",
+        version: "sha-7d7518ffc72d",
+        digest: "efe91eb333081d1d59463721bf501287d0e68c711c7eee9ebf162f6ce0bbb4ed",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/slack",
@@ -382,7 +382,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/work-plan",
-        version: "sha-c7b49dc5e418",
+        version: "sha-ef6db9424c57",
         digest: "0c4b3cbe546a009c917a9fb4b3fd380db7c147c816438f742b46b3ec3c7ae6eb",
     },
     OfficialSkillLockEntry {

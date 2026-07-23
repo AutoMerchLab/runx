@@ -92,7 +92,8 @@ For remote publishes the CLI sends a bounded skill package:
   - nested `SKILL.md` / `X.yaml` files for graph stages, context skills, and
     local sub-skills called by the graph;
   - harness-only support files explicitly declared in `harness.files`, confined
-    to the owning profile's `fixtures/` directory;
+    to the owning profile's `fixtures/` directory and staged profile-relative
+    into the isolated harness workspace;
   - `references/**/*.md` advisory markdown;
   - bundled tool manifests and their complete static local source closure.
 

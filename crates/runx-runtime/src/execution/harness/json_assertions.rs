@@ -11,7 +11,7 @@ pub(super) fn parse_json_maybe(value: &str) -> JsonValue {
     serde_json::from_str(trimmed).unwrap_or_else(|_| JsonValue::String(trimmed.to_owned()))
 }
 
-pub(super) fn assert_json_expectation(
+pub(crate) fn assert_json_expectation(
     expectation: &HarnessJsonExpectation,
     actual: &JsonValue,
     field: &str,

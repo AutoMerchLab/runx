@@ -26,6 +26,7 @@ default = []
 
 [dependencies]
 base64 = "0.22.1"
+ctrlc = "3.5.2"
 ring = "0.17.14"
 runx-contracts.workspace = true
 runx-parser.workspace = true
@@ -38,6 +39,7 @@ url.workspace = true
 
 [dev-dependencies]
 rusqlite = { version = "0.40.1", default-features = false, features = ["bundled"] }
+rustix = { version = "1.1.4", features = ["process"] }
 
 [[bin]]
 name = "runx"

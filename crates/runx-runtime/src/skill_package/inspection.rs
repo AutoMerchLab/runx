@@ -1,4 +1,5 @@
-use std::path::Path;
+use std::collections::BTreeSet;
+use std::path::{Component, Path, PathBuf};
 
 use runx_contracts::{JsonObject, JsonValue};
 use runx_parser::{
@@ -88,6 +89,9 @@ fn base_inspection(loaded: &LoadedSkillPackage) -> JsonObject {
         if let Some(capabilities) = manifest.catalog.as_ref().and_then(catalog_capabilities) {
             output.insert("capabilities".to_owned(), capabilities);
         }
+        if let Some(catalog) = manifest.catalog.as_ref() {
+            output.insert("catalog".to_owned(), inspect_catalog(catalog));
+        }
         output.insert(
             "runners".to_owned(),
             JsonValue::Array(
@@ -111,6 +115,10 @@ fn append_runner_inspection(
     runner: &SkillRunnerDefinition,
 ) -> Result<(), String> {
     output.insert("runner".to_owned(), inspect_runner(runner)?);
+    output.insert(
+        "execution_closure".to_owned(),
+        inspect_execution_closure(loaded, runner)?,
+    );
     output.insert(
         "readiness".to_owned(),
         JsonValue::Object(JsonObject::from([(
@@ -143,6 +151,322 @@ fn append_runner_inspection(
         ])),
     );
     Ok(())
+}
+
+fn inspect_catalog(catalog: &CatalogMetadata) -> JsonValue {
+    let mut output = JsonObject::from([
+        (
+            "kind".to_owned(),
+            JsonValue::String(catalog.kind.as_str().to_owned()),
+        ),
+        (
+            "audience".to_owned(),
+            JsonValue::String(catalog.audience.as_str().to_owned()),
+        ),
+        (
+            "visibility".to_owned(),
+            JsonValue::String(catalog.visibility.as_str().to_owned()),
+        ),
+        (
+            "role".to_owned(),
+            JsonValue::String(catalog.role.as_str().to_owned()),
+        ),
+    ]);
+    if let Some(canonical_skill) = &catalog.canonical_skill {
+        output.insert(
+            "canonical_skill".to_owned(),
+            JsonValue::String(canonical_skill.clone()),
+        );
+    }
+    if let Some(provider) = &catalog.provider {
+        output.insert("provider".to_owned(), JsonValue::String(provider.clone()));
+    }
+    if let Some(runtime_path) = &catalog.runtime_path {
+        output.insert(
+            "runtime_path".to_owned(),
+            JsonValue::String(runtime_path.clone()),
+        );
+    }
+    JsonValue::Object(output)
+}
+
+#[derive(Default)]
+struct ExecutionClosure {
+    components: BTreeSet<String>,
+    skill_edges: BTreeSet<String>,
+    profiles: BTreeSet<String>,
+    agent_acts: usize,
+    declared_artifact: bool,
+}
+
+fn inspect_execution_closure(
+    loaded: &LoadedSkillPackage,
+    runner: &SkillRunnerDefinition,
+) -> Result<JsonValue, String> {
+    let mut closure = ExecutionClosure::default();
+    let mut visited = BTreeSet::new();
+    walk_runner_execution(loaded, "X.yaml", runner, &mut closure, &mut visited)?;
+    let components = closure.components.into_iter().collect::<Vec<_>>();
+    let summary = execution_summary(&components, closure.agent_acts, closure.declared_artifact);
+    let agent_acts = u64::try_from(closure.agent_acts).unwrap_or(u64::MAX);
+    Ok(JsonValue::Object(JsonObject::from([
+        ("summary".to_owned(), JsonValue::String(summary)),
+        (
+            "components".to_owned(),
+            JsonValue::Array(components.into_iter().map(JsonValue::String).collect()),
+        ),
+        (
+            "skill_edges".to_owned(),
+            JsonValue::Array(
+                closure
+                    .skill_edges
+                    .into_iter()
+                    .map(JsonValue::String)
+                    .collect(),
+            ),
+        ),
+        (
+            "agent_acts".to_owned(),
+            JsonValue::Number(runx_contracts::JsonNumber::U64(agent_acts)),
+        ),
+        (
+            "declared_artifact".to_owned(),
+            JsonValue::Bool(closure.declared_artifact),
+        ),
+        (
+            "profiles".to_owned(),
+            JsonValue::Array(
+                closure
+                    .profiles
+                    .into_iter()
+                    .map(JsonValue::String)
+                    .collect(),
+            ),
+        ),
+    ])))
+}
+
+fn walk_runner_execution(
+    loaded: &LoadedSkillPackage,
+    profile_path: &str,
+    runner: &SkillRunnerDefinition,
+    closure: &mut ExecutionClosure,
+    visited: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    let identity_directory = loaded.directory.canonicalize().map_err(|error| {
+        format!(
+            "canonicalizing inspected skill {}: {error}",
+            loaded.directory.display()
+        )
+    })?;
+    let identity = format!("{}#{}", identity_directory.display(), runner.name);
+    if !visited.insert(identity) {
+        return Ok(());
+    }
+    closure
+        .profiles
+        .insert(format!("{profile_path}#{}", runner.name));
+    walk_source_execution(
+        loaded,
+        profile_path,
+        &runner.source,
+        runner.artifacts.is_some(),
+        closure,
+        visited,
+    )?;
+    Ok(())
+}
+
+fn walk_source_execution(
+    loaded: &LoadedSkillPackage,
+    profile_path: &str,
+    source: &runx_parser::SkillSource,
+    declared_artifact: bool,
+    closure: &mut ExecutionClosure,
+    visited: &mut BTreeSet<String>,
+) -> Result<(), String> {
+    match source.source_type {
+        SourceKind::Graph => {
+            let graph = source
+                .graph
+                .as_ref()
+                .ok_or_else(|| "graph source omitted its validated graph".to_owned())?;
+            for step in &graph.steps {
+                if let Some(tool) = &step.tool {
+                    closure.components.insert(format!("tool:{tool}"));
+                }
+                if let Some(reference) = &step.skill {
+                    if let Some(nested) = load_local_referenced_skill(loaded, reference)? {
+                        let nested_profile = nested_profile_path(profile_path, reference)?;
+                        let nested_runner = select_inspection_runner(
+                            nested.manifest().ok_or_else(|| {
+                                format!(
+                                    "sub-skill {} has no executable manifest",
+                                    nested.directory.display()
+                                )
+                            })?,
+                            step.runner.as_deref(),
+                        )
+                        .cloned()
+                        .ok_or_else(|| {
+                            format!(
+                                "sub-skill {} has no selected runner for step {}",
+                                nested.directory.display(),
+                                step.id
+                            )
+                        })?;
+                        closure.skill_edges.insert(format!(
+                            "{}#{}",
+                            nested.package.skill.name, nested_runner.name
+                        ));
+                        walk_runner_execution(
+                            &nested,
+                            &nested_profile,
+                            &nested_runner,
+                            closure,
+                            visited,
+                        )?;
+                    } else {
+                        closure.skill_edges.insert(format!(
+                            "{reference}#{}",
+                            step.runner.as_deref().unwrap_or("default")
+                        ));
+                    }
+                }
+                if let Some(run) = &step.run
+                    && let Some(run_source) = run.source()
+                {
+                    walk_source_execution(
+                        loaded,
+                        profile_path,
+                        run_source,
+                        step.artifacts.is_some(),
+                        closure,
+                        visited,
+                    )?;
+                }
+            }
+        }
+        SourceKind::Agent | SourceKind::AgentStep => {
+            closure.agent_acts = closure.agent_acts.saturating_add(1);
+            closure.declared_artifact |= declared_artifact;
+        }
+        SourceKind::JavaScript => {
+            closure.components.insert("javascript".to_owned());
+        }
+        SourceKind::CliTool => {
+            let component = source.command.as_deref().map_or_else(
+                || "cli-tool".to_owned(),
+                |command| format!("cli-tool:{command}"),
+            );
+            closure.components.insert(component);
+        }
+        SourceKind::Mcp => {
+            let component = source
+                .tool
+                .as_deref()
+                .map_or_else(|| "mcp".to_owned(), |tool| format!("mcp:{tool}"));
+            closure.components.insert(component);
+        }
+        SourceKind::A2a => {
+            closure.components.insert("a2a".to_owned());
+        }
+        SourceKind::ExternalAdapter => {
+            closure.components.insert("external-adapter".to_owned());
+        }
+        SourceKind::ThreadOutboxProvider => {
+            closure
+                .components
+                .insert("thread-outbox-provider".to_owned());
+        }
+    }
+    Ok(())
+}
+
+fn load_local_referenced_skill(
+    loaded: &LoadedSkillPackage,
+    reference: &str,
+) -> Result<Option<LoadedSkillPackage>, String> {
+    if is_external_or_dynamic_skill_reference(reference) {
+        return Ok(None);
+    }
+    super::load_validated_skill_package(&loaded.directory.join(reference))
+        .map(Some)
+        .map_err(|error| {
+            format!(
+                "loading referenced sub-skill {reference} from {}: {error}",
+                loaded.directory.display()
+            )
+        })
+}
+
+fn is_external_or_dynamic_skill_reference(reference: &str) -> bool {
+    reference.starts_with('$')
+        || reference.starts_with("registry:")
+        || reference.starts_with("runx-registry:")
+        || reference.starts_with("runx://skill/")
+}
+
+fn nested_profile_path(current_profile: &str, reference: &str) -> Result<String, String> {
+    let current_dir = Path::new(current_profile)
+        .parent()
+        .unwrap_or_else(|| Path::new(""));
+    normalize_relative_path(current_dir.join(reference).join("X.yaml")).ok_or_else(|| {
+        format!("sub-skill reference {reference} escapes the inspected execution closure")
+    })
+}
+
+fn normalize_relative_path(path: PathBuf) -> Option<String> {
+    let mut normalized: Vec<String> = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(value) => normalized.push(value.to_string_lossy().into_owned()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if normalized.last().is_some_and(|segment| segment != "..") {
+                    normalized.pop();
+                } else {
+                    normalized.push("..".to_owned());
+                }
+            }
+            Component::Prefix(_) | Component::RootDir => return None,
+        }
+    }
+    Some(normalized.join("/"))
+}
+
+fn select_inspection_runner<'a>(
+    manifest: &'a runx_parser::SkillRunnerManifest,
+    selected: Option<&str>,
+) -> Option<&'a SkillRunnerDefinition> {
+    if let Some(selected) = selected {
+        return manifest.runners.get(selected);
+    }
+    manifest
+        .runners
+        .values()
+        .find(|runner| runner.default)
+        .or_else(|| {
+            (manifest.runners.len() == 1)
+                .then(|| manifest.runners.values().next())
+                .flatten()
+        })
+}
+
+fn execution_summary(components: &[String], agent_acts: usize, declared_artifact: bool) -> String {
+    let agent_summary = match (agent_acts, declared_artifact) {
+        (0, _) => None,
+        (1, true) => Some("1 agent act -> declared artifact".to_owned()),
+        (count, true) => Some(format!("{count} agent acts -> declared artifact")),
+        (1, false) => Some("1 agent act".to_owned()),
+        (count, false) => Some(format!("{count} agent acts")),
+    };
+    match (components.is_empty(), agent_summary) {
+        (true, Some(agent)) => agent,
+        (false, Some(agent)) => format!("{}; {agent}", components.join(", ")),
+        (false, None) => components.join(", "),
+        (true, None) => "none".to_owned(),
+    }
 }
 
 fn inspect_runner(runner: &SkillRunnerDefinition) -> Result<JsonValue, String> {
@@ -353,4 +677,88 @@ fn fixture_examples(
     examples.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
     examples.dedup();
     examples
+}
+
+#[cfg(test)]
+mod tests {
+    #![allow(clippy::expect_used)]
+
+    use std::fs;
+
+    use runx_contracts::JsonValue;
+
+    use super::inspect_skill_package;
+
+    const ROOT_MANUAL: &str =
+        "---\nname: root\ndescription: Root inspection fixture.\n---\n\n# Root\n";
+    const CHILD_MANUAL: &str =
+        "---\nname: child\ndescription: Child inspection fixture.\n---\n\n# Child\n";
+    const ROOT_MANIFEST: &str = r#"
+skill: root
+version: "0.1.0"
+runners:
+  inspect:
+    default: true
+    type: graph
+    graph:
+      name: root
+      steps:
+        - id: child
+          skill: child
+"#;
+    const CHILD_MANIFEST: &str = r#"
+skill: child
+version: "0.1.0"
+runners:
+  read:
+    default: true
+    type: graph
+    graph:
+      name: child
+      steps:
+        - id: digest
+          tool: data.digest
+          inputs:
+            value: inspected
+"#;
+
+    #[test]
+    fn execution_closure_uses_validated_names_and_transitive_native_tools()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir().expect("temporary skill catalog");
+        let root = temp.path().join("root");
+        let child = root.join("child");
+        fs::create_dir_all(&child).expect("child skill directory");
+        fs::write(root.join("SKILL.md"), ROOT_MANUAL).expect("root manual");
+        fs::write(root.join("X.yaml"), ROOT_MANIFEST).expect("root manifest");
+        fs::write(child.join("SKILL.md"), CHILD_MANUAL).expect("child manual");
+        fs::write(child.join("X.yaml"), CHILD_MANIFEST).expect("child manifest");
+
+        let inspected = inspect_skill_package(&root, None).expect("valid inspection");
+        let JsonValue::Object(inspected) = inspected else {
+            return Err("inspection should be an object".into());
+        };
+        let closure = inspected
+            .get("execution_closure")
+            .and_then(JsonValue::as_object)
+            .expect("execution closure");
+        assert_eq!(
+            closure.get("summary").and_then(JsonValue::as_str),
+            Some("tool:data.digest")
+        );
+        assert_eq!(
+            closure.get("skill_edges"),
+            Some(&JsonValue::Array(vec![JsonValue::String(
+                "child#read".to_owned()
+            )]))
+        );
+        assert_eq!(
+            closure.get("profiles"),
+            Some(&JsonValue::Array(vec![
+                JsonValue::String("X.yaml#inspect".to_owned()),
+                JsonValue::String("child/X.yaml#read".to_owned()),
+            ]))
+        );
+        Ok(())
+    }
 }

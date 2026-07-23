@@ -522,6 +522,52 @@ where
         Ok(execution.finish(graph, receipt))
     }
 
+    pub(crate) fn seal_failed_graph_checkpoint_with_host(
+        &self,
+        graph: ExecutionGraph,
+        checkpoint: GraphCheckpoint,
+        step_id: &str,
+        error: RuntimeError,
+        closure: crate::receipts::GraphClosure,
+        host: &mut dyn Host,
+    ) -> Result<GraphRun, RuntimeError> {
+        if closure.disposition != ClosureDisposition::Failed {
+            return Err(RuntimeError::ReceiptInvalid {
+                message: "failed graph checkpoint requires a failed closure".to_owned(),
+            });
+        }
+        let attempt = checkpoint
+            .state
+            .steps
+            .iter()
+            .find(|step| step.step_id == step_id)
+            .map_or(1, |step| step.attempts.saturating_add(1).max(1));
+        let step = graph
+            .steps
+            .iter()
+            .find(|step| step.id == step_id)
+            .ok_or_else(|| RuntimeError::StepMissing {
+                step_id: step_id.to_owned(),
+            })?;
+        let failed_run = steps::runtime_error_step_run(self, &graph.name, step, attempt, error)?;
+        let mut execution = GraphExecution::from_checkpoint(&graph, checkpoint)?;
+        execution.record_terminal_step_failure(self, host, step_id, failed_run)?;
+        let receipt = graph_receipt_with_disposition_and_policy(
+            &graph.name,
+            &mut execution.runs,
+            execution.sync_points.clone(),
+            &self.options.created_at,
+            closure,
+            self.options.effects.clone(),
+            self.options.signature_policy(),
+        )?;
+        execution.record_lifecycle(
+            host,
+            LifecycleEvent::graph_failed(&graph.name, step_id, &receipt),
+        )?;
+        Ok(execution.finish(graph, receipt))
+    }
+
     pub fn resume_graph_until_steps_with_host(
         &self,
         graph_dir: &Path,

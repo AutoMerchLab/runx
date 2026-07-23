@@ -2,7 +2,7 @@ use std::io::{self, Write};
 use std::path::Path;
 use std::process::ExitCode;
 
-use runx_contracts::{JsonObject, JsonValue};
+use runx_contracts::{ClosureDisposition, JsonObject, JsonValue};
 
 pub(super) fn write_skill_output(
     value: &JsonValue,
@@ -26,11 +26,36 @@ pub(super) struct SkillOutputResume<'a> {
 
 pub(super) fn skill_result_exit_code(value: &JsonValue) -> ExitCode {
     match value {
-        JsonValue::Object(object) => match object.get("status") {
-            Some(JsonValue::String(status)) if status == "needs_agent" => ExitCode::from(2),
-            _ => ExitCode::SUCCESS,
+        JsonValue::Object(object)
+            if object.get("status").and_then(JsonValue::as_str) == Some("needs_agent") =>
+        {
+            ExitCode::from(2)
+        }
+        JsonValue::Object(object) => match object
+            .get("closure")
+            .and_then(JsonValue::as_object)
+            .and_then(|closure| closure.get("disposition"))
+            .cloned()
+            .map(JsonValue::deserialize_into::<ClosureDisposition>)
+        {
+            Some(Ok(disposition)) => closure_disposition_exit_code(disposition),
+            None => ExitCode::SUCCESS,
+            Some(Err(_)) => ExitCode::from(1),
         },
         _ => ExitCode::SUCCESS,
+    }
+}
+
+fn closure_disposition_exit_code(disposition: ClosureDisposition) -> ExitCode {
+    match disposition {
+        ClosureDisposition::Closed => ExitCode::SUCCESS,
+        ClosureDisposition::Deferred => ExitCode::from(2),
+        ClosureDisposition::Superseded
+        | ClosureDisposition::Declined
+        | ClosureDisposition::Blocked
+        | ClosureDisposition::Failed
+        | ClosureDisposition::Killed
+        | ClosureDisposition::TimedOut => ExitCode::from(1),
     }
 }
 
@@ -236,10 +261,103 @@ fn object_string<'a>(object: &'a JsonObject, key: &str) -> Option<&'a str> {
 #[cfg(test)]
 mod tests {
     use std::path::Path;
+    use std::process::ExitCode;
 
     use runx_contracts::{JsonObject, JsonValue};
 
-    use super::{SkillOutputResume, write_skill_text};
+    use super::{
+        SkillOutputResume, closure_disposition_exit_code, skill_result_exit_code, write_skill_text,
+    };
+
+    #[test]
+    fn terminal_dispositions_have_exhaustive_exit_semantics() {
+        let docs = include_str!("../../../../docs/cli-exit-codes.md");
+        for (disposition, label, expected, numeric) in [
+            (
+                runx_contracts::ClosureDisposition::Closed,
+                "closed",
+                ExitCode::SUCCESS,
+                0,
+            ),
+            (
+                runx_contracts::ClosureDisposition::Deferred,
+                "deferred",
+                ExitCode::from(2),
+                2,
+            ),
+            (
+                runx_contracts::ClosureDisposition::Superseded,
+                "superseded",
+                ExitCode::from(1),
+                1,
+            ),
+            (
+                runx_contracts::ClosureDisposition::Declined,
+                "declined",
+                ExitCode::from(1),
+                1,
+            ),
+            (
+                runx_contracts::ClosureDisposition::Blocked,
+                "blocked",
+                ExitCode::from(1),
+                1,
+            ),
+            (
+                runx_contracts::ClosureDisposition::Failed,
+                "failed",
+                ExitCode::from(1),
+                1,
+            ),
+            (
+                runx_contracts::ClosureDisposition::Killed,
+                "killed",
+                ExitCode::from(1),
+                1,
+            ),
+            (
+                runx_contracts::ClosureDisposition::TimedOut,
+                "timed_out",
+                ExitCode::from(1),
+                1,
+            ),
+        ] {
+            assert_eq!(
+                closure_disposition_exit_code(disposition),
+                expected,
+                "{label} typed exit code"
+            );
+            let value = JsonValue::Object(JsonObject::from([
+                ("status".to_owned(), JsonValue::String("sealed".to_owned())),
+                (
+                    "closure".to_owned(),
+                    JsonValue::Object(JsonObject::from([(
+                        "disposition".to_owned(),
+                        JsonValue::String(label.to_owned()),
+                    )])),
+                ),
+            ]));
+
+            assert_eq!(
+                skill_result_exit_code(&value),
+                expected,
+                "{label} envelope exit code"
+            );
+            assert!(
+                docs.contains(&format!("| `{label}` | {numeric} |")),
+                "CLI exit-code documentation omitted {label}"
+            );
+        }
+
+        let malformed = JsonValue::Object(JsonObject::from([(
+            "closure".to_owned(),
+            JsonValue::Object(JsonObject::from([(
+                "disposition".to_owned(),
+                JsonValue::String("not-a-disposition".to_owned()),
+            )])),
+        )]));
+        assert_eq!(skill_result_exit_code(&malformed), ExitCode::from(1));
+    }
 
     #[test]
     fn text_output_prefers_operator_payload_summary_over_receipt_closure() {

@@ -261,34 +261,25 @@ fn external_adapter_process_supervisor_timeout_kills_descendant_processes()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     let sentinel_path = temp.path().join("descendant-survived");
-    let pid_path = temp.path().join("descendant-pid");
-    // The descendant records its host-visible pid from /proc/self on Linux so
-    // the assertion is not confused by Bubblewrap's nested pid namespace.
+    let started_path = temp.path().join("descendant-started");
+    // A nested PID namespace does not always expose the host PID in NSpid.
+    // Prove the descendant actually started, then wait past its sentinel
+    // deadline. This tests observable survival without confusing a
+    // namespace-local PID with an unrelated host process.
     let script = write_script(
         temp.path(),
         r#"set -eu
 IFS= read -r _invocation
 (
-  if [ -r /proc/self/status ]; then
-    while read -r field host_pid _; do
-      if [ "$field" = "NSpid:" ]; then
-        echo "$host_pid" > "$RUNX_DESCENDANT_PIDFILE"
-        break
-      fi
-    done < /proc/self/status
-  fi
-  /bin/sleep 3
+  printf started > "$RUNX_DESCENDANT_STARTED"
+  /bin/sleep 2
   printf survived > "$RUNX_DESCENDANT_SENTINEL"
 ) &
-child_pid=$!
-if [ ! -r /proc/self/status ]; then
-  echo "$child_pid" > "$RUNX_DESCENDANT_PIDFILE"
-fi
 /bin/sleep 10
 "#,
     )?;
     let mut manifest = manifest_for_script(&script)?;
-    manifest.timeouts.invocation_ms = 1_000;
+    manifest.timeouts.invocation_ms = 500;
     // Under the readonly intent the sandbox swallows the pid and sentinel writes,
     // leaving the survived-descendant assertion vacuous; anchor the workspace at
     // the test's temp dir (RUNX_CWD) and scope write access to it so both
@@ -297,7 +288,7 @@ fi
     manifest.sandbox_intent.writable_paths = Some(vec![path_string(temp.path())?.into()]);
     let invocation = invocation_with_env([
         ("RUNX_DESCENDANT_SENTINEL", path_string(&sentinel_path)?),
-        ("RUNX_DESCENDANT_PIDFILE", path_string(&pid_path)?),
+        ("RUNX_DESCENDANT_STARTED", path_string(&started_path)?),
         ("RUNX_CWD", path_string(temp.path())?),
         local_sandbox_fallback_env(),
     ]);
@@ -310,9 +301,13 @@ fi
     let ExternalAdapterSupervisorError::TimedOut { timeout_ms, .. } = error else {
         return Err(format!("unexpected timeout error: {error}").into());
     };
-    assert_eq!(timeout_ms, 1_000);
+    assert_eq!(timeout_ms, 500);
     assert!(started.elapsed() < Duration::from_secs(5));
-    crate::support::wait_for_recorded_pid_exit(&pid_path, Duration::from_secs(5))?;
+    assert!(
+        started_path.exists(),
+        "descendant never started before external adapter timeout"
+    );
+    std::thread::sleep(Duration::from_millis(1_750));
     assert!(
         !sentinel_path.exists(),
         "descendant process survived external adapter timeout"

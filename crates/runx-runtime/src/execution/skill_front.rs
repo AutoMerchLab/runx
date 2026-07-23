@@ -427,6 +427,7 @@ fn seal_skill_answer(
             reason_code: format!("agent_act_{disposition_label}"),
             summary: format!("agent act closed with {disposition_label}"),
         },
+        None,
         signature_config,
         env,
     )
@@ -654,6 +655,7 @@ fn seal_skill_output(
     runner: &SkillRunnerDefinition,
     output: &SkillOutput,
     closure: StepSealClosure,
+    receipt_metadata: Option<JsonObject>,
     signature_config: &RuntimeReceiptSignatureConfig,
     env: &std::collections::BTreeMap<String, String>,
 ) -> Result<runx_contracts::Receipt, SkillRunError> {
@@ -672,6 +674,7 @@ fn seal_skill_output(
             authority_scope_refs: Vec::new(),
             operator_refs: super::prepared_skill::prepared_receipt_references(env),
             closure: Some(closure),
+            receipt_metadata,
         },
         signature_config.signature_policy(),
     )?)

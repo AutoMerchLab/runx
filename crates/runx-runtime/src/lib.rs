@@ -31,6 +31,7 @@ mod hosted_api;
 mod http;
 mod init;
 mod input_contract;
+pub mod interrupt;
 pub mod journal;
 #[cfg(feature = "mcp")]
 mod json_render;

@@ -65,6 +65,11 @@ impl RuntimeToolExecutor {
 }
 
 impl ToolExecutor for RuntimeToolExecutor {
+    fn admitted_tool_name(&self, tool: &str) -> Option<String> {
+        (admit_agent_tool_ref(tool).allowed && self.allowed_tools.contains(tool))
+            .then(|| tool.to_owned())
+    }
+
     fn execute(&self, tool: &str, input: &JsonValue) -> Result<SkillOutput, RuntimeError> {
         let admission = admit_agent_tool_ref(tool);
         if !admission.allowed {

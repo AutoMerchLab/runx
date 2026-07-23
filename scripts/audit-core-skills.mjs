@@ -1,0 +1,407 @@
+#!/usr/bin/env node
+
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const schema = "runx.core_skill_operator_value_audit.v1";
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const allowedArchetypes = new Set([
+  "artifact",
+  "builder",
+  "context",
+  "operation",
+  "runtime",
+  "workflow",
+]);
+const allowedDecisions = new Set([
+  "improve",
+  "internal_fixture",
+  "internal_runtime",
+  "keep",
+]);
+
+try {
+  const options = parseOptions(process.argv.slice(2));
+  if (options.selfTest) {
+    runSelfTests();
+    process.stdout.write("core skill audit self-test passed\n");
+    process.exit(0);
+  }
+
+  const report = buildReport(options);
+  if (options.json) {
+    process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+  } else {
+    process.stdout.write(
+      `core skill audit ${report.status}: ${report.summary.reviewed}/${report.summary.official} reviewed\n`,
+    );
+  }
+  if (report.status !== "passed") process.exitCode = 1;
+} catch (error) {
+  process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+  process.exitCode = 1;
+}
+
+function buildReport(options) {
+  const runx = resolveRunxBinary(options.runxBin);
+  const official = readOfficialLock();
+  const review = readProductReview();
+  const catalog = readNativeCatalog(runx);
+  const findings = validateCoverage({ official, review, catalog });
+  const entries = [];
+
+  for (const record of official) {
+    const name = officialName(record);
+    const decision = review.get(name);
+    const catalogItem = catalog.get(name);
+    const inspection = inspectSkill(runx, name);
+    if (inspection.status !== "ok") {
+      findings.push(`${name}: native inspection returned ${inspection.status ?? "no status"}`);
+    }
+    if (inspection.name !== name) {
+      findings.push(`${name}: native inspection returned name ${inspection.name ?? "<missing>"}`);
+    }
+    findings.push(
+      ...validateInspectionClaims({ name, record, decision, inspection }),
+    );
+    const canonicalCatalogRole =
+      `${inspection.catalog?.visibility ?? "<missing>"}/${inspection.catalog?.role ?? "<missing>"}`;
+    entries.push({
+      skill: name,
+      visibility: record.catalog_visibility,
+      role: record.catalog_role ?? null,
+      claimed_catalog_role: decision?.catalog_role ?? null,
+      canonical_catalog_role: canonicalCatalogRole,
+      claimed_execution: decision?.execution ?? null,
+      execution_closure: inspection.execution_closure ?? null,
+      archetype: decision?.archetype ?? null,
+      decision: decision?.decision ?? null,
+      rationale: decision?.rationale ?? null,
+      improvement: decision?.improvement === "none" ? null : decision?.improvement ?? null,
+      evidence: decision?.evidence ?? null,
+      native: {
+        kind: catalogItem?.kind ?? null,
+        fixtures: catalogItem?.fixtures ?? 0,
+        harness_cases: catalogItem?.harness_cases ?? 0,
+        runner: inspection.runner ?? null,
+        capabilities: inspection.capabilities ?? null,
+        catalog: inspection.catalog ?? null,
+        package_digest: inspection.package_digest ?? null,
+        manual_digest: inspection.manual_digest ?? null,
+      },
+    });
+  }
+
+  entries.sort((left, right) => left.skill.localeCompare(right.skill));
+  const publicCount = official.filter((entry) => entry.catalog_visibility === "public").length;
+  const internalCount = official.length - publicCount;
+  const decisions = countBy(entries, (entry) => entry.decision);
+  const archetypes = countBy(entries, (entry) => entry.archetype);
+  return {
+    schema,
+    status: findings.length === 0 ? "passed" : "failed",
+    summary: {
+      official: official.length,
+      reviewed: review.size,
+      public: publicCount,
+      internal: internalCount,
+      decisions,
+      archetypes,
+    },
+    findings: findings.sort(),
+    entries,
+  };
+}
+
+function readOfficialLock() {
+  const value = JSON.parse(readFileSync(path.join(root, "skills", "official.lock.json"), "utf8"));
+  if (!Array.isArray(value)) throw new Error("skills/official.lock.json must be an array");
+  return [...value].sort((left, right) => officialName(left).localeCompare(officialName(right)));
+}
+
+function officialName(record) {
+  if (typeof record?.skill_id !== "string" || !record.skill_id.startsWith("runx/")) {
+    throw new Error(`invalid official skill record: ${JSON.stringify(record)}`);
+  }
+  return record.skill_id.slice("runx/".length);
+}
+
+function readProductReview() {
+  const source = readFileSync(path.join(root, "docs", "core-skill-review.md"), "utf8");
+  return parseReviewTable(source);
+}
+
+function parseReviewTable(source) {
+  const header =
+    "| Skill | Archetype | Catalog role | Default execution shape | Evidence | Decision | Rationale | Improvement |";
+  const lines = source.split(/\r?\n/u);
+  const headerIndex = lines.indexOf(header);
+  if (headerIndex < 0) throw new Error("docs/core-skill-review.md is missing its package review table");
+
+  const records = new Map();
+  for (const line of lines.slice(headerIndex + 2)) {
+    if (!line.startsWith("|")) break;
+    const cells = markdownCells(line);
+    if (cells.length !== 8) {
+      throw new Error(`invalid core skill review row with ${cells.length} cells: ${line}`);
+    }
+    const [skill, archetype, catalogRole, execution, evidence, decision, rationale, improvement] =
+      cells;
+    if (!skill) throw new Error("core skill review contains an empty skill name");
+    if (records.has(skill)) throw new Error(`core skill review contains duplicate skill ${skill}`);
+    records.set(skill, {
+      archetype,
+      catalog_role: catalogRole,
+      execution,
+      evidence,
+      decision,
+      rationale,
+      improvement,
+    });
+  }
+  return records;
+}
+
+function markdownCells(line) {
+  const cells = [];
+  let current = "";
+  let escaped = false;
+  for (const character of line.slice(1, -1)) {
+    if (escaped) {
+      current += character;
+      escaped = false;
+    } else if (character === "\\") {
+      escaped = true;
+    } else if (character === "|") {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += character;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function readNativeCatalog(runx) {
+  const output = runJson(runx, ["list", "skills", "--ok-only", "--json"]);
+  if (output.schema !== "runx.list.v1" || !Array.isArray(output.items)) {
+    throw new Error("native skill catalog returned an unsupported envelope");
+  }
+  const topLevel = new Map();
+  for (const item of output.items) {
+    if (typeof item?.path !== "string" || typeof item?.name !== "string") continue;
+    if (item.path !== `skills/${item.name}/X.yaml`) continue;
+    if (topLevel.has(item.name)) throw new Error(`native catalog returned duplicate ${item.name}`);
+    topLevel.set(item.name, item);
+  }
+  return topLevel;
+}
+
+function inspectSkill(runx, name) {
+  return runJson(runx, ["skill", "inspect", `skills/${name}`, "--json"]);
+}
+
+function validateCoverage({ official, review, catalog }) {
+  const findings = [];
+  const officialNames = new Set();
+  for (const record of official) {
+    const name = officialName(record);
+    if (officialNames.has(name)) findings.push(`${name}: duplicate official lock entry`);
+    officialNames.add(name);
+    if (!["internal", "public"].includes(record.catalog_visibility)) {
+      findings.push(`${name}: unsupported visibility ${record.catalog_visibility ?? "<missing>"}`);
+    }
+    const claimed = review.get(name)?.catalog_role;
+    const locked = `${record.catalog_visibility}/${record.catalog_role ?? "<missing>"}`;
+    if (claimed !== undefined && claimed !== locked) {
+      findings.push(`${name}: review catalog role ${claimed} does not match lock ${locked}`);
+    }
+  }
+
+  for (const [name, decision] of review) {
+    if (!officialNames.has(name)) findings.push(`${name}: review row is not in the official lock`);
+    if (!allowedArchetypes.has(decision.archetype)) {
+      findings.push(`${name}: unsupported archetype ${decision.archetype}`);
+    }
+    if (!allowedDecisions.has(decision.decision)) {
+      findings.push(`${name}: unsupported decision ${decision.decision}`);
+    }
+    if (!decision.rationale) findings.push(`${name}: review rationale is empty`);
+    if (!decision.evidence) findings.push(`${name}: review evidence is empty`);
+  }
+
+  for (const name of officialNames) {
+    if (!review.has(name)) findings.push(`${name}: missing product review row`);
+    if (!catalog.has(name)) findings.push(`${name}: missing top-level native catalog entry`);
+  }
+  for (const name of catalog.keys()) {
+    if (!officialNames.has(name)) findings.push(`${name}: top-level native catalog entry is unlocked`);
+  }
+  return findings;
+}
+
+function validateInspectionClaims({ name, record, decision, inspection }) {
+  const findings = [];
+  const nativeVisibility = inspection.catalog?.visibility;
+  const nativeRole = inspection.catalog?.role;
+  if (nativeVisibility !== record.catalog_visibility) {
+    findings.push(
+      `${name}: native visibility ${nativeVisibility ?? "<missing>"} does not match lock ${record.catalog_visibility}`,
+    );
+  }
+  if (nativeRole !== record.catalog_role) {
+    findings.push(
+      `${name}: native role ${nativeRole ?? "<missing>"} does not match lock ${record.catalog_role ?? "<missing>"}`,
+    );
+  }
+  const closure = inspection.execution_closure;
+  if (
+    typeof closure?.summary !== "string"
+    || !Array.isArray(closure?.components)
+    || !Array.isArray(closure?.skill_edges)
+    || !Array.isArray(closure?.profiles)
+    || !Number.isInteger(closure?.agent_acts)
+    || typeof closure?.declared_artifact !== "boolean"
+  ) {
+    findings.push(`${name}: native inspection omitted the canonical execution closure`);
+  } else if (decision?.execution !== closure.summary) {
+    findings.push(
+      `${name}: review execution ${decision?.execution ?? "<missing>"} does not match native closure ${closure.summary}`,
+    );
+  }
+  return findings;
+}
+
+function countBy(entries, selector) {
+  const counts = {};
+  for (const entry of entries) {
+    const key = selector(entry) ?? "missing";
+    counts[key] = (counts[key] ?? 0) + 1;
+  }
+  return Object.fromEntries(Object.entries(counts).sort(([left], [right]) => left.localeCompare(right)));
+}
+
+function resolveRunxBinary(explicit) {
+  const candidate = explicit
+    ?? process.env.RUNX_RUST_CLI_BIN
+    ?? path.join(root, "crates", "target", "debug", process.platform === "win32" ? "runx.exe" : "runx");
+  const resolved = path.resolve(root, candidate);
+  if (!existsSync(resolved)) {
+    throw new Error(`native Runx CLI is required; build runx-cli or set RUNX_RUST_CLI_BIN (${resolved})`);
+  }
+  return resolved;
+}
+
+function runJson(runx, args) {
+  const result = spawnSync(runx, args, {
+    cwd: root,
+    encoding: "utf8",
+    maxBuffer: 32 * 1024 * 1024,
+    env: { ...process.env, NO_COLOR: "1" },
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(`${path.basename(runx)} ${args.join(" ")} failed: ${result.stderr.trim()}`);
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    throw new Error(`${path.basename(runx)} ${args.join(" ")} returned invalid JSON`);
+  }
+}
+
+function parseOptions(args) {
+  const options = { json: false, selfTest: false, runxBin: undefined };
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument === "--check") continue;
+    if (argument === "--json") options.json = true;
+    else if (argument === "--self-test") options.selfTest = true;
+    else if (argument === "--runx-bin") {
+      const value = args[index + 1];
+      if (!value) throw new Error("--runx-bin requires a path");
+      options.runxBin = value;
+      index += 1;
+    }
+    else throw new Error(`unknown option: ${argument}`);
+  }
+  return options;
+}
+
+function runSelfTests() {
+  const table = [
+    "# Review",
+    "",
+    "| Skill | Archetype | Catalog role | Default execution shape | Evidence | Decision | Rationale | Improvement |",
+    "|---|---|---|---|---|---|---|---|",
+    "| alpha | workflow | public/canonical | graph | harness passed | keep | Useful \\| governed. | none |",
+    "",
+  ].join("\n");
+  const review = parseReviewTable(table);
+  assert(review.size === 1, "review parser must return one row");
+  assert(review.get("alpha")?.rationale === "Useful | governed.", "escaped pipes must survive");
+  const official = [{
+    skill_id: "runx/alpha",
+    catalog_visibility: "public",
+    catalog_role: "canonical",
+  }];
+  const catalog = new Map([["alpha", { name: "alpha" }]]);
+  assert(
+    validateCoverage({ official, review, catalog }).length === 0,
+    "matching native, lock, and review evidence must pass",
+  );
+  const missing = validateCoverage({ official, review: new Map(), catalog });
+  assert(missing.includes("alpha: missing product review row"), "missing review rows must fail");
+  const wrongRole = new Map([
+    ["alpha", { ...review.get("alpha"), catalog_role: "public/branded" }],
+  ]);
+  assert(
+    validateCoverage({ official, review: wrongRole, catalog }).some((finding) =>
+      finding.includes("review catalog role public/branded does not match lock public/canonical")
+    ),
+    "catalog-role drift must fail",
+  );
+  const inspection = {
+    catalog: { visibility: "public", role: "canonical" },
+    execution_closure: {
+      summary: "tool:data.read",
+      components: ["tool:data.read"],
+      skill_edges: [],
+      profiles: ["X.yaml#default"],
+      agent_acts: 0,
+      declared_artifact: false,
+    },
+  };
+  assert(
+    validateInspectionClaims({
+      name: "alpha",
+      record: official[0],
+      decision: { execution: "javascript" },
+      inspection,
+    }).some((finding) => finding.includes("does not match native closure")),
+    "execution-closure drift must fail",
+  );
+  assert(
+    validateInspectionClaims({
+      name: "alpha",
+      record: official[0],
+      decision: { execution: "tool:data.read" },
+      inspection,
+    }).length === 0,
+    "matching catalog and execution claims must pass",
+  );
+  let missingRunxPathRejected = false;
+  try {
+    parseOptions(["--runx-bin"]);
+  } catch {
+    missingRunxPathRejected = true;
+  }
+  assert(missingRunxPathRejected, "--runx-bin without a path must fail");
+}
+
+function assert(condition, message) {
+  if (!condition) throw new Error(`self-test failed: ${message}`);
+}

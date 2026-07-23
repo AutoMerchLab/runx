@@ -167,6 +167,13 @@ process-group cleanup, duration, and sandbox cleanup paths. Adapter-specific
 policy, redaction, protocol parsing, and receipt projection stay in their
 adapter modules.
 
+Containment has no extra process or shell hop. Unix uses the existing process
+group primitive. Windows alone links the safe Job Object wrappers needed to
+create a child suspended, assign it before execution, terminate the whole tree,
+and reap it when Runx exits abruptly. The catalog sweep only enforces the outer
+deadline; it does not duplicate runtime ownership with `taskkill`, PowerShell,
+or a JavaScript anchor.
+
 ## Limits
 
 The 2x gate applies to deterministic graph planning and fanout state-machine

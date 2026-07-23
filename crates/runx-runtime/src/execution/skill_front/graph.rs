@@ -248,7 +248,7 @@ pub(super) fn execute_graph_skill_run(
                 )));
             }
             Err(RuntimeError::GraphBlocked { step_id, reason }) => {
-                return seal_blocked_graph_skill_run(BlockedGraphSkillRun {
+                return seal_terminal_graph_skill_run(TerminalGraphSkillRun {
                     request,
                     workspace,
                     receipts,
@@ -260,6 +260,7 @@ pub(super) fn execute_graph_skill_run(
                     step_id: &step_id,
                     reason_code: "graph_blocked",
                     summary: format!("graph {} blocked at {step_id}: {reason}", graph.name),
+                    cause: GraphTerminalCause::Blocked,
                 });
             }
             Err(RuntimeError::AuthorityDenied {
@@ -267,7 +268,7 @@ pub(super) fn execute_graph_skill_run(
                 step_id,
                 reason,
             }) => {
-                return seal_blocked_graph_skill_run(BlockedGraphSkillRun {
+                return seal_terminal_graph_skill_run(TerminalGraphSkillRun {
                     request,
                     workspace,
                     receipts,
@@ -282,6 +283,39 @@ pub(super) fn execute_graph_skill_run(
                         "graph {} denied {verb:?} at {step_id}: {reason}",
                         graph.name
                     ),
+                    cause: GraphTerminalCause::Blocked,
+                });
+            }
+            #[cfg(feature = "agent")]
+            Err(RuntimeError::ManagedAgentResolution {
+                step_id,
+                request_id,
+                source,
+            }) => {
+                let reason_code = format!("managed_agent_{}", source.reason_code());
+                let summary = format!(
+                    "graph {} managed agent failed at {step_id} ({})",
+                    graph.name,
+                    source.reason_code()
+                );
+                let error = RuntimeError::ManagedAgentResolution {
+                    step_id: step_id.clone(),
+                    request_id,
+                    source,
+                };
+                return seal_terminal_graph_skill_run(TerminalGraphSkillRun {
+                    request,
+                    workspace,
+                    receipts,
+                    manifest,
+                    graph: graph.clone(),
+                    checkpoint: previous_checkpoint,
+                    run_id: &run_id,
+                    runtime: &runtime,
+                    step_id: &step_id,
+                    reason_code: &reason_code,
+                    summary,
+                    cause: GraphTerminalCause::Failed(error),
                 });
             }
             Err(error) => return Err(error.into()),
@@ -380,7 +414,12 @@ fn missing_required_graph_input_request(
     Some(JsonValue::Object(request))
 }
 
-struct BlockedGraphSkillRun<'a> {
+enum GraphTerminalCause {
+    Blocked,
+    Failed(RuntimeError),
+}
+
+struct TerminalGraphSkillRun<'a> {
     request: &'a SkillRunRequest,
     workspace: &'a WorkspaceEnv,
     receipts: &'a ReceiptServices,
@@ -392,20 +431,37 @@ struct BlockedGraphSkillRun<'a> {
     step_id: &'a str,
     reason_code: &'a str,
     summary: String,
+    cause: GraphTerminalCause,
 }
 
-fn seal_blocked_graph_skill_run(
-    context: BlockedGraphSkillRun<'_>,
+fn seal_terminal_graph_skill_run(
+    context: TerminalGraphSkillRun<'_>,
 ) -> Result<JsonValue, SkillRunError> {
     let mut final_host = SkillRunGraphHost::new(JsonObject::new());
-    let run = context.runtime.seal_blocked_graph_checkpoint_with_host(
-        context.graph,
-        context.checkpoint,
-        context.step_id,
-        context.reason_code,
-        context.summary,
-        &mut final_host,
-    )?;
+    let run = match context.cause {
+        GraphTerminalCause::Blocked => context.runtime.seal_blocked_graph_checkpoint_with_host(
+            context.graph,
+            context.checkpoint,
+            context.step_id,
+            context.reason_code,
+            context.summary,
+            &mut final_host,
+        )?,
+        GraphTerminalCause::Failed(error) => {
+            context.runtime.seal_failed_graph_checkpoint_with_host(
+                context.graph,
+                context.checkpoint,
+                context.step_id,
+                error,
+                crate::receipts::GraphClosure {
+                    disposition: ClosureDisposition::Failed,
+                    reason_code: context.reason_code.to_owned(),
+                    summary: context.summary,
+                },
+                &mut final_host,
+            )?
+        }
+    };
     write_graph_receipts(context.request, context.workspace, context.receipts, &run)?;
     let payload = graph_run_payload(&run, false);
     let output = graph_run_skill_output(&payload, &run)?;
@@ -603,9 +659,16 @@ impl InlineResolver {
                 max_rounds,
             },
         );
+        let request_id = resolution_request_id(request).to_owned();
+        let step_id = match request {
+            ResolutionRequest::AgentAct { invocation, .. } => {
+                invocation.envelope.skill.as_ref().to_owned()
+            }
+            _ => "managed-agent".to_owned(),
+        };
         let resolution = resolver
             .resolve(request.clone())
-            .map_err(|error| fail(error.sanitized_message().to_owned()))?;
+            .map_err(|error| RuntimeError::managed_agent_resolution(step_id, request_id, error))?;
         Ok(Some(resolution.response.payload))
     }
 
@@ -1096,6 +1159,127 @@ mod tests {
             ),
             "unexpected unregistered graph source result: {result:?}"
         );
+    }
+
+    #[cfg(feature = "agent")]
+    #[test]
+    fn managed_agent_graph_failure_is_typed_sealed_and_visible_in_history()
+    -> Result<(), Box<dyn std::error::Error>> {
+        use crate::LocalReceiptStore;
+        use crate::adapters::agent::{
+            AgentExecutionTelemetry, AgentResolverError, AgentToolExecutionTrace,
+        };
+        use crate::journal::{HistoryFilter, list_local_history};
+        use runx_core::state_machine::{GraphStatus, create_sequential_graph_state};
+        use runx_parser::{parse_graph_yaml, validate_graph};
+
+        let temp = tempfile::tempdir()?;
+        let receipt_dir = temp.path().join("receipts");
+        let graph = validate_graph(parse_graph_yaml(
+            r#"
+name: managed-agent-graph-failure
+steps:
+  - id: compose
+    skill: ./compose
+"#,
+        )?)?;
+        let checkpoint = GraphCheckpoint {
+            graph_name: graph.name.clone(),
+            state: create_sequential_graph_state(
+                graph.name.clone(),
+                &crate::execution::graph::step_definitions(&graph),
+            ),
+            steps: Vec::new(),
+            sync_points: Vec::new(),
+            journal: crate::ExecutionJournal::default(),
+        };
+        let runtime = Runtime::new(
+            SkillRunGraphAdapter::default(),
+            RuntimeOptions::local_development(),
+        );
+        let error = AgentResolverError::bounded_failure(
+            "round_budget_exhausted",
+            "Managed agent exceeded 3 tool-call rounds without finalizing.",
+            AgentExecutionTelemetry {
+                rounds: Some(3),
+                model_calls: Some(4),
+                tool_calls: Some(3),
+                tools: Some(vec!["data.read".to_owned()]),
+                tool_executions: Some(vec![AgentToolExecutionTrace {
+                    tool: "data.read".to_owned(),
+                    status: "success".to_owned(),
+                    receipt_id: Some("rct_child".to_owned()),
+                    resolution_kind: None,
+                }]),
+            },
+        );
+        let runtime_error = RuntimeError::managed_agent_resolution(
+            "referenced-agent-runner",
+            "agent_task.compose.output",
+            error,
+        )
+        .at_graph_step("compose");
+        let mut host = SkillRunGraphHost::new(JsonObject::new());
+        let run = runtime.seal_failed_graph_checkpoint_with_host(
+            graph,
+            checkpoint,
+            "compose",
+            runtime_error,
+            crate::receipts::GraphClosure {
+                disposition: ClosureDisposition::Failed,
+                reason_code: "managed_agent_round_budget_exhausted".to_owned(),
+                summary: "managed agent failed at compose".to_owned(),
+            },
+            &mut host,
+        )?;
+
+        assert_eq!(run.state.status, GraphStatus::Failed);
+        assert_eq!(run.receipt.seal.disposition, ClosureDisposition::Failed);
+        assert_eq!(run.steps.len(), 1);
+        let step = &run.steps[0];
+        assert_eq!(step.receipt.seal.disposition, ClosureDisposition::Failed);
+        let metadata = step
+            .receipt
+            .metadata
+            .as_ref()
+            .ok_or("managed-agent failure metadata missing from child receipt")?;
+        let encoded = serde_json::to_string(metadata)?;
+        assert!(encoded.contains("\"reason_code\":\"round_budget_exhausted\""));
+        assert!(encoded.contains("\"model_calls\":4"));
+        assert!(encoded.contains("\"tool_calls\":3"));
+        assert!(!encoded.contains("prompt"));
+        assert!(!encoded.contains("credential"));
+        assert!(!encoded.contains("raw_output"));
+
+        let request = SkillRunRequest {
+            skill_path: temp.path().join("skill"),
+            receipt_dir: Some(receipt_dir.clone()),
+            run_id: None,
+            answers_path: None,
+            inputs: Default::default(),
+            env: Default::default(),
+            cwd: temp.path().to_path_buf(),
+            managed_agent: Default::default(),
+            local_credential: None,
+        };
+        let workspace = WorkspaceEnv::new(Default::default(), temp.path().to_path_buf());
+        let receipts = ReceiptServices::from_env_or_local_development(workspace.env())?;
+        write_graph_receipts(&request, &workspace, &receipts, &run)?;
+        let history = list_local_history(
+            &LocalReceiptStore::new(&receipt_dir),
+            temp.path(),
+            &temp.path().join(".runx"),
+            &HistoryFilter::default(),
+        )?;
+        assert_eq!(history.receipts.len(), 2);
+        assert!(
+            history
+                .receipts
+                .iter()
+                .all(|receipt| receipt.status == "failed")
+        );
+        assert!(history.pending_runs.is_empty());
+        Ok(())
     }
 
     #[cfg(feature = "cli-tool")]

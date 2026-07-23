@@ -701,6 +701,7 @@ impl GraphExecution {
         } else {
             self.execute_step_with_index(runtime, graph_dir, graph, step, host, plan)
         };
+        let run_result = run_result.map_err(|error| error.at_graph_step(&step.id));
         Ok(match run_result {
             Ok(run) => run,
             Err(error) if plan.failure_mode == StepFailureMode::RecordAndContinue => {
@@ -848,6 +849,26 @@ impl GraphExecution {
             at: runtime.options.created_at.clone(),
             error: output_error(run),
         });
+    }
+
+    pub(super) fn record_terminal_step_failure<A>(
+        &mut self,
+        runtime: &Runtime<A>,
+        host: &mut dyn Host,
+        step_id: &str,
+        run: StepRun,
+    ) -> Result<(), RuntimeError>
+    where
+        A: SkillAdapter,
+    {
+        self.record_lifecycle(host, LifecycleEvent::step_started(step_id))?;
+        self.start_step(runtime, step_id);
+        self.fail_step(runtime, step_id, &run);
+        self.push_run(run);
+        self.apply_state_event(SequentialGraphEvent::FailGraph {
+            error: format!("step {step_id} failed"),
+        });
+        self.record_lifecycle(host, LifecycleEvent::step_failed(step_id))
     }
 
     pub(super) fn record(

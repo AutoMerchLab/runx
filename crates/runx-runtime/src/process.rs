@@ -1,4 +1,12 @@
+#[cfg(any(
+    feature = "cli-tool",
+    feature = "external-adapter",
+    feature = "thread-outbox-provider"
+))]
+mod owned_process;
 mod signals;
+#[cfg(windows)]
+mod windows_host_job;
 
 /// Default retained bytes per stdout/stderr stream for general operator
 /// processes. The supervisor continues draining and hashing the complete stream;
@@ -34,12 +42,6 @@ mod spec;
     feature = "thread-outbox-provider"
 ))]
 mod supervisor;
-#[cfg(any(
-    feature = "cli-tool",
-    feature = "external-adapter",
-    feature = "thread-outbox-provider"
-))]
-mod timeout;
 #[cfg(feature = "mcp")]
 mod tokio_supervisor;
 
@@ -58,11 +60,12 @@ pub(crate) use self::spec::{ProcessOutcome, ProcessSpec, ProcessStdin, ProcessSu
     feature = "thread-outbox-provider"
 ))]
 pub(crate) use self::supervisor::run_process;
-#[cfg(any(
-    feature = "cli-tool",
-    feature = "external-adapter",
-    feature = "thread-outbox-provider"
-))]
-use self::supervisor::{kill_timed_out_context, poll_timed_out_context};
 #[cfg(feature = "mcp")]
 pub(crate) use self::tokio_supervisor::{TokioProcessSpec, spawn_tokio_process};
+#[cfg(windows)]
+pub(crate) use self::windows_host_job::ensure_host_process_containment;
+
+#[cfg(not(windows))]
+pub(crate) fn ensure_host_process_containment() -> std::io::Result<()> {
+    Ok(())
+}

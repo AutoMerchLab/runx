@@ -1,5 +1,5 @@
 skill: work-plan
-version: "0.2.1"
+version: "0.2.2"
 catalog:
   kind: graph
   audience: builder
@@ -10,11 +10,15 @@ catalog:
   requires_adapter: false
   approval: none
 harness:
+  files:
+    - fixtures/workspace/skills/issue-to-pr/SKILL.md
+    - fixtures/workspace/skills/issue-to-pr/X.yaml
   cases:
     - name: work-plan-ready-from-issue-intake
       inputs:
         objective: Roll out abandoned cart recovery across api and app.
         project_context: Example product workspace
+        repo_root: fixtures/workspace
         change_set:
           change_set_id: change_set_abandoned_cart_982
           thread_locator: support://request/982
@@ -216,6 +220,7 @@ harness:
     - name: work-plan-skill-package-requires-skill-lab
       inputs:
         objective: Add a new Runx operator skill.
+        repo_root: fixtures/workspace
       caller:
         answers:
           agent_task.work-plan-draft.output:

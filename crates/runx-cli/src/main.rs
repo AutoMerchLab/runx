@@ -12,6 +12,12 @@ const HARNESS_SIGNING_HINT: &str = "runx: hint: harnesses seal signed receipts; 
 const HARNESS_STALE_RECEIPT_STORE_HINT: &str = "runx: hint: the receipt store contains entries that do not verify with the current issuer; retry with --receipt-dir .runx/harness-receipts for an isolated project-local harness run.";
 
 fn main() -> ExitCode {
+    if let Err(error) = install_interrupt_handler() {
+        let _ignored = write_stderr_line(&format!(
+            "runx: failed to install terminal interrupt handler: {error}"
+        ));
+        return ExitCode::from(70);
+    }
     let args: Vec<OsString> = env::args_os().skip(1).collect();
     let workspace = match load_workspace(&args) {
         Ok(workspace) => workspace,
@@ -21,7 +27,30 @@ fn main() -> ExitCode {
         Some(workspace) => runx_cli::router::route_args_with_workspace(args, workspace),
         None => runx_cli::router::route_args(args),
     };
-    dispatch(action, workspace.as_ref())
+    let exit_code = dispatch(action, workspace.as_ref());
+    if runx_runtime::interrupt::was_interrupted() {
+        ExitCode::from(130)
+    } else {
+        exit_code
+    }
+}
+
+fn install_interrupt_handler() -> Result<(), ctrlc::Error> {
+    ctrlc::set_handler(|| {
+        if !runx_runtime::interrupt::terminate_active_processes() {
+            std::process::exit(130);
+        }
+        if std::thread::Builder::new()
+            .name("runx-interrupt-watchdog".to_owned())
+            .spawn(|| {
+                std::thread::sleep(std::time::Duration::from_secs(2));
+                std::process::exit(130);
+            })
+            .is_err()
+        {
+            std::process::exit(130);
+        }
+    })
 }
 
 fn dispatch(action: RouterAction, workspace: Option<&runx_runtime::WorkspaceEnv>) -> ExitCode {

@@ -34,7 +34,7 @@ url = "2.5.8"
 
 [workspace.package]
 edition = "2024"
-rust-version = "1.95"
+rust-version = "1.97"
 license = "MIT"
 repository = "https://github.com/runxhq/runx"
 homepage = "https://runx.ai"

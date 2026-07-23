@@ -1,5 +1,5 @@
 skill: ghostwrite
-version: "0.3.0"
+version: "0.3.1"
 
 catalog:
   kind: skill
@@ -285,12 +285,14 @@ runners:
             module: ghostwrite.mjs
             export: bindContent
             outputs:
-              publish_packet: object
+              content_publish_packet: object
               qa_checklist: array
               handoff_notes: object
           artifacts:
-            wrap_as: content_publish_packet
-            packet: runx.content.publish.v1
+            named_emits:
+              content_publish_packet: content_publish_packet
+            packets:
+              content_publish_packet: runx.content.publish.v1
 
   handoff:
     type: javascript

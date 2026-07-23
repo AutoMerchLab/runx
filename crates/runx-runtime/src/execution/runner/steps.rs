@@ -588,6 +588,7 @@ where
                 &context.runtime.options.env,
             ),
             closure: None,
+            receipt_metadata: None,
         },
         context.runtime.options.signature_policy(),
     )?;
@@ -758,6 +759,7 @@ fn run_replayed_effect_step(
                 &runtime.options.env,
             ),
             closure: None,
+            receipt_metadata: None,
         },
         runtime.options.signature_policy(),
     )?;
@@ -1082,6 +1084,7 @@ fn seal_agent_act_step<A>(
                 reason_code: format!("agent_act_{disposition_label}"),
                 summary: format!("agent act closed with {disposition_label}"),
             }),
+            receipt_metadata: None,
         },
         runtime.options.signature_policy(),
     )?;
@@ -1369,6 +1372,7 @@ where
                     &runtime.options.env,
                 ),
                 closure: None,
+                receipt_metadata: None,
             },
             runtime.options.signature_policy(),
         )?;
@@ -1507,6 +1511,7 @@ where
                 &runtime.options.env,
             ),
             closure: None,
+            receipt_metadata: None,
         },
         runtime.options.signature_policy(),
     )?;
@@ -1650,13 +1655,28 @@ pub(super) fn runtime_error_step_run<A>(
 where
     A: SkillAdapter,
 {
+    #[cfg(feature = "agent")]
+    let (stdout, metadata, receipt_metadata) = match &error {
+        RuntimeError::ManagedAgentResolution { source, .. } => {
+            let projection = source.public_failure_projection();
+            let stdout =
+                serde_json::to_string(&JsonValue::Object(projection)).map_err(|source| {
+                    RuntimeError::json("serializing managed-agent failure", source)
+                })?;
+            let metadata = source.receipt_metadata();
+            (stdout, metadata.clone(), Some(metadata))
+        }
+        _ => (String::new(), JsonObject::new(), None),
+    };
+    #[cfg(not(feature = "agent"))]
+    let (stdout, metadata, receipt_metadata) = (String::new(), JsonObject::new(), None);
     let output = SkillOutput {
         status: InvocationStatus::Failure,
-        stdout: String::new(),
+        stdout,
         stderr: error.to_string(),
         exit_code: None,
         duration_ms: 0,
-        metadata: JsonObject::new(),
+        metadata,
     };
     let projection = project_step_output(&output);
     let receipt = seal_step(
@@ -1673,6 +1693,7 @@ where
                 &runtime.options.env,
             ),
             closure: None,
+            receipt_metadata,
         },
         runtime.options.signature_policy(),
     )?;

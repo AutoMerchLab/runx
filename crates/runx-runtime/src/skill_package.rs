@@ -63,6 +63,7 @@ pub(crate) fn discover_workspace_skill_package_dirs(
     let skills_root = root.join("skills");
     let mut directories = find_files_named(&skills_root, "SKILL.md")?
         .into_iter()
+        .filter(|path| !is_fixture_manual(&skills_root, path))
         .filter_map(|path| path.parent().map(Path::to_path_buf))
         .collect::<Vec<_>>();
     if root.join("SKILL.md").is_file() && (!skills_root.is_dir() || root.join("X.yaml").is_file()) {
@@ -71,6 +72,14 @@ pub(crate) fn discover_workspace_skill_package_dirs(
     directories.sort();
     directories.dedup();
     Ok(directories)
+}
+
+fn is_fixture_manual(skills_root: &Path, manual_path: &Path) -> bool {
+    manual_path.strip_prefix(skills_root).is_ok_and(|relative| {
+        relative
+            .components()
+            .any(|component| component.as_os_str() == std::ffi::OsStr::new("fixtures"))
+    })
 }
 
 pub(crate) fn resolve_skill_package_directory(path: &Path) -> Result<PathBuf, RuntimeError> {
@@ -287,5 +296,20 @@ mod tests {
         let discovered = discover_workspace_skill_package_dirs(root).expect("skill discovery");
 
         assert_eq!(discovered, vec![root.to_path_buf()]);
+    }
+
+    #[test]
+    fn catalog_discovery_excludes_nested_harness_fixture_packages() {
+        let temp = tempfile::tempdir().expect("temporary workspace");
+        let root = temp.path();
+        let public = root.join("skills/prior-art");
+        let fixture = public.join("fixtures/workspace/skills/moltbook");
+        fs::create_dir_all(&fixture).expect("fixture skill directory");
+        fs::write(public.join("SKILL.md"), MANUAL).expect("public manual");
+        fs::write(fixture.join("SKILL.md"), MANUAL).expect("fixture manual");
+
+        let discovered = discover_workspace_skill_package_dirs(root).expect("skill discovery");
+
+        assert_eq!(discovered, vec![public]);
     }
 }

@@ -426,7 +426,7 @@ is revisited as a follow-up spec; it does not constrain this plan.
 
 - Edition: 2024.
 - Resolver: 3.
-- MSRV: 1.95.0, expressed by the `crates/Cargo.toml` workspace
+- MSRV: 1.97.0, expressed by the `crates/Cargo.toml` workspace
   `[workspace.package]` block.
 - Repository, CI, and release builds use the single root `rust-toolchain.toml`
   pin. That reproducible build toolchain is deliberately separate from the
@@ -721,6 +721,13 @@ Async and blocking rules:
   supervision, and adapter concurrency. It may own an async runtime or MCP/HTTP
   protocol crate only after a spec records the security rationale and updates
   `crates/deny.toml`; until then the workspace ban is deliberate.
+- Process ownership is kernel-backed before blocking external child code can
+  run: Unix executions start in a dedicated process group; Windows executions
+  start suspended, join a per-execution Job Object, and only then resume. Every
+  Windows adapter spawn is also beneath an outer Runx kill-on-close job so
+  abrupt CLI termination cannot orphan synchronous, worker, or MCP processes.
+  PID snapshots, `taskkill`, PowerShell tree walks, and skill-local process
+  wrappers are not containment mechanisms.
 - `runx-runtime` defaults to no adapter features. Built-in protocol host
   families are opt-in: `async-http`, `cli-tool`, `mcp`, `mcp-http-server`,
   `a2a`, `agent`, `catalog`, `external-adapter`, and

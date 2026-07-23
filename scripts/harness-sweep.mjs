@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdirSync,
@@ -14,15 +14,16 @@ import { fileURLToPath } from "node:url";
 
 const schema = "runx.inline_harness_sweep.v1";
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const defaultPackageTimeoutMs = 120_000;
 
 try {
   const options = parseArgs(process.argv.slice(2));
   if (options.selfTest) {
-    runSelfTests();
+    await runSelfTests();
     process.stdout.write("harness-sweep self-test passed\n");
     process.exit(0);
   }
-  const report = runSweep(options);
+  const report = await runSweep(options);
   const json = `${JSON.stringify(report, null, 2)}\n`;
   if (options.output) {
     const outputPath = path.resolve(repoRoot, options.output);
@@ -39,7 +40,7 @@ try {
   process.exitCode = 1;
 }
 
-function runSweep(options) {
+async function runSweep(options) {
   const started = performance.now();
   const runxBin = resolveRunxBinary(options);
   const skills = officialSkills();
@@ -53,13 +54,22 @@ function runSweep(options) {
 
   try {
     for (const skill of skills) {
-      const result = runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed);
+      const result = await runSkillHarness(
+        skill,
+        runxBin,
+        tempRoot,
+        workspaceDir,
+        allowed,
+        options.timeoutMs ?? defaultPackageTimeoutMs,
+      );
       results.push(result);
       const label = result.status === "passed"
         ? "PASS"
-        : result.status === "allowed_failure"
-          ? "ALLOW"
-          : "FAIL";
+        : result.status === "not_declared"
+          ? "NONE"
+          : result.status === "allowed_failure"
+            ? "ALLOW"
+            : "FAIL";
       process.stderr.write(`[harness-sweep] ${label} ${skill.name} ${result.elapsed_ms}ms\n`);
     }
   } finally {
@@ -69,6 +79,9 @@ function runSweep(options) {
   }
 
   const passedSkillCount = results.filter((result) => result.status === "passed").length;
+  const notDeclaredSkillCount = results.filter(
+    (result) => result.status === "not_declared",
+  ).length;
   const allowedFailureCount = results.filter((result) => result.status === "allowed_failure").length;
   const failed = results.filter((result) => result.status === "failed");
   const required = options.require ?? 0;
@@ -86,15 +99,17 @@ function runSweep(options) {
   return {
     schema,
     status: failures.length === 0 ? "passed" : "failed",
-    summary: `${passedSkillCount}/${skills.length}`,
+    summary: `${passedSkillCount} passed, ${notDeclaredSkillCount} internal not declared, ${skills.length} official`,
     required,
     expected_skill_count: expectedSkillCount ?? null,
     discovered_skill_count: skills.length,
     passed_skill_count: passedSkillCount,
+    not_declared_skill_count: notDeclaredSkillCount,
     failed_skill_count: failed.length,
     allowed_failure_count: allowedFailureCount,
     allowed_failures: [...allowed].sort(),
     elapsed_ms: Math.round(performance.now() - started),
+    package_timeout_ms: options.timeoutMs ?? defaultPackageTimeoutMs,
     runx_bin: path.relative(repoRoot, runxBin),
     temp_root: options.keepTemp ? tempRoot : undefined,
     failures,
@@ -127,7 +142,7 @@ function sweepFailures({
   return failures;
 }
 
-function runSelfTests() {
+async function runSelfTests() {
   const defaults = {
     discoveredSkillCount: 2,
     expectedSkillCount: undefined,
@@ -155,6 +170,79 @@ function runSelfTests() {
     ["expected 3 official skills, discovered 2"],
     "--expected-count must catch catalog drift",
   );
+  const started = performance.now();
+  const timedOut = await spawnBounded(
+    process.execPath,
+    ["-e", "setInterval(() => {}, 1000)"],
+    { encoding: "utf8" },
+    50,
+  );
+  const elapsedMs = performance.now() - started;
+  if (timedOut.error?.code !== "ETIMEDOUT") {
+    throw new Error(
+      `bounded package execution must time out: ${timedOut.error?.code ?? "no error"}`,
+    );
+  }
+  if (elapsedMs > 2_000) {
+    throw new Error(`bounded package execution exceeded its watchdog: ${elapsedMs}ms`);
+  }
+  // POSIX process groups are owned directly by this Node watchdog. On Windows,
+  // the spawned Runx binary owns the kernel Job Object and its focused Rust
+  // tests exercise descendant containment on a real Windows runner.
+  if (process.platform !== "win32") {
+    const treeStarted = performance.now();
+    const tree = await spawnBounded(
+      process.execPath,
+      [
+        "-e",
+        [
+          "const { spawn } = require('node:child_process');",
+          "const child = spawn(process.execPath, ['-e', 'setInterval(() => {}, 1000)'],",
+          "  { stdio: ['ignore', 'inherit', 'inherit'] });",
+          "process.stdout.write(`${child.pid}\\n`);",
+          "setInterval(() => {}, 1000);",
+        ].join(" "),
+      ],
+      { encoding: "utf8" },
+      250,
+    );
+    const treeElapsedMs = performance.now() - treeStarted;
+    if (tree.error?.code !== "ETIMEDOUT") {
+      throw new Error(
+        `bounded process-tree execution must time out: ${tree.error?.code ?? "no error"}`,
+      );
+    }
+    if (treeElapsedMs > 5_000) {
+      throw new Error(`process-tree cleanup exceeded its watchdog: ${treeElapsedMs}ms`);
+    }
+    const descendantPid = Number.parseInt(tree.stdout, 10);
+    if (!Number.isInteger(descendantPid)) {
+      throw new Error("bounded package execution did not report its descendant");
+    }
+    if (!(await processExited(descendantPid, 2_000))) {
+      throw new Error(`timed-out package left descendant ${descendantPid} alive`);
+    }
+  }
+  const internalEmpty = classifyHarnessResult({
+    exitStatus: 0,
+    reportStatus: "not_declared",
+    caseCount: 0,
+    visibility: "internal",
+    allowed: false,
+  });
+  if (internalEmpty !== "not_declared") {
+    throw new Error(`internal no-case package must remain not_declared, got ${internalEmpty}`);
+  }
+  const publicEmpty = classifyHarnessResult({
+    exitStatus: 0,
+    reportStatus: "not_declared",
+    caseCount: 0,
+    visibility: "public",
+    allowed: false,
+  });
+  if (publicEmpty !== "failed") {
+    throw new Error(`public no-case package must fail admission, got ${publicEmpty}`);
+  }
 }
 
 function assertFailures(actual, expected, message) {
@@ -163,7 +251,7 @@ function assertFailures(actual, expected, message) {
   }
 }
 
-function runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed) {
+async function runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed, timeoutMs) {
   const started = performance.now();
   const skillDir = path.join(repoRoot, "skills", skill.name);
   const receiptDir = path.join(tempRoot, "receipts", skill.name);
@@ -177,7 +265,7 @@ function runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed) {
   if (!existsSync(path.join(skillDir, "X.yaml"))) {
     return failedSkill(skill.name, started, "missing X.yaml");
   }
-  const result = spawnSync(
+  const result = await spawnBounded(
     runxBin,
     ["harness", skillDir, "--json", "--receipt-dir", receiptDir],
     {
@@ -186,6 +274,7 @@ function runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed) {
       maxBuffer: 64 * 1024 * 1024,
       env: harnessEnv(runxBin, tempRoot, skillWorkspaceDir),
     },
+    timeoutMs,
   );
   const elapsedMs = Math.round(performance.now() - started);
   const report = parseHarnessReport(result.stdout);
@@ -194,21 +283,231 @@ function runSkillHarness(skill, runxBin, tempRoot, workspaceDir, allowed) {
     : nonEmpty(result.stderr)
       ?? report.parse_error
       ?? (result.status === 0 ? undefined : `runx exited ${result.status ?? "with signal"}`);
-  const passed = result.status === 0 && report.status === "passed";
-  const allowedFailure = !passed && allowed.has(skill.name);
+  const caseCount = report.case_count ?? 0;
+  const status = classifyHarnessResult({
+    exitStatus: result.status,
+    reportStatus: report.status,
+    caseCount,
+    visibility: skill.visibility,
+    allowed: allowed.has(skill.name),
+  });
   return {
     skill: skill.name,
-    status: passed ? "passed" : allowedFailure ? "allowed_failure" : "failed",
+    visibility: skill.visibility,
+    status,
     elapsed_ms: elapsedMs,
     exit_status: result.status,
-    case_count: report.case_count ?? 0,
+    case_count: caseCount,
     graph_case_count: report.graph_case_count ?? 0,
     assertion_error_count: report.assertion_error_count ?? 0,
     assertion_errors: report.assertion_errors ?? [],
     case_names: report.case_names ?? [],
     receipt_count: Array.isArray(report.receipt_ids) ? report.receipt_ids.length : 0,
-    error: passed ? undefined : error,
+    error: ["passed", "not_declared"].includes(status) ? undefined : error,
   };
+}
+
+function classifyHarnessResult({
+  exitStatus,
+  reportStatus,
+  caseCount,
+  visibility,
+  allowed,
+}) {
+  if (exitStatus === 0 && reportStatus === "passed" && caseCount > 0) {
+    return "passed";
+  }
+  if (
+    exitStatus === 0
+    && reportStatus === "not_declared"
+    && caseCount === 0
+    && visibility === "internal"
+  ) {
+    return "not_declared";
+  }
+  return allowed ? "allowed_failure" : "failed";
+}
+
+async function spawnBounded(command, args, options, timeoutMs) {
+  const {
+    encoding,
+    maxBuffer = 1024 * 1024,
+    ...spawnOptions
+  } = options;
+  const child = spawn(command, args, {
+    ...spawnOptions,
+    detached: process.platform !== "win32",
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  const stdout = [];
+  const stderr = [];
+  let stdoutBytes = 0;
+  let stderrBytes = 0;
+  let overflowError;
+  let signalOverflow;
+  const overflow = new Promise((resolve) => {
+    signalOverflow = resolve;
+  });
+
+  const capture = (stream, chunks, streamName) => {
+    stream.on("data", (value) => {
+      const chunk = Buffer.isBuffer(value) ? value : Buffer.from(value);
+      const nextBytes = streamName === "stdout"
+        ? stdoutBytes + chunk.length
+        : stderrBytes + chunk.length;
+      if (streamName === "stdout") {
+        stdoutBytes = nextBytes;
+      } else {
+        stderrBytes = nextBytes;
+      }
+      if (nextBytes <= maxBuffer) {
+        chunks.push(chunk);
+        return;
+      }
+      if (!overflowError) {
+        overflowError = processError(
+          "ENOBUFS",
+          `${command} ${streamName} exceeded maxBuffer (${maxBuffer} bytes)`,
+        );
+        signalOverflow("overflow");
+      }
+    });
+  };
+  capture(child.stdout, stdout, "stdout");
+  capture(child.stderr, stderr, "stderr");
+
+  let status = null;
+  let signal = null;
+  let spawnError;
+  let rootClosed = false;
+  let resolveRootClosed;
+  const rootClose = new Promise((resolve) => {
+    resolveRootClosed = resolve;
+    child.once("close", (code, closeSignal) => {
+      rootClosed = true;
+      if (status === null) {
+        status = code;
+        signal = closeSignal;
+      }
+      resolve();
+    });
+  });
+  let completionSettled = false;
+  let resolveCompletion;
+  const completion = new Promise((resolve) => {
+    resolveCompletion = resolve;
+  });
+  const finish = (outcome) => {
+    if (completionSettled) return;
+    completionSettled = true;
+    resolveCompletion(outcome);
+  };
+  child.once("error", (error) => {
+    spawnError = error;
+    resolveRootClosed();
+    finish("spawn_error");
+  });
+  child.once("exit", (code, exitSignal) => {
+    status = code;
+    signal = exitSignal;
+    finish("completed");
+  });
+  let timeoutHandle;
+  const timedOut = new Promise((resolve) => {
+    timeoutHandle = setTimeout(() => resolve("timeout"), timeoutMs);
+  });
+  const outcome = await Promise.race([completion, overflow, timedOut]);
+  clearTimeout(timeoutHandle);
+
+  let error = spawnError;
+  let cleanupError;
+  if (outcome !== "completed" || !rootClosed) {
+    try {
+      terminateSpawnedProcess(child);
+    } catch (candidate) {
+      cleanupError = candidate;
+    }
+    await Promise.race([rootClose, delay(1_000)]);
+    if (!rootClosed) {
+      try {
+        child.kill("SIGKILL");
+      } catch (candidate) {
+        if (!isMissingProcess(candidate) && !cleanupError) {
+          cleanupError = candidate;
+        }
+      }
+      await Promise.race([rootClose, delay(1_000)]);
+    }
+    child.stdout.destroy();
+    child.stderr.destroy();
+    child.unref();
+  }
+  if (cleanupError) {
+    error = cleanupError;
+  } else if (!error && outcome !== "completed") {
+    error = outcome === "timeout"
+      ? processError("ETIMEDOUT", `${command} timed out after ${timeoutMs}ms`)
+      : overflowError;
+  }
+
+  return {
+    pid: child.pid,
+    status,
+    signal,
+    stdout: decodeOutput(stdout, encoding),
+    stderr: decodeOutput(stderr, encoding),
+    error,
+  };
+}
+
+function terminateSpawnedProcess(child) {
+  if (!Number.isInteger(child.pid)) {
+    return;
+  }
+  if (process.platform === "win32") {
+    // Runx owns its descendants with a kernel Job Object. Killing the Runx
+    // root closes the outer job handle and atomically terminates that tree.
+    child.kill("SIGKILL");
+    return;
+  }
+  try {
+    process.kill(-child.pid, "SIGKILL");
+  } catch (error) {
+    if (!isMissingProcess(error)) throw error;
+  }
+}
+
+async function processExited(pid, timeoutMs) {
+  const deadline = performance.now() + timeoutMs;
+  while (performance.now() < deadline) {
+    try {
+      process.kill(pid, 0);
+    } catch (error) {
+      if (isMissingProcess(error)) return true;
+      throw error;
+    }
+    await delay(25);
+  }
+  return false;
+}
+
+function isMissingProcess(error) {
+  return error instanceof Error && "code" in error && error.code === "ESRCH";
+}
+
+function processError(code, message) {
+  const error = new Error(message);
+  error.code = code;
+  return error;
+}
+
+function decodeOutput(chunks, encoding) {
+  const output = Buffer.concat(chunks);
+  return encoding ? output.toString(encoding) : output;
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 function failedSkill(skill, started, error) {
@@ -282,7 +581,13 @@ function officialSkills() {
       if (typeof entry?.skill_id !== "string" || !entry.skill_id.startsWith("runx/")) {
         throw new Error(`invalid official skill entry: ${JSON.stringify(entry)}`);
       }
-      return { name: entry.skill_id.slice("runx/".length) };
+      if (!["internal", "public"].includes(entry.catalog_visibility)) {
+        throw new Error(`invalid official skill visibility: ${JSON.stringify(entry)}`);
+      }
+      return {
+        name: entry.skill_id.slice("runx/".length),
+        visibility: entry.catalog_visibility,
+      };
     })
     .sort((left, right) => left.name.localeCompare(right.name));
 }
@@ -347,6 +652,11 @@ function parseArgs(argv) {
       options.output = requiredValue(argv, ++index, arg);
     } else if (arg === "--runx-bin") {
       options.runxBin = requiredValue(argv, ++index, arg);
+    } else if (arg === "--timeout-ms") {
+      options.timeoutMs = positiveInteger(requiredValue(argv, ++index, arg), arg);
+      if (options.timeoutMs === 0) {
+        throw new Error("--timeout-ms requires a positive integer");
+      }
     } else if (arg === "--no-build") {
       options.noBuild = true;
     } else if (arg === "--keep-temp") {
@@ -354,7 +664,7 @@ function parseArgs(argv) {
     } else if (arg === "--self-test") {
       options.selfTest = true;
     } else if (arg === "--help" || arg === "-h") {
-      throw new Error("usage: node scripts/harness-sweep.mjs [--require n] [--allow skill[,skill]] [--expected-count n] [--output path] [--runx-bin path] [--no-build] [--keep-temp] [--self-test]");
+      throw new Error("usage: node scripts/harness-sweep.mjs [--require n] [--allow skill[,skill]] [--expected-count n] [--output path] [--runx-bin path] [--timeout-ms n] [--no-build] [--keep-temp] [--self-test]");
     } else {
       throw new Error(`unknown argument '${arg}'`);
     }

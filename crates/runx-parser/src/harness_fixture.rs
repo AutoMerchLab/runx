@@ -167,6 +167,25 @@ pub fn parse_harness_fixture(contents: &str) -> Result<HarnessFixture, HarnessFi
     validate_fixture(parse_yaml_document::<RawHarnessFixture>(contents)?)
 }
 
+/// Validate an inline runner-harness expectation through the same contract as
+/// a conventional fixture. Inline `X.yaml` cases and standalone fixture files
+/// must not acquire parallel expectation vocabularies.
+pub fn parse_harness_expectation(
+    value: JsonObject,
+) -> Result<HarnessExpectation, HarnessFixtureError> {
+    let value = serde_json::to_value(value).map_err(|error| HarnessFixtureError::Invalid {
+        field: "expect".to_owned(),
+        message: error.to_string(),
+    })?;
+    let expectation = serde_json::from_value::<RawHarnessExpectation>(value).map_err(|error| {
+        HarnessFixtureError::Invalid {
+            field: "expect".to_owned(),
+            message: error.to_string(),
+        }
+    })?;
+    validate_expectation(expectation)
+}
+
 fn validate_fixture(fixture: RawHarnessFixture) -> Result<HarnessFixture, HarnessFixtureError> {
     require_non_empty(&fixture.name, "name")?;
     validate_supported_fixture_kind(&fixture.kind, "kind")?;

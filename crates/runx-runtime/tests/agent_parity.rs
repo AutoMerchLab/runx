@@ -30,6 +30,10 @@ fn agent_task_invocation_id_and_envelope_shape() -> Result<(), Box<dyn std::erro
         "RUNX_TOOL_ROOTS".to_owned(),
         "/tmp/runx-tools:/opt/runx-tools".to_owned(),
     );
+    env.insert(
+        runx_runtime::RUNX_RUN_ID_ENV.to_owned(),
+        "run_agent-parity".to_owned(),
+    );
 
     let output = AgentAdapter::agent_task(config(), &resolver).invoke(SkillInvocation {
         env,
@@ -61,14 +65,19 @@ fn agent_task_invocation_id_and_envelope_shape() -> Result<(), Box<dyn std::erro
     assert_eq!(invocation.agent.as_deref(), Some("assistant"));
     assert_eq!(invocation.task.as_deref(), Some("draft release notes"));
 
-    assert_eq!(invocation.envelope.run_id, "rx_pending");
+    assert_eq!(invocation.envelope.run_id, "run_agent-parity");
     assert_eq!(invocation.envelope.skill, "fixture.step");
     assert!(!invocation.envelope.instructions.is_empty());
     assert!(invocation.envelope.allowed_tools.is_empty());
     assert!(invocation.envelope.current_context.is_empty());
     assert!(invocation.envelope.historical_context.is_empty());
     assert!(invocation.envelope.provenance.is_empty());
-    assert!(!invocation.envelope.trust_boundary.is_empty());
+    assert!(
+        invocation
+            .envelope
+            .trust_boundary
+            .contains("caller-mediated resolution is the default")
+    );
     let execution_location = invocation
         .envelope
         .execution_location
@@ -178,6 +187,7 @@ Write one direct operator response.
 fn agent_declared_text_field_success() -> Result<(), Box<dyn std::error::Error>> {
     let telemetry = AgentExecutionTelemetry {
         rounds: Some(2),
+        model_calls: Some(2),
         tool_calls: Some(1),
         tools: Some(vec!["fs.read".to_owned()]),
         tool_executions: Some(vec![AgentToolExecutionTrace {
@@ -316,6 +326,67 @@ fn provider_error_failure_sanitizes_stderr_and_metadata() -> Result<(), Box<dyn 
 }
 
 #[test]
+fn bounded_failure_projects_reason_and_telemetry_without_raw_content()
+-> Result<(), Box<dyn std::error::Error>> {
+    let resolver = RecordingResolver::bounded_failure(
+        "round_budget_exhausted",
+        "Managed agent exceeded 3 tool-call rounds without finalizing.",
+        AgentExecutionTelemetry {
+            rounds: Some(3),
+            model_calls: Some(3),
+            tool_calls: Some(3),
+            tools: Some(vec!["fs.read".to_owned()]),
+            tool_executions: Some(vec![AgentToolExecutionTrace {
+                tool: "fs.read".to_owned(),
+                status: "success".to_owned(),
+                receipt_id: None,
+                resolution_kind: None,
+            }]),
+        },
+    );
+
+    let output = AgentAdapter::agent(config(), &resolver).invoke(invocation(
+        runx_parser::SourceKind::Agent,
+        "fixture.budget-failure",
+        source(
+            runx_parser::SourceKind::Agent,
+            Some("assistant"),
+            Some("private task"),
+            Some(BTreeMap::from([(
+                "result".to_owned(),
+                JsonValue::String("string".to_owned()),
+            )])),
+        ),
+        JsonObject::new(),
+    ))?;
+
+    assert_eq!(output.status, InvocationStatus::Failure);
+    assert_eq!(
+        output.stderr,
+        "Managed agent exceeded 3 tool-call rounds without finalizing."
+    );
+    let agent_runner = object_field(&output.metadata, "agent_runner")?;
+    assert_eq!(
+        agent_runner.get("reason_code"),
+        Some(&string("round_budget_exhausted"))
+    );
+    assert_eq!(
+        agent_runner.get("rounds"),
+        Some(&JsonValue::Number(JsonNumber::U64(3)))
+    );
+    assert_eq!(
+        agent_runner.get("model_calls"),
+        Some(&JsonValue::Number(JsonNumber::U64(3)))
+    );
+    assert_eq!(
+        agent_runner.get("tool_calls"),
+        Some(&JsonValue::Number(JsonNumber::U64(3)))
+    );
+    assert!(!format!("{output:?}").contains("private task"));
+    Ok(())
+}
+
+#[test]
 fn unsupported_source_type_returns_runtime_error() -> Result<(), Box<dyn std::error::Error>> {
     let resolver = RecordingResolver::success(JsonValue::String("unused".to_owned()), None);
     let error = AgentAdapter::agent(config(), &resolver).invoke(invocation(
@@ -425,6 +496,21 @@ impl RecordingResolver {
         Self {
             requests: RefCell::new(Vec::new()),
             result: Err(AgentResolverError::provider_error(message)),
+        }
+    }
+
+    fn bounded_failure(
+        reason_code: &str,
+        message: &str,
+        telemetry: AgentExecutionTelemetry,
+    ) -> Self {
+        Self {
+            requests: RefCell::new(Vec::new()),
+            result: Err(AgentResolverError::bounded_failure(
+                reason_code,
+                message,
+                telemetry,
+            )),
         }
     }
 }

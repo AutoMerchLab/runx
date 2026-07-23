@@ -104,12 +104,17 @@ fn agent_handoff_journey_pauses_recovers_resumes_verifies_and_clears_history() -
     assert!(pause_text.contains("status: needs_agent"));
     assert!(pause_text.contains("pending_requests: 1"));
     assert!(pause_text.contains("agent_task.issue-intake.output"));
-    assert!(pause_text.contains("runx resume run_agent_task-issue-intake-output answers.json"));
     assert!(!pause_text.contains("<answers.json>"));
     assert!(!pause_text.trim_start().starts_with('{'));
-    let run_id = "run_agent_task-issue-intake-output";
+    let run_id = pause_text
+        .lines()
+        .find_map(|line| line.strip_prefix("run_id: "))
+        .ok_or("pending run omitted run_id")?
+        .to_owned();
+    assert!(run_id.starts_with("run_agent_task-issue-intake-output_"));
+    assert!(pause_text.contains(&format!("runx resume {run_id} answers.json")));
 
-    let pending = history_json(&root, &receipt_dir, run_id)?;
+    let pending = history_json(&root, &receipt_dir, &run_id)?;
     assert!(
         pending["pendingRuns"]
             .as_array()
@@ -130,7 +135,7 @@ fn agent_handoff_journey_pauses_recovers_resumes_verifies_and_clears_history() -
     )?;
     let malformed = command(&root)
         .arg("resume")
-        .arg(run_id)
+        .arg(&run_id)
         .arg(&malformed_answers)
         .arg("--receipt-dir")
         .arg(&receipt_dir)
@@ -155,7 +160,7 @@ fn agent_handoff_journey_pauses_recovers_resumes_verifies_and_clears_history() -
     )?;
     let resume = command(&root)
         .arg("resume")
-        .arg(run_id)
+        .arg(&run_id)
         .arg(&answers)
         .arg("--receipt-dir")
         .arg(&receipt_dir)
@@ -175,6 +180,67 @@ fn agent_handoff_journey_pauses_recovers_resumes_verifies_and_clears_history() -
             .as_array()
             .is_some_and(|runs| runs.iter().all(|run| run["id"] != run_id))
     );
+
+    Ok(())
+}
+
+#[test]
+fn declined_and_superseded_agent_runs_preserve_receipts_and_exit_nonzero() -> TestResult {
+    let root = crate::support::temp_root("runx-operator-terminal-disposition-journey");
+
+    for disposition in ["declined", "superseded"] {
+        let case_root = root.join(disposition);
+        let skill_dir = crate::support::write_agent_task_skill(&case_root.join("skills"))?;
+        let receipt_dir = case_root.join(".runx/receipts");
+
+        let pause = command(&case_root)
+            .arg("skill")
+            .arg(&skill_dir)
+            .arg("--receipt-dir")
+            .arg(&receipt_dir)
+            .args(["--json", "--non-interactive", "--skip-operator-context"])
+            .output()?;
+        let pause = assert_json(&pause, 2)?;
+        let run_id = json_string(&pause, "run_id")?;
+        let request_id = pause["requests"]
+            .as_array()
+            .and_then(|requests| requests.first())
+            .and_then(|request| request["id"].as_str())
+            .ok_or("pending run omitted its request id")?;
+        let answers = case_root.join("answers.json");
+        fs::write(
+            &answers,
+            serde_json::json!({
+                "answers": {
+                    request_id: {
+                        "intake_report": {
+                            "summary": format!("Operator chose {disposition}.")
+                        },
+                        "closure": {
+                            "disposition": disposition
+                        }
+                    }
+                }
+            })
+            .to_string(),
+        )?;
+
+        let resume = command(&case_root)
+            .arg("resume")
+            .arg(run_id)
+            .arg(&answers)
+            .arg("--receipt-dir")
+            .arg(&receipt_dir)
+            .arg("--json")
+            .output()?;
+        let resume = assert_json(&resume, 1)?;
+        assert_eq!(resume["status"], "sealed");
+        assert_eq!(resume["closure"]["disposition"], disposition);
+        assert_eq!(resume["receipt"]["schema"], "runx.receipt.v1");
+        let receipt_id = json_string(&resume, "receipt_id")?;
+        assert_receipt_verifies(&case_root, &receipt_dir, receipt_id)?;
+        assert_history_contains_local_receipt(&case_root, &receipt_dir, receipt_id)?;
+    }
 
     Ok(())
 }
@@ -273,7 +339,7 @@ fn provider_skill_journey_reports_readiness_and_seals_missing_authority() -> Tes
         .arg(&receipt_dir)
         .args(["--json", "--skip-operator-context"])
         .output()?;
-    let denied = assert_json(&denied, 0)?;
+    let denied = assert_json(&denied, 1)?;
     assert_eq!(denied["status"], "sealed");
     assert_eq!(denied["closure"]["disposition"], "blocked");
     assert_eq!(denied["closure"]["reason_code"], "authority_denied");

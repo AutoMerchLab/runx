@@ -87,6 +87,13 @@ tower-service = { version = "0.3.3", optional = true }
 url.workspace = true
 wait-timeout = "0.2.1"
 
+[target.'cfg(windows)'.dependencies]
+# std::process does not expose race-free Job Object assignment. process-wrap
+# creates children suspended, assigns them to a per-execution job, then resumes
+# them; win32job owns the outer kill-on-close job that covers abrupt Runx exit.
+process-wrap = { version = "=9.1.0", default-features = false, features = ["std", "job-object"] }
+win32job = "2.0.3"
+
 [dev-dependencies]
 criterion = "0.7.0"
 proptest = { version = "1.11.0", default-features = false, features = ["std"] }

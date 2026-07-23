@@ -663,7 +663,7 @@ harness:
         );
         if let Err(message) = result {
             assert!(
-                message.contains("must be sealed"),
+                message.contains("unknown variant `success`") && message.contains("`sealed`"),
                 "unexpected error message: {message}"
             );
         }

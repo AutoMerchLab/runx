@@ -52,7 +52,7 @@ local dogfood and live protocol conformance.
 
 Native CLI:
 
-- Rust 1.95+
+- Rust 1.97+
 - The native Rust CLI path must stay useful without Node, pnpm, tsx, or
   TypeScript packages installed.
 
@@ -137,6 +137,12 @@ Provider-backed skills declare requirements in `X.yaml`; configure them with
 `runx credential` or an ignored workspace `.env`. See
 [Credential Resolution](credentials.md) for the exact precedence and storage
 contract.
+
+Ctrl-C (or the terminal's configured interrupt shortcut) interrupts the whole
+active Runx context, including supervised tool, JavaScript, adapter, and MCP
+child process groups. Runx allows a two-second cleanup window, exits with status
+130, and treats a second interrupt as an immediate exit. On macOS, Cmd-C is
+normally copy; Ctrl-C is the interrupt.
 
 ### Structured input documents
 

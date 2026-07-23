@@ -238,6 +238,30 @@ jobs:
           node scripts/harness-sweep.mjs \
             --runx-bin crates/target/debug/runx --no-build
 
+  windows-process-containment:
+    # The Windows Job Object boundary cannot be proved by Linux emulation.
+    # Keep this lane deliberately narrow: two runtime ownership tests and the
+    # platform watchdog self-test, not another workspace-wide matrix build.
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Setup Rust
+        run: rustup show
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates
+      - name: Prove Windows process-tree ownership
+        working-directory: crates
+        run: cargo test -p runx-runtime --features cli-tool windows_ --lib -- --test-threads=1
+      - name: Prove watchdog timeout semantics
+        run: node scripts/harness-sweep.mjs --self-test
+
   checks:
     runs-on: ubuntu-latest
     needs:
@@ -245,6 +269,7 @@ jobs:
       - demo-checks
       - rust-checks
       - skill-harness
+      - windows-process-containment
     steps:
       - name: Done
         run: echo "All CI lanes passed."

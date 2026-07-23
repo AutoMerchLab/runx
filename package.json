@@ -37,6 +37,7 @@
     "bindings:check": "node scripts/check-upstream-skill-bindings.mjs",
     "official-lock:check": "node scripts/generate-official-lock.mjs --check",
     "official-lock:generate": "node scripts/generate-official-lock.mjs",
+    "core-skills:audit": "node scripts/audit-core-skills.mjs --check --json",
     "catalog:check": "node scripts/check-skill-version-drift.mjs && node scripts/check-skill-version-drift.mjs --self-test && node scripts/harness-sweep.mjs --self-test",
     "commands:check-drift": "node scripts/check-command-drift.mjs",
     "domains:check": "node scripts/check-public-domain-urls.mjs",

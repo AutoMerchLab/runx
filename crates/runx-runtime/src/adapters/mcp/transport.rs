@@ -180,18 +180,29 @@ struct McpSession {
     child: tokio::process::Child,
     service: RmcpClientService,
     _stderr_drain: Option<McpStderrDrain>,
+    _active_process: crate::interrupt::ActiveProcessGroup,
 }
 
 impl McpSession {
     async fn start(plan: &SandboxPlan, spawn_count: &AtomicU64) -> Result<Self, McpTransportError> {
-        let mut child = spawn_tokio_mcp_server(plan, spawn_count)?;
+        let SpawnedMcpServer {
+            mut child,
+            active_process,
+        } = spawn_tokio_mcp_server(plan, spawn_count)?;
         let stderr_drain = drain_tokio_stderr(child.stderr.take());
         let error_state = RmcpTransportErrorState::default();
-        let service = serve_rmcp_client(&mut child, error_state).await?;
+        let service = match serve_rmcp_client(&mut child, error_state).await {
+            Ok(service) => service,
+            Err(error) => {
+                terminate_tokio_child(&mut child).await;
+                return Err(error);
+            }
+        };
         Ok(Self {
             child,
             service,
             _stderr_drain: stderr_drain,
+            _active_process: active_process,
         })
     }
 
@@ -331,7 +342,10 @@ async fn list_tools_with_rmcp_async(
     request: McpListToolsRequest,
     spawn_count: Arc<AtomicU64>,
 ) -> Result<Vec<McpToolDescriptor>, McpTransportError> {
-    let mut child = spawn_tokio_mcp_server(&request.sandbox, &spawn_count)?;
+    let SpawnedMcpServer {
+        mut child,
+        active_process: _active_process,
+    } = spawn_tokio_mcp_server(&request.sandbox, &spawn_count)?;
     let _stderr_drain = drain_tokio_stderr(child.stderr.take());
     let result = tokio::time::timeout(request.timeout, async {
         let error_state = RmcpTransportErrorState::default();
@@ -489,18 +503,30 @@ where
         .map_err(|error| rmcp_initialization_error(error, error_state))
 }
 
+struct SpawnedMcpServer {
+    child: tokio::process::Child,
+    active_process: crate::interrupt::ActiveProcessGroup,
+}
+
 fn spawn_tokio_mcp_server(
     plan: &SandboxPlan,
     spawn_count: &AtomicU64,
-) -> Result<tokio::process::Child, McpTransportError> {
+) -> Result<SpawnedMcpServer, McpTransportError> {
     let child = spawn_tokio_process(
         TokioProcessSpec::new("MCP server", plan.command.clone(), plan.cwd.clone())
             .args(plan.args.clone())
             .env(plan.env.clone()),
     )
     .map_err(|error| McpTransportError::failed(error.to_string()))?;
+    let process_id = child
+        .id()
+        .ok_or_else(|| McpTransportError::failed("MCP server process id unavailable."))?;
+    let active_process = crate::interrupt::ActiveProcessGroup::register(process_id);
     spawn_count.fetch_add(1, Ordering::SeqCst);
-    Ok(child)
+    Ok(SpawnedMcpServer {
+        child,
+        active_process,
+    })
 }
 
 #[cfg(unix)]

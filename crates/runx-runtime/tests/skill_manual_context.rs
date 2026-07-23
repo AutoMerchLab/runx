@@ -2,6 +2,8 @@ use std::fs;
 
 use runx_contracts::{ExecutionEvent, JsonValue, ResolutionRequest, sha256_prefixed};
 use runx_receipts::canonical_stable_json;
+#[cfg(feature = "agent")]
+use runx_runtime::adapters::agent::{AgentExecutionTelemetry, AgentResolverError};
 use runx_runtime::{
     Host, InvocationStatus, Runtime, RuntimeError, RuntimeOptions, SkillAdapter, SkillInvocation,
     SkillOutput,
@@ -43,6 +45,65 @@ impl SkillAdapter for UnusedAdapter {
             metadata: Default::default(),
         })
     }
+}
+
+#[cfg(feature = "agent")]
+struct MisidentifiedManagedFailureHost;
+
+#[cfg(feature = "agent")]
+impl Host for MisidentifiedManagedFailureHost {
+    fn report(&mut self, _event: ExecutionEvent) -> Result<(), RuntimeError> {
+        Ok(())
+    }
+
+    fn resolve(
+        &mut self,
+        request: ResolutionRequest,
+    ) -> Result<Option<runx_contracts::ResolutionResponse>, RuntimeError> {
+        let request_id = match request {
+            ResolutionRequest::AgentAct { id, .. } => id.as_str().to_owned(),
+            _ => "managed-agent".to_owned(),
+        };
+        Err(RuntimeError::ManagedAgentResolution {
+            step_id: "referenced-agent-runner".to_owned(),
+            request_id,
+            source: Box::new(AgentResolverError::bounded_failure(
+                "round_budget_exhausted",
+                "Managed agent exhausted its bounded run.",
+                AgentExecutionTelemetry::default(),
+            )),
+        })
+    }
+}
+
+#[cfg(feature = "agent")]
+#[test]
+fn graph_execution_binds_managed_failure_to_the_owning_step()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    fs::write(
+        temp.path().join("SKILL.md"),
+        "---\nname: owner\ndescription: Failure identity fixture.\n---\n\n# Owner\n",
+    )?;
+    fs::write(
+        temp.path().join("graph.yaml"),
+        "name: owner\nsteps:\n  - id: owning-step\n    run:\n      type: agent-task\n      agent: test\n      task: work\n      outputs:\n        result: object\n",
+    )?;
+    let runtime = Runtime::new(UnusedAdapter, RuntimeOptions::local_development());
+
+    let error = match runtime.run_graph_file_with_host(
+        &temp.path().join("graph.yaml"),
+        &mut MisidentifiedManagedFailureHost,
+    ) {
+        Ok(_) => return Err("managed failure must propagate".into()),
+        Err(error) => error,
+    };
+
+    assert!(matches!(
+        error,
+        RuntimeError::ManagedAgentResolution { step_id, .. } if step_id == "owning-step"
+    ));
+    Ok(())
 }
 
 #[test]

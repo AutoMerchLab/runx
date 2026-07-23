@@ -9,7 +9,7 @@ use runx_contracts::{
     JsonValue, Output, OutputField, ResolutionRequest,
 };
 
-const TRUST_BOUNDARY: &str = "native-managed: runx executes the model and tool loop directly, receipts the result, and only yields to a surface for explicit human resolution outside this path";
+const TRUST_BOUNDARY: &str = "runtime-governed: caller-mediated resolution is the default; an in-process model loop runs only with explicit per-run managed-agent consent, and every resolution is receipt-bound";
 
 mod profiles;
 
@@ -95,7 +95,11 @@ fn envelope(
             )
         })?;
     Ok(AgentContextEnvelope {
-        run_id: "rx_pending".into(),
+        run_id: request
+            .env
+            .get(crate::execution::runner::RUNX_RUN_ID_ENV)
+            .and_then(|run_id| NonEmptyString::new(run_id.clone()))
+            .unwrap_or_else(|| "rx_pending".into()),
         step_id: None,
         skill: skill_name(request, source_type).into(),
         instructions_sha256: manual.digest.into(),

@@ -89,7 +89,7 @@ export function bindContent(inputs) {
   const payloadDigest = text(digestResult.digest);
   if (ready && !isDigest(payloadDigest)) throw new Error("native payload digest is missing");
   return {
-    publish_packet: {
+    content_publish_packet: {
       ...draft,
       payload_digest: ready ? payloadDigest : "",
     },

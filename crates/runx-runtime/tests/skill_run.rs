@@ -213,7 +213,7 @@ fn native_skill_run_pauses_with_agent_act_request() -> Result<(), Box<dyn std::e
     let skill_dir = write_agent_task_skill(temp.path())?;
     let expected_instructions = fs::read_to_string(skill_dir.join("SKILL.md"))?;
     let result = run_skill(SkillRunRequest {
-        skill_path: skill_dir,
+        skill_path: skill_dir.clone(),
         receipt_dir: None,
         run_id: None,
         answers_path: None,
@@ -232,10 +232,8 @@ fn native_skill_run_pauses_with_agent_act_request() -> Result<(), Box<dyn std::e
     let output = object(&result.output, "skill run result")?;
     assert_eq!(string_field(output, "schema"), Some("runx.skill_run.v1"));
     assert_eq!(string_field(output, "status"), Some("needs_agent"));
-    assert_eq!(
-        string_field(output, "run_id"),
-        Some("run_agent_task-issue-intake-output")
-    );
+    let run_id = string_field(output, "run_id").ok_or("missing run id")?;
+    assert!(run_id.starts_with("run_agent_task-issue-intake-output_"));
     let requests = array_field(output, "requests").ok_or("missing requests")?;
     assert_eq!(requests.len(), 1);
     let request = object(&requests[0], "request")?;
@@ -247,9 +245,9 @@ fn native_skill_run_pauses_with_agent_act_request() -> Result<(), Box<dyn std::e
     let invocation = object_field(request, "invocation").ok_or("missing invocation")?;
     assert_eq!(string_field(invocation, "source_type"), Some("agent-task"));
     let envelope = object_field(invocation, "envelope").ok_or("missing envelope")?;
+    assert_eq!(string_field(envelope, "run_id"), Some(run_id));
     let instructions = string_field(envelope, "instructions").ok_or("missing instructions")?;
     assert_eq!(instructions, expected_instructions);
-    let envelope = object_field(invocation, "envelope").ok_or("missing envelope")?;
     let inputs = object_field(envelope, "inputs").ok_or("missing inputs")?;
     assert_eq!(
         inputs.get("thread_title"),
@@ -259,6 +257,29 @@ fn native_skill_run_pauses_with_agent_act_request() -> Result<(), Box<dyn std::e
         object_field(envelope, "execution_location")
             .and_then(|location| string_field(location, "skill_directory"))
             .is_some()
+    );
+
+    let other = run_skill(SkillRunRequest {
+        skill_path: skill_dir,
+        receipt_dir: None,
+        run_id: None,
+        answers_path: None,
+        inputs: [(
+            "thread_title".to_owned(),
+            JsonValue::String("Different docs bug".to_owned()),
+        )]
+        .into_iter()
+        .collect(),
+        env: BTreeMap::new(),
+        cwd: temp.path().to_path_buf(),
+        managed_agent: Default::default(),
+        local_credential: None,
+    })?;
+    let other = object(&other.output, "second skill run result")?;
+    assert_ne!(
+        string_field(other, "run_id"),
+        Some(run_id),
+        "agent checkpoints with different inputs must never collide"
     );
 
     Ok(())

@@ -1,5 +1,5 @@
 skill: ecosystem-brief
-version: "0.2.0"
+version: "0.2.1"
 
 catalog:
   kind: graph
@@ -133,8 +133,15 @@ harness:
       expect:
         status: sealed
         steps:
+          - freshness
           - research-topic
         step_outputs:
+          freshness:
+            subset:
+              freshness_report:
+                data:
+                  decision: needs_more_evidence
+                  accepted_count: 0
           research-topic:
             subset:
               research_packet:

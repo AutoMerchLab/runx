@@ -190,8 +190,12 @@ pub(super) fn execute_mcp_server_skill(
         execution.runner.source.source_type.as_str(),
     ) {
         let skill_name = execution.skill_name.clone();
-        let request =
-            agent_act_resolution_request(&mcp_skill_invocation(&execution, inputs), source_type)?;
+        let mut invocation = mcp_skill_invocation(&execution, inputs);
+        invocation.env.insert(
+            crate::execution::runner::RUNX_RUN_ID_ENV.to_owned(),
+            run_id.to_owned(),
+        );
+        let request = agent_act_resolution_request(&invocation, source_type)?;
         return pending_mcp_resolution_result(run_id, &skill_name, &request);
     }
     complete_mcp_server_skill(run_id, execution, inputs, &javascript)

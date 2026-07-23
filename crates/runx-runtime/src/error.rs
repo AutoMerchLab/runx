@@ -66,6 +66,14 @@ pub enum RuntimeError {
     },
     #[error("graph step '{step_id}' failed planning: {reason}")]
     GraphPlanningFailed { step_id: String, reason: String },
+    #[cfg(feature = "agent")]
+    #[error("managed agent resolution '{request_id}' failed in graph step '{step_id}': {source}")]
+    ManagedAgentResolution {
+        step_id: String,
+        request_id: String,
+        #[source]
+        source: Box<crate::adapters::agent::AgentResolverError>,
+    },
     #[error("graph step '{step_id}' paused: {reason}")]
     GraphPaused {
         step_id: String,
@@ -151,5 +159,38 @@ impl RuntimeError {
             missing_segment: missing_segment.into(),
             available_keys,
         }))
+    }
+
+    #[cfg(feature = "agent")]
+    pub(crate) fn managed_agent_resolution(
+        step_id: impl Into<String>,
+        request_id: impl Into<String>,
+        source: crate::adapters::agent::AgentResolverError,
+    ) -> Self {
+        Self::ManagedAgentResolution {
+            step_id: step_id.into(),
+            request_id: request_id.into(),
+            source: Box::new(source),
+        }
+    }
+
+    /// Bind host-resolution failures to the graph step that owns the act.
+    ///
+    /// A referenced agent skill names itself in the agent envelope, which is
+    /// useful provider context but is not necessarily the outer graph step id.
+    /// The execution chokepoint always has the authoritative graph step, so it
+    /// normalizes that identity before terminal failure sealing.
+    pub(crate) fn at_graph_step(self, step_id: &str) -> Self {
+        match self {
+            #[cfg(feature = "agent")]
+            Self::ManagedAgentResolution {
+                request_id, source, ..
+            } => Self::ManagedAgentResolution {
+                step_id: step_id.to_owned(),
+                request_id,
+                source,
+            },
+            error => error,
+        }
     }
 }

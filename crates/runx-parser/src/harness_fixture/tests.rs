@@ -28,6 +28,50 @@ expect:
 }
 
 #[test]
+fn inline_expectations_use_the_conventional_contract() -> Result<(), HarnessFixtureError> {
+    let expectation = parse_harness_expectation(JsonObject::from([
+        ("status".to_owned(), JsonValue::String("sealed".to_owned())),
+        (
+            "receipt".to_owned(),
+            JsonValue::Object(JsonObject::from([
+                (
+                    "schema".to_owned(),
+                    JsonValue::String("runx.receipt.v1".to_owned()),
+                ),
+                (
+                    "disposition".to_owned(),
+                    JsonValue::String("closed".to_owned()),
+                ),
+            ])),
+        ),
+        (
+            "step_outputs".to_owned(),
+            JsonValue::Object(JsonObject::from([(
+                "inspect".to_owned(),
+                JsonValue::Object(JsonObject::from([(
+                    "subset".to_owned(),
+                    JsonValue::Object(JsonObject::from([(
+                        "status".to_owned(),
+                        JsonValue::String("ready".to_owned()),
+                    )])),
+                )])),
+            )])),
+        ),
+    ]))?;
+
+    assert_eq!(expectation.status, Some(HarnessExpectedStatus::Sealed));
+    assert_eq!(
+        expectation
+            .receipt
+            .as_ref()
+            .and_then(|receipt| receipt.disposition.as_ref()),
+        Some(&ClosureDisposition::Closed)
+    );
+    assert!(expectation.step_outputs.contains_key("inspect"));
+    Ok(())
+}
+
+#[test]
 fn rejects_retired_receipt_fields() {
     for field in [
         "kind",

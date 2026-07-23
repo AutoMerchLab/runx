@@ -1256,6 +1256,7 @@ runners:
                     reason_code: "prepared_complete".to_owned(),
                     summary: "prepared run completed".to_owned(),
                 }),
+                receipt_metadata: None,
             },
             RuntimeReceiptSignaturePolicy::local_development(),
         )?;

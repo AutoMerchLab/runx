@@ -112,6 +112,27 @@ fn package_mode_keeps_default_receipts_after_isolated_replay() -> TestResult {
 }
 
 #[test]
+fn inline_harness_rejects_receipt_expectation_drift() -> TestResult {
+    assert_inline_expectation_fails(
+        "receipt:\n            schema: runx.receipt.v1\n            state: deferred",
+        "expect.receipt.state",
+    )
+}
+
+#[test]
+fn inline_harness_rejects_step_expectation_drift() -> TestResult {
+    assert_inline_expectation_fails("steps: [missing-step]", "expect.steps")
+}
+
+#[test]
+fn inline_harness_rejects_step_output_expectation_drift() -> TestResult {
+    assert_inline_expectation_fails(
+        "step_outputs:\n            run:\n              subset:\n                status: expected",
+        "expect.step_outputs.run.subset.status",
+    )
+}
+
+#[test]
 fn package_harness_partial_signer_config_prints_actionable_hint() -> TestResult {
     let root = crate::support::temp_root("runx-inline-harness-hint");
     let skill_dir = root.join("skill");
@@ -239,5 +260,67 @@ runners:
       require_enforcement: false
 "#,
     )?;
+    Ok(())
+}
+
+fn assert_inline_expectation_fails(expectation: &str, expected_field: &str) -> TestResult {
+    let root = crate::support::temp_root("runx-inline-harness-negative");
+    let skill_dir = root.join("skill");
+    fs::create_dir_all(&skill_dir)?;
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: harness-negative\n---\n# Harness Negative\n",
+    )?;
+    let manifest = r#"
+skill: harness-negative
+version: "0.1.0"
+harness:
+  cases:
+    - name: rejects-drift
+      expect:
+        __EXPECTATION__
+runners:
+  default:
+    default: true
+    type: cli-tool
+    command: sh
+    args:
+      - -c
+      - 'printf "{\"ok\":true,\"step_outputs\":{\"run\":{\"status\":\"actual\"}}}"'
+    timeout_seconds: 5
+    sandbox:
+      profile: readonly
+      cwd_policy: skill-directory
+      require_enforcement: false
+"#
+    .replace("__EXPECTATION__", expectation);
+    fs::write(skill_dir.join("X.yaml"), manifest)?;
+
+    let output = unsigned_runx_command()?
+        .env("RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY", "local")
+        .args([
+            "harness",
+            skill_dir.to_str().ok_or("non-utf8 skill dir")?,
+            "--json",
+        ])
+        .output()?;
+
+    assert_eq!(
+        output.status.code(),
+        Some(1),
+        "stdout:\n{}\nstderr:\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    assert_eq!(report["status"], "failed");
+    assert!(
+        report["assertion_errors"]
+            .as_array()
+            .is_some_and(|errors| errors.iter().any(|error| error
+                .as_str()
+                .is_some_and(|message| message.contains(expected_field)))),
+        "missing expected assertion field {expected_field}: {report}"
+    );
     Ok(())
 }

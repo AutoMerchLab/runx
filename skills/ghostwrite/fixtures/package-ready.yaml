@@ -20,7 +20,7 @@ expect:
   status: sealed
   output:
     subset:
-      publish_packet:
+      content_publish_packet:
         decision: ready_for_handoff
         delivery_status: not_sent
         channel: blog

@@ -5,11 +5,14 @@ use super::{
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use runx_contracts::{JsonObject, JsonValue};
+use runx_contracts::{JsonObject, JsonValue, Receipt};
+use runx_parser::harness_fixture::HarnessExpectedStatus;
 use runx_parser::{HarnessCallerFixture, RunnerHarnessCase, SkillRunnerManifest};
 
 use crate::RuntimeError;
 use crate::effects::RuntimeEffectRegistry;
+use crate::execution::harness::runner::HarnessReplayError;
+use crate::execution::harness::{assert_json_expectation, assert_receipt_expectation, status_name};
 use crate::execution::orchestrator::SkillRunRequest;
 
 use super::runner_manifest::selected_runner;
@@ -18,27 +21,22 @@ mod package;
 
 pub(crate) use package::run_package_harness_with_effects;
 
-/// Run a skill's declared inline harness and summarize it. Each declared case is
-/// run through the same path as `runx skill` (so a graph that blocks on an agent
-/// step yields `needs_agent`, exactly as a real run would), with the case's
-/// runner selected and its caller answers/approvals seeded for a single pass.
-/// A skill with no declared harness is `not_declared` (not a failure). The
-/// run is `passed` only when every case meets its declared expectation.
-pub(crate) fn run_inline_harness_with_effects(
-    skill_path: &Path,
+/// Run a validated skill's declared inline cases through the same execution
+/// path as `runx skill`. Package admission and harness workspace preparation
+/// happen once in the owning package entry point.
+fn run_loaded_inline_harness_with_effects(
+    loaded: &crate::LoadedSkillPackage,
     case_receipt_root: Option<&Path>,
     output_receipt_dir: Option<&Path>,
     env: Option<&BTreeMap<String, String>>,
     effects: &RuntimeEffectRegistry,
 ) -> Result<PackageHarnessReport, SkillRunError> {
-    let loaded = crate::load_validated_skill_package(skill_path)?;
     let manifest = loaded.manifest().cloned().ok_or_else(|| {
         SkillRunError::Invalid(format!(
             "skill package {} does not declare X.yaml runners",
             loaded.directory.display()
         ))
     })?;
-    let skill_dir = loaded.directory;
     let Some(harness) = manifest.harness.as_ref() else {
         return Ok(PackageHarnessReport::not_declared());
     };
@@ -49,7 +47,7 @@ pub(crate) fn run_inline_harness_with_effects(
     let cwd = std::env::current_dir()
         .map_err(|source| RuntimeError::io("resolving cwd for inline harness", source))?;
     let context = InlineHarnessContext {
-        skill_dir: &skill_dir,
+        skill_dir: &loaded.directory,
         case_receipt_root,
         output_receipt_dir,
         env,
@@ -137,7 +135,7 @@ fn run_inline_harness_case(
         return InlineHarnessCaseOutcome {
             is_graph,
             receipt_id: None,
-            assertion_error: inline_harness_status_error(case, "failure"),
+            assertion_error: inline_harness_status_error(case, HarnessExpectedStatus::Failure),
         };
     }
 
@@ -193,7 +191,7 @@ fn execute_inline_harness_case(
             InlineHarnessCaseOutcome {
                 is_graph,
                 receipt_id,
-                assertion_error: inline_harness_expectation_error(case, &output),
+                assertion_error: inline_harness_expectation_error(request, case, &output),
             }
         }
         Err(error) => InlineHarnessCaseOutcome {
@@ -263,26 +261,143 @@ fn receipt_id_from_output(output: &JsonValue) -> Option<String> {
 }
 
 fn inline_harness_expectation_error(
+    request: &SkillRunRequest,
     case: &RunnerHarnessCase,
     output: &JsonValue,
 ) -> Option<String> {
-    inline_harness_status_error(case, inline_harness_actual_status(output))
+    assert_inline_harness_expectations(request, case, output)
+        .err()
+        .map(|error| format!("{}: {error}", case.name))
 }
 
-fn inline_harness_status_error(case: &RunnerHarnessCase, actual: &str) -> Option<String> {
-    let expected = case.expect.status.as_deref()?;
-    (actual != expected).then(|| format!("{}: expected status {expected}, got {actual}", case.name))
+fn assert_inline_harness_expectations(
+    request: &SkillRunRequest,
+    case: &RunnerHarnessCase,
+    output: &JsonValue,
+) -> Result<(), HarnessReplayError> {
+    let actual_status = inline_harness_actual_status(output);
+    if let Some(expected_status) = &case.expect.status
+        && *expected_status != actual_status
+    {
+        return Err(HarnessReplayError::Mismatch {
+            field: "expect.status".to_owned(),
+            expected: status_name(expected_status).to_owned(),
+            actual: status_name(&actual_status).to_owned(),
+        });
+    }
+
+    if let Some(expected_receipt) = &case.expect.receipt {
+        let actual_receipt = output
+            .as_object()
+            .and_then(|object| object.get("receipt"))
+            .cloned()
+            .ok_or_else(|| HarnessReplayError::InvalidReplayMetadata {
+                field: "receipt".to_owned(),
+                message: "skill run output omitted its receipt".to_owned(),
+            })?;
+        let actual_receipt = serde_json::to_value(actual_receipt).map_err(|error| {
+            HarnessReplayError::InvalidReplayMetadata {
+                field: "receipt".to_owned(),
+                message: error.to_string(),
+            }
+        })?;
+        let actual_receipt =
+            serde_json::from_value::<Receipt>(actual_receipt).map_err(|error| {
+                HarnessReplayError::InvalidReplayMetadata {
+                    field: "receipt".to_owned(),
+                    message: error.to_string(),
+                }
+            })?;
+        let receipts = crate::services::ReceiptServices::from_env_or_local_development(
+            &request.env,
+        )
+        .map_err(|error| {
+            HarnessReplayError::Runtime(RuntimeError::ReceiptInvalid {
+                message: error.to_string(),
+            })
+        })?;
+        assert_receipt_expectation(
+            expected_receipt,
+            &actual_receipt,
+            receipts.signature_config().signature_policy(),
+        )?;
+    }
+
+    let payload = output
+        .as_object()
+        .and_then(|object| object.get("payload"))
+        .unwrap_or(&JsonValue::Null);
+    if !case.expect.steps.is_empty() {
+        let actual_steps = payload
+            .as_object()
+            .and_then(|object| object.get("steps"))
+            .and_then(JsonValue::as_array)
+            .into_iter()
+            .flatten()
+            .filter_map(|step| {
+                step.as_object()
+                    .and_then(|object| object.get("step_id"))
+                    .and_then(JsonValue::as_str)
+            })
+            .collect::<Vec<_>>();
+        if case
+            .expect
+            .steps
+            .iter()
+            .map(String::as_str)
+            .ne(actual_steps.iter().copied())
+        {
+            return Err(HarnessReplayError::Mismatch {
+                field: "expect.steps".to_owned(),
+                expected: case.expect.steps.join(","),
+                actual: actual_steps.join(","),
+            });
+        }
+    }
+    if let Some(expectation) = &case.expect.output {
+        assert_json_expectation(expectation, payload, "expect.output")?;
+    }
+    for (step_id, expectation) in &case.expect.step_outputs {
+        let actual = payload
+            .as_object()
+            .and_then(|object| object.get("step_outputs"))
+            .and_then(JsonValue::as_object)
+            .and_then(|step_outputs| step_outputs.get(step_id))
+            .unwrap_or(&JsonValue::Null);
+        assert_json_expectation(
+            expectation,
+            actual,
+            &format!("expect.step_outputs.{step_id}"),
+        )?;
+    }
+    Ok(())
+}
+
+fn inline_harness_status_error(
+    case: &RunnerHarnessCase,
+    actual: HarnessExpectedStatus,
+) -> Option<String> {
+    let expected = case.expect.status.as_ref()?;
+    (actual != *expected).then(|| {
+        format!(
+            "{}: expected status {}, got {}",
+            case.name,
+            status_name(expected),
+            status_name(&actual)
+        )
+    })
 }
 
 fn inline_harness_execution_error(
     case: &RunnerHarnessCase,
     error: &impl std::fmt::Display,
 ) -> Option<String> {
-    match case.expect.status.as_deref() {
-        Some("failure") => None,
+    match case.expect.status.as_ref() {
+        Some(HarnessExpectedStatus::Failure) => None,
         Some(expected) => Some(format!(
-            "{}: expected status {expected}, execution failed: {error}",
-            case.name
+            "{}: expected status {}, execution failed: {error}",
+            case.name,
+            status_name(expected)
         )),
         None => Some(format!("{}: {error}", case.name)),
     }
@@ -311,12 +426,12 @@ fn seeded_answers_from_caller(caller: &HarnessCallerFixture) -> Option<JsonObjec
 // (sealed/failure/needs_agent/policy_denied). A pending run is needs_agent; a
 // terminal run is derived from its closure disposition so the mapping matches
 // the standalone harness `status_from_disposition`.
-fn inline_harness_actual_status(output: &JsonValue) -> &'static str {
+fn inline_harness_actual_status(output: &JsonValue) -> HarnessExpectedStatus {
     let Some(object) = output.as_object() else {
-        return "sealed";
+        return HarnessExpectedStatus::Sealed;
     };
     if object.get("status").and_then(JsonValue::as_str) == Some("needs_agent") {
-        return "needs_agent";
+        return HarnessExpectedStatus::NeedsAgent;
     }
     let disposition = object
         .get("closure")
@@ -324,9 +439,11 @@ fn inline_harness_actual_status(output: &JsonValue) -> &'static str {
         .and_then(|closure| closure.get("disposition"))
         .and_then(JsonValue::as_str);
     match disposition {
-        Some("deferred") => "needs_agent",
-        Some("blocked") => "policy_denied",
-        Some("declined" | "failed" | "killed" | "timed_out" | "superseded") => "failure",
-        _ => "sealed",
+        Some("deferred") => HarnessExpectedStatus::NeedsAgent,
+        Some("blocked") => HarnessExpectedStatus::PolicyDenied,
+        Some("declined" | "failed" | "killed" | "timed_out" | "superseded") => {
+            HarnessExpectedStatus::Failure
+        }
+        _ => HarnessExpectedStatus::Sealed,
     }
 }

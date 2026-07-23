@@ -38,7 +38,7 @@ pub(super) fn assert_expectations(
         )?;
     }
     if let Some(expected_receipt) = &output.fixture.expect.receipt {
-        assert_receipt(expected_receipt, &output.receipt, signature_policy)?;
+        assert_receipt_expectation(expected_receipt, &output.receipt, signature_policy)?;
     }
     if !output.fixture.expect.steps.is_empty() {
         let actual = output
@@ -96,7 +96,7 @@ pub(super) fn status_from_disposition(disposition: &ClosureDisposition) -> Harne
 // human can paste them back into fixtures; it is a developer regen path, not
 // runtime logging, so the workspace print ban is lifted for this function only.
 #[allow(clippy::print_stderr)]
-fn assert_receipt(
+pub(crate) fn assert_receipt_expectation(
     expected: &ReceiptExpectation,
     actual: &Receipt,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
@@ -337,7 +337,7 @@ fn disposition_name(disposition: &ClosureDisposition) -> &'static str {
     }
 }
 
-fn status_name(status: &HarnessExpectedStatus) -> &'static str {
+pub(crate) fn status_name(status: &HarnessExpectedStatus) -> &'static str {
     match status {
         HarnessExpectedStatus::Sealed => "sealed",
         HarnessExpectedStatus::Failure => "failure",
