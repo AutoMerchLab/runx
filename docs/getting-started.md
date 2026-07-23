@@ -5,7 +5,7 @@ checked-in `examples/hello-world` package so the commands stay tied to the repo.
 
 ## Prerequisites
 
-- Rust 1.88 or newer for the native CLI path.
+- Rust 1.95 or newer for the native CLI path.
 - Node.js 20 or newer for the checked-in `hello-world` runner command. No
   TypeScript install is required for the native CLI path.
 - pnpm 10 or newer only when exercising the npm wrapper or TypeScript package

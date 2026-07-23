@@ -426,7 +426,7 @@ is revisited as a follow-up spec; it does not constrain this plan.
 
 - Edition: 2024.
 - Resolver: 3.
-- MSRV: 1.88.0, expressed by the `crates/Cargo.toml` workspace
+- MSRV: 1.95.0, expressed by the `crates/Cargo.toml` workspace
   `[workspace.package]` block.
 - Repository, CI, and release builds use the single root `rust-toolchain.toml`
   pin. That reproducible build toolchain is deliberately separate from the
