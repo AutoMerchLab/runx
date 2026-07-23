@@ -14,6 +14,7 @@ use super::{ProcessOutcome, ProcessSpec, ProcessStdin, ProcessSupervisorError};
 
 const DEFAULT_FORCE_KILL_GRACE: Duration = Duration::from_millis(100);
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const PROCESS_REAP_TIMEOUT: Duration = Duration::from_secs(5);
 
 pub(crate) fn run_process(spec: ProcessSpec) -> Result<ProcessOutcome, ProcessSupervisorError> {
     let started = Instant::now();
@@ -169,9 +170,11 @@ fn wait_for_exit(
     loop {
         if crate::interrupt::was_interrupted() {
             signal_process(child, ProcessSignal::Force, spec)?;
-            let status = child.wait().map_err(|source| {
-                ProcessSupervisorError::io(wait_interrupted_context(spec.label), source)
-            })?;
+            let status = child
+                .reap_after_signal(PROCESS_REAP_TIMEOUT)
+                .map_err(|source| {
+                    ProcessSupervisorError::io(wait_interrupted_context(spec.label), source)
+                })?;
             return Ok((status, false));
         }
 
@@ -183,9 +186,11 @@ fn wait_for_exit(
             signal_process(child, ProcessSignal::Terminate, spec)?;
             thread::sleep(DEFAULT_FORCE_KILL_GRACE);
             signal_process(child, ProcessSignal::Force, spec)?;
-            let status = child.wait().map_err(|source| {
-                ProcessSupervisorError::io(wait_timed_out_context(spec.label), source)
-            })?;
+            let status = child
+                .reap_after_signal(PROCESS_REAP_TIMEOUT)
+                .map_err(|source| {
+                    ProcessSupervisorError::io(wait_timed_out_context(spec.label), source)
+                })?;
             return Ok((status, true));
         }
 
@@ -196,9 +201,6 @@ fn wait_for_exit(
             // alive after it exits is execution residue, so terminate the owned
             // tree before joining inherited stdout/stderr handles.
             signal_process(child, ProcessSignal::Force, spec)?;
-            child
-                .wait()
-                .map_err(|source| ProcessSupervisorError::io(wait_context(spec.label), source))?;
             return Ok((status, false));
         }
     }
@@ -211,7 +213,7 @@ fn cleanup_child_after_startup_error(
     stderr: Option<CaptureHandle>,
 ) {
     let _ = signal_process(child, ProcessSignal::Force, spec);
-    let _ = child.wait();
+    let _ = child.reap_after_signal(PROCESS_REAP_TIMEOUT);
     if let Some(stdout) = stdout {
         let _ = join_capture(stdout, collect_context(spec.label, "stdout"));
     }
@@ -269,10 +271,6 @@ fn open_pipe_context(label: &str, stream: &str) -> String {
 
 fn collect_context(label: &str, stream: &str) -> String {
     format!("collecting {label} {stream}")
-}
-
-fn wait_context(label: &str) -> String {
-    format!("waiting for {label} process")
 }
 
 fn wait_timeout_context(label: &str) -> String {

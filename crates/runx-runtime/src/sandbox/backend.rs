@@ -76,6 +76,7 @@ pub(super) fn resolve_sandbox_runtime(
     )))
 }
 
+#[cfg(not(windows))]
 pub(super) fn resolve_javascript_worker_runtime() -> Result<Option<SandboxRuntime>, RuntimeError> {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     {
@@ -88,16 +89,7 @@ pub(super) fn resolve_javascript_worker_runtime() -> Result<Option<SandboxRuntim
         ))
     }
 
-    #[cfg(target_os = "windows")]
-    {
-        // The worker installs a Windows Job Object before accepting protocol
-        // input. Boa exposes no host filesystem, network, process, or
-        // environment APIs, so no author-controlled OS authority enters the
-        // process on this target.
-        Ok(Some(SandboxRuntime::Direct))
-    }
-
-    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
         Err(sandbox_violation(
             "deterministic JavaScript has no confinement backend on this target",

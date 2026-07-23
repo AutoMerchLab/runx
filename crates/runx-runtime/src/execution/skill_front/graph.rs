@@ -416,6 +416,7 @@ fn missing_required_graph_input_request(
 
 enum GraphTerminalCause {
     Blocked,
+    #[cfg(feature = "agent")]
     Failed(RuntimeError),
 }
 
@@ -447,6 +448,7 @@ fn seal_terminal_graph_skill_run(
             context.summary,
             &mut final_host,
         )?,
+        #[cfg(feature = "agent")]
         GraphTerminalCause::Failed(error) => {
             context.runtime.seal_failed_graph_checkpoint_with_host(
                 context.graph,

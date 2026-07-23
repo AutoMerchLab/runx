@@ -116,8 +116,12 @@ pub(crate) fn wait_for_recorded_pid_exit(
     wait_for_pid_exit(pid, deadline.saturating_sub(started.elapsed()))
 }
 
-/// Polls `kill(pid, 0)` until it reports ESRCH, failing if the process is
-/// still alive at `deadline`.
+/// Polls until the process can no longer execute.
+///
+/// Linux can briefly retain a killed orphan as a zombie when the container's
+/// PID 1 has not reaped it yet. A zombie cannot run or write the sentinel the
+/// containment tests protect, so it is terminal even though `kill(pid, 0)`
+/// continues to resolve the PID.
 #[cfg(all(
     unix,
     any(
@@ -138,12 +142,39 @@ pub(crate) fn wait_for_pid_exit(
         if matches!(
             rustix::process::test_kill_process(pid),
             Err(rustix::io::Errno::SRCH)
-        ) {
+        ) || process_is_terminal(pid.as_raw_nonzero().get())
+        {
             return Ok(());
         }
         if started.elapsed() >= deadline {
             return Err(format!("process {pid:?} still alive after {deadline:?}").into());
         }
         std::thread::sleep(poll);
+    }
+}
+
+#[cfg(all(
+    unix,
+    any(
+        feature = "catalog",
+        feature = "external-adapter",
+        feature = "mcp",
+        feature = "thread-outbox-provider"
+    )
+))]
+fn process_is_terminal(pid: i32) -> bool {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let path = format!("/proc/{pid}/stat");
+        return std::fs::read_to_string(path)
+            .ok()
+            .and_then(|stat| stat.rsplit_once(") ").map(|(_, tail)| tail.to_owned()))
+            .and_then(|tail| tail.chars().next())
+            .is_some_and(|state| matches!(state, 'Z' | 'X'));
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        let _ = pid;
+        false
     }
 }

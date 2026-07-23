@@ -243,6 +243,7 @@ jobs:
     # Keep this lane deliberately narrow: two runtime ownership tests and the
     # platform watchdog self-test, not another workspace-wide matrix build.
     runs-on: windows-latest
+    timeout-minutes: 8
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -258,7 +259,7 @@ jobs:
           workspaces: crates
       - name: Prove Windows process-tree ownership
         working-directory: crates
-        run: cargo test -p runx-runtime --features cli-tool windows_ --lib -- --test-threads=1
+        run: cargo test -p runx-runtime --features cli-tool windows_ --lib -- --test-threads=1 --nocapture
       - name: Prove watchdog timeout semantics
         run: node scripts/harness-sweep.mjs --self-test
 

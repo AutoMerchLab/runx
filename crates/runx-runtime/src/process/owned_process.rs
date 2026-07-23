@@ -103,14 +103,32 @@ impl OwnedProcess {
         }
     }
 
-    pub(super) fn wait(&mut self) -> io::Result<ExitStatus> {
+    pub(super) fn reap_after_signal(&mut self, timeout: Duration) -> io::Result<ExitStatus> {
         #[cfg(not(windows))]
         {
+            let _ = timeout;
             self.child.wait()
         }
         #[cfg(windows)]
         {
-            self.child.wait()
+            // JobObjectChild::wait waits for completion-port state in addition
+            // to reaping the root and can block after TerminateJobObject has
+            // already drained that state. Poll the root instead; the Job
+            // Object owns termination of the complete tree.
+            let deadline = std::time::Instant::now() + timeout;
+            loop {
+                if let Some(status) = self.child.try_wait()? {
+                    return Ok(status);
+                }
+                let remaining = deadline.saturating_duration_since(std::time::Instant::now());
+                if remaining.is_zero() {
+                    return Err(io::Error::new(
+                        io::ErrorKind::TimedOut,
+                        "timed out reaping terminated process",
+                    ));
+                }
+                std::thread::sleep(remaining.min(Duration::from_millis(10)));
+            }
         }
     }
 

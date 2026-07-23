@@ -9,8 +9,10 @@ use runx_parser::SkillSandbox;
 use super::backend::SandboxRuntime;
 use super::policy::normalize_path;
 
+#[cfg(not(windows))]
 mod javascript;
 
+#[cfg(not(windows))]
 pub(super) use javascript::javascript_worker_spawn_command;
 
 pub(super) struct SandboxSpawnCommand<'a> {
