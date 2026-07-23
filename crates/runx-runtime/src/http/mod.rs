@@ -12,7 +12,7 @@ use std::net::SocketAddr;
 #[cfg(any(feature = "async-http", test))]
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 #[cfg(feature = "async-http")]
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 #[cfg(feature = "async-http")]
 use std::time::Duration;
 
@@ -45,47 +45,74 @@ const DEFAULT_SAFE_READ_RETRY_DELAY: Duration = Duration::from_millis(100);
 const MAX_SAFE_READ_RETRY_DELAY: Duration = Duration::from_secs(2);
 #[cfg(feature = "async-http")]
 static HTTP_CLIENT_RUNTIME: OnceLock<Result<tokio::runtime::Runtime, String>> = OnceLock::new();
+#[cfg(feature = "async-http")]
+static STANDARD_PUBLIC_CLIENT: OnceLock<Result<Arc<reqwest::Client>, String>> = OnceLock::new();
+#[cfg(feature = "async-http")]
+static STANDARD_PRIVATE_CLIENT: OnceLock<Result<Arc<reqwest::Client>, String>> = OnceLock::new();
+#[cfg(feature = "async-http")]
+static MANAGED_AGENT_PUBLIC_CLIENT: OnceLock<Result<Arc<reqwest::Client>, String>> =
+    OnceLock::new();
+
+#[cfg(feature = "async-http")]
+#[derive(Clone, Copy)]
+enum HttpClientProfile {
+    StandardPublic,
+    StandardPrivate,
+    ManagedAgentPublic,
+}
 
 #[cfg(feature = "async-http")]
 impl ReqwestHttpTransport {
     pub fn new() -> Result<Self, RuntimeHttpError> {
-        Self::with_timeouts_and_private_networks(
-            DEFAULT_HTTP_REQUEST_TIMEOUT,
-            DEFAULT_HTTP_CONNECT_TIMEOUT,
-            false,
-        )
+        Self::from_profile(HttpClientProfile::StandardPublic)
     }
 
-    fn with_timeouts_and_private_networks(
+    fn from_profile(profile: HttpClientProfile) -> Result<Self, RuntimeHttpError> {
+        let (request_timeout, connect_timeout, allow_private_networks, client) = match profile {
+            HttpClientProfile::StandardPublic => (
+                DEFAULT_HTTP_REQUEST_TIMEOUT,
+                DEFAULT_HTTP_CONNECT_TIMEOUT,
+                false,
+                &STANDARD_PUBLIC_CLIENT,
+            ),
+            HttpClientProfile::StandardPrivate => (
+                DEFAULT_HTTP_REQUEST_TIMEOUT,
+                DEFAULT_HTTP_CONNECT_TIMEOUT,
+                true,
+                &STANDARD_PRIVATE_CLIENT,
+            ),
+            HttpClientProfile::ManagedAgentPublic => (
+                MANAGED_AGENT_REQUEST_TIMEOUT,
+                DEFAULT_HTTP_CONNECT_TIMEOUT,
+                false,
+                &MANAGED_AGENT_PUBLIC_CLIENT,
+            ),
+        };
+        let client = match client.get_or_init(|| {
+            build_http_client(request_timeout, connect_timeout, allow_private_networks)
+        }) {
+            Ok(client) => client.clone(),
+            Err(message) => {
+                return Err(RuntimeHttpError::Transport {
+                    message: message.clone(),
+                });
+            }
+        };
+        Ok(Self {
+            client,
+            allow_private_networks,
+            request_timeout,
+        })
+    }
+
+    #[cfg(test)]
+    fn uncached(
         request_timeout: Duration,
         connect_timeout: Duration,
         allow_private_networks: bool,
     ) -> Result<Self, RuntimeHttpError> {
-        // reqwest is built with `rustls-no-provider`, so the process needs a
-        // default crypto provider before a TLS client can be constructed.
-        // Install ring once; an Err means another transport already set it.
-        let _ = rustls::crypto::ring::default_provider().install_default();
-        // Decode like a browser (the decoders also advertise the matching
-        // Accept-Encoding) and let ALPN negotiate HTTP/2; a no-compression,
-        // http1-only client is a bot tell. The response cap measures DECODED
-        // bytes (read_limited_response_body), so a decompression bomb stays bounded.
-        let builder = reqwest::Client::builder()
-            .redirect(reqwest::redirect::Policy::none())
-            .timeout(request_timeout)
-            .connect_timeout(connect_timeout)
-            .gzip(true)
-            .brotli(true)
-            .deflate(true)
-            .zstd(true);
-        let mut builder = builder;
-        if !allow_private_networks {
-            builder = builder.dns_resolver(GuardedDnsResolver::new(TokioDnsResolver));
-        }
-        let client = builder
-            .build()
-            .map_err(|error| RuntimeHttpError::Transport {
-                message: transport_error_message(&error),
-            })?;
+        let client = build_http_client(request_timeout, connect_timeout, allow_private_networks)
+            .map_err(|message| RuntimeHttpError::Transport { message })?;
         Ok(Self {
             client,
             allow_private_networks,
@@ -98,11 +125,7 @@ impl ReqwestHttpTransport {
     /// must require an operator-declared opt-in before choosing it, never as a
     /// default.
     pub fn with_private_network_access() -> Result<Self, RuntimeHttpError> {
-        Self::with_timeouts_and_private_networks(
-            DEFAULT_HTTP_REQUEST_TIMEOUT,
-            DEFAULT_HTTP_CONNECT_TIMEOUT,
-            true,
-        )
+        Self::from_profile(HttpClientProfile::StandardPrivate)
     }
 
     /// Build the model-provider transport for managed-agent calls. These calls can
@@ -110,11 +133,7 @@ impl ReqwestHttpTransport {
     /// provider thinks and emits tool use, but they still keep the same public-DNS
     /// guard and short connect timeout.
     pub fn for_managed_agent() -> Result<Self, RuntimeHttpError> {
-        Self::with_timeouts_and_private_networks(
-            MANAGED_AGENT_REQUEST_TIMEOUT,
-            DEFAULT_HTTP_CONNECT_TIMEOUT,
-            false,
-        )
+        Self::from_profile(HttpClientProfile::ManagedAgentPublic)
     }
 
     #[cfg(test)]
@@ -127,8 +146,41 @@ impl ReqwestHttpTransport {
         request_timeout: Duration,
         connect_timeout: Duration,
     ) -> Result<Self, RuntimeHttpError> {
-        Self::with_timeouts_and_private_networks(request_timeout, connect_timeout, true)
+        Self::uncached(request_timeout, connect_timeout, true)
     }
+}
+
+#[cfg(feature = "async-http")]
+fn build_http_client(
+    request_timeout: Duration,
+    connect_timeout: Duration,
+    allow_private_networks: bool,
+) -> Result<Arc<reqwest::Client>, String> {
+    // reqwest is built with `rustls-no-provider`, so the process needs a
+    // default crypto provider before a TLS client can be constructed.
+    // Install ring once; an Err means another transport already set it.
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    // Decode like a browser (the decoders also advertise the matching
+    // Accept-Encoding) and let ALPN negotiate HTTP/2; a no-compression,
+    // http1-only client is a bot tell. The response cap measures DECODED
+    // bytes (read_limited_response_body), so a decompression bomb stays bounded.
+    let builder = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(request_timeout)
+        .connect_timeout(connect_timeout)
+        .gzip(true)
+        .brotli(true)
+        .deflate(true)
+        .zstd(true);
+    let builder = if allow_private_networks {
+        builder
+    } else {
+        builder.dns_resolver(GuardedDnsResolver::new(TokioDnsResolver))
+    };
+    builder
+        .build()
+        .map(Arc::new)
+        .map_err(|error| transport_error_message(&error))
 }
 
 #[cfg(feature = "async-http")]
@@ -233,7 +285,7 @@ fn reqwest_headers(
 
 #[cfg(feature = "async-http")]
 async fn send_reqwest_with_safe_read_retries(
-    client: reqwest::Client,
+    client: Arc<reqwest::Client>,
     request: RuntimeHttpRequest,
     headers: reqwest::header::HeaderMap,
     response_limit: usize,
@@ -848,6 +900,40 @@ mod tests {
         let first = http_runtime()?;
         let second = http_runtime()?;
         assert!(std::ptr::eq(first, second));
+        Ok(())
+    }
+
+    #[test]
+    #[cfg(feature = "async-http")]
+    fn canonical_http_profiles_reuse_clients_without_crossing_policy_boundaries()
+    -> Result<(), RuntimeHttpTestError> {
+        let public_first = ReqwestHttpTransport::new()?;
+        let public_second = ReqwestHttpTransport::new()?;
+        let private_first = ReqwestHttpTransport::with_private_network_access()?;
+        let private_second = ReqwestHttpTransport::with_private_network_access()?;
+        let managed_first = ReqwestHttpTransport::for_managed_agent()?;
+        let managed_second = ReqwestHttpTransport::for_managed_agent()?;
+
+        assert!(std::sync::Arc::ptr_eq(
+            &public_first.client,
+            &public_second.client
+        ));
+        assert!(std::sync::Arc::ptr_eq(
+            &private_first.client,
+            &private_second.client
+        ));
+        assert!(std::sync::Arc::ptr_eq(
+            &managed_first.client,
+            &managed_second.client
+        ));
+        assert!(!std::sync::Arc::ptr_eq(
+            &public_first.client,
+            &private_first.client
+        ));
+        assert!(!std::sync::Arc::ptr_eq(
+            &public_first.client,
+            &managed_first.client
+        ));
         Ok(())
     }
 

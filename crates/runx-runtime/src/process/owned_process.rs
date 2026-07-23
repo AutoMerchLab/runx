@@ -106,8 +106,12 @@ impl OwnedProcess {
     pub(super) fn reap_after_signal(&mut self, timeout: Duration) -> io::Result<ExitStatus> {
         #[cfg(not(windows))]
         {
-            let _ = timeout;
-            self.child.wait()
+            self.child.wait_timeout(timeout)?.ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "timed out reaping terminated process",
+                )
+            })
         }
         #[cfg(windows)]
         {
@@ -155,6 +159,31 @@ impl OwnedProcess {
 impl Drop for OwnedProcess {
     fn drop(&mut self) {
         let _ = self.signal(ProcessSignal::Force);
+    }
+}
+
+#[cfg(all(test, unix))]
+mod unix_tests {
+    use std::process::Command;
+    use std::time::Duration;
+
+    use super::{OwnedProcess, ProcessSignal};
+
+    #[test]
+    fn unix_reap_after_signal_honors_its_deadline() -> Result<(), Box<dyn std::error::Error>> {
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 5"]);
+        let mut process = OwnedProcess::spawn(command)?;
+
+        let error = match process.reap_after_signal(Duration::ZERO) {
+            Ok(status) => return Err(format!("running process was reaped as {status}").into()),
+            Err(error) => error,
+        };
+        assert_eq!(error.kind(), std::io::ErrorKind::TimedOut);
+
+        process.signal(ProcessSignal::Force)?;
+        let _status = process.reap_after_signal(Duration::from_secs(5))?;
+        Ok(())
     }
 }
 
