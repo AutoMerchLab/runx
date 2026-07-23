@@ -139,6 +139,14 @@ jobs:
         with:
           components: rustfmt, clippy
 
+      - name: Install Linux sandbox
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
       - name: Install Rust test and advisory tools
         uses: taiki-e/install-action@v2
         with:
@@ -199,6 +207,8 @@ jobs:
         run: rustup show
       - name: Install workspace dependencies
         run: pnpm install --frozen-lockfile
+      - name: Build workspace packages
+        run: node scripts/build-workspace.mjs
       - name: Install Linux sandbox
         run: |
           sudo apt-get update

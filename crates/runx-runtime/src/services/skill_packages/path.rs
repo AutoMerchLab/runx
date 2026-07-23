@@ -98,10 +98,7 @@ fn assert_harness_path(relative: &str, mode: &str) -> Result<(), RuntimeError> {
 }
 
 pub(super) fn reject_secret_material(relative: &str, contents: &str) -> Result<(), RuntimeError> {
-    let contains_private_key = contents.contains("-----BEGIN PRIVATE KEY-----")
-        || contents.contains("-----BEGIN RSA PRIVATE KEY-----")
-        || contents.contains("-----BEGIN EC PRIVATE KEY-----")
-        || contents.contains("-----BEGIN OPENSSH PRIVATE KEY-----");
+    let contains_private_key = contents.lines().any(is_private_key_header);
     let contains_nitrosend_key = contents
         .split(|character: char| !character.is_ascii_alphanumeric() && character != '_')
         .any(|token| token.starts_with("nskey_live_") || token.starts_with("nskey_test_"));
@@ -111,6 +108,20 @@ pub(super) fn reject_secret_material(relative: &str, contents: &str) -> Result<(
         )));
     }
     Ok(())
+}
+
+fn is_private_key_header(line: &str) -> bool {
+    let Some(label) = line
+        .trim()
+        .strip_prefix("-----BEGIN ")
+        .and_then(|value| value.strip_suffix("-----"))
+    else {
+        return false;
+    };
+    matches!(
+        label,
+        "PRIVATE KEY" | "RSA PRIVATE KEY" | "EC PRIVATE KEY" | "OPENSSH PRIVATE KEY"
+    )
 }
 
 pub(super) fn is_executable_path(relative: &str) -> bool {
@@ -185,5 +196,24 @@ pub(super) fn invalid_skill_change(message: impl Into<String>) -> RuntimeError {
     RuntimeError::SkillFailed {
         skill_name: "runx.skill.apply".to_owned(),
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::reject_secret_material;
+
+    #[test]
+    fn secret_material_rejection_detects_private_key_headers_without_static_secrets() {
+        let private_key = format!("-----BEGIN {}-----\nfixture", "PRIVATE KEY");
+        assert!(reject_secret_material("tools/key.pem", &private_key).is_err());
+        assert!(reject_secret_material("tools/readme.txt", "PRIVATE KEY").is_ok());
+    }
+
+    #[test]
+    fn secret_material_rejection_detects_nitrosend_keys() {
+        let key = ["nskey", "live", "fixture"].join("_");
+        assert!(reject_secret_material("tools/provider.mjs", &key).is_err());
+        assert!(reject_secret_material("tools/provider.mjs", "nskey_fixture").is_ok());
     }
 }

@@ -13,7 +13,7 @@ inputs:
     gates: { human_approval_required: true }
   thread_locator: slack://T123ABC/C123ABC/1750000000.000001
   text: changed
-  idempotency_key: 123e4567-e89b-42d3-a456-426614174000
+  idempotency_key: fixture-reply-plan-drift
 expect:
   status: sealed
   steps: [digest, bind-plan, bind-content]

@@ -57,4 +57,6 @@ tmp/
 
 # package-local runtime evidence and debug output
 skills/**/fixtures/receipt-store/
+!skills/refund/fixtures/receipt-store/
+!skills/refund/fixtures/receipt-store/*.json
 skills/**/*-debug.json
