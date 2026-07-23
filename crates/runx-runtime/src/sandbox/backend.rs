@@ -8,6 +8,8 @@ use std::sync::OnceLock;
 use runx_core::policy::SandboxProfile;
 use runx_parser::SkillSandbox;
 
+#[cfg(target_os = "linux")]
+use super::LINUX_RUNTIME_READONLY_PATHS;
 use super::RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV;
 use super::policy::sandbox_violation;
 use crate::RuntimeError;
@@ -155,16 +157,13 @@ fn find_usable_bwrap() -> Option<PathBuf> {
     USABLE_BWRAP
         .get_or_init(|| {
             let path = find_trusted_executable("bwrap")?;
-            Command::new(&path)
-                .args([
-                    "--unshare-all",
-                    "--die-with-parent",
-                    "--ro-bind",
-                    "/usr",
-                    "/usr",
-                    "--",
-                    "/usr/bin/true",
-                ])
+            let mut command = Command::new(&path);
+            command.args(["--unshare-all", "--die-with-parent"]);
+            for mount in LINUX_RUNTIME_READONLY_PATHS {
+                command.args(["--ro-bind-try", mount, mount]);
+            }
+            command
+                .args(["--", "/usr/bin/true"])
                 .stdin(Stdio::null())
                 .stdout(Stdio::null())
                 .stderr(Stdio::null())

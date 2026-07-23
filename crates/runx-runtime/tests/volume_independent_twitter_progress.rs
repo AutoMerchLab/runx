@@ -118,19 +118,19 @@ fn execution_package(entry: &str) -> Result<JavaScriptPackage, Box<dyn std::erro
     let source = fs::read_to_string(format!("{root}/{entry}"))?;
     let values = fs::read_to_string(format!("{root}/twitter-execution-values.mjs"))?;
     if entry == "twitter-execution-result.mjs" {
-        return Ok(JavaScriptPackage::with_modules(
+        return JavaScriptPackage::with_modules(
             &source,
             [("twitter-execution-values.mjs", values.as_str())],
-        )?);
+        );
     }
     let requests = fs::read_to_string(format!("{root}/twitter-execution-requests.mjs"))?;
-    Ok(JavaScriptPackage::with_modules(
+    JavaScriptPackage::with_modules(
         &source,
         [
             ("twitter-execution-requests.mjs", requests.as_str()),
             ("twitter-execution-values.mjs", values.as_str()),
         ],
-    )?)
+    )
 }
 
 fn prepare_plan(

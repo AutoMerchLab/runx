@@ -1,7 +1,9 @@
 use thiserror::Error;
 
-#[cfg(any(target_os = "linux", target_os = "windows"))]
-use crate::protocol::WORKER_ADDRESS_SPACE_BYTES;
+#[cfg(target_os = "linux")]
+use crate::protocol::WORKER_VIRTUAL_ADDRESS_SPACE_BYTES;
+#[cfg(target_os = "windows")]
+use crate::protocol::WORKER_WORKING_SET_BYTES;
 
 #[derive(Debug, Error)]
 pub(crate) enum WorkerLimitError {
@@ -24,7 +26,7 @@ fn install_platform_limits() -> Result<(), WorkerLimitError> {
     set_unix_limit(rlimit::Resource::FSIZE, 0)?;
     set_unix_limit(rlimit::Resource::NOFILE, 32)?;
     #[cfg(target_os = "linux")]
-    set_unix_limit(rlimit::Resource::AS, WORKER_ADDRESS_SPACE_BYTES)?;
+    set_unix_limit(rlimit::Resource::AS, WORKER_VIRTUAL_ADDRESS_SPACE_BYTES)?;
     Ok(())
 }
 
@@ -39,7 +41,7 @@ fn set_unix_limit(resource: rlimit::Resource, value: u64) -> Result<(), WorkerLi
 fn install_platform_limits() -> Result<(), WorkerLimitError> {
     use win32job::{ExtendedLimitInfo, Job, PriorityClass};
 
-    let maximum = usize::try_from(WORKER_ADDRESS_SPACE_BYTES).map_err(|_| {
+    let maximum = usize::try_from(WORKER_WORKING_SET_BYTES).map_err(|_| {
         WorkerLimitError::Installation("worker memory limit does not fit usize".to_owned())
     })?;
     let mut limits = ExtendedLimitInfo::new();

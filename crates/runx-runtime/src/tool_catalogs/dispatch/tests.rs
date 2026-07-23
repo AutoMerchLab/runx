@@ -286,7 +286,9 @@ fn dispatch_does_not_confuse_a_domain_data_field_with_an_artifact_envelope()
         .and_then(JsonValue::as_object)
         .and_then(|object| object.get("data"))
         .and_then(JsonValue::as_object)
-        .expect("the canonical envelope must contain the domain page object");
+        .ok_or_else(|| {
+            std::io::Error::other("the canonical envelope must contain the domain page object")
+        })?;
     assert!(page.contains_key("offset"));
     Ok(())
 }

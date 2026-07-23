@@ -53,7 +53,7 @@ fn authoring_rejects_a_change_between_validation_and_commit_without_partial_appl
 }
 
 fn change_bundle(base_digest: &str, manual: String) -> Result<SkillChangeBundle, RuntimeError> {
-    let plan = plan_skill_architecture(base_digest, architecture())?;
+    let plan = plan_skill_architecture(base_digest, architecture()?)?;
     bind_skill_change(
         &plan,
         SkillChangeDraft {
@@ -71,7 +71,7 @@ fn change_bundle(base_digest: &str, manual: String) -> Result<SkillChangeBundle,
     )
 }
 
-fn architecture() -> SkillArchitectureDecision {
+fn architecture() -> Result<SkillArchitectureDecision, RuntimeError> {
     serde_json::from_value(json!({
         "schema": "runx.skill.architecture_decision.v1",
         "disposition": disposition_name(SkillArchitectureDisposition::ExtendExisting),
@@ -116,7 +116,10 @@ fn architecture() -> SkillArchitectureDecision {
             "expected": "The package validates and its focused harness passes."
         }]
     }))
-    .expect("architecture fixture must be valid")
+    .map_err(|source| RuntimeError::Json {
+        context: "parsing the skill architecture test fixture".to_owned(),
+        source,
+    })
 }
 
 fn disposition_name(disposition: SkillArchitectureDisposition) -> &'static str {

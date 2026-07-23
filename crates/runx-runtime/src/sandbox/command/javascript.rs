@@ -51,14 +51,7 @@ fn bubblewrap_args(worker_path: &Path) -> Vec<String> {
         "--tmpfs".to_owned(),
         "/tmp".to_owned(),
     ];
-    for path in [
-        "/usr",
-        "/bin",
-        "/sbin",
-        "/lib",
-        "/lib64",
-        "/etc/ld.so.cache",
-    ] {
+    for path in super::super::LINUX_RUNTIME_READONLY_PATHS {
         args.extend(["--ro-bind-try".to_owned(), path.to_owned(), path.to_owned()]);
     }
     args.extend([
@@ -68,6 +61,12 @@ fn bubblewrap_args(worker_path: &Path) -> Vec<String> {
         "--chdir".to_owned(),
         "/tmp".to_owned(),
         "--".to_owned(),
+        // bubblewrap always synthesizes PWD for the child, even after
+        // --clearenv/--unsetenv. Remove that final platform-owned value so the
+        // worker can retain its strict empty-environment invariant.
+        "/usr/bin/env".to_owned(),
+        "-u".to_owned(),
+        "PWD".to_owned(),
         path_string(worker_path),
     ]);
     args
@@ -79,4 +78,27 @@ fn sandbox_exec_profile(worker_path: &Path) -> String {
     format!(
         "(version 1)\n(deny default)\n(allow process-exec (literal \"{worker}\"))\n(allow sysctl-read)\n(allow file-read-data (literal \"/\"))\n(allow file-read* (subpath \"/System\") (subpath \"/usr\") (literal \"{worker}\"))"
     )
+}
+
+#[cfg(all(test, target_os = "linux"))]
+mod tests {
+    use std::path::Path;
+
+    use super::bubblewrap_args;
+
+    #[test]
+    fn bubblewrap_removes_its_synthetic_pwd_before_worker_exec() {
+        let args = bubblewrap_args(Path::new("/opt/runx/runx-js-worker"));
+
+        assert_eq!(
+            &args[args.len() - 5..],
+            [
+                "--",
+                "/usr/bin/env",
+                "-u",
+                "PWD",
+                "/opt/runx/runx-js-worker"
+            ]
+        );
+    }
 }

@@ -493,36 +493,6 @@ fn project_credential_delivery(
     }
 }
 
-#[cfg(test)]
-mod credential_projection {
-    use runx_parser::SourceKind;
-
-    #[test]
-    fn credential_projection_strips_javascript_and_preserves_owned_targets()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let delivery = crate::credentials::CredentialDelivery::from_local_descriptor(
-            "example-provider",
-            "api_key",
-            "EXAMPLE_TOKEN",
-            "local:example-provider",
-            vec!["provider.read".to_owned()],
-            "credential-projection-sentinel",
-        )?;
-
-        let javascript = super::project_credential_delivery(&SourceKind::JavaScript, &delivery);
-        let native = super::project_credential_delivery(&SourceKind::CliTool, &delivery);
-
-        assert!(javascript.secret_env().is_empty());
-        assert!(javascript.public_observation().is_none());
-        assert_eq!(
-            native.secret_env().get("EXAMPLE_TOKEN"),
-            Some("credential-projection-sentinel")
-        );
-        assert!(native.public_observation().is_some());
-        Ok(())
-    }
-}
-
 fn invoke_regular_skill_step<A>(
     runtime: &Runtime<A>,
     step: &GraphStep,
@@ -1735,4 +1705,34 @@ fn step_admission_witness(
             )
         },
     )
+}
+
+#[cfg(test)]
+mod credential_projection {
+    use runx_parser::SourceKind;
+
+    #[test]
+    fn credential_projection_strips_javascript_and_preserves_owned_targets()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let delivery = crate::credentials::CredentialDelivery::from_local_descriptor(
+            "example-provider",
+            "api_key",
+            "EXAMPLE_TOKEN",
+            "local:example-provider",
+            vec!["provider.read".to_owned()],
+            "credential-projection-sentinel",
+        )?;
+
+        let javascript = super::project_credential_delivery(&SourceKind::JavaScript, &delivery);
+        let native = super::project_credential_delivery(&SourceKind::CliTool, &delivery);
+
+        assert!(javascript.secret_env().is_empty());
+        assert!(javascript.public_observation().is_none());
+        assert_eq!(
+            native.secret_env().get("EXAMPLE_TOKEN"),
+            Some("credential-projection-sentinel")
+        );
+        assert!(native.public_observation().is_some());
+        Ok(())
+    }
 }

@@ -95,7 +95,10 @@ fn volume_independent_artifacts_reject_a_record_before_it_exceeds_the_page_bound
 
     let error = service
         .read_json_array_page(&artifact.reference, 0, 64)
-        .expect_err("one oversized record must fail within the page ceiling");
+        .err()
+        .ok_or_else(|| {
+            std::io::Error::other("one oversized record must fail within the page ceiling")
+        })?;
 
     assert!(error.to_string().contains("64-byte page ceiling"));
     Ok(())

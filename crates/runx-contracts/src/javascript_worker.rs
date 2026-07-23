@@ -18,7 +18,11 @@ pub const MAX_WALL_MILLISECONDS: u64 = 2_000;
 pub const MAX_CONCURRENT_INVOCATIONS: usize = 4;
 pub const JAVASCRIPT_HEAP_BYTES: u64 = 64 * 1024 * 1024;
 pub const JAVASCRIPT_STACK_BYTES: usize = 4 * 1024 * 1024;
-pub const WORKER_ADDRESS_SPACE_BYTES: u64 = 160 * 1024 * 1024;
+// glibc reserves 64-128 MiB of non-committed virtual address space per thread
+// arena. The Linux AS guard therefore leaves room for four arenas while the
+// process-wide allocator independently caps committed Rust/JavaScript heap.
+pub const WORKER_VIRTUAL_ADDRESS_SPACE_BYTES: u64 = 1024 * 1024 * 1024;
+pub const WORKER_WORKING_SET_BYTES: u64 = 160 * 1024 * 1024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]

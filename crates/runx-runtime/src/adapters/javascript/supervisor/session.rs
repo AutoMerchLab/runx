@@ -11,9 +11,7 @@ use runx_contracts::javascript_worker::{
 use crate::RuntimeError;
 
 use super::limiter::InFlightLimiter;
-use super::process::{
-    BoundedStderr, StartingChild, capture_stderr, resolve_worker_path, stop_child,
-};
+use super::process::{BoundedStderr, capture_stderr, resolve_worker_path, spawn_child, stop_child};
 use super::response_reader::{PendingResponses, read_responses};
 use super::{WorkerInvocationResult, lock, worker_error};
 
@@ -50,10 +48,7 @@ impl WorkerSession {
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
         crate::process::configure_process_group(&mut command);
-        let child = command.spawn().map_err(|source| {
-            RuntimeError::io("spawning deterministic JavaScript worker", source)
-        })?;
-        let mut starting = StartingChild::new(child);
+        let mut starting = spawn_child(command)?;
         let stdin =
             starting.child_mut()?.stdin.take().ok_or_else(|| {
                 worker_error("deterministic JavaScript worker stdin was not piped")
@@ -98,14 +93,16 @@ impl WorkerSession {
         session.write_request(&WorkerRequest::Hello {
             protocol_version: PROTOCOL_VERSION,
         })?;
-        let ready = ready_rx
-            .recv_timeout(WORKER_START_TIMEOUT)
-            .map_err(|error| {
-                worker_error(format!(
+        let ready = match ready_rx.recv_timeout(WORKER_START_TIMEOUT) {
+            Ok(ready) => ready,
+            Err(error) => {
+                return Err(session.failure_with_stderr(format!(
                     "deterministic JavaScript worker did not complete its handshake: {error}"
-                ))
-            })?;
-        match ready.map_err(worker_error)? {
+                )));
+            }
+        };
+        let ready = ready.map_err(|message| session.failure_with_stderr(message))?;
+        match ready {
             WorkerResponse::Ready { protocol_version } if protocol_version == PROTOCOL_VERSION => {
                 Ok(session)
             }
@@ -143,21 +140,19 @@ impl WorkerSession {
         }
         let response = match response_rx.recv_timeout(timeout) {
             Ok(Ok(response)) => response,
-            Ok(Err(message)) => return Err(worker_error(message)),
+            Ok(Err(message)) => return Err(self.failure_with_stderr(message)),
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 self.remove_pending(invocation_id);
                 self.terminate();
-                return Err(worker_error(format!(
-                    "deterministic JavaScript worker exceeded {} ms wall limit; stderr: {}",
-                    timeout.as_millis(),
-                    self.stderr_text()
+                return Err(self.failure_with_stderr(format!(
+                    "deterministic JavaScript worker exceeded {} ms wall limit",
+                    timeout.as_millis()
                 )));
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
-                return Err(worker_error(format!(
-                    "deterministic JavaScript worker exited without a response; stderr: {}",
-                    self.stderr_text()
-                )));
+                return Err(self.failure_with_stderr(
+                    "deterministic JavaScript worker exited without a response",
+                ));
             }
         };
         match response {
@@ -206,6 +201,28 @@ impl WorkerSession {
         lock(&self.stderr, "reading JavaScript worker stderr")
             .map(|capture| capture.render())
             .unwrap_or_else(|error| error.to_string())
+    }
+
+    fn failure_with_stderr(&self, message: impl std::fmt::Display) -> RuntimeError {
+        let mut message = message.to_string();
+        if let Some(status) = self.exited_status() {
+            message.push_str(&format!("; exit status: {status}"));
+        }
+        let stderr = self.stderr_text();
+        if !stderr.is_empty() {
+            message.push_str(&format!("; stderr: {stderr}"));
+        }
+        worker_error(message)
+    }
+
+    fn exited_status(&self) -> Option<String> {
+        let mut child = self.child.lock().ok()?;
+        let child = child.as_mut()?;
+        child
+            .try_wait()
+            .ok()
+            .flatten()
+            .map(|status| status.to_string())
     }
 
     pub(super) fn terminate(&self) {

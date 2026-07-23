@@ -11,9 +11,9 @@ name: release
 #
 # The GitHub Release is the hub: it serves the raw per-target archives that
 # Homebrew, Scoop, winget, AUR, Docker and direct downloads all consume by URL +
-# sha256. npm and the `runx-cli` crate publish the same version. Per-registry
-# publish jobs are gated on their credentials and skipped (with a warning) when
-# unset.
+# sha256. npm packages and native archives carry the same stamped version.
+# Per-registry publish jobs are gated on their credentials and skipped (with a
+# warning) when unset.
 #
 # Pushing a cli-v* tag runs a real release. workflow_dispatch runs a dry-run
 # (build + render, no publish).

@@ -32,7 +32,8 @@ mod tests {
             workspace.path().canonicalize()?
         );
         let error = resolve_repo_root_for("fs.read", "/tmp", &env, workspace.path())
-            .expect_err("absolute root must be rejected");
+            .err()
+            .ok_or_else(|| std::io::Error::other("absolute root must be rejected"))?;
         assert!(error.to_string().contains("relative"));
         Ok(())
     }

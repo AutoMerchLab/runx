@@ -51,7 +51,7 @@ jobs:
             ${{ runner.os }}-oss-checks-
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        run: rustup show
 
       - name: Cargo cache
         # verify:fast builds the debug runx + fixture-oracle binaries; without this
@@ -98,7 +98,7 @@ jobs:
             ${{ runner.os }}-oss-checks-
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        run: rustup show
 
       - name: Cargo cache
         # test:heavy:graph builds the debug runx binary via test-workspace.mjs;
@@ -132,9 +132,7 @@ jobs:
           node-version: 24
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
+        run: rustup show
 
       - name: Setup Rust nightly
         uses: dtolnay/rust-toolchain@nightly
@@ -192,7 +190,7 @@ jobs:
         with:
           node-version: 24
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        run: rustup show
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
         with:

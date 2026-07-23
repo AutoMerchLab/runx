@@ -232,6 +232,10 @@ report, but must not present those figures as current after its source digest
 changes.
 
 The hostile-module suite remains a separate release gate. It exercises the
-runtime-owned 4 MiB source/input/output ceilings, 64 MiB JavaScript heap, 4 MiB
-JavaScript stack, two-second wall limit, 4,096-job limit, and 160 MiB aggregate
-worker address-space ceiling on every supported target.
+runtime-owned 4 MiB source/input/output ceilings, 64 MiB aggregate JavaScript
+heap, 4 MiB JavaScript stack, two-second wall limit, 4,096-job limit, and each
+platform's process containment. Linux additionally permits 1 GiB of virtual
+address space so glibc's uncommitted per-thread arenas do not consume the real
+heap budget; Windows retains a 160 MiB working-set ceiling. Virtual address
+space and committed working memory are deliberately not presented as the same
+limit.

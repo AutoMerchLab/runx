@@ -154,7 +154,7 @@ fn readonly_mounts(
 }
 
 fn system_readonly_mounts(network: bool) -> Vec<PathBuf> {
-    let mut mounts = ["/usr", "/bin", "/sbin", "/lib", "/lib64"]
+    let mut mounts = super::LINUX_RUNTIME_READONLY_PATHS
         .into_iter()
         .map(PathBuf::from)
         .collect::<Vec<_>>();
@@ -334,6 +334,9 @@ mod tests {
     fn bubblewrap_readonly_mounts_do_not_expose_broad_system_config() {
         let mounts = system_readonly_mounts(false);
 
+        assert!(mounts.contains(&PathBuf::from("/usr")));
+        assert!(mounts.contains(&PathBuf::from("/lib")));
+        assert!(mounts.contains(&PathBuf::from("/etc/ld.so.cache")));
         assert!(!mounts.contains(&PathBuf::from("/etc")));
         assert!(!mounts.contains(&PathBuf::from("/opt")));
         assert!(!mounts.contains(&PathBuf::from("/nix")));

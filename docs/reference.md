@@ -52,7 +52,7 @@ local dogfood and live protocol conformance.
 
 Native CLI:
 
-- Rust 1.88+
+- Rust 1.97+
 - The native Rust CLI path must stay useful without Node, pnpm, tsx, or
   TypeScript packages installed.
 

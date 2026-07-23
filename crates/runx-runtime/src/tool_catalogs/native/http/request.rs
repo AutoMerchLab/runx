@@ -213,12 +213,10 @@ mod tests {
         let output = response_object("request-1", response, &invocation)?;
         let receipt_projection = serde_json::to_string(&output)?;
 
-        assert!(
-            !output["headers"]
-                .as_object()
-                .unwrap()
-                .contains_key("authorization")
-        );
+        let headers = output["headers"]
+            .as_object()
+            .ok_or_else(|| std::io::Error::other("response headers must be an object"))?;
+        assert!(!headers.contains_key("authorization"));
         assert!(!receipt_projection.contains("credential-sentinel"));
         Ok(())
     }

@@ -45,6 +45,19 @@ pub(crate) fn child_base_env(
 pub(crate) const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV: &str =
     "RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY";
 
+// One source of truth for the host runtime paths a dynamically linked Linux
+// command needs inside bubblewrap. Every consumer uses `--ro-bind-try`, so
+// merged-/usr layouts and distributions without one of these paths remain
+// portable without widening the sandbox to the host root.
+const LINUX_RUNTIME_READONLY_PATHS: [&str; 6] = [
+    "/usr",
+    "/bin",
+    "/sbin",
+    "/lib",
+    "/lib64",
+    "/etc/ld.so.cache",
+];
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct SandboxPlan {
     pub command: String,

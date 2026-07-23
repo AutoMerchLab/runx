@@ -426,8 +426,8 @@ is revisited as a follow-up spec; it does not constrain this plan.
 
 - Edition: 2024.
 - Resolver: 3.
-- MSRV: 1.88.0 (required by the deterministic JavaScript engine selected for
-  the authority-free module worker).
+- MSRV: 1.97.0. Runx deliberately tracks the current stable Rust line instead
+  of preserving an untested compatibility floor.
 - MSRV pinned in `crates/Cargo.toml` workspace `[workspace.package]` block and
   enforced in CI via `rust-toolchain.toml` or an explicit toolchain in the
   workflow.

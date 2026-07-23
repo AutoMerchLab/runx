@@ -3,8 +3,8 @@ use std::io::BufReader;
 use std::process::{Command, Stdio};
 
 use runx_js_worker::protocol::{
-    InvocationLimits, MAX_FRAME_BYTES, PROTOCOL_VERSION, WorkerRequest, WorkerResponse, read_frame,
-    write_frame,
+    InvocationLimits, MAX_CONCURRENT_INVOCATIONS, MAX_FRAME_BYTES, PROTOCOL_VERSION, WorkerRequest,
+    WorkerResponse, read_frame, write_frame,
 };
 
 #[test]
@@ -75,7 +75,8 @@ fn packaged_worker_performs_the_versioned_handshake_and_invocation()
 }
 
 #[test]
-fn packaged_worker_multiplexes_independent_invocations() -> Result<(), Box<dyn std::error::Error>> {
+fn packaged_worker_multiplexes_maximum_concurrent_invocations()
+-> Result<(), Box<dyn std::error::Error>> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_runx-js-worker"))
         .env_clear()
         .stdin(Stdio::piped())
@@ -98,47 +99,65 @@ fn packaged_worker_multiplexes_independent_invocations() -> Result<(), Box<dyn s
         Some(WorkerResponse::Ready { .. })
     ));
 
-    write_frame(
-        &mut stdin,
-        &WorkerRequest::Invoke {
-            protocol_version: PROTOCOL_VERSION,
-            invocation_id: "slow".to_owned(),
-            entry_module: "main.mjs".to_owned(),
-            export_name: "default".to_owned(),
-            modules: BTreeMap::from([(
-                "main.mjs".to_owned(),
-                "export default ({ rounds }) => { let value = 0; for (let i = 0; i < rounds; i += 1) value = (value + i) % 1000003; return { value }; };".to_owned(),
-            )]),
-            inputs: serde_json::json!({"rounds": 100_000}),
-            limits: InvocationLimits::default(),
-        },
-        MAX_FRAME_BYTES,
-    )?;
-    write_frame(
-        &mut stdin,
-        &WorkerRequest::Invoke {
-            protocol_version: PROTOCOL_VERSION,
-            invocation_id: "fast".to_owned(),
-            entry_module: "main.mjs".to_owned(),
-            export_name: "default".to_owned(),
-            modules: BTreeMap::from([(
-                "main.mjs".to_owned(),
-                "export default ({ value }) => ({ value });".to_owned(),
-            )]),
-            inputs: serde_json::json!({"value": "done"}),
-            limits: InvocationLimits::default(),
-        },
-        MAX_FRAME_BYTES,
-    )?;
+    let rounds = 1_000_000_u64;
+    for value in 0..MAX_CONCURRENT_INVOCATIONS {
+        write_frame(
+            &mut stdin,
+            &WorkerRequest::Invoke {
+                protocol_version: PROTOCOL_VERSION,
+                invocation_id: format!("invoke-{value}"),
+                entry_module: "main.mjs".to_owned(),
+                export_name: "default".to_owned(),
+                modules: BTreeMap::from([(
+                    "main.mjs".to_owned(),
+                    "export default ({ value, rounds }) => { let digest = 0; for (let i = 0; i < rounds; i += 1) digest = (digest + i) % 1000003; return { value, digest }; };".to_owned(),
+                )]),
+                inputs: serde_json::json!({"value": value, "rounds": rounds}),
+                limits: InvocationLimits::default(),
+            },
+            MAX_FRAME_BYTES,
+        )?;
+    }
 
-    assert!(matches!(
-        read_frame::<WorkerResponse>(&mut stdout, MAX_FRAME_BYTES)?,
-        Some(WorkerResponse::Result { invocation_id, .. }) if invocation_id == "fast"
-    ));
-    assert!(matches!(
-        read_frame::<WorkerResponse>(&mut stdout, MAX_FRAME_BYTES)?,
-        Some(WorkerResponse::Result { invocation_id, .. }) if invocation_id == "slow"
-    ));
+    // Independent invocations may complete in either order. The protocol's
+    // contract is exact response routing by invocation id, not scheduler
+    // timing between worker threads.
+    let mut outputs = BTreeMap::new();
+    for _ in 0..MAX_CONCURRENT_INVOCATIONS {
+        let Some(response) = read_frame::<WorkerResponse>(&mut stdout, MAX_FRAME_BYTES)? else {
+            drop(stdin);
+            drop(stdout);
+            let output = child.wait_with_output()?;
+            return Err(format!(
+                "worker exited during multiplexed invocation: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )
+            .into());
+        };
+        match response {
+            WorkerResponse::Result {
+                invocation_id,
+                output,
+                ..
+            } => {
+                assert!(outputs.insert(invocation_id, output).is_none());
+            }
+            response => return Err(format!("unexpected multiplexed response: {response:?}").into()),
+        }
+    }
+    let mut digest = 0_u64;
+    for value in 0..rounds {
+        digest = (digest + value) % 1_000_003;
+    }
+    let expected = (0..MAX_CONCURRENT_INVOCATIONS)
+        .map(|value| {
+            (
+                format!("invoke-{value}"),
+                serde_json::json!({"value": value, "digest": digest}),
+            )
+        })
+        .collect::<BTreeMap<_, _>>();
+    assert_eq!(outputs, expected);
 
     drop(stdin);
     assert!(child.wait()?.success());

@@ -62,12 +62,16 @@ fn javascript_session_multiplexes_concurrent_invocations_in_one_process()
         .collect::<Vec<_>>();
     barrier.wait();
 
+    let mut failures = Vec::new();
     for handle in handles {
-        let output = handle
-            .join()
-            .map_err(|_| std::io::Error::other("JavaScript invocation thread panicked"))??;
-        assert!(output.succeeded(), "{}", output.stderr);
+        match handle.join() {
+            Ok(Ok(output)) if output.succeeded() => {}
+            Ok(Ok(output)) => failures.push(output.stderr),
+            Ok(Err(error)) => failures.push(error.to_string()),
+            Err(_) => failures.push("JavaScript invocation thread panicked".to_owned()),
+        }
     }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
     let stats = package.session_stats();
     assert_eq!(stats.spawned_process_count, 1);
     assert_eq!(stats.peak_in_flight, 4);
