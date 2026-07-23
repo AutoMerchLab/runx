@@ -72,9 +72,11 @@ materialization and step-output projection through the real graph runner.
 The module rows exercise the production Boa worker. `pure_module_cold_start`
 creates and retires a real worker session per measured invocation;
 `pure_module_session_reuse` invokes a pre-warmed session. A runtime session owns
-one worker process and multiplexes at most four invocations through fresh engine
-contexts. The fanout row records the actual worker spawn count and peak
-in-flight invocation count in the capture sidecar.
+a lazy pool capped at four worker processes. Sequential work reuses one warm
+process; concurrent work acquires separate processes so a timed-out invocation
+cannot kill healthy siblings. Each process serves one invocation at a time and
+each invocation receives a fresh engine context. The fanout row records the
+actual worker spawn count and peak active leases in the capture sidecar.
 
 The receipt append scale points measure one new receipt appended after 16 and
 128 existing receipts. That detects accidental history-wide reparsing in the
@@ -113,7 +115,7 @@ invokes `McpAdapter<ProcessMcpTransport>` and reports the transport spawn
 counter. These rows include `spawn_count`. The MCP reuse and native launch gates
 require `spawn_count <= 1` and no p99 regression above the declared budget. MCP
 owns a pooled protocol session; deterministic JavaScript owns a separate
-runtime-scoped worker session with a fresh engine context per invocation.
+runtime-scoped bounded worker pool with a fresh engine context per invocation.
 External adapters remain one-shot until a reset-capable wire contract and
 negative isolation tests exist.
 
@@ -200,6 +202,19 @@ persistence, bounded continuation, readback, finality, or receipt sealing from
 the measured paths.
 
 ## Gates
+
+`.github/workflows/runtime-quality.yml` owns the automated heavy lane. It runs
+weekly, on explicit dispatch, and as a release prerequisite. The lane captures
+`native_capability_dispatch`, `pure_module_session_reuse`, and
+`bounded_parallel_fanout` from the exact checked-out commit, then enforces the
+zero-process native path, one-process serial reuse, the four-process pool cap,
+and four-way fanout saturation. The digest-bound JSON report is uploaded as the
+workflow artifact; it is not checked into the repository.
+
+Timing regressions must be compared on like hardware. The workflow therefore
+does not pretend that a developer-machine baseline is valid on a hosted runner.
+For a hot-path change, compare the exact candidate report with a baseline
+captured on the same host class using the commands below.
 
 Later phases compare against the Phase 1 baseline:
 

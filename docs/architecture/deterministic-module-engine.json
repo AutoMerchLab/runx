@@ -189,10 +189,10 @@
         "https://github.com/boa-dev/boa/tree/v0.21.1"
       ],
       "security_boundary": "A memory-safe Rust JavaScript engine with no Node, browser, filesystem, network, process, or credential APIs runs inside a separately supervised worker process.",
-      "module_model": "A validated relative module bundle is loaded from memory into a fresh Boa context for every invocation; only the dedicated worker process is reused.",
+      "module_model": "A validated relative module bundle is loaded from memory into a fresh Boa context for every invocation; a runtime-scoped pool reuses up to four dedicated workers, with one active invocation per process.",
       "resource_controls": [
         "Boa loop, stack, recursion, and parser limits bound engine work",
-        "A dedicated worker supervisor enforces aggregate memory and wall time outside the engine",
+        "Per-worker memory limits, per-invocation wall limits, and the four-worker pool cap bound aggregate host exposure outside the engine",
         "A fixed clock and no host bindings remove ambient time and authority",
         "Fresh contexts prevent globals, modules, promises, and mutable state crossing invocations"
       ],
@@ -232,7 +232,7 @@
   "decision": {
     "selected_engine": "boa_native",
     "selected_version": "boa_engine 0.21.1",
-    "worker_design": "A dedicated runx-js-worker reuses one supervised process per runtime session, creates a fresh Boa context per invocation, loads only a validated in-memory relative module bundle, and communicates over a versioned length-delimited JSON protocol.",
+    "worker_design": "A runtime session lazily reuses a bounded pool of up to four supervised runx-js-worker processes. Each process executes one invocation at a time, creates a fresh Boa context per invocation, loads only a validated in-memory relative module bundle, and communicates over a versioned length-delimited JSON protocol.",
     "rationale": [
       "The engine contributes no Node, browser, filesystem, network, process, environment, credential, clock, or randomness host surface.",
       "Pure Rust source passed checks for all five Runx release targets without introducing a C cross-toolchain into releases.",
@@ -265,5 +265,5 @@
       }
     ]
   },
-  "decision_sha256": "sha256:008f62de72e1409be36c68f335acdca0fddd26910ce21509dcea67da4d1ac3ed"
+  "decision_sha256": "sha256:65d48defd9aab3d602d7c31ae105be3e3add6ea448a1a5ca623b114a88eac5e0"
 }

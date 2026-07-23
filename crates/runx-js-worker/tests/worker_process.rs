@@ -75,8 +75,7 @@ fn packaged_worker_performs_the_versioned_handshake_and_invocation()
 }
 
 #[test]
-fn packaged_worker_multiplexes_maximum_concurrent_invocations()
--> Result<(), Box<dyn std::error::Error>> {
+fn packaged_worker_serves_back_to_back_invocations() -> Result<(), Box<dyn std::error::Error>> {
     let mut child = Command::new(env!("CARGO_BIN_EXE_runx-js-worker"))
         .env_clear()
         .stdin(Stdio::piped())
@@ -119,9 +118,8 @@ fn packaged_worker_multiplexes_maximum_concurrent_invocations()
         )?;
     }
 
-    // Independent invocations may complete in either order. The protocol's
-    // contract is exact response routing by invocation id, not scheduler
-    // timing between worker threads.
+    // One worker is one wall-time kill boundary, so requests are served in
+    // order. Native pool slots provide concurrency across worker processes.
     let mut outputs = BTreeMap::new();
     for _ in 0..MAX_CONCURRENT_INVOCATIONS {
         let Some(response) = read_frame::<WorkerResponse>(&mut stdout, MAX_FRAME_BYTES)? else {
@@ -129,7 +127,7 @@ fn packaged_worker_multiplexes_maximum_concurrent_invocations()
             drop(stdout);
             let output = child.wait_with_output()?;
             return Err(format!(
-                "worker exited during multiplexed invocation: {}",
+                "worker exited while draining queued invocations: {}",
                 String::from_utf8_lossy(&output.stderr)
             )
             .into());
@@ -142,7 +140,7 @@ fn packaged_worker_multiplexes_maximum_concurrent_invocations()
             } => {
                 assert!(outputs.insert(invocation_id, output).is_none());
             }
-            response => return Err(format!("unexpected multiplexed response: {response:?}").into()),
+            response => return Err(format!("unexpected queued response: {response:?}").into()),
         }
     }
     let mut digest = 0_u64;

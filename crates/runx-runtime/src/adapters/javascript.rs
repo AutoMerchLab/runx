@@ -16,9 +16,10 @@ use crate::adapter::{
 };
 use crate::adapter_pipeline::{AdapterCapture, AdapterProjection};
 
-/// One explicit deterministic-JavaScript session. Clones share the same
-/// supervised worker so a graph can fan out without spawning a process per
-/// branch; independent adapters never share failure or lifecycle state.
+/// One explicit deterministic-JavaScript session. Clones share a bounded lazy
+/// worker pool so warm sequential work reuses one process while concurrent
+/// branches receive independent wall-time kill boundaries. Independent
+/// adapters never share failure or lifecycle state.
 #[derive(Clone)]
 pub struct JavaScriptAdapter {
     supervisor: Arc<JavaScriptWorkerSupervisor>,

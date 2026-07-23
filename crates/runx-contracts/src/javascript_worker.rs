@@ -12,15 +12,15 @@ pub const MAX_FRAME_BYTES: usize = 10 * 1024 * 1024;
 pub const MAX_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_QUEUED_JOBS: u32 = 4_096;
 pub const MAX_WALL_MILLISECONDS: u64 = 2_000;
-/// The worker's process-wide heap and address-space ceilings are aggregate
-/// limits, so JavaScript concurrency must stay deliberately small even when a
-/// graph permits wider fanout.
+/// Each worker has its own process-wide heap and address-space ceiling. The
+/// runtime pool stays deliberately small so concurrent JavaScript cannot turn
+/// those per-process bounds into unbounded host memory.
 pub const MAX_CONCURRENT_INVOCATIONS: usize = 4;
 pub const JAVASCRIPT_HEAP_BYTES: u64 = 64 * 1024 * 1024;
 pub const JAVASCRIPT_STACK_BYTES: usize = 4 * 1024 * 1024;
-// glibc reserves 64-128 MiB of non-committed virtual address space per thread
-// arena. The Linux AS guard therefore leaves room for four arenas while the
-// process-wide allocator independently caps committed Rust/JavaScript heap.
+// glibc can reserve 64-128 MiB of non-committed address space for allocator
+// arenas and loader mappings. The AS guard leaves conservative cross-libc
+// headroom; the working-set limit below is the committed-memory boundary.
 pub const WORKER_VIRTUAL_ADDRESS_SPACE_BYTES: u64 = 1024 * 1024 * 1024;
 pub const WORKER_WORKING_SET_BYTES: u64 = 160 * 1024 * 1024;
 

@@ -93,6 +93,8 @@ pub enum RuntimeError {
     },
     #[error("unsupported adapter '{adapter_type}'")]
     UnsupportedAdapter { adapter_type: String },
+    #[error("parallel fanout attempted unsupported host operation '{operation}'")]
+    ParallelHostInteraction { operation: &'static str },
     #[error("unsupported source kind '{source_kind}'")]
     UnsupportedSource { source_kind: String },
     #[error("runner selection '{runner}' is not supported by the native runtime yet")]

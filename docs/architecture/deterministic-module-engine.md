@@ -2,24 +2,27 @@
 
 Status: accepted for implementation
 Decision evidence: `docs/architecture/deterministic-module-engine.json`
-Decision digest: `sha256:008f62de72e1409be36c68f335acdca0fddd26910ce21509dcea67da4d1ac3ed`
+Decision digest: `sha256:65d48defd9aab3d602d7c31ae105be3e3add6ea448a1a5ca623b114a88eac5e0`
 
 ## Decision
 
 Runx's deterministic JavaScript lane will use
 [Boa 0.21.1](https://docs.rs/boa_engine/0.21.1/boa_engine/) inside a dedicated
-`runx-js-worker` process. One supervised worker process is owned by a runtime
-session and may multiplex up to four invocations, but every invocation receives
-a fresh engine context and a validated in-memory module bundle. There is no
-Node, shell, CLI-adapter, or permission-flag fallback.
+`runx-js-worker` process. A runtime session owns a lazy pool of at most four
+supervised workers. Each worker executes one invocation at a time, so its wall
+timeout is an independent process-kill boundary; sequential work reuses the
+warm worker, while concurrent branches acquire separate workers. Every
+invocation still receives a fresh engine context and a validated in-memory
+module bundle. There is no Node, shell, CLI-adapter, or permission-flag
+fallback.
 
 This selects an engine and a containment design together. Boa is not loaded
 into the main Runx process and is not treated as the process-security boundary.
-The worker supervisor must enforce aggregate memory, wall time, queue bounds,
-environment clearing, a non-workspace current directory, protocol framing, and
-replacement after a fault. Boa supplies the inner language boundary: no host
-APIs, a fixed clock, engine work limits, fresh contexts, and an embedded module
-loader.
+The worker supervisor must enforce per-worker memory, per-invocation wall time,
+the aggregate pool cap, queue bounds, environment clearing, a non-workspace
+current directory, protocol framing, and replacement after a fault. Boa
+supplies the inner language boundary: no host APIs, a fixed clock, engine work
+limits, fresh contexts, and an embedded module loader.
 
 ## Required behavior
 
@@ -39,10 +42,11 @@ The worker:
 - fixes `Date` to the invocation's deterministic clock contract;
 - returns only JSON-compatible values through a bounded response frame;
 - destroys the context after each result or error;
-- causes the supervisor to replace the worker after timeout, memory breach,
-  protocol fault, panic, or crash. A typed module or execution rejection keeps
-  the process only because its engine context is discarded and the next
-  invocation receives a new one.
+- causes the supervisor to replace only the affected worker after timeout,
+  memory breach, protocol fault, panic, or crash. Healthy sibling workers
+  continue. A typed module or execution rejection keeps that process only
+  because its engine context is discarded and the next invocation receives a
+  new one.
 
 Production cutover is blocked until hostile modules prove those properties on
 darwin-arm64, darwin-x64, linux-arm64, linux-x64, and win32-x64. The current

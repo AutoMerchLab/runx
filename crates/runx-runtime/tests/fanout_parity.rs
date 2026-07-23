@@ -2,13 +2,20 @@
 
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Condvar, Mutex};
+use std::time::{Duration, Instant};
 
 use runx_contracts::{
     FanoutReceiptDecision, FanoutReceiptStrategy, FanoutReceiptSyncPoint, JsonObject, JsonValue,
 };
 use runx_core::state_machine::{GraphStatus, GraphStepStatus};
+use runx_parser::SkillSource;
 use runx_receipts::validate_receipt_tree;
-use runx_runtime::{RUNX_MAX_FANOUT_CONCURRENCY_ENV, Runtime, RuntimeError, RuntimeOptions};
+use runx_runtime::{
+    FanoutExecutionMode, InvocationStatus, RUNX_MAX_FANOUT_CONCURRENCY_ENV, Runtime, RuntimeError,
+    RuntimeOptions, SkillAdapter, SkillInvocation, SkillOutput,
+};
 use serde::Deserialize;
 
 const FIXTURE_CREATED_AT: &str = "2026-05-18T00:00:00Z";
@@ -111,6 +118,39 @@ fn fanout_parallel_cli_tool_mode_preserves_plan_order() -> Result<(), Box<dyn st
     assert_steps(&run, &expected.steps);
     assert_sync_points(&run, &expected.sync_points);
     assert_receipt_tree(&run);
+    Ok(())
+}
+
+#[test]
+fn fanout_scheduler_keeps_slots_saturated_across_uneven_jobs()
+-> Result<(), Box<dyn std::error::Error>> {
+    let directory = tempfile::tempdir()?;
+    write_saturation_fixture(directory.path(), 8)?;
+    let state = SaturationState::default();
+    let adapter = SaturationAdapter {
+        state: state.clone(),
+    };
+    let mut options = fixture_runtime_options();
+    options
+        .env
+        .insert(RUNX_MAX_FANOUT_CONCURRENCY_ENV.to_owned(), "4".to_owned());
+
+    let run =
+        Runtime::new(adapter, options).run_graph_file(&directory.path().join("graph.yaml"))?;
+
+    assert_eq!(
+        run.steps
+            .iter()
+            .map(|step| step.step_id.as_str())
+            .collect::<Vec<_>>(),
+        (0..8)
+            .map(|index| format!("branch_{index}"))
+            .collect::<Vec<_>>()
+    );
+    assert!(
+        state.opened_at.load(Ordering::Acquire) >= 5,
+        "the slow first branch opened before a later job reused an available slot"
+    );
     Ok(())
 }
 
@@ -325,6 +365,104 @@ fn sequential_successful_retry_feeds_downstream_with_latest_outputs()
     );
     assert_terminal_receipt_child(&run, "flaky", 2)?;
     Ok(())
+}
+
+#[derive(Clone, Default)]
+struct SaturationState {
+    started: Arc<(Mutex<usize>, Condvar)>,
+    opened_at: Arc<AtomicUsize>,
+}
+
+#[derive(Clone)]
+struct SaturationAdapter {
+    state: SaturationState,
+}
+
+impl SkillAdapter for SaturationAdapter {
+    fn adapter_type(&self) -> &'static str {
+        "fanout-saturation-test"
+    }
+
+    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+        let branch = request
+            .inputs
+            .get("branch")
+            .and_then(JsonValue::as_str)
+            .ok_or_else(|| RuntimeError::SkillFailed {
+                skill_name: request.skill_name.clone(),
+                message: "branch input is missing".to_owned(),
+            })?;
+        let (started, available) = &*self.state.started;
+        let mut count = started.lock().map_err(|_| RuntimeError::SkillFailed {
+            skill_name: request.skill_name.clone(),
+            message: "saturation test state was poisoned".to_owned(),
+        })?;
+        *count += 1;
+        available.notify_all();
+        if branch == "0" {
+            let deadline = Instant::now() + Duration::from_millis(500);
+            while *count < 5 {
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                if remaining.is_zero() {
+                    return Err(RuntimeError::SkillFailed {
+                        skill_name: request.skill_name,
+                        message: "fanout worker slots stopped at a chunk barrier".to_owned(),
+                    });
+                }
+                let waited = available.wait_timeout(count, remaining).map_err(|_| {
+                    RuntimeError::SkillFailed {
+                        skill_name: request.skill_name.clone(),
+                        message: "saturation test wait was poisoned".to_owned(),
+                    }
+                })?;
+                count = waited.0;
+            }
+            self.state.opened_at.store(*count, Ordering::Release);
+        }
+        drop(count);
+        Ok(SkillOutput {
+            status: InvocationStatus::Success,
+            stdout: "{}".to_owned(),
+            stderr: String::new(),
+            exit_code: Some(0),
+            duration_ms: 0,
+            metadata: JsonObject::new(),
+        })
+    }
+
+    fn fanout_execution_mode(&self, _source: &SkillSource) -> FanoutExecutionMode {
+        FanoutExecutionMode::IsolatedParallel
+    }
+
+    fn clone_for_fanout(&self) -> Option<Box<dyn SkillAdapter + Send + Sync>> {
+        Some(Box::new(self.clone()))
+    }
+}
+
+fn write_saturation_fixture(root: &Path, branches: usize) -> Result<(), std::io::Error> {
+    let worker = root.join("worker");
+    fs::create_dir_all(&worker)?;
+    fs::write(
+        worker.join("SKILL.md"),
+        "---\nname: fanout-saturation-worker\ndescription: Exercise bounded fanout scheduling.\n---\n\n# Fanout saturation worker\n",
+    )?;
+    fs::write(
+        worker.join("X.yaml"),
+        "skill: fanout-saturation-worker\nrunners:\n  run:\n    default: true\n    type: cli-tool\n    command: never-executed\n    inputs:\n      branch:\n        type: string\n        required: true\n",
+    )?;
+    let steps = (0..branches)
+        .map(|index| {
+            format!(
+                "  - id: branch_{index}\n    mode: fanout\n    fanout_group: workers\n    skill: ./worker\n    inputs:\n      branch: \"{index}\"\n"
+            )
+        })
+        .collect::<String>();
+    fs::write(
+        root.join("graph.yaml"),
+        format!(
+            "name: fanout-saturation\nfanout:\n  groups:\n    workers:\n      strategy: all\n      on_branch_failure: halt\nsteps:\n{steps}"
+        ),
+    )
 }
 
 fn fixture() -> Result<FanoutFixture, serde_json::Error> {

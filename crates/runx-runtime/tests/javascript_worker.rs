@@ -34,7 +34,7 @@ fn javascript_worker_reuses_a_process_without_reusing_javascript_state()
 }
 
 #[test]
-fn javascript_session_multiplexes_concurrent_invocations_in_one_process()
+fn javascript_session_isolates_concurrent_invocations_in_bounded_workers()
 -> Result<(), Box<dyn std::error::Error>> {
     let package = Arc::new(JavaScriptPackage::with_max_concurrency(
         "export default ({ value, rounds }) => { let digest = 0; for (let i = 0; i < rounds; i += 1) digest = (digest + i) % 1000003; return { value, digest }; };",
@@ -73,7 +73,7 @@ fn javascript_session_multiplexes_concurrent_invocations_in_one_process()
     }
     assert!(failures.is_empty(), "{}", failures.join("\n"));
     let stats = package.session_stats();
-    assert_eq!(stats.spawned_process_count, 1);
+    assert_eq!(stats.spawned_process_count, 4);
     assert_eq!(stats.peak_in_flight, 4);
     Ok(())
 }

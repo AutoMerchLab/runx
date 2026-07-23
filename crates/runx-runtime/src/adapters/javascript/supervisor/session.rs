@@ -10,9 +10,8 @@ use runx_contracts::javascript_worker::{
 
 use crate::RuntimeError;
 
-use super::limiter::InFlightLimiter;
 use super::process::{BoundedStderr, capture_stderr, resolve_worker_path, spawn_child, stop_child};
-use super::response_reader::{PendingResponses, read_responses};
+use super::response_reader::{WorkerRead, read_responses};
 use super::{WorkerInvocationResult, lock, worker_error};
 
 // This bounds process startup and the protocol handshake, not JavaScript
@@ -25,17 +24,16 @@ pub(super) struct WorkerSession {
     child: Mutex<Option<Child>>,
     _active_process: crate::interrupt::ActiveProcessGroup,
     stdin: Mutex<Option<ChildStdin>>,
-    pending: Arc<Mutex<PendingResponses>>,
+    responses: Mutex<mpsc::Receiver<WorkerRead>>,
     stderr: Arc<Mutex<BoundedStderr>>,
     response_reader: Option<JoinHandle<()>>,
     stderr_reader: Option<JoinHandle<()>>,
     pub(super) isolation: runx_contracts::JsonObject,
-    pub(super) in_flight: InFlightLimiter,
     terminated: AtomicBool,
 }
 
 impl WorkerSession {
-    pub(super) fn start(max_concurrency: usize) -> Result<Self, RuntimeError> {
+    pub(super) fn start() -> Result<Self, RuntimeError> {
         crate::process::ensure_host_process_containment()
             .map_err(|source| RuntimeError::io("installing host process containment", source))?;
         let worker_path = resolve_worker_path()?;
@@ -70,25 +68,23 @@ impl WorkerSession {
             starting.child_mut()?.stderr.take().ok_or_else(|| {
                 worker_error("deterministic JavaScript worker stderr was not piped")
             })?;
-        let (ready_tx, ready_rx) = mpsc::channel();
-        let pending = Arc::new(Mutex::new(PendingResponses::new()));
+        let (response_tx, response_rx) = mpsc::channel();
         let stderr = Arc::new(Mutex::new(BoundedStderr::default()));
         let mut session = Self {
             child: Mutex::new(Some(starting.take()?)),
             _active_process: active_process,
             stdin: Mutex::new(Some(stdin)),
-            pending: pending.clone(),
+            responses: Mutex::new(response_rx),
             stderr: stderr.clone(),
             response_reader: None,
             stderr_reader: None,
             isolation: sandbox.metadata,
-            in_flight: InFlightLimiter::new(max_concurrency),
             terminated: AtomicBool::new(false),
         };
         session.response_reader = Some(
             thread::Builder::new()
                 .name("runx-js-worker-reader".to_owned())
-                .spawn(move || read_responses(stdout, ready_tx, pending))
+                .spawn(move || read_responses(stdout, response_tx))
                 .map_err(|source| RuntimeError::io("starting JavaScript worker reader", source))?,
         );
         let stderr_capture = stderr.clone();
@@ -103,14 +99,13 @@ impl WorkerSession {
         session.write_request(&WorkerRequest::Hello {
             protocol_version: PROTOCOL_VERSION,
         })?;
-        let ready = match ready_rx.recv_timeout(WORKER_START_TIMEOUT) {
-            Ok(ready) => ready,
-            Err(error) => {
-                return Err(session.failure_with_stderr(format!(
+        let ready = session
+            .receive_response(WORKER_START_TIMEOUT)
+            .map_err(|error| {
+                session.failure_with_stderr(format!(
                     "deterministic JavaScript worker did not complete its handshake: {error}"
-                )));
-            }
-        };
+                ))
+            })?;
         let ready = ready.map_err(|message| session.failure_with_stderr(message))?;
         match ready {
             WorkerResponse::Ready { protocol_version } if protocol_version == PROTOCOL_VERSION => {
@@ -128,31 +123,16 @@ impl WorkerSession {
         request: &WorkerRequest,
         timeout: Duration,
     ) -> Result<WorkerInvocationResult, RuntimeError> {
-        let _permit = self.in_flight.acquire()?;
         if self.terminated.load(Ordering::Acquire) {
             return Err(worker_error(
                 "deterministic JavaScript worker session is closed",
             ));
         }
-        let (response_tx, response_rx) = mpsc::channel();
-        {
-            let mut pending = lock(&self.pending, "registering JavaScript worker invocation")?;
-            if pending
-                .insert(invocation_id.to_owned(), response_tx)
-                .is_some()
-            {
-                return Err(worker_error("duplicate JavaScript worker invocation id"));
-            }
-        }
-        if let Err(error) = self.write_request(request) {
-            self.remove_pending(invocation_id);
-            return Err(error);
-        }
-        let response = match response_rx.recv_timeout(timeout) {
+        self.write_request(request)?;
+        let response = match self.receive_response(timeout) {
             Ok(Ok(response)) => response,
             Ok(Err(message)) => return Err(self.failure_with_stderr(message)),
             Err(mpsc::RecvTimeoutError::Timeout) => {
-                self.remove_pending(invocation_id);
                 self.terminate();
                 return Err(self.failure_with_stderr(format!(
                     "deterministic JavaScript worker exceeded {} ms wall limit",
@@ -192,6 +172,14 @@ impl WorkerSession {
         }
     }
 
+    fn receive_response(&self, timeout: Duration) -> Result<WorkerRead, mpsc::RecvTimeoutError> {
+        let responses = self
+            .responses
+            .lock()
+            .map_err(|_| mpsc::RecvTimeoutError::Disconnected)?;
+        responses.recv_timeout(timeout)
+    }
+
     fn write_request(&self, request: &WorkerRequest) -> Result<(), RuntimeError> {
         let mut stdin = lock(&self.stdin, "locking JavaScript worker stdin")?;
         let stdin = stdin
@@ -199,12 +187,6 @@ impl WorkerSession {
             .ok_or_else(|| worker_error("deterministic JavaScript worker stdin is closed"))?;
         write_frame(stdin, request, MAX_FRAME_BYTES)
             .map_err(|error| worker_error(error.to_string()))
-    }
-
-    fn remove_pending(&self, invocation_id: &str) {
-        if let Ok(mut pending) = self.pending.lock() {
-            pending.remove(invocation_id);
-        }
     }
 
     fn stderr_text(&self) -> String {

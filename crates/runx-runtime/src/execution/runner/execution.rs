@@ -3,6 +3,7 @@
 // the parity implementation for the existing execution contract.
 use std::collections::BTreeMap;
 use std::path::Path;
+use std::sync::{Mutex, mpsc};
 use std::thread;
 
 use runx_contracts::{ExecutionEvent, FanoutReceiptSyncPoint, JsonValue};
@@ -27,7 +28,7 @@ use super::sync::fanout_sync_point;
 use super::{GraphCheckpoint, GraphRun, Runtime, RuntimeOptions, StepRun};
 use crate::RuntimeError;
 use crate::adapter::SkillAdapter;
-use crate::host::{Host, NoopHost};
+use crate::host::{Host, RejectingParallelHost};
 use crate::journal::ExecutionJournal;
 use crate::lifecycle::LifecycleEvent;
 
@@ -54,7 +55,6 @@ pub(super) struct GraphExecution {
 }
 
 struct ParallelStepRun {
-    sequence: usize,
     step_id: String,
     attempt: u32,
     run: StepRun,
@@ -66,7 +66,12 @@ struct ParallelFanoutJob<'a> {
     attempt: u32,
     step: &'a GraphStep,
     loaded_skill: Option<LoadedStepSkill>,
-    uses_javascript: bool,
+    adapter: Box<dyn SkillAdapter + Send + Sync>,
+}
+
+struct ParallelJobOutcome {
+    sequence: usize,
+    result: Result<ParallelStepRun, RuntimeError>,
 }
 
 #[derive(Clone, Copy)]
@@ -448,78 +453,58 @@ impl GraphExecution {
     where
         A: SkillAdapter,
     {
-        let mut results = Vec::with_capacity(steps.len());
-        let chunk_size = max_concurrency.max(1);
-        for (chunk_index, chunk) in steps.chunks(chunk_size).enumerate() {
-            let mut chunk_results = self.execute_parallel_fanout_batch(
-                runtime,
-                graph_dir,
-                graph,
-                chunk,
-                chunk_index * chunk_size,
-            )?;
-            results.append(&mut chunk_results);
+        let jobs = self.parallel_fanout_jobs(runtime, graph_dir, graph, steps, 0)?;
+        if jobs.is_empty() {
+            return Ok(Vec::new());
         }
-        results.sort_by_key(|result| result.sequence);
-        Ok(results)
-    }
-
-    fn execute_parallel_fanout_batch<A>(
-        &mut self,
-        runtime: &Runtime<A>,
-        graph_dir: &Path,
-        graph: &ExecutionGraph,
-        steps: &[ScheduledFanoutStep<'_>],
-        sequence_base: usize,
-    ) -> Result<Vec<ParallelStepRun>, RuntimeError>
-    where
-        A: SkillAdapter,
-    {
-        let jobs = self.parallel_fanout_jobs(runtime, graph_dir, graph, steps, sequence_base)?;
+        let result_count = jobs.len();
+        let worker_count = max_concurrency.max(1).min(result_count);
+        let queue = Mutex::new(jobs.into_iter());
+        let (outcomes_tx, outcomes_rx) = mpsc::channel();
         let runs = &self.runs;
         let run_positions = &self.run_positions;
         thread::scope(|scope| {
-            let mut handles = Vec::with_capacity(jobs.len());
-            for job in jobs {
-                let adapter: Box<dyn SkillAdapter + Send + Sync> = if job.uses_javascript {
-                    Box::new(runtime.javascript.clone())
-                } else {
-                    runtime.adapter.clone_for_fanout().ok_or_else(|| {
-                        RuntimeError::UnsupportedAdapter {
-                            adapter_type: format!(
-                                "{} parallel fanout",
-                                runtime.adapter.adapter_type()
-                            ),
-                        }
-                    })?
-                };
+            let mut handles = Vec::with_capacity(worker_count);
+            for _ in 0..worker_count {
+                let queue = &queue;
+                let outcomes_tx = outcomes_tx.clone();
                 let options = runtime.options.clone();
                 let javascript = runtime.javascript.clone();
                 let local_artifacts = runtime.local_artifacts.clone();
                 let graph_name = graph.name.as_str();
                 handles.push(scope.spawn(move || {
-                    let run = execute_parallel_fanout_step(ParallelFanoutStepExecution {
-                        adapter,
+                    let context = ParallelFanoutWorkerContext {
                         javascript,
                         local_artifacts,
                         options,
                         graph_dir,
                         graph_name,
-                        step: job.step,
-                        attempt: job.attempt,
-                        loaded_skill: job.loaded_skill,
                         prior_runs: runs,
                         run_positions,
-                    })?;
-                    Ok::<ParallelStepRun, RuntimeError>(ParallelStepRun {
-                        sequence: job.sequence,
-                        step_id: job.step_id,
-                        attempt: job.attempt,
-                        run,
-                    })
+                    };
+                    loop {
+                        let Some(job) = next_parallel_job(queue)? else {
+                            return Ok::<(), RuntimeError>(());
+                        };
+                        let sequence = job.sequence;
+                        let result = execute_parallel_fanout_job(job, &context);
+                        outcomes_tx
+                            .send(ParallelJobOutcome { sequence, result })
+                            .map_err(|_| fanout_worker_error("result receiver disconnected"))?;
+                    }
                 }));
             }
-            join_parallel_fanout_handles(handles)
+            drop(outcomes_tx);
+            join_parallel_fanout_workers(handles)?;
+            let mut outcomes = outcomes_rx.into_iter().collect::<Vec<_>>();
+            if outcomes.len() != result_count {
+                return Err(fanout_worker_error(format!(
+                    "prepared {result_count} jobs but received {} results",
+                    outcomes.len()
+                )));
+            }
+            outcomes.sort_by_key(|outcome| outcome.sequence);
+            outcomes.into_iter().map(|outcome| outcome.result).collect()
         })
     }
 
@@ -540,13 +525,25 @@ impl GraphExecution {
                 let uses_javascript = loaded_skill.as_ref().is_some_and(|skill| {
                     skill.runner.source.source_type == runx_parser::SourceKind::JavaScript
                 });
+                let adapter: Box<dyn SkillAdapter + Send + Sync> = if uses_javascript {
+                    Box::new(runtime.javascript.clone())
+                } else {
+                    runtime.adapter.clone_for_fanout().ok_or_else(|| {
+                        RuntimeError::UnsupportedAdapter {
+                            adapter_type: format!(
+                                "{} parallel fanout",
+                                runtime.adapter.adapter_type()
+                            ),
+                        }
+                    })?
+                };
                 Ok(ParallelFanoutJob {
                     sequence: sequence_base + offset,
                     step_id: scheduled.step_id.to_owned(),
                     attempt: scheduled.attempt,
                     step,
                     loaded_skill,
-                    uses_javascript,
+                    adapter,
                 })
             })
             .collect()
@@ -1017,6 +1014,49 @@ struct ParallelFanoutStepExecution<'a> {
     run_positions: &'a BTreeMap<String, usize>,
 }
 
+struct ParallelFanoutWorkerContext<'a> {
+    javascript: crate::adapters::javascript::JavaScriptAdapter,
+    local_artifacts: crate::services::LocalArtifactService,
+    options: RuntimeOptions,
+    graph_dir: &'a Path,
+    graph_name: &'a str,
+    prior_runs: &'a [StepRun],
+    run_positions: &'a BTreeMap<String, usize>,
+}
+
+fn next_parallel_job<'a>(
+    queue: &Mutex<std::vec::IntoIter<ParallelFanoutJob<'a>>>,
+) -> Result<Option<ParallelFanoutJob<'a>>, RuntimeError> {
+    queue
+        .lock()
+        .map_err(|_| fanout_worker_error("work queue mutex was poisoned"))
+        .map(|mut jobs| jobs.next())
+}
+
+fn execute_parallel_fanout_job(
+    job: ParallelFanoutJob<'_>,
+    context: &ParallelFanoutWorkerContext<'_>,
+) -> Result<ParallelStepRun, RuntimeError> {
+    let run = execute_parallel_fanout_step(ParallelFanoutStepExecution {
+        adapter: job.adapter,
+        javascript: context.javascript.clone(),
+        local_artifacts: context.local_artifacts.clone(),
+        options: context.options.clone(),
+        graph_dir: context.graph_dir,
+        graph_name: context.graph_name,
+        step: job.step,
+        attempt: job.attempt,
+        loaded_skill: job.loaded_skill,
+        prior_runs: context.prior_runs,
+        run_positions: context.run_positions,
+    })?;
+    Ok(ParallelStepRun {
+        step_id: job.step_id,
+        attempt: job.attempt,
+        run,
+    })
+}
+
 fn execute_parallel_fanout_step(
     execution: ParallelFanoutStepExecution<'_>,
 ) -> Result<StepRun, RuntimeError> {
@@ -1035,7 +1075,7 @@ fn execute_parallel_fanout_step(
     } = execution;
     let runtime = Runtime::with_javascript(adapter, options, javascript, local_artifacts);
     let prior_run_index = PriorRunIndex::from_positions(prior_runs, run_positions);
-    let mut host = NoopHost;
+    let mut host = RejectingParallelHost;
     match run_step_with_loaded_skill_index(
         LoadedStepExecutionRequest {
             runtime: &runtime,
@@ -1053,17 +1093,22 @@ fn execute_parallel_fanout_step(
     }
 }
 
-fn join_parallel_fanout_handles(
-    handles: Vec<thread::ScopedJoinHandle<'_, Result<ParallelStepRun, RuntimeError>>>,
-) -> Result<Vec<ParallelStepRun>, RuntimeError> {
-    let mut results = Vec::with_capacity(handles.len());
+fn join_parallel_fanout_workers(
+    handles: Vec<thread::ScopedJoinHandle<'_, Result<(), RuntimeError>>>,
+) -> Result<(), RuntimeError> {
     for handle in handles {
-        results.push(handle.join().map_err(|_| RuntimeError::SkillFailed {
-            skill_name: "fanout".to_owned(),
-            message: "parallel fanout worker panicked".to_owned(),
-        })??);
+        handle
+            .join()
+            .map_err(|_| fanout_worker_error("worker panicked"))??;
     }
-    Ok(results)
+    Ok(())
+}
+
+fn fanout_worker_error(message: impl Into<String>) -> RuntimeError {
+    RuntimeError::SkillFailed {
+        skill_name: "fanout".to_owned(),
+        message: format!("parallel fanout {}", message.into()),
+    }
 }
 
 fn checkpoint_planning_cursor(

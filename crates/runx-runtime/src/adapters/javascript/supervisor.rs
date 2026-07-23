@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
-use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use runx_contracts::javascript_worker::{
@@ -9,12 +9,12 @@ use runx_contracts::javascript_worker::{
 
 use crate::RuntimeError;
 
-mod limiter;
+mod pool;
 mod process;
 mod response_reader;
 mod session;
 
-use session::WorkerSession;
+use pool::WorkerPool;
 
 #[derive(Debug)]
 pub(super) struct WorkerInvocation {
@@ -40,21 +40,15 @@ pub(super) struct WorkerInvocationOutcome {
 }
 
 pub(super) struct JavaScriptWorkerSupervisor {
-    state: Mutex<Option<Arc<WorkerSession>>>,
+    pool: WorkerPool,
     next_invocation: AtomicU64,
-    spawn_count: AtomicU64,
-    peak_in_flight: AtomicUsize,
-    max_concurrency: usize,
 }
 
 impl JavaScriptWorkerSupervisor {
     pub(super) fn new(max_concurrency: usize) -> Self {
         Self {
-            state: Mutex::new(None),
+            pool: WorkerPool::new(max_concurrency),
             next_invocation: AtomicU64::new(1),
-            spawn_count: AtomicU64::new(0),
-            peak_in_flight: AtomicUsize::new(0),
-            max_concurrency,
         }
     }
 
@@ -76,11 +70,9 @@ impl JavaScriptWorkerSupervisor {
             inputs: invocation.inputs,
             limits: invocation.limits,
         };
-        let session = self.session()?;
-        let isolation = session.isolation.clone();
-        let result = session.invoke(&invocation_id, &request, timeout);
-        self.peak_in_flight
-            .fetch_max(session.in_flight.peak(), Ordering::Relaxed);
+        let mut lease = self.pool.acquire()?;
+        let isolation = lease.session().isolation.clone();
+        let result = lease.session().invoke(&invocation_id, &request, timeout);
         match result {
             Ok(response) => {
                 let discard = matches!(
@@ -90,57 +82,24 @@ impl JavaScriptWorkerSupervisor {
                         ..
                     }
                 );
-                if discard {
-                    self.discard_session(&session, true)?;
+                if !discard {
+                    lease.mark_reusable();
                 }
                 Ok(WorkerInvocationOutcome {
                     result: response,
                     isolation,
                 })
             }
-            Err(error) => {
-                self.discard_session(&session, true)?;
-                Err(error)
-            }
+            Err(error) => Err(error),
         }
-    }
-
-    fn session(&self) -> Result<Arc<WorkerSession>, RuntimeError> {
-        let mut state = lock(&self.state, "locking JavaScript worker supervisor")?;
-        if state.is_none() {
-            *state = Some(Arc::new(WorkerSession::start(self.max_concurrency)?));
-            self.spawn_count.fetch_add(1, Ordering::Relaxed);
-        }
-        state
-            .as_ref()
-            .cloned()
-            .ok_or_else(|| worker_error("worker session disappeared before invocation"))
-    }
-
-    fn discard_session(
-        &self,
-        session: &Arc<WorkerSession>,
-        terminate: bool,
-    ) -> Result<(), RuntimeError> {
-        let mut state = lock(&self.state, "discarding JavaScript worker session")?;
-        if state
-            .as_ref()
-            .is_some_and(|current| Arc::ptr_eq(current, session))
-        {
-            state.take();
-            if terminate {
-                session.terminate();
-            }
-        }
-        Ok(())
     }
 
     pub(super) fn spawn_count(&self) -> u64 {
-        self.spawn_count.load(Ordering::Relaxed)
+        self.pool.spawn_count()
     }
 
     pub(super) fn peak_in_flight(&self) -> usize {
-        self.peak_in_flight.load(Ordering::Relaxed)
+        self.pool.peak_active()
     }
 }
 
