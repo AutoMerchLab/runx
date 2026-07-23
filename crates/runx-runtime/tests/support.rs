@@ -194,10 +194,10 @@ fn process_start_time(pid: i32) -> Option<u64> {
     #[cfg(any(target_os = "linux", target_os = "android"))]
     {
         let path = format!("/proc/{pid}/stat");
-        return std::fs::read_to_string(path).ok().and_then(|stat| {
+        std::fs::read_to_string(path).ok().and_then(|stat| {
             let (_, tail) = stat.rsplit_once(") ")?;
             tail.split_whitespace().nth(19)?.parse().ok()
-        });
+        })
     }
     #[cfg(not(any(target_os = "linux", target_os = "android")))]
     {
