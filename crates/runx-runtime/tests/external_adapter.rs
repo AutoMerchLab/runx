@@ -262,23 +262,28 @@ fn external_adapter_process_supervisor_timeout_kills_descendant_processes()
     let temp = tempfile::tempdir()?;
     let sentinel_path = temp.path().join("descendant-survived");
     let pid_path = temp.path().join("descendant-pid");
-    // The parent records the backgrounded descendant's pid via `$!`; the test
-    // polls that pid for death instead of sleeping a fixed window.
+    // The descendant records its host-visible pid from /proc/self on Linux so
+    // the assertion is not confused by Bubblewrap's nested pid namespace.
     let script = write_script(
         temp.path(),
         r#"set -eu
 IFS= read -r _invocation
 (
+  if [ -r /proc/self/status ]; then
+    while read -r field host_pid _; do
+      if [ "$field" = "NSpid:" ]; then
+        echo "$host_pid" > "$RUNX_DESCENDANT_PIDFILE"
+        break
+      fi
+    done < /proc/self/status
+  fi
   /bin/sleep 3
   printf survived > "$RUNX_DESCENDANT_SENTINEL"
 ) &
 child_pid=$!
-if [ -r "/proc/$child_pid/status" ]; then
-  host_pid=$(/usr/bin/awk '/^NSpid:/ { print $2 }' "/proc/$child_pid/status")
-else
-  host_pid=$child_pid
+if [ ! -r /proc/self/status ]; then
+  echo "$child_pid" > "$RUNX_DESCENDANT_PIDFILE"
 fi
-echo "$host_pid" > "$RUNX_DESCENDANT_PIDFILE"
 /bin/sleep 10
 "#,
     )?;
@@ -735,7 +740,7 @@ IFS= read -r _invocation
     let graph_path = temp.path().join("graph.yaml");
     fs::write(
         &graph_path,
-        "name: external-adapter-host-resolution\nsteps:\n  - id: invoke\n    skill: ./external-skill\n",
+        "name: external-adapter-host-resolution\nsteps:\n  - id: invoke\n    skill: ./external-skill\n    inputs:\n      issue_number: 77\n",
     )?;
     let mut host = RecordingHost::with_responses([Some(ResolutionResponse {
         actor: ResolutionResponseActor::Human,

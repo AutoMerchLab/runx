@@ -7,15 +7,14 @@ runners:
     server:
       command: node
       args:
-        - fixtures/runtime/adapters/mcp/stdio-server.mjs
-      cwd: ../../..
+        - ./stdio-server.mjs
     tool: echo
     arguments:
       message: "{{message}}"
     timeout_seconds: 15
     sandbox:
       profile: readonly
-      cwd_policy: workspace
+      cwd_policy: skill-directory
     inputs:
       message:
         type: string

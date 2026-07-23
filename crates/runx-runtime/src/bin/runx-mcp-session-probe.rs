@@ -161,7 +161,7 @@ mod mcp_probe {
         let server = SkillMcpServer {
             command: "node".to_owned(),
             args: vec![
-                root.join("fixtures/runtime/adapters/mcp/stdio-server.mjs")
+                root.join("fixtures/skills/mcp-echo/stdio-server.mjs")
                     .to_string_lossy()
                     .into_owned(),
             ],
@@ -177,7 +177,7 @@ mod mcp_probe {
             sandbox: SandboxPlan {
                 command: "node".to_owned(),
                 args: vec![
-                    root.join("fixtures/runtime/adapters/mcp/stdio-server.mjs")
+                    root.join("fixtures/skills/mcp-echo/stdio-server.mjs")
                         .to_string_lossy()
                         .into_owned(),
                 ],

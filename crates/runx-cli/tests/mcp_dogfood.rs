@@ -624,7 +624,7 @@ runners:
 
 fn copy_mcp_fixture_server(skill_dir: &Path) -> Result<(), Box<dyn std::error::Error>> {
     fs::copy(
-        repo_root()?.join("fixtures/runtime/adapters/mcp/stdio-server.mjs"),
+        repo_root()?.join("fixtures/skills/mcp-echo/stdio-server.mjs"),
         skill_dir.join("stdio-server.mjs"),
     )?;
     Ok(())

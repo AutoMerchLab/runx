@@ -515,13 +515,13 @@ fn cli_tool_timeout_kills_descendant_processes() -> Result<(), Box<dyn std::erro
     let pid_path = temp.path().join("descendant-pid");
     let sentinel = serde_json::to_string(&path_string(&sentinel_path)?)?;
     let pid_file = serde_json::to_string(&path_string(&pid_path)?)?;
-    // The parent records the spawned descendant's pid; the test polls that pid
-    // for death instead of sleeping a fixed window.
+    // The descendant records its own host-visible pid from /proc/self so the
+    // assertion is not confused by Bubblewrap's nested pid namespace.
     let descendant_script = format!(
-        "setTimeout(() => require('fs').writeFileSync({sentinel}, 'survived'), 2500); setInterval(() => {{}}, 1000);"
+        "const fs = require('fs'); let pid = process.pid; try {{ const line = fs.readFileSync('/proc/self/status', 'utf8').split('\\n').find(value => value.startsWith('NSpid:')); if (line) pid = Number(line.trim().split(/\\s+/)[1]); }} catch {{}} fs.writeFileSync({pid_file}, String(pid)); setTimeout(() => fs.writeFileSync({sentinel}, 'survived'), 2500); setInterval(() => {{}}, 1000);"
     );
     let parent_script = format!(
-        "const fs = require('fs'); const child = require('child_process').spawn(process.execPath, ['-e', {descendant_script:?}], {{ stdio: 'ignore' }}); let pid = child.pid; try {{ const line = fs.readFileSync(`/proc/${{child.pid}}/status`, 'utf8').split('\\n').find(value => value.startsWith('NSpid:')); if (line) pid = Number(line.trim().split(/\\s+/)[1]); }} catch {{}} fs.writeFileSync({pid_file}, String(pid)); setTimeout(() => {{}}, 10_000);"
+        "require('child_process').spawn(process.execPath, ['-e', {descendant_script:?}], {{ stdio: 'ignore' }}); setTimeout(() => {{}}, 10_000);"
     );
     // Under the readonly profile the sandbox swallows the pid and sentinel
     // writes, leaving the survived-descendant assertion vacuous; anchor the
