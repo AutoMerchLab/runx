@@ -201,7 +201,7 @@ jobs:
         working-directory: crates
         run: |
           cargo build -p runx-cli
-          cargo build -p runx-runtime --bin runx-js-worker
+          cargo build -p runx-js-worker
       - name: Catalog harness sweep
         # Gate every official skill's declared harness. Reds the build the moment
         # a catalog case regresses, so a mis-authored fixture can never silently

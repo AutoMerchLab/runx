@@ -42,6 +42,14 @@ impl VerifiedReceiptStore {
         self.store.list_with_policy(self.signature_policy())
     }
 
+    pub(crate) fn write_all<'a>(
+        &self,
+        receipts: impl IntoIterator<Item = &'a Receipt>,
+    ) -> Result<(), ReceiptStoreError> {
+        self.store
+            .write_receipts_with_policy(receipts, self.signature_policy())
+    }
+
     fn signature_policy(&self) -> RuntimeReceiptSignaturePolicy<'_> {
         self.verifier.as_ref().map_or_else(
             RuntimeReceiptSignaturePolicy::local_development,

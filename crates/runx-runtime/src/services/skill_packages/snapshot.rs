@@ -61,10 +61,6 @@ pub(super) fn package_metrics_json(metrics: &SkillPackageMetrics) -> JsonValue {
             JsonValue::Number(JsonNumber::U64(metrics.bytes)),
         ),
         (
-            "text_lines".to_owned(),
-            JsonValue::Number(JsonNumber::U64(total_lines(metrics))),
-        ),
-        (
             "production_lines".to_owned(),
             JsonValue::Number(JsonNumber::U64(metrics.production_lines)),
         ),
@@ -106,13 +102,6 @@ fn delta(after: u64, before: u64) -> i64 {
     i64::try_from(after)
         .and_then(|after| i64::try_from(before).map(|before| after - before))
         .unwrap_or(if after >= before { i64::MAX } else { i64::MIN })
-}
-
-fn total_lines(metrics: &SkillPackageMetrics) -> u64 {
-    metrics
-        .production_lines
-        .saturating_add(metrics.test_lines)
-        .saturating_add(metrics.generated_lines)
 }
 
 enum LineClass {

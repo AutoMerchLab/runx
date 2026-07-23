@@ -92,7 +92,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/google-search-console",
-        version: "sha-22e4d0bc7bd5",
+        version: "sha-fe1e5dad4e06",
         digest: "58034fe89c3893b58c97cf00a1282283423545ba3c9472312846b1f8db2088a6",
     },
     OfficialSkillLockEntry {
@@ -207,7 +207,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/operator-inbox",
-        version: "sha-357d7d472f2f",
+        version: "sha-11712670454a",
         digest: "368dd1ece62cbab35a597893210ee296af86cc42e1e7c61a0c174177428df05d",
     },
     OfficialSkillLockEntry {
@@ -217,7 +217,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/organic-growth",
-        version: "sha-97e5c78d35d7",
+        version: "sha-dddc6c32cf25",
         digest: "115d06eb9a646f67f0020ef0bb80abe3a1adfe80b8872f11d161cff39b357683",
     },
     OfficialSkillLockEntry {
@@ -302,8 +302,8 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/skill-lab",
-        version: "sha-18d6e3aa961d",
-        digest: "48ab2ae86ce529e7feca1271595d6e40c923e4fd3b872e486b5ffa3226013d9f",
+        version: "sha-49e3021e0480",
+        digest: "dc6acfb5b149b25bb761ae397ae4ccd6c11e33c0c9c21c1c5fb71ee073adcd6a",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/slack",

@@ -9,9 +9,7 @@ use crate::services::ArtifactPageEncoding;
 mod capability;
 
 pub(super) use capability::CAPABILITIES;
-use capability::{
-    ArtifactAdmitInput, ArtifactAdmitOutput, ArtifactReadInput, ArtifactReadOutput,
-};
+use capability::{ArtifactAdmitInput, ArtifactAdmitOutput, ArtifactReadInput, ArtifactReadOutput};
 
 const ADMIT_TOOL: &str = "artifact.admit";
 const READ_TOOL: &str = "artifact.read";

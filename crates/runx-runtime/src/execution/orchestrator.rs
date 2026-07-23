@@ -394,14 +394,12 @@ fn persist_harness_receipts(
     options: &super::runner::RuntimeOptions,
     receipt_dir: &std::path::Path,
 ) -> Result<(), OrchestratorError> {
-    let store = crate::receipts::store::LocalReceiptStore::new(receipt_dir);
-    let policy = options.receipt_signature.signature_policy();
-    store.write_receipts_with_policy(
+    options.receipt_services().write_local_receipts(
         output
             .step_receipts
             .iter()
             .chain(std::iter::once(&output.receipt)),
-        policy,
+        receipt_dir,
     )?;
     Ok(())
 }

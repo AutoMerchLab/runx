@@ -121,12 +121,7 @@ fn volume_independent_artifacts_drive_one_worker_across_bounded_pages()
         .collect::<Vec<_>>();
     let archive = format!("window.YTD.items.part0 = [{}]", records.join(","));
 
-    let output = package.invoke_paged(
-        "archive.data",
-        &archive,
-        64 * 1024,
-        JsonObject::new(),
-    )?;
+    let output = package.invoke_paged("archive.data", &archive, 64 * 1024, JsonObject::new())?;
 
     assert_eq!(
         success_json(&output)?,

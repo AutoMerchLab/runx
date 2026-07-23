@@ -9,8 +9,6 @@ use crate::RuntimeError;
 use crate::sandbox::SandboxPlan;
 #[cfg(feature = "mcp")]
 use crate::sandbox::prepare_mcp_process_sandbox;
-#[cfg(feature = "cli-tool")]
-use crate::sandbox::prepare_process_sandbox;
 
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct SandboxServices;
@@ -24,7 +22,7 @@ impl SandboxServices {
         crate::sandbox::child_base_env(base_env)
     }
 
-    #[cfg(feature = "cli-tool")]
+    #[cfg(any(feature = "cli-tool", feature = "external-adapter"))]
     pub(crate) fn process_plan(
         self,
         source: &SkillSource,
@@ -32,7 +30,7 @@ impl SandboxServices {
         inputs: &runx_contracts::JsonObject,
         base_env: &BTreeMap<String, String>,
     ) -> Result<SandboxPlan, RuntimeError> {
-        prepare_process_sandbox(source, skill_directory, inputs, base_env)
+        crate::sandbox::prepare_process_sandbox(source, skill_directory, inputs, base_env)
     }
 
     #[cfg(feature = "cli-tool")]

@@ -182,10 +182,10 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "data",
-        top_level_usage: &["runx data migrate --database path --source ref [--backup path] [-j|--json]"],
-        usage: &[
+        top_level_usage: &[
             "runx data migrate --database path --source ref [--backup path] [-j|--json]",
         ],
+        usage: &["runx data migrate --database path --source ref [--backup path] [-j|--json]"],
         notes: &[
             "Migrates only recognized legacy SQLite event stores under the active workspace, after an exclusive consistent backup and before independent readback verification.",
             "Current stores return an idempotent proof. Unknown or partial schemas are not modified.",

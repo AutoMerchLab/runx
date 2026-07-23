@@ -1,16 +1,21 @@
-use std::cell::{Cell, RefCell};
-use std::collections::{BTreeMap, VecDeque};
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
 
 use boa_engine::builtins::promise::PromiseState;
 use boa_engine::context::time::FixedClock;
-use boa_engine::job::{Job, JobExecutor};
 use boa_engine::module::MapModuleLoader;
-use boa_engine::{Context, JsError, JsNativeError, JsValue, Module, Source, js_string};
+use boa_engine::{Context, JsError, JsValue, Module, Source, js_string};
 use thiserror::Error;
 
 use crate::protocol::{InvocationLimits, WorkerFailureCode};
+
+mod globals;
+mod jobs;
+mod validation;
+
+use jobs::BoundedJobExecutor;
+use validation::{validate_bundle, validate_input};
 
 const VIRTUAL_ROOT: &str = "/runx";
 const LOOP_ITERATION_LIMIT: u64 = 10_000_000;
@@ -26,7 +31,7 @@ pub(crate) struct EngineError {
 }
 
 impl EngineError {
-    fn new(code: WorkerFailureCode, message: impl Into<String>) -> Self {
+    pub(super) fn new(code: WorkerFailureCode, message: impl Into<String>) -> Self {
         Self {
             code,
             message: bounded_message(message.into()),
@@ -105,104 +110,6 @@ pub(crate) fn evaluate(
     Ok(output)
 }
 
-fn validate_input(inputs: &serde_json::Value, maximum: usize) -> Result<(), EngineError> {
-    let bytes = serde_json::to_vec(inputs)
-        .map_err(|error| EngineError::new(WorkerFailureCode::InvalidRequest, error.to_string()))?;
-    if bytes.len() <= maximum {
-        return Ok(());
-    }
-    Err(EngineError::new(
-        WorkerFailureCode::ResourceLimit,
-        format!(
-            "JavaScript input is {} bytes; limit is {maximum} bytes",
-            bytes.len()
-        ),
-    ))
-}
-
-fn validate_bundle(
-    entry_module: &str,
-    export_name: &str,
-    modules: &BTreeMap<String, String>,
-    limits: InvocationLimits,
-) -> Result<(), EngineError> {
-    validate_module_path(entry_module)?;
-    validate_export_name(export_name)?;
-    if !modules.contains_key(entry_module) {
-        return Err(EngineError::new(
-            WorkerFailureCode::ModuleRejected,
-            "entry module is not present in the supplied bundle",
-        ));
-    }
-    let input_bytes = serde_json::to_vec(modules)
-        .map_err(|error| EngineError::new(WorkerFailureCode::InvalidRequest, error.to_string()))?;
-    if input_bytes.len() > limits.source_bytes {
-        return Err(EngineError::new(
-            WorkerFailureCode::ResourceLimit,
-            format!(
-                "JavaScript module bundle is {} bytes; limit is {} bytes",
-                input_bytes.len(),
-                limits.source_bytes
-            ),
-        ));
-    }
-    for (path, source) in modules {
-        validate_module_path(path)?;
-        let imports = runx_parser::javascript_module_imports(path, source).map_err(|error| {
-            EngineError::new(WorkerFailureCode::ModuleRejected, error.to_string())
-        })?;
-        for specifier in imports {
-            let resolved = runx_parser::resolve_javascript_module_import(path, &specifier)
-                .map_err(|error| {
-                    EngineError::new(WorkerFailureCode::ModuleRejected, error.to_string())
-                })?;
-            if !modules.contains_key(&resolved) {
-                return Err(EngineError::new(
-                    WorkerFailureCode::ModuleRejected,
-                    format!(
-                        "JavaScript import {specifier:?} from {path:?} resolves outside the supplied bundle"
-                    ),
-                ));
-            }
-        }
-    }
-    Ok(())
-}
-
-fn validate_module_path(path: &str) -> Result<(), EngineError> {
-    let valid_extension = path.ends_with(".js") || path.ends_with(".mjs");
-    let valid_segments = !path.is_empty()
-        && !path.starts_with('/')
-        && !path.contains('\\')
-        && path
-            .split('/')
-            .all(|segment| !segment.is_empty() && !matches!(segment, "." | ".."));
-    if valid_extension && valid_segments {
-        return Ok(());
-    }
-    Err(EngineError::new(
-        WorkerFailureCode::ModuleRejected,
-        format!("JavaScript module path {path:?} is not a normalized relative .js/.mjs path"),
-    ))
-}
-
-fn validate_export_name(name: &str) -> Result<(), EngineError> {
-    let mut characters = name.chars();
-    let valid_start = characters
-        .next()
-        .is_some_and(|character| character.is_ascii_alphabetic() || matches!(character, '_' | '$'));
-    if valid_start
-        && characters
-            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '_' | '$'))
-    {
-        return Ok(());
-    }
-    Err(EngineError::new(
-        WorkerFailureCode::InvalidRequest,
-        format!("JavaScript export name {name:?} is not an identifier"),
-    ))
-}
-
 fn configure_context(context: &mut Context, stack_bytes: usize) -> Result<(), EngineError> {
     let mut runtime_limits = context.runtime_limits();
     runtime_limits.set_loop_iteration_limit(LOOP_ITERATION_LIMIT);
@@ -210,18 +117,7 @@ fn configure_context(context: &mut Context, stack_bytes: usize) -> Result<(), En
     runtime_limits.set_recursion_limit(RECURSION_LIMIT);
     runtime_limits.set_backtrace_limit(BACKTRACE_LIMIT);
     context.set_runtime_limits(runtime_limits);
-    context
-        .eval(Source::from_bytes(
-            r#"
-                Object.defineProperty(Math, "random", {
-                    value() { throw new TypeError("Math.random is unavailable in deterministic modules"); },
-                    configurable: false,
-                    enumerable: false,
-                    writable: false
-                });
-            "#,
-        ))
-        .map(|_| ())
+    globals::install(context)
         .map_err(|error| engine_failure("installing deterministic globals", error))
 }
 
@@ -320,146 +216,5 @@ fn bounded_message(mut message: String) -> String {
     message
 }
 
-struct BoundedJobExecutor {
-    promise_jobs: RefCell<VecDeque<boa_engine::job::PromiseJob>>,
-    async_jobs: RefCell<VecDeque<boa_engine::job::NativeAsyncJob>>,
-    generic_jobs: RefCell<VecDeque<boa_engine::job::GenericJob>>,
-    count: Cell<u32>,
-    maximum: u32,
-    overflowed: Cell<bool>,
-}
-
-impl BoundedJobExecutor {
-    fn new(maximum: u32) -> Self {
-        Self {
-            promise_jobs: RefCell::new(VecDeque::new()),
-            async_jobs: RefCell::new(VecDeque::new()),
-            generic_jobs: RefCell::new(VecDeque::new()),
-            count: Cell::new(0),
-            maximum,
-            overflowed: Cell::new(false),
-        }
-    }
-
-    fn check(&self) -> Result<(), EngineError> {
-        if self.overflowed.get() {
-            return Err(EngineError::new(
-                WorkerFailureCode::ResourceLimit,
-                format!("JavaScript queued more than {} jobs", self.maximum),
-            ));
-        }
-        Ok(())
-    }
-
-    fn admit(&self) -> bool {
-        let next = self.count.get().saturating_add(1);
-        self.count.set(next);
-        if next > self.maximum {
-            self.overflowed.set(true);
-            return false;
-        }
-        true
-    }
-}
-
-impl JobExecutor for BoundedJobExecutor {
-    fn enqueue_job(self: Rc<Self>, job: Job, _context: &mut Context) {
-        if !self.admit() {
-            return;
-        }
-        match job {
-            Job::PromiseJob(job) => self.promise_jobs.borrow_mut().push_back(job),
-            Job::AsyncJob(job) => self.async_jobs.borrow_mut().push_back(job),
-            Job::GenericJob(job) => self.generic_jobs.borrow_mut().push_back(job),
-            Job::TimeoutJob(_) => self.overflowed.set(true),
-            _ => self.overflowed.set(true),
-        }
-    }
-
-    fn run_jobs(self: Rc<Self>, context: &mut Context) -> boa_engine::JsResult<()> {
-        loop {
-            let asynchronous = self.async_jobs.borrow_mut().pop_front();
-            if let Some(job) = asynchronous {
-                let context_cell = RefCell::new(&mut *context);
-                futures_lite::future::block_on(job.call(&context_cell))?;
-                continue;
-            }
-            let promise = self.promise_jobs.borrow_mut().pop_front();
-            if let Some(job) = promise {
-                job.call(context)?;
-                continue;
-            }
-            let generic = self.generic_jobs.borrow_mut().pop_front();
-            if let Some(job) = generic {
-                job.call(context)?;
-                continue;
-            }
-            break;
-        }
-        if self.overflowed.get() {
-            return Err(JsNativeError::range()
-                .with_message("deterministic JavaScript job limit exceeded")
-                .into());
-        }
-        Ok(())
-    }
-}
-
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn modules(source: &str) -> BTreeMap<String, String> {
-        BTreeMap::from([("main.mjs".to_owned(), source.to_owned())])
-    }
-
-    #[test]
-    fn evaluates_default_export_with_fixed_time() -> Result<(), EngineError> {
-        let output = evaluate(
-            "main.mjs",
-            "default",
-            &modules("export default ({ value }) => ({ value, now: Date.now() });"),
-            serde_json::json!({"value": "runx"}),
-            InvocationLimits::default(),
-        )?;
-        assert_eq!(output, serde_json::json!({"value": "runx", "now": 0}));
-        Ok(())
-    }
-
-    #[test]
-    fn resolves_relative_modules_from_memory() -> Result<(), EngineError> {
-        let bundle = BTreeMap::from([
-            (
-                "domain/main.mjs".to_owned(),
-                "import { value } from './value.mjs'; export default () => ({ value });".to_owned(),
-            ),
-            (
-                "domain/value.mjs".to_owned(),
-                "export const value = 42;".to_owned(),
-            ),
-        ]);
-        let output = evaluate(
-            "domain/main.mjs",
-            "default",
-            &bundle,
-            serde_json::json!({}),
-            InvocationLimits::default(),
-        )?;
-        assert_eq!(output, serde_json::json!({"value": 42}));
-        Ok(())
-    }
-
-    #[test]
-    fn rejects_host_randomness() {
-        let error = evaluate(
-            "main.mjs",
-            "default",
-            &modules("export default () => Math.random();"),
-            serde_json::json!({}),
-            InvocationLimits::default(),
-        )
-        .err()
-        .map(|error| error.to_string());
-        assert!(error.is_some_and(|message| message.contains("Math.random")));
-    }
-}
+mod tests;

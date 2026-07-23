@@ -124,6 +124,11 @@ impl RuntimeOptions {
         }
     }
 
+    #[cfg(feature = "cli-tool")]
+    pub(crate) fn receipt_services(&self) -> ReceiptServices {
+        ReceiptServices::from_signature_config(self.receipt_signature.clone())
+    }
+
     #[must_use]
     pub fn signature_policy(&self) -> RuntimeReceiptSignaturePolicy<'_> {
         self.receipt_signature.signature_policy()

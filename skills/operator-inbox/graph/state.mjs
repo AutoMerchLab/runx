@@ -348,9 +348,9 @@ function digest(value, field) {
 function optionalHttpsUrl(value) {
   if (value === undefined || value === null) return undefined;
   const result = text(value, 2_000, "URL");
-  const url = new URL(result);
+  const url = Runx.parseUrl(result);
   if (url.protocol !== "https:") throw new Error("operator inbox URLs must use HTTPS");
-  return url.toString();
+  return url.href;
 }
 
 function nonNegativeInteger(value, field) {

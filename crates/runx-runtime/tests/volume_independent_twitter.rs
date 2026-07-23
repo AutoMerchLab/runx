@@ -23,8 +23,7 @@ fn archive_volume_independent_twitter_selection_is_identical_across_page_sizes()
     assert_eq!(summary.matched, 6);
     assert_eq!(
         summary.act_ids,
-        [0, 2_000, 4_000, 6_000, 8_000, 10_000]
-            .map(|index| format!("del-{index}"))
+        [0, 2_000, 4_000, 6_000, 8_000, 10_000].map(|index| format!("del-{index}"))
     );
     Ok(())
 }
@@ -56,10 +55,7 @@ fn run_selection(
                 "principal".to_owned(),
                 JsonValue::String("account:@volume-proof".to_owned()),
             ),
-            (
-                "predicate".to_owned(),
-                JsonValue::Object(predicate.clone()),
-            ),
+            ("predicate".to_owned(), JsonValue::Object(predicate.clone())),
             (
                 "max_acts".to_owned(),
                 JsonValue::Number(JsonNumber::U64(100)),
@@ -67,14 +63,8 @@ fn run_selection(
             (
                 "selection_plan".to_owned(),
                 JsonValue::Object(JsonObject::from([
-                    (
-                        "decision".to_owned(),
-                        JsonValue::String("ready".to_owned()),
-                    ),
-                    (
-                        "target".to_owned(),
-                        JsonValue::String("posts".to_owned()),
-                    ),
+                    ("decision".to_owned(), JsonValue::String("ready".to_owned())),
+                    ("target".to_owned(), JsonValue::String("posts".to_owned())),
                     ("predicate".to_owned(), JsonValue::Object(predicate)),
                     ("blockers".to_owned(), JsonValue::Array(Vec::new())),
                 ])),

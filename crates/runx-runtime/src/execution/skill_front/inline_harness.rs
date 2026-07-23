@@ -211,12 +211,11 @@ fn persist_inline_case_receipts(
 ) -> Result<(), String> {
     let receipts = crate::services::ReceiptServices::from_env_or_local_development(&request.env)
         .map_err(|error| error.to_string())?;
-    let policy = receipts.signature_config().signature_policy();
-    let produced = crate::receipts::store::LocalReceiptStore::new(case_receipt_dir)
-        .list_with_policy(policy)
+    let produced = receipts
+        .list_local_receipts(case_receipt_dir)
         .map_err(|error| error.to_string())?;
-    crate::receipts::store::LocalReceiptStore::new(output_receipt_dir)
-        .write_receipts_with_policy(&produced, policy)
+    receipts
+        .write_local_receipts(&produced, output_receipt_dir)
         .map_err(|error| error.to_string())
 }
 
@@ -227,8 +226,9 @@ fn inline_harness_case_request(
     case: &RunnerHarnessCase,
     cwd: &Path,
 ) -> SkillRunRequest {
-    let mut env: BTreeMap<String, String> =
-        env.cloned().unwrap_or_else(|| std::env::vars().collect());
+    let mut env: BTreeMap<String, String> = env
+        .cloned()
+        .unwrap_or_else(crate::services::process_env_snapshot);
     env.extend(case.env.clone());
     SkillRunRequest {
         skill_path: skill_dir.to_path_buf(),

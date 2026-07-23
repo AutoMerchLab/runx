@@ -14,7 +14,7 @@ workspace = true
 
 [features]
 default = ["engine"]
-engine = ["dep:boa_engine", "dep:cap", "dep:futures-lite", "dep:rlimit", "dep:runx-parser", "dep:win32job"]
+engine = ["dep:boa_engine", "dep:cap", "dep:futures-lite", "dep:rlimit", "dep:runx-parser", "dep:url", "dep:win32job"]
 
 [dependencies]
 boa_engine = { version = "=0.21.1", default-features = false, optional = true }
@@ -25,6 +25,7 @@ runx-contracts.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true
+url = { workspace = true, optional = true }
 
 [target.'cfg(unix)'.dependencies]
 rlimit = { version = "0.10.2", optional = true }

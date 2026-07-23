@@ -2,7 +2,7 @@ mod env;
 mod receipt_proof;
 mod receipt_query;
 mod receipts;
-#[cfg(any(feature = "cli-tool", feature = "mcp"))]
+#[cfg(any(feature = "cli-tool", feature = "external-adapter", feature = "mcp"))]
 mod sandbox;
 #[cfg(feature = "catalog")]
 mod skill_packages;
@@ -16,8 +16,8 @@ pub use env::{WorkspaceEnv, WorkspaceEnvError};
 pub(crate) use env::{merge_inferred_tool_roots, process_env_value};
 pub(crate) use receipt_proof::prove_receipts;
 pub(crate) use receipt_query::{ReceiptQueryInput, query_receipts};
-pub(crate) use receipts::{ReceiptServices, production_receipt_verifier};
-#[cfg(any(feature = "cli-tool", feature = "mcp"))]
+pub(crate) use receipts::ReceiptServices;
+#[cfg(any(feature = "cli-tool", feature = "external-adapter", feature = "mcp"))]
 pub(crate) use sandbox::SandboxServices;
 #[cfg(feature = "catalog")]
 pub(crate) use skill_packages::{

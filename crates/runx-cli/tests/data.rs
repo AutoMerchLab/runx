@@ -157,7 +157,10 @@ fn insert_legacy_event(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let event_type = "item.created";
     let event = JsonValue::Object(JsonObject::from([
-        ("sequence".to_owned(), JsonValue::Number(JsonNumber::U64(sequence))),
+        (
+            "sequence".to_owned(),
+            JsonValue::Number(JsonNumber::U64(sequence)),
+        ),
         ("type".to_owned(), JsonValue::String(event_type.to_owned())),
     ]));
     let event_json = serde_json::to_string(&event)?;

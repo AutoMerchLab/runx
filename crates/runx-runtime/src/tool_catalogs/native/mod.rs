@@ -16,8 +16,8 @@ use crate::effects::EffectToolRequest;
 #[cfg(feature = "catalog")]
 use crate::effects::RuntimeEffectRegistry;
 
-mod attestation;
 mod artifacts;
+mod attestation;
 #[cfg(feature = "catalog")]
 mod authoring;
 mod capability;

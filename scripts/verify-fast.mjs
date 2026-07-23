@@ -7,17 +7,16 @@ import { fileURLToPath } from "node:url";
 
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cargo = process.platform === "win32" ? "cargo.exe" : "cargo";
+const cargoTargetDir = process.env.CARGO_TARGET_DIR
+  ? path.resolve(workspaceRoot, process.env.CARGO_TARGET_DIR)
+  : path.join(workspaceRoot, "crates", "target");
 const rustKernelBin = path.join(
-  workspaceRoot,
-  "crates",
-  "target",
+  cargoTargetDir,
   "debug",
   process.platform === "win32" ? "runx.exe" : "runx",
 );
 const rustHarnessFixtureOracleBin = path.join(
-  workspaceRoot,
-  "crates",
-  "target",
+  cargoTargetDir,
   "debug",
   process.platform === "win32" ? "runx-harness-fixture-oracles.exe" : "runx-harness-fixture-oracles",
 );
@@ -59,8 +58,8 @@ await runSerialGroup("rust structure checks", [
   step("rust:crate-graph", "pnpm", ["rust:crate-graph"]),
 ]);
 
-// One invocation for both binaries: the resolver unifies runx-runtime's feature
-// set across the two packages, so its lib compiles once instead of twice with
+// One invocation for all shipping binaries: the resolver unifies runx-runtime's
+// feature set across the packages, so its lib compiles once instead of twice with
 // divergent feature fingerprints.
 const rustBuild = await runStep(
   step("build rust binaries", cargo, [
@@ -72,12 +71,16 @@ const rustBuild = await runStep(
     "runx-cli",
     "-p",
     "runx-runtime",
+    "-p",
+    "runx-js-worker",
     "--features",
     "runx-runtime/cli-tool",
     "--bin",
     "runx",
     "--bin",
     "runx-harness-fixture-oracles",
+    "--bin",
+    "runx-js-worker",
   ]),
   rustBuildEnv,
 );

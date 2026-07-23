@@ -96,7 +96,10 @@ fn javascript_source_rejects_ambiguous_or_reserved_page_inputs() -> Result<(), S
             "---\nname: bad-pages\nsource:\n  type: javascript\n  module: domain.mjs\n  pages:\n      {pages}\n---\n# Bad pages\n"
         ))
         .map_err(|error| error.to_string())?;
-        assert!(validate_skill(raw).is_err(), "invalid pages unexpectedly passed");
+        assert!(
+            validate_skill(raw).is_err(),
+            "invalid pages unexpectedly passed"
+        );
     }
     Ok(())
 }

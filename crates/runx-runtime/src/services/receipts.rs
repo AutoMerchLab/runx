@@ -44,7 +44,7 @@ impl ReceiptServices {
         &self.signature_config
     }
 
-    #[cfg(test)]
+    #[cfg(any(feature = "cli-tool", test))]
     pub(crate) fn from_signature_config(signature_config: RuntimeReceiptSignatureConfig) -> Self {
         Self { signature_config }
     }
@@ -73,14 +73,32 @@ impl ReceiptServices {
             .write_receipt_with_policy(receipt, self.signature_config.signature_policy())
     }
 
+    #[cfg(any(feature = "cli-tool", feature = "mcp"))]
+    pub(crate) fn write_local_receipts<'a>(
+        &self,
+        receipts: impl IntoIterator<Item = &'a Receipt>,
+        receipt_dir: &Path,
+    ) -> Result<(), ReceiptStoreError> {
+        LocalReceiptStore::new(receipt_dir)
+            .write_receipts_with_policy(receipts, self.signature_config.signature_policy())
+    }
+
+    #[cfg(feature = "cli-tool")]
+    pub(crate) fn list_local_receipts(
+        &self,
+        receipt_dir: &Path,
+    ) -> Result<Vec<Receipt>, ReceiptStoreError> {
+        LocalReceiptStore::new(receipt_dir)
+            .list_with_policy(self.signature_config.signature_policy())
+    }
+
     #[cfg(feature = "mcp")]
     pub(crate) fn write_local_receipt_dir(
         &self,
         receipt: &Receipt,
         receipt_dir: &Path,
     ) -> Result<(), ReceiptStoreError> {
-        LocalReceiptStore::new(receipt_dir)
-            .write_receipt_with_policy(receipt, self.signature_config.signature_policy())
+        self.write_local_receipts(std::iter::once(receipt), receipt_dir)
     }
 }
 

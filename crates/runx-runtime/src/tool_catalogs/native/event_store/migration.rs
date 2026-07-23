@@ -19,14 +19,7 @@ pub struct EventStoreMigrationRequest {
 }
 
 #[derive(
-    Clone,
-    Copy,
-    Debug,
-    Deserialize,
-    Eq,
-    PartialEq,
-    Serialize,
-    runx_contracts::schema::RunxSchema,
+    Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, runx_contracts::schema::RunxSchema,
 )]
 #[serde(rename_all = "snake_case")]
 pub enum EventStoreMigrationStatus {
@@ -69,14 +62,13 @@ pub fn migrate_event_store(
         &backup_ref,
     )?;
     if database == backup {
-        return Err(invalid("backup path must differ from the event-store database"));
+        return Err(invalid(
+            "backup path must differ from the event-store database",
+        ));
     }
 
-    let report = sqlite::migrate_event_store_database(
-        &database,
-        &backup,
-        &request.data_source_ref,
-    )?;
+    let report =
+        sqlite::migrate_event_store_database(&database, &backup, &request.data_source_ref)?;
     Ok(EventStoreMigrationProof {
         schema: PROOF_SCHEMA.to_owned(),
         status: report.status,
@@ -97,10 +89,15 @@ pub fn migrate_event_store(
 fn contained_existing_file(root: &Path, requested: &str) -> Result<PathBuf, RuntimeError> {
     let path = crate::filesystem::resolve_contained_file_target(OPERATION, root, requested)?;
     let metadata = fs::symlink_metadata(&path).map_err(|source| {
-        RuntimeError::io(format!("opening event-store database {}", path.display()), source)
+        RuntimeError::io(
+            format!("opening event-store database {}", path.display()),
+            source,
+        )
     })?;
     if !metadata.file_type().is_file() {
-        return Err(invalid("event-store database must be an existing regular file"));
+        return Err(invalid(
+            "event-store database must be an existing regular file",
+        ));
     }
     Ok(path)
 }

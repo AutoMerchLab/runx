@@ -7,7 +7,7 @@ use crate::{SkillSource, ValidatedTool, parse_tool_manifest_json, validate_tool_
 use super::super::javascript::process_module_imports;
 use super::super::path::validate_package_path;
 use super::super::{SkillPackageError, SkillPackageSource, ValidatedPackageTool};
-use super::{has_nested_manual_boundary, text_file};
+use super::contract::{has_nested_manual_boundary, text_file};
 
 pub(super) fn validate_package_tools(
     source: &SkillPackageSource,

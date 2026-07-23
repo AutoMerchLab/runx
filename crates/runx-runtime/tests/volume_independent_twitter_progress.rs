@@ -3,12 +3,9 @@ use std::fs;
 use runx_contracts::{JsonObject, JsonValue};
 use serde_json::{Value, json};
 
-use crate::javascript_worker_support::{
-    JavaScriptPackage, expected_json, success_json,
-};
+use crate::javascript_worker_support::{JavaScriptPackage, expected_json, success_json};
 
-const DIGEST: &str =
-    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+const DIGEST: &str = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
 #[test]
 fn twitter_execution_progress_is_a_compact_contiguous_cursor()
@@ -43,8 +40,7 @@ fn twitter_execution_progress_is_a_compact_contiguous_cursor()
 }
 
 #[test]
-fn twitter_execution_stops_at_the_first_failed_act()
--> Result<(), Box<dyn std::error::Error>> {
+fn twitter_execution_stops_at_the_first_failed_act() -> Result<(), Box<dyn std::error::Error>> {
     let prepare = execution_package("twitter-execution.mjs")?;
     let finalize = execution_package("twitter-execution-result.mjs")?;
     let plan = delete_plan(3);
@@ -101,14 +97,19 @@ fn twitter_thread_progress_resumes_after_the_last_confirmed_segment()
 
     let resumed = prepare_plan(&prepare, &plan, 1, ledger(1, progress))?;
     let requests = array_field(&resumed, "requests")?;
-    assert_eq!(field(&requests[0], "id"), Some(&json!("act:thread-1:segment:1")));
+    assert_eq!(
+        field(&requests[0], "id"),
+        Some(&json!("act:thread-1:segment:1"))
+    );
     assert_eq!(
         requests[0].pointer("/body/reply/in_reply_to_tweet_id"),
         Some(&json!("tweet-1")),
     );
-    assert!(requests.iter().all(|request| {
-        field(request, "id") != Some(&json!("act:thread-1:segment:0"))
-    }));
+    assert!(
+        requests
+            .iter()
+            .all(|request| { field(request, "id") != Some(&json!("act:thread-1:segment:0")) })
+    );
     Ok(())
 }
 
@@ -192,7 +193,10 @@ fn successful_responses(plan: &Value) -> Result<Value, Box<dyn std::error::Error
             .iter()
             .map(|request| {
                 success_response(
-                    request.get("id").and_then(Value::as_str).unwrap_or_default(),
+                    request
+                        .get("id")
+                        .and_then(Value::as_str)
+                        .unwrap_or_default(),
                     json!({ "deleted": true }),
                 )
             })
@@ -235,10 +239,7 @@ fn field<'a>(value: &'a Value, name: &str) -> Option<&'a Value> {
     value.get(name)
 }
 
-fn object_field<'a>(
-    value: &'a Value,
-    name: &str,
-) -> Result<&'a Value, Box<dyn std::error::Error>> {
+fn object_field<'a>(value: &'a Value, name: &str) -> Result<&'a Value, Box<dyn std::error::Error>> {
     value
         .get(name)
         .filter(|value| value.is_object())

@@ -32,7 +32,8 @@ use crate::process::{
 };
 use crate::receipts::paths::RUNX_RECEIPT_DIR_ENV;
 use crate::redaction::trim_ascii_whitespace;
-use crate::sandbox::{SandboxPlan, prepare_process_sandbox};
+use crate::sandbox::SandboxPlan;
+use crate::services::SandboxServices;
 use crate::time::now_iso8601;
 
 const INVOCATION_SCHEMA: &str = "runx.external_adapter.invocation.v1";
@@ -736,11 +737,11 @@ fn external_adapter_sandbox_plan(
     let skill_directory = external_adapter_skill_directory(manifest, invocation)?;
     let base_env = process_env(invocation)?;
     let source = external_adapter_sandbox_source(command, manifest, &base_env)?;
-    prepare_process_sandbox(&source, &skill_directory, &JsonObject::new(), &base_env).map_err(
-        |error| ExternalAdapterSupervisorError::SandboxDenied {
+    SandboxServices
+        .process_plan(&source, &skill_directory, &JsonObject::new(), &base_env)
+        .map_err(|error| ExternalAdapterSupervisorError::SandboxDenied {
             message: error.to_string(),
-        },
-    )
+        })
 }
 
 fn external_adapter_skill_directory(

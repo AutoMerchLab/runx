@@ -1,5 +1,5 @@
 skill: google-search-console
-version: "0.1.2"
+version: "0.1.3"
 
 catalog:
   kind: graph
@@ -380,7 +380,7 @@ runners:
             provider_result: read.provider_operation.data.result
           run:
             type: javascript
-            module: google-search-console.mjs
+            module: gsc/performance.mjs
             export: normalizePerformance
             outputs:
               performance_draft: object
@@ -394,7 +394,7 @@ runners:
             digest_result: digest.digest_result.data
           run:
             type: javascript
-            module: google-search-console.mjs
+            module: gsc/performance.mjs
             export: finalizePerformance
             outputs:
               performance_evidence: object
@@ -422,7 +422,7 @@ runners:
             source_status: supplied_result
           run:
             type: javascript
-            module: google-search-console.mjs
+            module: gsc/performance.mjs
             export: normalizePerformance
             outputs:
               performance_draft: object
@@ -436,7 +436,7 @@ runners:
             digest_result: digest.digest_result.data
           run:
             type: javascript
-            module: google-search-console.mjs
+            module: gsc/performance.mjs
             export: finalizePerformance
             outputs:
               performance_evidence: object
@@ -504,7 +504,7 @@ runners:
             provider_result: read.provider_operation.data.result
           run:
             type: javascript
-            module: google-search-console.mjs
+            module: gsc/inspection.mjs
             export: normalizeInspection
             outputs:
               inspection_draft: object
@@ -518,7 +518,7 @@ runners:
             digest_result: digest.digest_result.data
           run:
             type: javascript
-            module: google-search-console.mjs
+            module: gsc/inspection.mjs
             export: finalizeInspection
             outputs:
               inspection_evidence: object
@@ -567,7 +567,7 @@ runners:
             sitemap_url: $input.sitemap_url
           run:
             type: javascript
-            module: google-search-console.mjs
+            module: gsc/sitemap.mjs
             export: prepareSitemapPlan
             outputs:
               sitemap_plan_draft: object
@@ -582,7 +582,7 @@ runners:
             digest_result: digest.digest_result.data
           run:
             type: javascript
-            module: google-search-console.mjs
+            module: gsc/sitemap.mjs
             export: bindSitemapPlan
             outputs:
               sitemap_plan: object
@@ -618,7 +618,7 @@ runners:
             digest_result: digest.digest_result.data
           run:
             type: javascript
-            module: google-search-console.mjs
+            module: gsc/sitemap.mjs
             export: admitSitemapSubmission
             outputs:
               submission_admission: object
@@ -671,7 +671,7 @@ runners:
             readback_result: readback.provider_operation.data.result
           run:
             type: javascript
-            module: google-search-console.mjs
+            module: gsc/sitemap.mjs
             export: finalizeSitemapSubmission
             outputs:
               sitemap_submission: object
@@ -702,7 +702,7 @@ runners:
             reason: $input.reason
           run:
             type: javascript
-            module: google-search-console.mjs
+            module: gsc/indexing.mjs
             export: classifyIndexingRequest
             outputs:
               indexing_admission: object

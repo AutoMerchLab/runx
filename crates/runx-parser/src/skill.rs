@@ -28,7 +28,8 @@ pub use types::{
     ActDeclaration, ArtifactPageFraming, ArtifactPageSource, CredentialRequirement, InputMode,
     RawSkillIr, SkillArtifactContract, SkillExternalAdapterManifest, SkillIdempotencyPolicy,
     SkillInput, SkillMcpServer, SkillRetryPolicy, SkillRunnerDefinition, SkillSandbox, SkillSource,
-    SkillThreadOutboxProviderSource, SourceKind, ValidateSkillMode, ValidateSkillOptions, ValidatedSkill,
+    SkillThreadOutboxProviderSource, SourceKind, ValidateSkillMode, ValidateSkillOptions,
+    ValidatedSkill,
 };
 
 pub(crate) use catalog::validate_catalog_metadata;

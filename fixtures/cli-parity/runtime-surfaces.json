@@ -178,6 +178,15 @@
       "notes": "Diagnostics can add ids, but the documented command surface must not disappear."
     },
     {
+      "id": "data",
+      "owner": "runx-runtime + runx-cli",
+      "parityClass": "fixture-backed",
+      "coveredBy": [
+        "data"
+      ],
+      "notes": "Offline data-store migration is bounded, backup-first, idempotent, and independently read back."
+    },
+    {
       "id": "dev",
       "owner": "runx-cli",
       "parityClass": "fixture-backed",

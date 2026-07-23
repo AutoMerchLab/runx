@@ -6,7 +6,7 @@ use crate::{
 
 use super::super::path::normalize_context_ref;
 use super::super::{SkillPackageError, SkillPackageSource};
-use super::{text_file, validate_manual};
+use super::contract::{text_file, validate_manual};
 
 pub(super) fn collect_package_references(
     profiles: &BTreeMap<String, SkillRunnerManifest>,

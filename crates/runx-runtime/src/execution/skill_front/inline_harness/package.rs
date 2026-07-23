@@ -9,7 +9,7 @@ use crate::execution::harness::HarnessFixtureKind;
 use crate::execution::runner::RuntimeOptions;
 use crate::execution::skill_front::{PackageHarnessReport, SkillRunError, SkillRunGraphAdapter};
 use crate::receipts::paths::{RUNX_CWD_ENV, RUNX_RECEIPT_DIR_ENV};
-use crate::receipts::store::LocalReceiptStore;
+use crate::services::ReceiptServices;
 
 use super::run_inline_harness_with_effects;
 
@@ -57,7 +57,7 @@ fn replay_conventional_fixtures(
     let mut base_options = RuntimeOptions::from_env_or_local_development(harness.env.clone())?;
     base_options.created_at = crate::time::DEFAULT_CREATED_AT.to_owned();
     base_options.effects = effects.clone();
-    let receipt_store = LocalReceiptStore::new(&harness.receipt_dir);
+    let receipt_services = base_options.receipt_services();
     for (index, fixture_path) in fixture_paths.into_iter().enumerate() {
         let mut options = base_options.clone();
         options.env.insert(
@@ -74,7 +74,7 @@ fn replay_conventional_fixtures(
             options.clone(),
         ) {
             Ok(output) => {
-                persist_fixture_receipts(&receipt_store, &options, &output)?;
+                persist_fixture_receipts(&receipt_services, &harness.receipt_dir, &output)?;
                 if matches!(output.fixture.kind, HarnessFixtureKind::Graph) {
                     report.graph_case_count += 1;
                 }
@@ -90,17 +90,16 @@ fn replay_conventional_fixtures(
 }
 
 fn persist_fixture_receipts(
-    receipt_store: &LocalReceiptStore,
-    options: &RuntimeOptions,
+    receipt_services: &ReceiptServices,
+    receipt_dir: &Path,
     output: &crate::execution::harness::HarnessReplayOutput,
 ) -> Result<(), SkillRunError> {
-    let policy = options.receipt_signature.signature_policy();
-    receipt_store.write_receipts_with_policy(
+    receipt_services.write_local_receipts(
         output
             .step_receipts
             .iter()
             .chain(std::iter::once(&output.receipt)),
-        policy,
+        receipt_dir,
     )?;
     Ok(())
 }

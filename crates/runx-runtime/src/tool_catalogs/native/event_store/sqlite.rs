@@ -13,8 +13,8 @@ use super::{
     invalid_input,
 };
 
-mod queries;
 mod migration;
+mod queries;
 mod schema;
 
 pub(super) use migration::migrate_event_store_database;

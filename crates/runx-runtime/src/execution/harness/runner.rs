@@ -268,20 +268,7 @@ fn seed_harness_receipts(
 
     let mut env = options.env.clone();
     env.extend(fixture.env.clone());
-    let verifier = crate::services::production_receipt_verifier(&env)?;
-    let policy = verifier.as_ref().map_or_else(
-        crate::receipts::RuntimeReceiptSignaturePolicy::local_development,
-        |verifier| crate::receipts::RuntimeReceiptSignaturePolicy::production(verifier),
-    );
-    let resolved =
-        crate::receipts::paths::resolve_receipt_path(crate::receipts::paths::ReceiptPathInputs {
-            explicit_dir: None,
-            runtime_config: None,
-            env: &env,
-            cwd: target_path,
-        });
-    crate::receipts::store::LocalReceiptStore::new(resolved.path)
-        .write_receipts_with_policy(&receipts, policy)?;
+    crate::services::VerifiedReceiptStore::resolve(&env, target_path)?.write_all(&receipts)?;
     Ok(())
 }
 

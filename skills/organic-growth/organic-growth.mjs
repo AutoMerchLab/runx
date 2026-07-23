@@ -247,7 +247,7 @@ function exposedRows(evidence, kind) {
 
 function propertyCovers(property, siteUrl) {
   try {
-    const site = new URL(siteUrl);
+    const site = Runx.parseUrl(siteUrl);
     if (property.startsWith("sc-domain:")) {
       const domain = property.slice("sc-domain:".length).toLowerCase();
       const host = site.hostname.toLowerCase();
@@ -261,7 +261,7 @@ function propertyCovers(property, siteUrl) {
 
 function validSite(value) {
   try {
-    const parsed = new URL(value);
+    const parsed = Runx.parseUrl(value);
     return parsed.protocol === "https:" && Boolean(parsed.hostname);
   } catch {
     return false;

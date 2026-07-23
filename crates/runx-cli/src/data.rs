@@ -17,7 +17,10 @@ pub struct DataPlan {
 
 pub fn parse_data_plan(args: &[OsString]) -> Result<DataPlan, String> {
     if args.len() < 2 || os_arg(args, 1, "data")? != "migrate" {
-        return Err("usage: runx data migrate --database path --source ref [--backup path] [--json]".to_owned());
+        return Err(
+            "usage: runx data migrate --database path --source ref [--backup path] [--json]"
+                .to_owned(),
+        );
     }
     let mut database_path = None;
     let mut data_source_ref = None;
@@ -29,35 +32,17 @@ pub fn parse_data_plan(args: &[OsString]) -> Result<DataPlan, String> {
         let (flag, inline) = split_flag(token);
         match flag {
             "--database" => {
-                let (value, next) = flag_value(
-                    args,
-                    index,
-                    flag,
-                    inline,
-                    "data migrate",
-                )?;
+                let (value, next) = flag_value(args, index, flag, inline, "data migrate")?;
                 set_once(&mut database_path, value, flag)?;
                 index = next;
             }
             "--source" => {
-                let (value, next) = flag_value(
-                    args,
-                    index,
-                    flag,
-                    inline,
-                    "data migrate",
-                )?;
+                let (value, next) = flag_value(args, index, flag, inline, "data migrate")?;
                 set_once(&mut data_source_ref, value, flag)?;
                 index = next;
             }
             "--backup" => {
-                let (value, next) = flag_value(
-                    args,
-                    index,
-                    flag,
-                    inline,
-                    "data migrate",
-                )?;
+                let (value, next) = flag_value(args, index, flag, inline, "data migrate")?;
                 set_once(&mut backup_path, value, flag)?;
                 index = next;
             }
@@ -90,10 +75,7 @@ pub fn run_native_data(plan: DataPlan, workspace: &WorkspaceEnv) -> ExitCode {
     }
 }
 
-pub fn run_data_command(
-    plan: &DataPlan,
-    workspace: &WorkspaceEnv,
-) -> Result<String, DataCliError> {
+pub fn run_data_command(plan: &DataPlan, workspace: &WorkspaceEnv) -> Result<String, DataCliError> {
     let proof = runx_runtime::migrate_event_store(&EventStoreMigrationRequest {
         workspace_root: workspace.cwd().to_path_buf(),
         database_path: plan.database_path.clone(),
@@ -122,7 +104,9 @@ impl fmt::Display for DataCliError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Runtime(error) => write!(formatter, "event-store migration failed: {error}"),
-            Self::Serialize(error) => write!(formatter, "failed to serialize migration proof: {error}"),
+            Self::Serialize(error) => {
+                write!(formatter, "failed to serialize migration proof: {error}")
+            }
         }
     }
 }

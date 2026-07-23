@@ -33,7 +33,7 @@ runx-receipts.workspace = true
 runx-runtime = { workspace = true, features = ["cli-tool", "catalog", "mcp", "mcp-http-server", "external-adapter", "agent", "thread-outbox-provider"] }
 serde.workspace = true
 serde_json.workspace = true
-url = "2.5.7"
+url.workspace = true
 
 [dev-dependencies]
 rusqlite = { version = "0.40.1", default-features = false, features = ["bundled"] }

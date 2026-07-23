@@ -147,15 +147,20 @@ fn validate_artifact_pages(
         return Ok(None);
     };
     if *source_kind != SourceKind::JavaScript {
-        return Err(FIELDS.validation_error(
-            "source.pages is only valid for deterministic javascript sources.",
-        ));
+        return Err(FIELDS
+            .validation_error("source.pages is only valid for deterministic javascript sources."));
     }
     let value = FIELDS.required_object(Some(value), "source.pages")?;
     FIELDS.reject_unknown_fields(
         value,
         "source.pages",
-        &["framing", "media_type", "page_bytes", "path_from", "path_scope_from"],
+        &[
+            "framing",
+            "media_type",
+            "page_bytes",
+            "path_from",
+            "path_scope_from",
+        ],
     )?;
     let path_from = page_input_name(value, "path_from")?;
     let path_scope_from = FIELDS
@@ -188,9 +193,9 @@ fn validate_artifact_pages(
         .optional_u64(value.get("page_bytes"), "source.pages.page_bytes")?
         .unwrap_or(1024 * 1024);
     if page_bytes == 0 || page_bytes > 1024 * 1024 {
-        return Err(FIELDS.validation_error(
-            "source.pages.page_bytes must be between 1 and 1048576.",
-        ));
+        return Err(
+            FIELDS.validation_error("source.pages.page_bytes must be between 1 and 1048576.")
+        );
     }
     Ok(Some(super::ArtifactPageSource {
         path_from,
@@ -201,10 +206,7 @@ fn validate_artifact_pages(
     }))
 }
 
-fn page_input_name(
-    value: &JsonObject,
-    field: &str,
-) -> Result<String, ValidationError> {
+fn page_input_name(value: &JsonObject, field: &str) -> Result<String, ValidationError> {
     let qualified = format!("source.pages.{field}");
     let name = FIELDS.required_string(value.get(field), &qualified)?;
     validate_page_input_name(&name, &qualified)

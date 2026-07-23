@@ -4,9 +4,9 @@ use runx_contracts::javascript_worker::MAX_INPUT_BYTES;
 use runx_contracts::{JsonNumber, JsonObject, JsonValue};
 
 use super::JavaScriptAdapter;
+use crate::RuntimeError;
 use crate::adapter::{InvocationStatus, SkillInvocation, SkillOutput};
 use crate::services::{LocalArtifact, LocalArtifactService, resolve_scoped_root};
-use crate::RuntimeError;
 
 const PAGE_CONTROL: &str = "runx_page";
 const MAX_PAGES: usize = 4_096;
@@ -17,7 +17,11 @@ pub(super) fn invoke(
     mut request: SkillInvocation,
     artifacts: &LocalArtifactService,
 ) -> Result<SkillOutput, RuntimeError> {
-    let page_source = request.source.pages.clone().ok_or_else(|| page_error("missing page source"))?;
+    let page_source = request
+        .source
+        .pages
+        .clone()
+        .ok_or_else(|| page_error("missing page source"))?;
     let requested_path = take_string_input(&mut request, &page_source.path_from)?;
     let path_scope = page_source
         .path_scope_from
@@ -27,13 +31,8 @@ pub(super) fn invoke(
         .unwrap_or_else(|| "workspace".to_owned());
     reject_reserved_input(&request.inputs)?;
 
-    let root = resolve_scoped_root(
-        ".",
-        &path_scope,
-        &request.env,
-        &request.skill_directory,
-    )
-    .map_err(|error| page_error(error.to_string()))?;
+    let root = resolve_scoped_root(".", &path_scope, &request.env, &request.skill_directory)
+        .map_err(|error| page_error(error.to_string()))?;
     let artifact = artifacts
         .admit(&root, Path::new(&requested_path), &page_source.media_type)
         .map_err(|error| page_error(error.to_string()))?;
@@ -43,13 +42,8 @@ pub(super) fn invoke(
     let mut offset = 0_u64;
     let mut total_duration_ms = 0_u64;
     for page_index in 0..MAX_PAGES {
-        let record_budget = page_record_budget(
-            &request.inputs,
-            &artifact,
-            page_index,
-            offset,
-            &state,
-        )?;
+        let record_budget =
+            page_record_budget(&request.inputs, &artifact, page_index, offset, &state)?;
         let page = artifacts
             .read_json_array_page_with_record_budget(
                 &artifact.reference,
@@ -133,8 +127,9 @@ pub(super) fn invoke(
                 "final page output must contain the declared domain result",
             ));
         }
-        output.stdout = serde_json::to_string(&JsonValue::Object(result))
-            .map_err(|source| RuntimeError::json("serializing final paged JavaScript output", source))?;
+        output.stdout = serde_json::to_string(&JsonValue::Object(result)).map_err(|source| {
+            RuntimeError::json("serializing final paged JavaScript output", source)
+        })?;
         output.duration_ms = total_duration_ms;
         attach_page_metadata(&mut output, &page, page_index + 1, true);
         return Ok(output);
@@ -147,10 +142,7 @@ pub(super) fn invoke(
     ))
 }
 
-fn take_string_input(
-    request: &mut SkillInvocation,
-    name: &str,
-) -> Result<String, RuntimeError> {
+fn take_string_input(request: &mut SkillInvocation, name: &str) -> Result<String, RuntimeError> {
     request.resolved_inputs.remove(name);
     match request.inputs.remove(name) {
         Some(JsonValue::String(value)) if !value.trim().is_empty() => Ok(value),
@@ -351,11 +343,7 @@ fn page_error(message: impl Into<String>) -> RuntimeError {
     }
 }
 
-fn page_error_at(
-    page_index: usize,
-    offset: u64,
-    message: impl std::fmt::Display,
-) -> RuntimeError {
+fn page_error_at(page_index: usize, offset: u64, message: impl std::fmt::Display) -> RuntimeError {
     page_error(format!(
         "artifact page {page_index} at byte {offset}: {message}"
     ))

@@ -127,7 +127,9 @@ approval rules.
   plumbing. Pure JavaScript receives only its validated in-memory module bundle
   and JSON input through the dedicated Runx worker. It has no workspace path,
   filesystem, network, clock, randomness, subprocess, environment, credential,
-  or provider surface.
+  or provider surface. The worker is ECMAScript, not a browser: use the frozen
+  `Runx.parseUrl(value)` helper for absolute URLs and do not assume Web or Node
+  globals exist.
 - Classify volume before authoring. Small typed control values belong in normal
   runner inputs; `runx skill --inputs` is only a contained transport for one
   complete control object. Large immutable local content belongs behind

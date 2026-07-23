@@ -21,11 +21,11 @@ mod result;
 mod sqlite;
 
 use input::{AppendInput, ListHeadsInput, ReadEventsInput, ReadProjectionInput};
-use model::DataOperationResult;
 pub use migration::{
     EventStoreMigrationProof, EventStoreMigrationRequest, EventStoreMigrationStatus,
     migrate_event_store,
 };
+use model::DataOperationResult;
 #[cfg(feature = "catalog")]
 pub(crate) use prepare::{PreparedOperation, prepare_operation};
 

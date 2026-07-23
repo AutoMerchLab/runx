@@ -139,6 +139,16 @@ paths in the validated bundle. Bare specifiers, `node:` modules, URLs, absolute
 paths, traversal, symlinks, native modules, and imports outside the bundle are
 rejected.
 
+The worker exposes ECMAScript plus one frozen Runx helper:
+`Runx.parseUrl(value)`. It performs deterministic absolute-URL parsing and
+returns `href`, `origin`, `protocol`, and `hostname`. Browser and Node globals
+are not implied; adding another helper requires a reusable domain-independent
+need and one runtime-owned implementation.
+
+The fixed global surface is installed with native engine builders. Runx does
+not parse a bootstrap script for every invocation; package source is the only
+JavaScript parsed on the execution hot path.
+
 Runtime-owned ceilings are 4 MiB source, 4 MiB input, 4 MiB output, 64 MiB
 JavaScript heap, 4 MiB JavaScript stack, two seconds wall time, and 4,096 queued
 jobs. Packages may narrow but never widen them. The worker starts with a cleared

@@ -5,7 +5,7 @@ use runx_contracts::sha256_prefixed;
 use super::super::javascript::module_imports;
 use super::super::path::normalize_module_import;
 use super::super::{SkillPackageError, SkillPackageSource, ValidatedJavaScriptModule};
-use super::{has_nested_manual_boundary, text_file};
+use super::contract::{has_nested_manual_boundary, text_file};
 
 pub(super) fn validate_modules(
     source: &SkillPackageSource,

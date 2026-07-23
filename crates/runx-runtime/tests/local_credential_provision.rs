@@ -114,7 +114,10 @@ fn graph_projects_credential_away_from_javascript_around_credentialed_tool()
     assert_eq!(result.status, RunStatus::Sealed);
     let serialized = serde_json::to_string(&result.output)?;
     assert!(!serialized.contains(SECRET));
-    let output = result.output.as_object().ok_or("skill output was not an object")?;
+    let output = result
+        .output
+        .as_object()
+        .ok_or("skill output was not an object")?;
     let payload = object_field(output, "payload").ok_or("graph payload was missing")?;
 
     let prepared = object_field(
@@ -127,7 +130,10 @@ fn graph_projects_credential_away_from_javascript_around_credentialed_tool()
         Some(&JsonValue::String("undefined".to_owned()))
     );
     let provider = step_claim(payload, "provider").ok_or("provider claim was missing")?;
-    assert_eq!(provider.get("credential_seen"), Some(&JsonValue::Bool(true)));
+    assert_eq!(
+        provider.get("credential_seen"),
+        Some(&JsonValue::Bool(true))
+    );
     assert_eq!(
         provider.get("echoed"),
         Some(&JsonValue::String("[redacted-credential]".to_owned()))
@@ -229,9 +235,7 @@ runners:
     Ok(skill_dir)
 }
 
-fn write_javascript_credential_graph(
-    root: &Path,
-) -> Result<PathBuf, Box<dyn std::error::Error>> {
+fn write_javascript_credential_graph(root: &Path) -> Result<PathBuf, Box<dyn std::error::Error>> {
     let skill_dir = root.join("javascript-credential-graph");
     fs::create_dir_all(&skill_dir)?;
     fs::write(

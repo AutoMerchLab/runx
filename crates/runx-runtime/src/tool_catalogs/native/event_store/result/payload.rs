@@ -120,7 +120,8 @@ fn validate_events(
         || expectation
             .after_version
             .is_some_and(|after| next_after_version < after)
-        || has_more && (expectation.after_version.is_none() || result.events.len() != expectation.limit)
+        || has_more
+            && (expectation.after_version.is_none() || result.events.len() != expectation.limit)
     {
         return Err(invalid(
             expectation,
@@ -146,7 +147,10 @@ fn validate_events(
         &result.result_digest,
         &JsonValue::Object(JsonObject::from([
             ("events".to_owned(), JsonValue::Array(result.events.clone())),
-            ("limit".to_owned(), JsonValue::Number(JsonNumber::U64(limit))),
+            (
+                "limit".to_owned(),
+                JsonValue::Number(JsonNumber::U64(limit)),
+            ),
             (
                 "next_after_version".to_owned(),
                 JsonValue::Number(JsonNumber::U64(next_after_version)),
