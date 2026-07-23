@@ -87,7 +87,7 @@
     "stress:runtime:external-adapter": "cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features cli-tool,catalog,external-adapter --test integration -- external_adapter",
     "stress:runtime:fanout": "cargo test --manifest-path crates/Cargo.toml -p runx-runtime --features cli-tool,catalog,mcp --test integration -- fanout_parity fanout_proptest",
     "receipts:importer-audit": "tsx scripts/check-receipt-importers.ts",
-    "receipts:canonical-check": "node scripts/check-receipt-canonical-production-path.mjs",
+    "receipts:canonical-check": "cargo test --manifest-path crates/Cargo.toml -p runx-receipts --lib canonical::tests && cargo test --manifest-path crates/Cargo.toml -p runx-receipts --test integration conformance::",
     "demos:check": "node scripts/check-demos.mjs",
     "x402:dogfood:local": "node scripts/x402-local-dogfood.mjs",
     "x402:conformance": "node scripts/x402-upstream-conformance.mjs --check",

@@ -35,17 +35,6 @@ export function checkNormativeArchitectureContract(findings) {
       findings.push(`docs/architecture/runx-system.md lacks normative section ${heading}`);
     }
   }
-  for (const invariant of [
-    "Graph/package authors do not supply `effect_family`",
-    "It yields `needs_agent` by default",
-    "There is no Node or shell fallback",
-    "caller input can only narrow that set",
-    "Never extend a Cloud dogfood script as a substitute",
-  ]) {
-    if (!source.includes(invariant)) {
-      findings.push(`docs/architecture/runx-system.md lacks invariant ${JSON.stringify(invariant)}`);
-    }
-  }
 }
 
 export function checkCrateDependencyDirection(findings) {

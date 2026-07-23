@@ -37,6 +37,9 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
+  runtime-quality:
+    uses: ./.github/workflows/runtime-quality.yml
+
   prepare:
     runs-on: ubuntu-24.04
     permissions:
@@ -81,7 +84,7 @@ jobs:
         run: pnpm verify:fast
 
   build:
-    needs: prepare
+    needs: [prepare, runtime-quality]
     strategy:
       fail-fast: true
       matrix: ${{ fromJSON(needs.prepare.outputs.platform_matrix) }}

@@ -9,7 +9,7 @@ Rust runtime work has four explicit gates:
 | --- | --- | --- |
 | Local fast | Tight edit loop for nearby package/runtime changes. | `pnpm verify:fast` or a focused `cargo test --manifest-path crates/Cargo.toml -p <crate> ...` |
 | CI fast | Deterministic semantic and boundary checks that should run on every review. | `pnpm boundary:check`, `pnpm typecheck`, focused Rust contract/runtime tests |
-| Heavy | Perf, fanout, MCP, external-process, and oracle checks that are useful before release or risky runtime changes. | `pnpm stress:runtime:*`, `pnpm perf:runtime:check -- --baseline <path>` |
+| Heavy | Perf, fanout, MCP, external-process, and oracle checks that are useful before release or risky runtime changes. | `pnpm stress:runtime:*`, `pnpm perf:runtime:check -- --baseline <path>`, `runtime quality` workflow |
 | Soak | Long-running replay/stress loops that should be invoked intentionally, never hidden inside the default workspace test. | Repeated stress commands under an external runner with captured JSON output |
 
 Do not hide heavy or soak work inside `cargo test --workspace` or `pnpm test`.
@@ -108,6 +108,20 @@ pnpm stress:runtime:fanout
 These commands exercise MCP stdio/server wiring, CLI-tool process supervision,
 external adapter cancellation/error boundaries, and fanout ordering/concurrency.
 They are heavy gates, not the default local loop.
+
+The `runtime quality` workflow is the canonical automated heavy lane. It runs
+weekly, on explicit dispatch, and before a release build. One Ubuntu job reuses
+its Cargo cache and runs the official-skill audit, receipt ownership checks,
+the four stress commands, and a focused performance capture. The capture is
+bound to the exact source commit, enforces worker spawn and fanout saturation
+budgets, and is uploaded as a retained artifact.
+
+Absolute timing comparisons still require two reports captured on comparable
+hardware. Do not compare a developer-laptop baseline with a hosted runner or
+turn a noisy cross-machine number into a release claim. Use
+`perf:runtime:check` with a hardware-matched baseline when the runtime hot path
+changes; use the scheduled artifact for exact-commit evidence and trend
+inspection.
 
 ## Adding Tests
 

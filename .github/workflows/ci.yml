@@ -225,6 +225,8 @@ jobs:
         run: |
           cargo build -p runx-cli
           cargo build -p runx-js-worker
+      - name: Audit official skill operator value
+        run: node scripts/audit-core-skills.mjs --check --json
       - name: Catalog harness sweep
         # The official lock is the catalog source of truth. The sweep fails on
         # every unallowed harness failure, so a duplicate hard-coded skill count

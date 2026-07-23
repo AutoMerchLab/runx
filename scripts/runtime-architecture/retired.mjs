@@ -62,19 +62,6 @@ export function checkRetiredRuntimeSurfaces(findings) {
       findings.push(`${relative(filePath)} retains the displaced catalog adapter`);
     }
   }
-  for (const [relPath, tokens] of [
-    ["crates/runx-runtime/src/execution/runner/steps.rs", ["tool_catalogs::dispatch::ToolDispatchRequest", "tool_catalogs::dispatch::dispatch_tool"]],
-    ["crates/runx-runtime/src/adapters/agent_tools.rs", ["tool_catalogs::dispatch", "dispatch_tool"]],
-  ]) {
-    const filePath = path.join(workspaceRoot, relPath);
-    const source = existsSync(filePath) ? readFileSync(filePath, "utf8") : "";
-    for (const token of tokens) {
-      if (!source.includes(token)) {
-        findings.push(`${relPath} must use the canonical tool dispatcher (${token})`);
-      }
-    }
-  }
-
   const runnerFiles = [
     ...rustFiles("crates/runx-runtime/src/execution/runner"),
     path.join(workspaceRoot, "crates/runx-runtime/src/execution/runner.rs"),

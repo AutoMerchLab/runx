@@ -1,0 +1,113 @@
+name: runtime quality
+
+on:
+  workflow_call:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+
+concurrency:
+  group: runtime-quality-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  CARGO_INCREMENTAL: "0"
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+jobs:
+  runtime-quality:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 10.18.2
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: pnpm-lock.yaml
+
+      - name: Setup Rust
+        run: rustup show
+
+      - name: Install Linux sandbox
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bubblewrap
+          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+          fi
+
+      - name: Cargo cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: crates
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build native inspection and worker binaries
+        run: cargo build --manifest-path crates/Cargo.toml -p runx-cli -p runx-js-worker
+
+      - name: Audit official skills and receipt ownership
+        run: |
+          pnpm core-skills:audit
+          pnpm receipts:canonical-check
+          pnpm receipts:importer-audit
+
+      - name: Exercise runtime stress boundaries
+        run: |
+          pnpm stress:runtime:mcp
+          pnpm stress:runtime:cli-tool
+          pnpm stress:runtime:external-adapter
+          pnpm stress:runtime:fanout
+
+      - name: Verify performance harness
+        run: pnpm perf:harness-check
+
+      - name: Capture focused runtime performance evidence
+        run: |
+          pnpm perf:runtime:capture -- \
+            --output .runx/evidence/runtime-quality.json \
+            --workloads native_capability_dispatch,pure_module_session_reuse,bounded_parallel_fanout \
+            --sample-size 10 \
+            --warm-up-time 1 \
+            --measurement-time 2
+
+      - name: Enforce runtime resource budgets
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          jq -e --arg commit "$EXPECTED_COMMIT" '
+            .schema == "runx.oss_runtime_throughput.v1"
+            and .source_commit == $commit
+            and .worktree_dirty == false
+            and .workloads.native_capability_dispatch.sample_count >= 10
+            and .workloads.native_capability_dispatch.spawn_count == 0
+            and .workloads.pure_module_session_reuse.sample_count >= 10
+            and .workloads.pure_module_session_reuse.spawn_count == 1
+            and .workloads.pure_module_session_reuse.peak_in_flight == 1
+            and .workloads.bounded_parallel_fanout.sample_count >= 10
+            and .workloads.bounded_parallel_fanout.spawn_count <= 4
+            and .workloads.bounded_parallel_fanout.peak_in_flight == 4
+          ' .runx/evidence/runtime-quality.json
+
+      - name: Upload exact-commit performance evidence
+        uses: actions/upload-artifact@v7
+        with:
+          name: runtime-quality-${{ github.sha }}
+          path: .runx/evidence/runtime-quality.json
+          if-no-files-found: error
+          retention-days: 30
