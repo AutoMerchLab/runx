@@ -35,6 +35,16 @@ workspace scan is complete.
 Slack applies a low limit and, for some non-Marketplace installations, a very
 low request cadence to `conversations.replies`. Hydrate only threads that are
 actually needed, preserve `next_cursor`, and do not fan out speculative reads.
+Thread messages include bounded attachment metadata and opaque
+`slack-file://workspace/file` locators; private Slack download URLs never cross
+the provider boundary.
+
+`read_file` reads one image attachment from an exact file locator returned by
+`read_thread`. It requires `file.read`, verifies the file through Slack,
+restricts downloads to Slack's private file origin, accepts images only, and
+caps decoded bytes at 5 MiB. The result contains the MIME type, content digest,
+and base64 bytes so the caller can inspect the image without receiving the
+Slack credential or private URL.
 
 `plan_reply` is safe and does not call Slack. It computes the text digest with
 Runx's native `data.digest` tool and passes the principal, exact thread
@@ -58,7 +68,8 @@ approval, idempotency, readback, or queue logic.
 
 ## Authority and privacy
 
-Reads resolve a Slack Connect grant for `messages.search` or `thread.read` and
+Reads resolve a Slack Connect grant for `messages.search`, `thread.read`, or
+`file.read` and
 do not ask for human approval. Reply delivery requires both `thread.reply` and
 `thread.reply.read`; the mutation stops at an explicit approval bound to the
 unchanged plan and content digest. Runx supplies the idempotency key once, and
@@ -76,6 +87,8 @@ timestamps, and a content digest; they do not echo the delivered message.
   Connect grant. Never fall back to a token, webhook, browser, or Cloud script.
 - Stop when a search has no structural selector, uses an unsupported modifier,
   or asks for more than one bounded page per turn.
+- Stop when an attachment is not an image, exceeds 5 MiB, belongs to another
+  workspace, or resolves outside Slack's governed private-file origin.
 - Stop on malformed or cross-workspace locators and on thread/message channel
   mismatch.
 - Stop on reply-plan drift, absent or denied approval, invalid idempotency, or

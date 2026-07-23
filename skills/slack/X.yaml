@@ -77,6 +77,32 @@ runners:
               limit: $input.limit
               cursor: $input.cursor
 
+  read_file:
+    type: graph
+    inputs:
+      file_locator:
+        type: string
+        required: true
+        description: Exact slack-file://workspace/file locator returned by read_thread.
+    graph:
+      name: slack-read-file
+      steps:
+        - id: read
+          tool: provider.read
+          scopes: [file.read]
+          policy:
+            provider_permission:
+              verb: read
+          inputs:
+            operation: file.read
+            target: $input.file_locator
+            expected_provider: slack
+            expected_result:
+              file_locator: $input.file_locator
+            result_fields: [external_tenant_ref, connected_subject_ref, file_locator, name, mimetype, size_bytes, image_width, image_height, content_digest, data_base64]
+            input:
+              file_locator: $input.file_locator
+
   plan_reply:
     type: graph
     inputs:
