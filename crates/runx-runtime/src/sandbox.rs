@@ -20,8 +20,10 @@ use runx_parser::{SkillMcpServer, SkillSource};
 use crate::RuntimeError;
 
 use self::backend::SandboxRuntime;
+#[cfg(not(windows))]
 use self::backend::resolve_javascript_worker_runtime;
 use self::backend::resolve_sandbox_runtime;
+#[cfg(not(windows))]
 use self::command::javascript_worker_spawn_command;
 use self::command::{SandboxSpawnCommand, sandbox_network_enabled, sandbox_spawn_command};
 use self::env::{

@@ -7,7 +7,9 @@ use std::process::Child;
 #[cfg(not(windows))]
 use wait_timeout::ChildExt;
 
-use super::signals::{ProcessSignal, configure_process_group, signal_process_group_id};
+use super::signals::ProcessSignal;
+#[cfg(not(windows))]
+use super::signals::{configure_process_group, signal_process_group_id};
 
 /// Owns one subprocess tree, not only its root process.
 ///
@@ -23,9 +25,10 @@ pub(super) struct OwnedProcess {
 }
 
 impl OwnedProcess {
-    pub(super) fn spawn(mut command: Command) -> io::Result<Self> {
+    pub(super) fn spawn(command: Command) -> io::Result<Self> {
         #[cfg(not(windows))]
         {
+            let mut command = command;
             configure_process_group(&mut command);
             command.spawn().map(|child| Self { child })
         }

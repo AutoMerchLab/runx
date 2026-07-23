@@ -648,6 +648,8 @@ fn set_private_permissions(path: &Path) -> Result<(), ConfigError> {
         use std::os::unix::fs::PermissionsExt;
         fs::set_permissions(path, fs::Permissions::from_mode(0o600))?;
     }
+    #[cfg(not(unix))]
+    let _ = path;
     Ok(())
 }
 

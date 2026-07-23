@@ -128,7 +128,9 @@ fn error(code: &str, message: &str) -> JsonValue {
 mod tests {
     use std::collections::BTreeMap;
 
-    use runx_contracts::{JsonNumber, JsonObject, JsonValue};
+    #[cfg(unix)]
+    use runx_contracts::JsonNumber;
+    use runx_contracts::{JsonObject, JsonValue};
 
     use super::{CommandInput, execute, plan};
     #[cfg(feature = "catalog")]

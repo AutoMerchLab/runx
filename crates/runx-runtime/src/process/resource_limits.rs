@@ -1,6 +1,7 @@
 #[cfg(unix)]
 use rustix::process::{Resource, Rlimit, getrlimit};
 
+#[cfg(unix)]
 use super::ProcessSpec;
 
 #[cfg(unix)]
@@ -137,11 +138,10 @@ pub(super) fn child_resource_limit_value(flag: &str) -> Option<u64> {
         .map(|limit| limit.value)
 }
 
-#[cfg(test)]
+#[cfg(all(test, unix))]
 mod tests {
     use super::*;
 
-    #[cfg(unix)]
     #[test]
     fn shell_limit_value_clamps_to_inherited_hard_limit() {
         let unlimited = Rlimit {
@@ -166,7 +166,6 @@ mod tests {
         );
     }
 
-    #[cfg(unix)]
     #[test]
     fn resource_limit_shell_args_do_not_interpolate_requested_command() {
         let spec = ProcessSpec::new("test", "echo $(touch should-not-run)", 128)

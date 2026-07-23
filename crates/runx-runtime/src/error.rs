@@ -181,6 +181,8 @@ impl RuntimeError {
     /// The execution chokepoint always has the authoritative graph step, so it
     /// normalizes that identity before terminal failure sealing.
     pub(crate) fn at_graph_step(self, step_id: &str) -> Self {
+        #[cfg(not(feature = "agent"))]
+        let _ = step_id;
         match self {
             #[cfg(feature = "agent")]
             Self::ManagedAgentResolution {

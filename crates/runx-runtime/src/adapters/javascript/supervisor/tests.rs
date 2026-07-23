@@ -1,11 +1,14 @@
 #![allow(clippy::expect_used)]
 
+#[cfg(unix)]
 use std::fs;
 
 use runx_contracts::javascript_worker::MAX_STDERR_BYTES;
 
 use super::JavaScriptWorkerSupervisor;
-use super::process::{BoundedStderr, worker_binary_name, worker_candidates};
+use super::process::BoundedStderr;
+#[cfg(unix)]
+use super::process::{worker_binary_name, worker_candidates};
 
 #[cfg(unix)]
 #[test]

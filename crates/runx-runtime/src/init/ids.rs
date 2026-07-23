@@ -1,4 +1,6 @@
+#[cfg(unix)]
 use std::fs;
+#[cfg(unix)]
 use std::io::Read;
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -30,9 +32,9 @@ pub(crate) fn random_uuid_v4() -> String {
 }
 
 fn random_bytes() -> [u8; 16] {
-    let mut bytes = [0_u8; 16];
     #[cfg(unix)]
     {
+        let mut bytes = [0_u8; 16];
         if fs::File::open("/dev/urandom")
             .and_then(|mut file| file.read_exact(&mut bytes))
             .is_ok()
