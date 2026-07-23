@@ -160,11 +160,7 @@ mod mcp_probe {
         let root = repo_root()?;
         let server = SkillMcpServer {
             command: "node".to_owned(),
-            args: vec![
-                root.join("fixtures/skills/mcp-echo/stdio-server.mjs")
-                    .to_string_lossy()
-                    .into_owned(),
-            ],
+            args: vec!["fixtures/skills/mcp-echo/stdio-server.mjs".to_owned()],
             cwd: Some(root.to_string_lossy().into_owned()),
         };
         let mut env = process_env();
@@ -176,11 +172,7 @@ mod mcp_probe {
             timeout: std::time::Duration::from_secs(5),
             sandbox: SandboxPlan {
                 command: "node".to_owned(),
-                args: vec![
-                    root.join("fixtures/skills/mcp-echo/stdio-server.mjs")
-                        .to_string_lossy()
-                        .into_owned(),
-                ],
+                args: vec!["fixtures/skills/mcp-echo/stdio-server.mjs".to_owned()],
                 cwd: root,
                 env,
                 metadata: JsonObject::new(),

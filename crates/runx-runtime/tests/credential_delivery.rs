@@ -536,11 +536,7 @@ fn mcp_process_source() -> Result<SkillSource, RuntimeError> {
     source.args = Vec::new();
     source.server = Some(runx_parser::SkillMcpServer {
         command: "node".to_owned(),
-        args: vec![
-            root.join("fixtures/skills/mcp-echo/stdio-server.mjs")
-                .to_string_lossy()
-                .into_owned(),
-        ],
+        args: vec!["fixtures/skills/mcp-echo/stdio-server.mjs".to_owned()],
         cwd: Some(root.to_string_lossy().into_owned()),
     });
     source.tool = Some("env".to_owned());

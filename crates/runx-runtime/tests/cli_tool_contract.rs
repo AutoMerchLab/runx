@@ -518,7 +518,7 @@ fn cli_tool_timeout_kills_descendant_processes() -> Result<(), Box<dyn std::erro
     // The descendant records its own host-visible pid from /proc/self so the
     // assertion is not confused by Bubblewrap's nested pid namespace.
     let descendant_script = format!(
-        "const fs = require('fs'); let pid = process.pid; try {{ const line = fs.readFileSync('/proc/self/status', 'utf8').split('\\n').find(value => value.startsWith('NSpid:')); if (line) pid = Number(line.trim().split(/\\s+/)[1]); }} catch {{}} fs.writeFileSync({pid_file}, String(pid)); setTimeout(() => fs.writeFileSync({sentinel}, 'survived'), 2500); setInterval(() => {{}}, 1000);"
+        "const fs = require('fs'); let pid = process.pid; let started = ''; try {{ const line = fs.readFileSync('/proc/self/status', 'utf8').split('\\n').find(value => value.startsWith('NSpid:')); if (line) pid = Number(line.trim().split(/\\s+/)[1]); const stat = fs.readFileSync('/proc/self/stat', 'utf8'); const tail = stat.slice(stat.lastIndexOf(') ') + 2).trim().split(/\\s+/); started = tail[19] ?? ''; }} catch {{}} fs.writeFileSync({pid_file}, `${{pid}} ${{started}}`.trim()); setTimeout(() => fs.writeFileSync({sentinel}, 'survived'), 2500); setInterval(() => {{}}, 1000);"
     );
     let parent_script = format!(
         "require('child_process').spawn(process.execPath, ['-e', {descendant_script:?}], {{ stdio: 'ignore' }}); setTimeout(() => {{}}, 10_000);"

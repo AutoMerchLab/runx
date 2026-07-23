@@ -708,11 +708,7 @@ fn fixture_server() -> Result<SkillMcpServer, RuntimeError> {
     let root = repo_root()?;
     Ok(SkillMcpServer {
         command: "node".to_owned(),
-        args: vec![
-            root.join("fixtures/skills/mcp-echo/stdio-server.mjs")
-                .to_string_lossy()
-                .into_owned(),
-        ],
+        args: vec!["fixtures/skills/mcp-echo/stdio-server.mjs".to_owned()],
         cwd: Some(root.to_string_lossy().into_owned()),
     })
 }

@@ -80,11 +80,11 @@ pub(crate) fn read_test_signed_receipt(
         .read_exact_with_policy(receipt_id, signature_config.signature_policy())?)
 }
 
-/// Waits for a descendant process to die, given a file the descendant wrote its
-/// own pid into at startup: the pid file must appear and `kill(pid, 0)` must then
-/// report ESRCH, all within `deadline`. Kill-the-descendants tests poll this
-/// instead of sleeping a fixed window before asserting the descendant's sentinel
-/// was never written.
+/// Waits for a descendant process to die from its recorded `pid [start_time]`.
+///
+/// Linux fixtures include `/proc/self/stat` start time so a busy concurrent test
+/// run cannot mistake rapid PID reuse for a surviving descendant. Older
+/// pid-only fixtures retain the ESRCH/zombie check.
 #[cfg(all(
     unix,
     any(
@@ -100,9 +100,16 @@ pub(crate) fn wait_for_recorded_pid_exit(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let poll = std::time::Duration::from_millis(10);
     let started = std::time::Instant::now();
-    let pid = loop {
+    let (pid, started_at) = loop {
         match std::fs::read_to_string(pid_path) {
-            Ok(raw) if !raw.trim().is_empty() => break raw.trim().parse::<i32>()?,
+            Ok(raw) if !raw.trim().is_empty() => {
+                let mut fields = raw.split_whitespace();
+                let pid = fields
+                    .next()
+                    .ok_or("recorded process identity missing pid")?;
+                let started_at = fields.next().map(str::parse).transpose()?;
+                break (pid.parse::<i32>()?, started_at);
+            }
             _ if started.elapsed() >= deadline => {
                 return Err(format!(
                     "descendant never recorded its pid at {}",
@@ -113,7 +120,7 @@ pub(crate) fn wait_for_recorded_pid_exit(
             _ => std::thread::sleep(poll),
         }
     };
-    wait_for_pid_exit(pid, deadline.saturating_sub(started.elapsed()))
+    wait_for_process_exit(pid, started_at, deadline.saturating_sub(started.elapsed()))
 }
 
 /// Polls until the process can no longer execute.
@@ -135,6 +142,23 @@ pub(crate) fn wait_for_pid_exit(
     pid: i32,
     deadline: std::time::Duration,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    wait_for_process_exit(pid, None, deadline)
+}
+
+#[cfg(all(
+    unix,
+    any(
+        feature = "catalog",
+        feature = "external-adapter",
+        feature = "mcp",
+        feature = "thread-outbox-provider"
+    )
+))]
+fn wait_for_process_exit(
+    pid: i32,
+    started_at: Option<u64>,
+    deadline: std::time::Duration,
+) -> Result<(), Box<dyn std::error::Error>> {
     let poll = std::time::Duration::from_millis(10);
     let started = std::time::Instant::now();
     let pid = rustix::process::Pid::from_raw(pid).ok_or("invalid pid to wait on")?;
@@ -143,6 +167,10 @@ pub(crate) fn wait_for_pid_exit(
             rustix::process::test_kill_process(pid),
             Err(rustix::io::Errno::SRCH)
         ) || process_is_terminal(pid.as_raw_nonzero().get())
+            || started_at.is_some_and(|expected| {
+                process_start_time(pid.as_raw_nonzero().get())
+                    .is_some_and(|actual| actual != expected)
+            })
         {
             return Ok(());
         }
@@ -150,6 +178,33 @@ pub(crate) fn wait_for_pid_exit(
             return Err(format!("process {pid:?} still alive after {deadline:?}").into());
         }
         std::thread::sleep(poll);
+    }
+}
+
+#[cfg(all(
+    unix,
+    any(
+        feature = "catalog",
+        feature = "external-adapter",
+        feature = "mcp",
+        feature = "thread-outbox-provider"
+    )
+))]
+fn process_start_time(pid: i32) -> Option<u64> {
+    #[cfg(any(target_os = "linux", target_os = "android"))]
+    {
+        let path = format!("/proc/{pid}/stat");
+        return std::fs::read_to_string(path)
+            .ok()
+            .and_then(|stat| {
+                let (_, tail) = stat.rsplit_once(") ")?;
+                tail.split_whitespace().nth(19)?.parse().ok()
+            });
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "android")))]
+    {
+        let _ = pid;
+        None
     }
 }
 
