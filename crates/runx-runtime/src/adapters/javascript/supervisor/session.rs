@@ -15,7 +15,11 @@ use super::process::{BoundedStderr, capture_stderr, resolve_worker_path, spawn_c
 use super::response_reader::{PendingResponses, read_responses};
 use super::{WorkerInvocationResult, lock, worker_error};
 
-const WORKER_START_TIMEOUT: Duration = Duration::from_secs(2);
+// This bounds process startup and the protocol handshake, not JavaScript
+// execution. A freshly downloaded macOS binary may remain in dyld while the OS
+// performs first-launch policy verification, so this must tolerate cold-host
+// startup without weakening the worker's 2-second invocation wall limit.
+const WORKER_START_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(super) struct WorkerSession {
     child: Mutex<Option<Child>>,
