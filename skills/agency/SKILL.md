@@ -20,6 +20,12 @@ It is not a durable-execution engine and it is not an autonomous daemon. One tur
 one stateless governed act; an external driver (a human, a cron, a board poll) runs
 the loop by calling `advance` until the case resolves.
 
+## Composes
+
+- `data-store#append_event`
+- `data-store#read_events`
+- `ops-desk#advance`
+
 ## What this skill does
 
 - `open` starts a case: it appends `opened` with the mandate, the roster, and the

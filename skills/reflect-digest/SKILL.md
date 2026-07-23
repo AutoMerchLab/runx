@@ -20,6 +20,10 @@ The skill does not write a package, open a pull request, publish, or invoke the
 mutating improvement runner. The handoff preserves the target, objective,
 receipt evidence, and non-goals for later governed execution.
 
+## Composes
+
+- `data-store#list_stream_heads`
+
 ## Inputs
 
 - `reflect_projections`: explicit projections for replay; otherwise durable

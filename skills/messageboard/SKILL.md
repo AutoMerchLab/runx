@@ -20,6 +20,11 @@ matching `*_and_append` graph runner and pass a logical `data_source_ref`.
 Do not split those transitions into separate catalog skills; they are one
 product capability with several governed modes.
 
+## Composes
+
+- `data-store#append_event`
+- `data-store#read_projection`
+
 ## What this skill does
 
 - Prepares funded bounty postings with actor identity, clocks, deliverable

@@ -21,6 +21,7 @@ const allowedDecisions = new Set([
   "internal_runtime",
   "keep",
 ]);
+let nativeProcessCount = 0;
 
 try {
   const options = parseOptions(process.argv.slice(2));
@@ -45,12 +46,12 @@ try {
 }
 
 function buildReport(options) {
+  nativeProcessCount = 0;
   const runx = resolveRunxBinary(options.runxBin);
   const official = readOfficialLock();
   const review = readProductReview();
   const catalog = readNativeCatalog(runx);
   const findings = validateCoverage({ official, review, catalog });
-  const officialSkillNames = new Set(official.map(officialName));
   const entries = [];
 
   for (const record of official) {
@@ -58,7 +59,9 @@ function buildReport(options) {
     const decision = review.get(name);
     const catalogItem = catalog.get(name);
     const inspection = inspectSkill(runx, name);
-    const runnerInspections = inspectSkillRunners(runx, name, inspection);
+    const runnerInspections = Array.isArray(inspection.runner_inspections)
+      ? inspection.runner_inspections
+      : [];
     if (inspection.status !== "ok") {
       findings.push(`${name}: native inspection returned ${inspection.status ?? "no status"}`);
     }
@@ -79,7 +82,6 @@ function buildReport(options) {
         name,
         record,
         runnerInspections,
-        officialSkillNames,
         source: readFileSync(path.join(root, "skills", name, "SKILL.md"), "utf8"),
       }),
     );
@@ -115,6 +117,12 @@ function buildReport(options) {
     });
   }
 
+  const maximumNativeProcesses = official.length + 1;
+  if (nativeProcessCount > maximumNativeProcesses) {
+    findings.push(
+      `native audit launched ${nativeProcessCount} processes; expected at most ${maximumNativeProcesses}`,
+    );
+  }
   entries.sort((left, right) => left.skill.localeCompare(right.skill));
   const publicCount = official.filter((entry) => entry.catalog_visibility === "public").length;
   const internalCount = official.length - publicCount;
@@ -128,6 +136,7 @@ function buildReport(options) {
       reviewed: review.size,
       public: publicCount,
       internal: internalCount,
+      native_processes: nativeProcessCount,
       decisions,
       archetypes,
     },
@@ -221,21 +230,10 @@ function readNativeCatalog(runx) {
   return topLevel;
 }
 
-function inspectSkill(runx, name, runner) {
+function inspectSkill(runx, name) {
   const args = ["skill", "inspect", `skills/${name}`];
-  if (runner !== undefined) args.push(runner);
   args.push("--json");
   return runJson(runx, args);
-}
-
-function inspectSkillRunners(runx, name, inspection) {
-  if (!Array.isArray(inspection.runners)) return [];
-  return inspection.runners.map((runner) => {
-    if (typeof runner !== "string" || runner.length === 0) {
-      throw new Error(`${name}: native inspection returned a malformed runner name`);
-    }
-    return inspectSkill(runx, name, runner);
-  });
 }
 
 function validateCoverage({ official, review, catalog }) {
@@ -315,9 +313,7 @@ function validateInspectionClaims({
   for (const [index, runnerInspection] of runnerInspections.entries()) {
     const expectedRunner = inspection.runners[index];
     if (
-      runnerInspection.status !== "ok"
-      || runnerInspection.name !== name
-      || runnerInspection.runner?.name !== expectedRunner
+      runnerInspection.runner?.name !== expectedRunner
     ) {
       findings.push(`${name}#${expectedRunner}: native runner inspection identity mismatch`);
     }
@@ -342,7 +338,6 @@ function validatePublicManual({
   name,
   record,
   runnerInspections,
-  officialSkillNames,
   source,
 }) {
   if (record.catalog_visibility !== "public") return [];
@@ -366,7 +361,8 @@ function validatePublicManual({
 
   const edges = runnerInspections.flatMap(
     (inspection) => inspection.execution_closure?.direct_external_skill_edges ?? [],
-  ).filter((edge) => officialSkillNames.has(edge?.skill));
+  );
+  const expectedCompositions = new Set();
   for (const edge of edges) {
     if (
       typeof edge?.skill !== "string"
@@ -377,18 +373,33 @@ function validatePublicManual({
       findings.push(`${name}: native direct external skill edge is malformed`);
       continue;
     }
-    if (!containsSkillName(guide, edge.skill)) {
-      findings.push(
-        `${name}: operator guide does not name directly composed core skill ${edge.skill}`,
-      );
+    expectedCompositions.add(`${edge.skill}#${edge.runner}`);
+  }
+  const declaredCompositions = manualCompositionRefs(guide);
+  for (const expected of expectedCompositions) {
+    if (!declaredCompositions.has(expected)) {
+      findings.push(`${name}: Composes section omits native edge ${expected}`);
+    }
+  }
+  for (const declared of declaredCompositions) {
+    if (!expectedCompositions.has(declared)) {
+      findings.push(`${name}: Composes section declares stale edge ${declared}`);
     }
   }
   return findings;
 }
 
-function containsSkillName(source, name) {
-  const escaped = name.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  return new RegExp(`(^|[^a-z0-9-])${escaped}([^a-z0-9-]|$)`, "iu").test(source);
+function manualCompositionRefs(source) {
+  const heading = /^##\s+Composes\s*$/imu.exec(source);
+  if (!heading) return new Set();
+  const bodyStart = heading.index + heading[0].length;
+  const remainder = source.slice(bodyStart);
+  const nextHeading = /^##\s+\S.*$/mu.exec(remainder);
+  const section = nextHeading ? remainder.slice(0, nextHeading.index) : remainder;
+  return new Set(
+    [...section.matchAll(/^\s*-\s+`([^`\s]+#[^`\s]+)`\s*$/gmu)]
+      .map((match) => match[1]),
+  );
 }
 
 function countBy(entries, selector) {
@@ -412,6 +423,7 @@ function resolveRunxBinary(explicit) {
 }
 
 function runJson(runx, args) {
+  nativeProcessCount += 1;
   const result = spawnSync(runx, args, {
     cwd: root,
     encoding: "utf8",
@@ -535,6 +547,10 @@ function runSelfTests() {
     "",
     "Compose `research` evidence before making the decision.",
     "",
+    "## Composes",
+    "",
+    "- `research#brief`",
+    "",
     "## Agent task contracts",
     "",
     "Return the bounded decision.",
@@ -544,17 +560,15 @@ function runSelfTests() {
       name: "alpha",
       record: official[0],
       runnerInspections: [guideInspection],
-      officialSkillNames: new Set(["alpha", "research"]),
       source: validGuide,
     }).length === 0,
     "a real guide before task contracts with direct composition names must pass",
   );
-  const invalidGuide = validGuide.replace("## Operating model\n\nCompose `research` evidence before making the decision.\n\n", "");
+  const invalidGuide = validGuide.replace("## Operating model\n\nCompose `research` evidence before making the decision.\n\n## Composes\n\n- `research#brief`\n\n", "");
   const guideFindings = validatePublicManual({
     name: "alpha",
     record: official[0],
     runnerInspections: [guideInspection],
-    officialSkillNames: new Set(["alpha", "research"]),
     source: invalidGuide,
   });
   assert(
@@ -562,8 +576,8 @@ function runSelfTests() {
     "task contracts must not substitute for an operator guide",
   );
   assert(
-    guideFindings.some((finding) => finding.includes("research")),
-    "directly composed skills must be named in the operator guide",
+    guideFindings.some((finding) => finding.includes("research#brief")),
+    "directly composed skills must be declared exactly in the Composes section",
   );
   let missingRunxPathRejected = false;
   try {

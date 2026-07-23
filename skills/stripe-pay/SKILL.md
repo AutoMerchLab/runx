@@ -18,6 +18,10 @@ when one workflow must compare several rails. Do not use this facade to create
 Stripe customers, collect card details, manage subscriptions, or process an
 unbounded charge.
 
+## Composes
+
+- `spend#stripe-spt`
+
 ## Contract
 
 The caller supplies a structured payment signal, a complete typed parent

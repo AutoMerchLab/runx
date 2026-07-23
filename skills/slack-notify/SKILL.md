@@ -17,6 +17,10 @@ a team inbox, a Slack history reader, or a customer-support workflow. Higher-
 level operator skills may prepare the message and destination, but this skill
 owns the final channel-post boundary.
 
+## Composes
+
+- `send-as#plan`
+
 ## Runners
 
 `plan` validates a channel name, channel id, or exact

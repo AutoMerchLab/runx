@@ -18,6 +18,11 @@ human approval because they are bounded reads. Pushes stop at an approval bound
 to the exact digest-addressed mutation set, use a stable idempotency key, and
 close only on GitHub provider readback. No GitHub token enters this package.
 
+## Composes
+
+- `data-store#append_event`
+- `data-store#read_projection`
+
 ## When to use it
 
 Use `github-sync` when an operator needs a reproducible pull or push contract for

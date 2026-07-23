@@ -26,6 +26,11 @@ and reads back the projection. The same graph can use local JSON, SQLite,
 Postgres, D1, Redis, or a product adapter by changing the `data_source_ref`
 binding.
 
+## Composes
+
+- `data-store#append_event`
+- `data-store#read_projection`
+
 ## What this skill does
 
 - Classifies one business signal before doing work.

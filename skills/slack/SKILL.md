@@ -20,6 +20,10 @@ remain in Runx OSS. Any queue, team-specific routing rule, or durable action
 state belongs in a higher-level operator skill and normally composes
 `operator-inbox`.
 
+## Composes
+
+- `send-as#plan`
+
 ## Runners
 
 `search` reads one bounded Slack search page. Supply a `query` object with at

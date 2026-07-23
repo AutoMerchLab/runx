@@ -20,6 +20,10 @@ remain explicit supplied-evidence lanes for offline queues and replay. Every
 lane stops at a draft; posting belongs to an approval-gated GitHub provider
 operation.
 
+## Composes
+
+- `github-mcp-read-issue#default`
+
 ## When to use it
 
 Use the default runner when the operator has a repository and issue number and

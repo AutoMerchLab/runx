@@ -17,6 +17,10 @@ usage summary exists only for deterministic replay of older evidence that lacks
 that projection. Missing receipt proof defers every scope. The output is a
 reviewable attenuation proposal, not an automatic change.
 
+## Composes
+
+- `ledger#read`
+
 ## What this skill does
 
 1. Diff granted authority against receipt-backed usage.

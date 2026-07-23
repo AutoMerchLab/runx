@@ -26,6 +26,11 @@ to the smallest evidence-backed act set that satisfies the objective. Existing
 post and user ids must come from supplied evidence, never memory or guesswork;
 name missing evidence as a blocker.
 
+## Composes
+
+- `data-store#append_event`
+- `data-store#read_events`
+
 ## What this skill does
 
 Five runners:

@@ -22,6 +22,10 @@ deploy commands. It routes to the existing interface with the smallest
 sufficient context and stops before any consequential act that lacks the right
 gate.
 
+## Composes
+
+- `data-store#read_projection`
+
 ## What this skill does
 
 `ops-desk` produces an ops desk packet for a manager dashboard, agent

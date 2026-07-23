@@ -18,6 +18,11 @@ that exact note posted. Use `issue-triage` for analysis and drafting, and a
 broader GitHub skill for other resource types. This skill never merges a pull
 request; comment authority cannot be promoted into merge authority.
 
+## Composes
+
+- `github-mcp-merge-pr#default`
+- `github-mcp-pr-review-note#default`
+
 ## How it works
 
 1. Supply `owner/name`, the exact pull-request number, exact comment body, and a

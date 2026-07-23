@@ -16,6 +16,13 @@ content whose substantive claims need traceable support. The result should do
 something for the reader—clarify a decision, explain a change, establish trust,
 or enable a concrete next step—not merely prove that research happened.
 
+## Composes
+
+- `ghostwrite#draft`
+- `ghostwrite#handoff`
+- `ghostwrite#package`
+- `research#research`
+
 ## How the chain works
 
 1. The caller provides the objective, audience, channel, and governed source

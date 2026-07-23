@@ -16,6 +16,10 @@ a trusted x402 buyer adapter, so the skill will not ask an agent to improvise
 wallet signing, accept a signer or facilitator URL in public input, or label a
 synthetic transaction as settlement.
 
+## Composes
+
+- `spend#plan`
+
 ## When to use it
 
 Use this skill after a paid resource has returned structured x402 payment

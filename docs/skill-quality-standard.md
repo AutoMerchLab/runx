@@ -163,16 +163,20 @@ dispensable: operators still need to understand the boundary and its reason.
 Task contracts belong after the operating guide and may sharpen a bounded
 agent act; they never substitute for the guide.
 
-The catalog audit enforces this as an anti-stub floor: a public guide must carry
-substantive operator context before any agent task contracts, and it must name
-each official core skill any of its executable runners compose directly. The
-audit obtains runner names and direct composition edges from native
-`runx skill inspect`; it does not parse `X.yaml` through a parallel JavaScript
-model. Private nested stages and non-catalog examples remain visible in native
-execution closure evidence but do not create false public-manual requirements.
-The floor is not a prose score and must never be met with filler. Review still
-judges whether the manual explains the capability accurately, naturally, and
-with enough domain weight for a cold operator.
+The catalog audit enforces a deliberately structural anti-stub floor: before
+any agent task contracts, a public guide needs a title, a real section, and
+explanatory prose. A package with direct external skill edges also carries a
+`## Composes` section whose `- \`skill#runner\`` entries exactly equal the
+typed direct edges emitted by native `runx skill inspect`. This is set equality,
+not a prose keyword search: an undocumented dependency and a stale documented
+dependency both fail. The audit does not parse `X.yaml` through a parallel
+JavaScript model. Private nested stages remain visible in native execution
+closure evidence without becoming direct composition declarations.
+
+That structural floor is not a claim that the guide is substantive, nor should
+it be met with filler. Review still judges whether the manual explains the
+capability accurately, naturally, and with enough domain weight for a cold
+operator.
 
 ## Content bar
 

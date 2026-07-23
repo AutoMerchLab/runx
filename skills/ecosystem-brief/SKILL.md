@@ -17,6 +17,11 @@ inference, uncertainty, and recommended posture. Connect a signal to product,
 trust, distribution, positioning, or catalog work only when the evidence
 supports that connection.
 
+## Composes
+
+- `ghostwrite#draft`
+- `research#research`
+
 ## When to use it
 
 Use `ecosystem-brief` for daily or periodic monitoring of a bounded market,

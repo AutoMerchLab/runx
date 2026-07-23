@@ -15,6 +15,12 @@ Prepare an exact outbound handoff in this order:
 
 The delivery adapter remains separate. This skill never claims a message was sent or delivered, and it does not use `sign-receipt` to manufacture a second attestation for work Runx already receipts.
 
+## Composes
+
+- `redact-pii#redact-pii`
+- `send-as#plan`
+- `web-fetch#web-fetch`
+
 ## Stop conditions
 
 - Missing or disallowed fetch inputs stop in `web-fetch`.

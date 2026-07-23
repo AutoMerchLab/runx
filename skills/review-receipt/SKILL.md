@@ -42,6 +42,10 @@ Classify the failure:
 - **Harness assertion** — fixture expectations did not match actual
   output. Fix: skill logic or stale fixture expectations.
 
+## Composes
+
+- `ledger#read`
+
 ## Agent-mediated suspension is not a failure
 
 A receipt sealed with reason `needs_agent`, or whose graph status is `deferred`, denotes a healthy

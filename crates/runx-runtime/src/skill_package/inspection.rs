@@ -2,12 +2,13 @@ mod execution_closure;
 mod runner;
 
 use std::path::Path;
+use std::sync::Arc;
 
 use runx_contracts::{JsonObject, JsonValue};
 use runx_parser::{CatalogMetadata, SkillRunnerDefinition, SourceKind};
 
 use super::LoadedSkillPackage;
-use execution_closure::inspect_execution_closure;
+use execution_closure::inspect_execution_closures;
 use runner::{catalog_capabilities, fixture_examples, inspect_runner};
 
 /// Project one already-validated package into the stable operator inspection
@@ -18,14 +19,15 @@ pub fn inspect_skill_package(
 ) -> Result<JsonValue, String> {
     let loaded =
         super::load_validated_skill_package(skill_path).map_err(|error| error.to_string())?;
-    inspect_loaded_skill_package(&loaded, selected_runner)
+    inspect_loaded_skill_package(loaded, selected_runner)
 }
 
 pub(crate) fn inspect_loaded_skill_package(
-    loaded: &LoadedSkillPackage,
+    loaded: LoadedSkillPackage,
     selected_runner: Option<&str>,
 ) -> Result<JsonValue, String> {
-    let mut output = base_inspection(loaded);
+    let loaded = Arc::new(loaded);
+    let mut output = base_inspection(&loaded);
     let manifest = loaded.manifest();
     let runner = match (manifest, selected_runner) {
         (Some(manifest), Some(name)) => Some(
@@ -46,8 +48,39 @@ pub(crate) fn inspect_loaded_skill_package(
         (None, Some(name)) => return Err(format!("skill has no runner '{name}'")),
         (None, None) => None,
     };
+    let mut execution_closures = inspect_execution_closures(loaded.clone())?;
+    if let Some(manifest) = manifest {
+        output.insert(
+            "runner_inspections".to_owned(),
+            JsonValue::Array(
+                manifest
+                    .runners
+                    .values()
+                    .map(|runner| {
+                        let closure =
+                            execution_closures
+                                .get(&runner.name)
+                                .cloned()
+                                .ok_or_else(|| {
+                                    format!(
+                                        "native execution closure omitted runner {}",
+                                        runner.name
+                                    )
+                                })?;
+                        Ok(JsonValue::Object(JsonObject::from([
+                            ("runner".to_owned(), inspect_runner(runner)?),
+                            ("execution_closure".to_owned(), closure),
+                        ])))
+                    })
+                    .collect::<Result<Vec<_>, String>>()?,
+            ),
+        );
+    }
     if let Some(runner) = runner {
-        append_runner_inspection(&mut output, loaded, runner)?;
+        let closure = execution_closures
+            .remove(&runner.name)
+            .ok_or_else(|| format!("native execution closure omitted runner {}", runner.name))?;
+        append_runner_inspection(&mut output, &loaded, runner, closure)?;
     }
     Ok(JsonValue::Object(output))
 }
@@ -114,12 +147,10 @@ fn append_runner_inspection(
     output: &mut JsonObject,
     loaded: &LoadedSkillPackage,
     runner: &SkillRunnerDefinition,
+    execution_closure: JsonValue,
 ) -> Result<(), String> {
     output.insert("runner".to_owned(), inspect_runner(runner)?);
-    output.insert(
-        "execution_closure".to_owned(),
-        inspect_execution_closure(loaded, runner)?,
-    );
+    output.insert("execution_closure".to_owned(), execution_closure);
     output.insert(
         "readiness".to_owned(),
         JsonValue::Object(JsonObject::from([(
@@ -217,6 +248,13 @@ runners:
       steps:
         - id: child
           skill: child
+  alternate:
+    type: graph
+    graph:
+      name: alternate
+      steps:
+        - id: child
+          skill: child
 "#;
     const CHILD_MANIFEST: &str = r#"
 skill: child
@@ -275,6 +313,18 @@ runners:
                 JsonValue::String("child/X.yaml#read".to_owned()),
             ]))
         );
+        let runner_names = inspected
+            .get("runner_inspections")
+            .and_then(JsonValue::as_array)
+            .expect("runner inspections")
+            .iter()
+            .filter_map(JsonValue::as_object)
+            .filter_map(|entry| entry.get("runner"))
+            .filter_map(JsonValue::as_object)
+            .filter_map(|runner| runner.get("name"))
+            .filter_map(JsonValue::as_str)
+            .collect::<Vec<_>>();
+        assert_eq!(runner_names, vec!["alternate", "inspect"]);
         Ok(())
     }
 

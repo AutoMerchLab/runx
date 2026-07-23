@@ -19,6 +19,10 @@ gate, refusals that were not recorded, and any raw secret material that leaked
 into the receipt. It pairs with `least-privilege`: that one narrows a
 grant from usage, this one verifies a run honored its grant.
 
+## Composes
+
+- `ledger#read`
+
 ## What this skill does
 
 1. **Read the proof and the acts.** From the receipt, extract the granted

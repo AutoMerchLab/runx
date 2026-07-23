@@ -68,6 +68,12 @@ approval rules.
 - Put task-specific agent clauses after the human-readable operating guide.
   They sharpen individual agent acts; they do not replace the guide or carry
   the product's voice by themselves.
+- When a package directly composes another skill, give the operator a
+  `## Composes` section with one exact `- \`skill#runner\`` entry per native
+  direct edge. Keep the surrounding prose natural and useful; the explicit set
+  is the stable map, not a substitute for explaining why the chain exists.
+  Native inspection must report the same set exactly, so stale declarations
+  and undocumented dependencies both fail.
 - A skill declares domain procedure and policy. Runx owns generic input,
   packet, evidence, approval, request, credential, effect, and receipt mechanics.
 - Place the capability in its real owner before choosing an implementation.
@@ -174,9 +180,9 @@ approval rules.
   improvement only when the removed material was false, duplicated, or
   irrelevant and the remaining document still passes the cold-operator test.
 - Treat the catalog's manual check as an anti-stub backstop, not a writing
-  target. The guide must explain every directly composed core skill, but do not
-  pad prose to satisfy a word floor or turn natural operating guidance into a
-  template checklist.
+  target. The structural title/section/prose floor and exact `## Composes` set
+  do not prove a guide is substantive. Do not pad prose to satisfy a word floor
+  or turn natural operating guidance into a template checklist.
 - Prefer extending an existing owner over adding a near-duplicate skill.
 - Include a realistic happy path and refusal, stop, or error path.
 - Never treat supplied agent answers as provider-effect proof.

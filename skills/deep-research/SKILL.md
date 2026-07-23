@@ -17,6 +17,11 @@ process. It leads with the decision and operational implication, then exposes
 the evidence, inference, alternatives, and unresolved questions that justify
 that posture.
 
+## Composes
+
+- `ghostwrite#draft`
+- `research#research`
+
 ## When to use it
 
 Use `deep-research` for architecture choices, market or ecosystem questions,

@@ -16,6 +16,12 @@ status, dispositions, replay suppression, reopen rules, and scan coverage. Every
 read and write is composed through `data-store`; the skill does not call Slack,
 SQLite, Postgres, or another provider directly.
 
+## Composes
+
+- `data-store#append_event`
+- `data-store#list_stream_heads`
+- `data-store#read_events`
+
 ## What this skill does
 
 Use `local://runx/operator-inbox/default` unless the operator selects another
