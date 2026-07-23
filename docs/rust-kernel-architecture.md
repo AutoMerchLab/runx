@@ -426,11 +426,11 @@ is revisited as a follow-up spec; it does not constrain this plan.
 
 - Edition: 2024.
 - Resolver: 3.
-- MSRV: 1.97.0. Runx deliberately tracks the current stable Rust line instead
-  of preserving an untested compatibility floor.
-- MSRV pinned in `crates/Cargo.toml` workspace `[workspace.package]` block and
-  enforced in CI via `rust-toolchain.toml` or an explicit toolchain in the
-  workflow.
+- MSRV: 1.88.0, expressed by the `crates/Cargo.toml` workspace
+  `[workspace.package]` block.
+- Repository, CI, and release builds use the single root `rust-toolchain.toml`
+  pin. That reproducible build toolchain is deliberately separate from the
+  oldest compiler version the public crates support.
 - MSRV bumps are spec-level changes, not silent dependency updates.
 
 ## 10. Rust-side boundary enforcement

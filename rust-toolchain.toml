@@ -1,5 +1,8 @@
 # One repository-wide toolchain pin. Root scripts invoke Cargo with
 # --manifest-path, so the pin must live here rather than under crates/.
+# Keep release-worker execution in the upgrade gate: optimized macOS workers
+# built with 1.97.1 can stall in dyld before main, while 1.95.0 is proven by
+# the release handshake smoke in .github/workflows/release.yml.
 [toolchain]
-channel = "1.97.1"
+channel = "1.95.0"
 components = ["rustfmt", "clippy"]
