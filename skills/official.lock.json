@@ -470,8 +470,8 @@
   },
   {
     "skill_id": "runx/taste-profile",
-    "version": "sha-38c7de62e155",
-    "digest": "492ba06c3de2bee1d87a3a1886a23bb3f6d4f61c18a19fb985cbdefb25ce6e68",
+    "version": "sha-9a1ffa8db686",
+    "digest": "e26a157b9e92a559593175b00abea127ad256a54842089e86f85fb9b2c29d1b5",
     "catalog_visibility": "public",
     "catalog_role": "context"
   },
