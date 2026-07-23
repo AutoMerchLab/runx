@@ -141,7 +141,7 @@
   },
   {
     "skill_id": "runx/issue-to-pr",
-    "version": "sha-d3bc9a9c12f2",
+    "version": "sha-096e8ec4ac27",
     "digest": "27a4c8fb5e5f4bf2a2b38763af1316a4297005da01ac7d06af7271a0a6d7b3b5",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
@@ -414,8 +414,8 @@
   },
   {
     "skill_id": "runx/slack",
-    "version": "sha-55d0e73115ed",
-    "digest": "e2166addf0d7121cf134c2a7470d0d360b5cf89d9430c56b3273537744fb65b7",
+    "version": "sha-c1d2ce22e07e",
+    "digest": "85c8069a5a738c0241110ac6e01422eb530ee9528eef9dc8ca29a5199672c1c9",
     "catalog_visibility": "public",
     "catalog_role": "branded"
   },

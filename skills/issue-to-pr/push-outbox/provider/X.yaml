@@ -1,9 +1,35 @@
 skill: issue-to-pr-push-outbox-provider
-version: "0.1.1"
+version: "0.1.2"
 runners:
   default:
     default: true
     type: thread-outbox-provider
+    inputs:
+      thread:
+        type: json
+        required: false
+        description: Portable provider thread; absent means the push is intentionally skipped.
+      outbox_entry:
+        type: json
+        required: true
+        description: Digest-bound outbox entry to publish or update.
+      draft_pull_request:
+        type: json
+        required: false
+        description: Draft pull-request packet when publishing a pull_request entry.
+      fixture:
+        type: string
+        required: false
+        description: Optional fixture or workspace fallback used by local adapters.
+      workspace_path:
+        type: string
+        required: false
+        description: Repository workspace for provider operations that require git context.
+      next_status:
+        type: string
+        required: false
+        default: published
+        description: Outbox status recorded after a successful provider push.
     thread_outbox_provider:
       operation: push
       manifest_path: manifest.json
