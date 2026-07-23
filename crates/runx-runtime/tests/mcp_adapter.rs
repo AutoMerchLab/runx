@@ -9,6 +9,8 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use runx_contracts::{JsonNumber, JsonObject, JsonValue};
 use runx_parser::{SkillMcpServer, SkillSandbox, SkillSource};
+#[cfg(windows)]
+use runx_runtime::SecretEnv;
 use runx_runtime::adapters::mcp::{
     McpAdapter, McpListToolsRequest, McpToolCallRequest, McpTransport, McpTransportError,
     ProcessMcpTransport, map_mcp_arguments,
@@ -291,6 +293,151 @@ fn mcp_process_transport_times_out_and_terminates_child() -> Result<(), RuntimeE
 
     let _ = fs::remove_file(&marker_path);
     Ok(())
+}
+
+#[cfg(windows)]
+#[test]
+fn windows_mcp_session_lifecycle_terminates_descendant_trees() -> Result<(), RuntimeError> {
+    for lifecycle in [
+        WindowsMcpLifecycle::OneShotClose,
+        WindowsMcpLifecycle::Timeout,
+        WindowsMcpLifecycle::PoolReset,
+    ] {
+        assert_windows_mcp_lifecycle_terminates_descendant(lifecycle)?;
+    }
+    Ok(())
+}
+
+#[cfg(windows)]
+#[derive(Clone, Copy, Debug)]
+enum WindowsMcpLifecycle {
+    OneShotClose,
+    Timeout,
+    PoolReset,
+}
+
+#[cfg(windows)]
+fn assert_windows_mcp_lifecycle_terminates_descendant(
+    lifecycle: WindowsMcpLifecycle,
+) -> Result<(), RuntimeError> {
+    let temp = tempfile::tempdir()
+        .map_err(|error| runtime_test_error(format!("creating MCP lifecycle tempdir: {error}")))?;
+    let pid_path = temp.path().join("descendant.pid");
+    let marker_path = temp.path().join("descendant.log");
+    let mut arguments = JsonObject::new();
+    arguments.insert(
+        "descendantPidPath".to_owned(),
+        JsonValue::String(pid_path.to_string_lossy().into_owned()),
+    );
+    arguments.insert(
+        "descendantMarkerPath".to_owned(),
+        JsonValue::String(marker_path.to_string_lossy().into_owned()),
+    );
+
+    let transport = ProcessMcpTransport::default();
+    let mut plan = fixture_sandbox_plan()?;
+    let (tool, timeout) = match lifecycle {
+        WindowsMcpLifecycle::OneShotClose => {
+            arguments.insert(
+                "message".to_owned(),
+                JsonValue::String("one-shot".to_owned()),
+            );
+            arguments.insert(
+                "responseDelayMs".to_owned(),
+                JsonValue::Number(JsonNumber::U64(100)),
+            );
+            plan.cleanup_paths.push(temp.path().join("one-shot-owner"));
+            ("echo", Duration::from_secs(5))
+        }
+        WindowsMcpLifecycle::Timeout => ("sleep", Duration::from_millis(150)),
+        WindowsMcpLifecycle::PoolReset => {
+            arguments.insert("message".to_owned(), JsonValue::String("pooled".to_owned()));
+            arguments.insert(
+                "responseDelayMs".to_owned(),
+                JsonValue::Number(JsonNumber::U64(100)),
+            );
+            ("echo", Duration::from_secs(5))
+        }
+    };
+
+    let result = transport.call_tool(McpToolCallRequest {
+        server: fixture_server()?,
+        tool: tool.to_owned(),
+        arguments,
+        timeout,
+        sandbox: plan,
+        secret_env: SecretEnv::default(),
+    });
+    match lifecycle {
+        WindowsMcpLifecycle::Timeout => {
+            let error = result.expect_err("timeout lifecycle must time out");
+            assert_eq!(error.sanitized_message(), "MCP call timed out after 150ms.");
+        }
+        _ => {
+            result.map_err(|error| runtime_test_error(error.sanitized_message()))?;
+        }
+    }
+
+    wait_for_lifecycle_lines(&marker_path, 1, Duration::from_secs(5))?;
+    if matches!(lifecycle, WindowsMcpLifecycle::PoolReset) {
+        reset_transport_session_pool(&transport)?;
+    }
+    wait_for_windows_recorded_pid_exit(&pid_path, Duration::from_secs(5))?;
+
+    let alive = transport.call_tool(McpToolCallRequest {
+        server: fixture_server()?,
+        tool: "echo".to_owned(),
+        arguments: [(
+            "message".to_owned(),
+            JsonValue::String("runtime-alive".to_owned()),
+        )]
+        .into(),
+        timeout: Duration::from_secs(5),
+        sandbox: fixture_sandbox_plan()?,
+        secret_env: SecretEnv::default(),
+    });
+    alive.map_err(|error| runtime_test_error(error.sanitized_message()))?;
+    reset_transport_session_pool(&transport)?;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn wait_for_windows_recorded_pid_exit(
+    pid_path: &Path,
+    timeout: Duration,
+) -> Result<(), RuntimeError> {
+    let deadline = Instant::now() + timeout;
+    let pid = loop {
+        match fs::read_to_string(pid_path) {
+            Ok(raw) if !raw.trim().is_empty() => break raw.trim().to_owned(),
+            _ if Instant::now() >= deadline => {
+                return Err(runtime_test_error(format!(
+                    "MCP descendant never recorded its pid at {}",
+                    pid_path.display()
+                )));
+            }
+            _ => thread::sleep(Duration::from_millis(10)),
+        }
+    };
+    let probe = concat!(
+        "try { process.kill(Number(process.argv[1]), 0); process.exit(1); } ",
+        "catch (error) { process.exit(error?.code === 'ESRCH' ? 0 : 2); }"
+    );
+    loop {
+        let status = std::process::Command::new("node")
+            .args(["-e", probe, &pid])
+            .status()
+            .map_err(|error| runtime_test_error(format!("probing MCP descendant pid: {error}")))?;
+        if status.success() {
+            return Ok(());
+        }
+        if Instant::now() >= deadline {
+            return Err(runtime_test_error(format!(
+                "MCP descendant process {pid} survived {timeout:?}"
+            )));
+        }
+        thread::sleep(Duration::from_millis(10));
+    }
 }
 
 #[cfg(unix)]

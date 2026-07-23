@@ -1,3 +1,4 @@
+import { spawn } from "node:child_process";
 import { appendFileSync } from "node:fs";
 
 let input = Buffer.alloc(0);
@@ -131,6 +132,7 @@ function handleToolCall(id, params) {
   const args = isRecord(params.arguments) ? params.arguments : {};
 
   if (params.name === "sleep") {
+    startDescendant(args.descendantPidPath, args.descendantMarkerPath);
     startLifecycleHeartbeat(args.markerPath);
     return;
   }
@@ -157,14 +159,22 @@ function handleToolCall(id, params) {
     return;
   }
 
-  respond(id, {
-    content: [
-      {
-        type: "text",
-        text: String(args.message ?? ""),
-      },
-    ],
-  });
+  startDescendant(args.descendantPidPath, args.descendantMarkerPath);
+  const complete = () =>
+    respond(id, {
+      content: [
+        {
+          type: "text",
+          text: String(args.message ?? ""),
+        },
+      ],
+    });
+  const responseDelayMs = Number(args.responseDelayMs ?? 0);
+  if (Number.isFinite(responseDelayMs) && responseDelayMs > 0) {
+    setTimeout(complete, responseDelayMs);
+  } else {
+    complete();
+  }
 }
 
 function respond(id, result) {
@@ -201,6 +211,28 @@ function startLifecycleHeartbeat(markerPath) {
   }
   appendLifecycle(markerPath, "sleep-start");
   setInterval(() => appendLifecycle(markerPath, "heartbeat"), 25);
+}
+
+function startDescendant(pidPath, markerPath) {
+  if (
+    typeof pidPath !== "string" ||
+    pidPath.length === 0 ||
+    typeof markerPath !== "string" ||
+    markerPath.length === 0
+  ) {
+    return;
+  }
+  const program = [
+    'const { appendFileSync } = require("node:fs");',
+    "const markerPath = process.argv[1];",
+    'appendFileSync(markerPath, `start ${process.pid} ${Date.now()}\\n`);',
+    'setInterval(() => appendFileSync(markerPath, `heartbeat ${process.pid} ${Date.now()}\\n`), 25);',
+  ].join("");
+  const child = spawn(process.execPath, ["-e", program, markerPath], {
+    stdio: "ignore",
+    windowsHide: true,
+  });
+  appendFileSync(pidPath, `${child.pid}\n`);
 }
 
 function appendLifecycle(markerPath, event) {

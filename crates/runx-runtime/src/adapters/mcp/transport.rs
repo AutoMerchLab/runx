@@ -12,9 +12,9 @@ use std::time::{Duration, Instant};
 use runx_contracts::{JsonObject, JsonValue};
 use serde_json::{self, Value as JsonWireValue};
 
+use crate::process::{OwnedTokioProcess, TokioProcessSpec, spawn_tokio_process};
 #[cfg(unix)]
 use crate::process::{ProcessSignal, signal_process_group_id};
-use crate::process::{TokioProcessSpec, spawn_tokio_process};
 use crate::sandbox::SandboxPlan;
 
 use super::rmcp_content_length::{RmcpContentLengthTransport, RmcpTransportErrorState};
@@ -177,7 +177,7 @@ impl McpSessionKey {
 type RmcpClientService = rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientInfo>;
 
 struct McpSession {
-    child: tokio::process::Child,
+    child: OwnedTokioProcess,
     service: RmcpClientService,
     _stderr_drain: Option<McpStderrDrain>,
     _active_process: crate::interrupt::ActiveProcessGroup,
@@ -189,7 +189,7 @@ impl McpSession {
             mut child,
             active_process,
         } = spawn_tokio_mcp_server(plan, spawn_count)?;
-        let stderr_drain = drain_tokio_stderr(child.stderr.take());
+        let stderr_drain = drain_tokio_stderr(child.take_stderr());
         let error_state = RmcpTransportErrorState::default();
         let service = match serve_rmcp_client(&mut child, error_state).await {
             Ok(service) => service,
@@ -346,7 +346,7 @@ async fn list_tools_with_rmcp_async(
         mut child,
         active_process: _active_process,
     } = spawn_tokio_mcp_server(&request.sandbox, &spawn_count)?;
-    let _stderr_drain = drain_tokio_stderr(child.stderr.take());
+    let _stderr_drain = drain_tokio_stderr(child.take_stderr());
     let result = tokio::time::timeout(request.timeout, async {
         let error_state = RmcpTransportErrorState::default();
         let mut service = serve_rmcp_client(&mut child, error_state.clone()).await?;
@@ -464,19 +464,17 @@ fn lock_session_manager(
 }
 
 async fn serve_rmcp_client(
-    child: &mut tokio::process::Child,
+    child: &mut OwnedTokioProcess,
     error_state: RmcpTransportErrorState,
 ) -> Result<
     rmcp::service::RunningService<rmcp::RoleClient, rmcp::model::ClientInfo>,
     McpTransportError,
 > {
     let stdout = child
-        .stdout
-        .take()
+        .take_stdout()
         .ok_or_else(|| McpTransportError::failed("MCP server stdout unavailable."))?;
     let stdin = child
-        .stdin
-        .take()
+        .take_stdin()
         .ok_or_else(|| McpTransportError::failed("MCP server stdin unavailable."))?;
     let transport = RmcpContentLengthTransport::new(
         stdout,
@@ -504,7 +502,7 @@ where
 }
 
 struct SpawnedMcpServer {
-    child: tokio::process::Child,
+    child: OwnedTokioProcess,
     active_process: crate::interrupt::ActiveProcessGroup,
 }
 
@@ -530,7 +528,7 @@ fn spawn_tokio_mcp_server(
 }
 
 #[cfg(unix)]
-async fn terminate_tokio_child(child: &mut tokio::process::Child) {
+async fn terminate_tokio_child(child: &mut OwnedTokioProcess) {
     signal_tokio_process_group(child, ProcessSignal::Terminate);
     if tokio::time::timeout(FORCE_KILL_GRACE, child.wait())
         .await
@@ -543,13 +541,13 @@ async fn terminate_tokio_child(child: &mut tokio::process::Child) {
 }
 
 #[cfg(not(unix))]
-async fn terminate_tokio_child(child: &mut tokio::process::Child) {
+async fn terminate_tokio_child(child: &mut OwnedTokioProcess) {
     let _ = child.start_kill();
     let _ = child.wait().await;
 }
 
 #[cfg(unix)]
-fn signal_tokio_process_group(child: &mut tokio::process::Child, signal: ProcessSignal) {
+fn signal_tokio_process_group(child: &mut OwnedTokioProcess, signal: ProcessSignal) {
     let Some(pid) = child.id() else {
         return;
     };

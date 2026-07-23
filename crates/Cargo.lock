@@ -2063,8 +2063,10 @@ version = "9.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2e842efad9119158434d193c6682e2ebee4b44d6ad801d7b349623b3f57cdf55"
 dependencies = [
+ "futures",
  "indexmap",
  "nix",
+ "tokio",
  "windows 0.62.2",
 ]
 

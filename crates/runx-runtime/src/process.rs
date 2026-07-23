@@ -61,7 +61,7 @@ pub(crate) use self::spec::{ProcessOutcome, ProcessSpec, ProcessStdin, ProcessSu
 ))]
 pub(crate) use self::supervisor::run_process;
 #[cfg(feature = "mcp")]
-pub(crate) use self::tokio_supervisor::{TokioProcessSpec, spawn_tokio_process};
+pub(crate) use self::tokio_supervisor::{OwnedTokioProcess, TokioProcessSpec, spawn_tokio_process};
 #[cfg(windows)]
 pub(crate) use self::windows_host_job::ensure_host_process_containment;
 
