@@ -39,6 +39,15 @@ Thread messages include bounded attachment metadata and opaque
 `slack-file://workspace/file` locators; private Slack download URLs never cross
 the provider boundary.
 
+`read_link` accepts one exact Slack archive permalink and reads the same bounded
+thread page. Use it when an operator pastes a normal
+`https://workspace.slack.com/archives/channel/message` link and therefore does
+not have the workspace id required by a canonical locator. Cloud validates the
+permalink, binds it to the OAuth connection's verified workspace identity, and
+returns the canonical `slack://workspace/channel/timestamp` locator. A reply
+permalink's `thread_ts` identifies the root; Slack's redundant `cid` must match
+the path channel. This runner requires only `thread.read`, never a search grant.
+
 `read_file` reads one image attachment from an exact file locator returned by
 `read_thread`. It requires `file.read`, verifies the file through Slack,
 restricts downloads to Slack's private file origin, accepts images only, and
@@ -89,8 +98,8 @@ timestamps, and a content digest; they do not echo the delivered message.
   or asks for more than one bounded page per turn.
 - Stop when an attachment is not an image, exceeds 5 MiB, belongs to another
   workspace, or resolves outside Slack's governed private-file origin.
-- Stop on malformed or cross-workspace locators and on thread/message channel
-  mismatch.
+- Stop on malformed permalinks, unsupported permalink query fields,
+  cross-workspace locators, or thread/message channel mismatch.
 - Stop on reply-plan drift, absent or denied approval, invalid idempotency, or
   provider readback that does not match the exact delivered message.
 - Do not infer that a request is resolved from Slack prose. Record resolution,
@@ -100,9 +109,10 @@ timestamps, and a content digest; they do not echo the delivered message.
 
 ## Worked flow
 
-An operator searches for direct mentions and receives one page with a next
-cursor. They hydrate only the actionable thread, then pass that normalized
-observation to a team-specific triage skill and `operator-inbox`. If a reply is
-needed, `plan_reply` binds the proposed text to the exact thread. A changed
-draft fails before approval. An approved unchanged reply is posted once, then
-read back from the exact returned message locator before Runx seals the effect.
+An operator can search for direct mentions or start from a pasted Slack
+permalink. They hydrate only the actionable thread, preserve its canonical
+locator, then pass that normalized observation to a team-specific triage skill
+and `operator-inbox`. If a reply is needed, `plan_reply` binds the proposed text
+to the exact canonical thread. A changed draft fails before approval. An
+approved unchanged reply is posted once, then read back from the exact returned
+message locator before Runx seals the effect.

@@ -1,5 +1,5 @@
 skill: slack
-version: "0.1.0"
+version: "0.2.0"
 
 catalog:
   kind: graph
@@ -74,6 +74,42 @@ runners:
             result_fields: [external_tenant_ref, connected_subject_ref, thread_locator, messages, next_cursor]
             input:
               thread_locator: $input.thread_locator
+              limit: $input.limit
+              cursor: $input.cursor
+
+  read_link:
+    type: graph
+    inputs:
+      permalink:
+        type: string
+        required: true
+        description: Exact https://workspace.slack.com/archives/channel/message permalink.
+      limit:
+        type: number
+        required: false
+        default: 15
+        description: Bounded messages to return; provider maximum is 15.
+      cursor:
+        type: string
+        required: false
+        default: ""
+        description: Opaque cursor returned by the preceding thread page.
+    graph:
+      name: slack-read-link
+      steps:
+        - id: read
+          tool: provider.read
+          scopes: [thread.read]
+          policy:
+            provider_permission:
+              verb: read
+          inputs:
+            operation: thread.read
+            target: $input.permalink
+            expected_provider: slack
+            result_fields: [external_tenant_ref, connected_subject_ref, thread_locator, messages, next_cursor]
+            input:
+              thread_locator: $input.permalink
               limit: $input.limit
               cursor: $input.cursor
 
