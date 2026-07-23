@@ -49,7 +49,8 @@ fn input_document_supports_file_and_stdin_without_a_second_input_map()
     .map(std::ffi::OsString::from)
     .collect::<Vec<_>>();
     let error = runx_cli::skill::parse_skill_plan_with_workspace(&mixed, &workspace)
-        .expect_err("mixed document and per-key inputs should fail");
+        .err()
+        .ok_or_else(|| std::io::Error::other("mixed document and per-key inputs should fail"))?;
     assert!(error.contains("cannot be combined"));
 
     let output = runx_command()
