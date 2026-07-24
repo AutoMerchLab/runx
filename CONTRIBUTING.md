@@ -63,7 +63,7 @@ The full DCO text (reproduced here for reference):
 
 ## Development setup
 
-The native Rust CLI needs Rust 1.95 or newer and stays useful without Node, pnpm, tsx, or TypeScript installed. The workspace and the npm wrapper need Node.js 20 or newer and pnpm 10 or newer.
+The native Rust CLI needs Rust 1.97 or newer and stays useful without Node, pnpm, tsx, or TypeScript installed. The workspace and the npm wrapper need Node.js 20 or newer and pnpm 10 or newer.
 
 From the OSS workspace:
 
