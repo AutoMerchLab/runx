@@ -134,10 +134,10 @@ impl<'a> WorkerLease<'a> {
         }
     }
 
-    pub(super) fn session_mut(&mut self) -> &mut WorkerSession {
+    pub(super) fn session_mut(&mut self) -> Result<&mut WorkerSession, RuntimeError> {
         self.session
             .as_mut()
-            .expect("worker lease always owns a session until drop")
+            .ok_or_else(|| worker_error("JavaScript worker lease no longer owns its session"))
     }
 
     pub(super) fn poison(&mut self) {

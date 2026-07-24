@@ -71,10 +71,12 @@ impl JavaScriptWorkerSupervisor {
             limits: invocation.limits,
         };
         let mut lease = self.pool.acquire()?;
-        let isolation = lease.session_mut().isolation.as_ref().clone();
-        let result = lease
-            .session_mut()
-            .invoke(&invocation_id, &request, timeout);
+        let (isolation, result) = {
+            let session = lease.session_mut()?;
+            let isolation = session.isolation.as_ref().clone();
+            let result = session.invoke(&invocation_id, &request, timeout);
+            (isolation, result)
+        };
         match result {
             Ok(response) => {
                 let discard = matches!(
