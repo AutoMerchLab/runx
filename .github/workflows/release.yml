@@ -534,3 +534,7 @@ jobs:
           tags: |
             ghcr.io/runxhq/runx:${{ needs.prepare.outputs.version }}
             ghcr.io/runxhq/runx:latest
+      - name: Verify anonymous pull access
+        env:
+          RUNX_RELEASE_VERSION: ${{ needs.prepare.outputs.version }}
+        run: node scripts/check-ghcr-anonymous-access.mjs

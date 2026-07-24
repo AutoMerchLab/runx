@@ -1,14 +1,11 @@
 import { spawnSync } from "node:child_process";
 
+import {
+  checkRunxGhcrAnonymousAccess,
+  observeRunxCliRelease,
+} from "./lib/runx-cli-release-evidence.mjs";
+
 const repository = "runxhq/runx";
-const npmPackages = [
-  "@runxhq/cli",
-  "@runxhq/cli-darwin-arm64",
-  "@runxhq/cli-darwin-x64",
-  "@runxhq/cli-linux-arm64",
-  "@runxhq/cli-linux-x64",
-  "@runxhq/cli-win32-x64",
-];
 
 const phase = process.argv[2];
 const version = requiredEnvironment("RUNX_RELEASE_VERSION");
@@ -23,7 +20,7 @@ const tag = `cli-v${version}`;
 const commit = run("git", ["rev-parse", "HEAD"]);
 
 try {
-  if (phase === "prepare") prepare();
+  if (phase === "prepare") await prepare();
   else if (phase === "publish") publish();
   else if (phase === "verify") await verify();
   else fail(`unknown release phase: ${phase ?? "<missing>"}`);
@@ -38,11 +35,17 @@ try {
   process.exitCode = 1;
 }
 
-function prepare() {
+async function prepare() {
   assertCleanCheckout();
   run("git", ["fetch", "origin", "main", "--tags"]);
   assertMainCommit();
   assertRemoteTagCompatible();
+  const ghcrAccess = await checkRunxGhcrAnonymousAccess();
+  if (ghcrAccess.status !== "passed") {
+    throw new Error(
+      `GHCR must be publicly pullable before publication: ${ghcrAccess.detail}`,
+    );
+  }
 
   run("pnpm", ["install", "--frozen-lockfile"], { timeout: 300_000 });
   run("pnpm", ["exec", "tsx", "scripts/set-release-version.ts", "--check", version]);
@@ -60,6 +63,7 @@ function prepare() {
       manifests_match_version: true,
       verify_fast: true,
       remote_tag_compatible: true,
+      ghcr_anonymous_access: true,
     },
   });
 }
@@ -106,7 +110,7 @@ async function verify() {
   const deadline = Date.now() + 840_000;
   let observation;
   while (Date.now() < deadline) {
-    observation = releaseObservation();
+    observation = await releaseObservation();
     if (observation.ready) break;
     await new Promise((resolve) => setTimeout(resolve, 15_000));
   }
@@ -122,50 +126,34 @@ async function verify() {
     channel,
     release_id: tag,
     commit_ref: commit,
-    locators: [
-      observation.releaseUrl,
-      `https://www.npmjs.com/package/%40runxhq%2Fcli/v/${version}`,
-    ],
-    checks: {
-      remote_tag_matches_commit: true,
-      github_release_live: true,
-      npm_selector_live: true,
-      npm_native_packages_live: true,
-    },
+    locators: observation.locators,
+    checks: Object.fromEntries(
+      observation.checks.map((check) => [check.id, check.status === "passed"]),
+    ),
   });
 }
 
-function releaseObservation() {
-  const missing = [];
-  if (remoteTagCommit() !== commit) missing.push("remote tag");
-
-  let releaseUrl = "";
-  const release = tryRun("gh", [
-    "release",
-    "view",
-    tag,
-    "--repo",
-    repository,
-    "--json",
-    "url,tagName,isDraft,isPrerelease",
-  ]);
-  if (release.ok) {
-    const parsed = JSON.parse(release.stdout);
-    if (parsed.tagName === tag && parsed.isDraft === false && parsed.isPrerelease === false) {
-      releaseUrl = parsed.url;
-    } else {
-      missing.push("public GitHub release");
-    }
-  } else {
-    missing.push("public GitHub release");
-  }
-
-  for (const packageName of npmPackages) {
-    const result = tryRun("npm", ["view", `${packageName}@${version}`, "version", "--json"]);
-    if (!result.ok || parseJsonScalar(result.stdout) !== version) missing.push(`${packageName}@${version}`);
-  }
-
-  return { ready: missing.length === 0, missing, releaseUrl };
+async function releaseObservation() {
+  const observation = await observeRunxCliRelease({
+    version,
+    expectedCommit: commit,
+  });
+  const remoteTagMatches = remoteTagCommit() === commit;
+  const remoteTagCheck = {
+    id: "remote_tag",
+    status: remoteTagMatches ? "passed" : "failed",
+    detail: remoteTagMatches
+      ? `${tag} resolves to ${commit}`
+      : `${tag} does not resolve to ${commit}`,
+  };
+  return {
+    ...observation,
+    ready: remoteTagMatches && observation.ready,
+    checks: [remoteTagCheck, ...observation.checks],
+    missing: remoteTagMatches
+      ? observation.missing
+      : [`remote_tag: ${remoteTagCheck.detail}`, ...observation.missing],
+  };
 }
 
 function assertCleanCheckout() {
@@ -205,14 +193,6 @@ function remoteTagCommit() {
     return [ref, objectId];
   }));
   return refs.get(`refs/tags/${tag}^{}`) || refs.get(`refs/tags/${tag}`) || "";
-}
-
-function parseJsonScalar(value) {
-  try {
-    return JSON.parse(value);
-  } catch {
-    return "";
-  }
 }
 
 function summarizeFailure(error) {

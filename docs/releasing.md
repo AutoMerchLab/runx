@@ -15,9 +15,10 @@ Release policy lives at the workspace root (`AGENTS.md` plus
 package manifest, cloud pin, or channel table disagrees with `release/status.json`,
 fix the drift there and run the root checks; do not invent a second release flow.
 
-The same product version is used on every active channel. The release workflow
-is secret-gated, so package-manager channels that are not configured are skipped
-with a warning instead of blocking the npm/GitHub release.
+The same product version is used on every active channel. Individual workflow
+jobs may skip an unconfigured package manager with a warning, but the governed
+release remains unverified until every required channel has independent
+readback.
 
 - GitHub Release: `cli-vX.Y.Z` (the hub; serves the raw per-target archives)
 - npm: `@runxhq/cli@X.Y.Z` (+ `@runxhq/cli-<platform>@X.Y.Z`)
@@ -128,9 +129,10 @@ version-compatible worker is absent.
 
 ## Required secrets
 
-Publishing degrades gracefully: each registry job is gated on its secret and
-skipped (with a `::warning::`) when unset, so a release can go out npm-only and
-gain channels as credentials land.
+Each registry job is gated on its secret and reports a warning when the secret
+is absent. A skipped channel leaves the release unverified: the canonical
+release skill does not claim completion until independent readback proves every
+required channel.
 
 | Secret | Channel | Required for |
 | --- | --- | --- |
@@ -148,23 +150,30 @@ package.
 ## Cutting a release
 
 ```bash
-# 1. on a green OSS main commit with real release notes already landed:
-git tag cli-vX.Y.Z
-git push origin cli-vX.Y.Z
+# 1. On a clean OSS main commit, run the project-owned profile through the
+#    canonical governed release lane. This prepares, obtains approval for, and
+#    pushes the exact tag, then independently verifies every required channel.
+runx skill skills/release release \
+  -i project_root="$PWD" \
+  -i profile_ref=release/runx-cli.json \
+  -i channel=runx-cli \
+  -i version=X.Y.Z \
+  --json
 
-# 2. wait for the tag workflow, then verify GitHub and npm are live.
-
-# 3. from the workspace root, reconcile cloud/status against the published npm
-#    packages (the lockfile cannot resolve an unpublished release):
-pnpm release:prepare -- --version X.Y.Z
+# 2. After the release runner returns verified, add the reviewed release entry
+#    to the Cloud changelog. From the workspace root, adopt the independently
+#    verified release across status, Cloud's exact npm pin, lockfile, and notary.
+pnpm release:adopt -- --version X.Y.Z
 pnpm release:check
 pnpm release:check:live
 ```
 
-Use `workflow_dispatch` with a version only when a release-pipeline change
-needs a no-publish matrix rehearsal. Do not duplicate the complete platform
-build for an ordinary release: the tag workflow builds and smokes every target
-before creating the GitHub Release or publishing npm.
+The release profile refuses a dirty checkout, a commit that differs from
+`origin/main`, an existing tag bound to another commit, or a GHCR package that
+is not anonymously pullable. Use `workflow_dispatch` with a version only when a
+release-pipeline change needs a no-publish matrix rehearsal. Do not duplicate
+the complete platform build for an ordinary release: the governed tag publish
+starts the workflow that builds and smokes every target.
 
 Never move a published semver tag. Never bump a new patch just to repair channel
 drift; fix the existing channel artifact or workflow unless the binary itself is
