@@ -677,7 +677,7 @@ The package must include `dist/index.js` and `dist/index.d.ts`, and `dist/index.
 
 ## Boundary Rules
 
-- `oss/` must not import from `cloud/`.
+- `oss/` (this repository) must not import from `cloud/` (the private companion workspace, not part of this checkout).
 - State-machine and policy packages remain pure.
 - Rust owns trusted local runtime/execution, including sandbox, receipts,
   policy, authority, payment, harness, built-in adapters, and external
