@@ -12,12 +12,12 @@ pub(crate) struct OfficialSkillLockEntry {
 pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     OfficialSkillLockEntry {
         skill_id: "runx/agency",
-        version: "sha-996ae61d7b5b",
+        version: "sha-68f7eec70760",
         digest: "66db0e30af53394728876dc5c6df833f231c7f7b8ae13d3893acb35177675af8",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/audit-receipt",
-        version: "sha-e793faf91ed7",
+        version: "sha-a63ef3d2b488",
         digest: "fbcbcfd349790e08beed8a63c7617282502f6317d67ee1ed03698a08dda0e676",
     },
     OfficialSkillLockEntry {
@@ -42,7 +42,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/content-pipeline",
-        version: "sha-0d91cf22b6fe",
+        version: "sha-ef4d7c45ae46",
         digest: "2f37f66a7062ee26e868b4be51ff5caf18657f4fba9034ca9908491e37c63675",
     },
     OfficialSkillLockEntry {
@@ -57,7 +57,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/deep-research",
-        version: "sha-944d1d2692e4",
+        version: "sha-ad13328a9f73",
         digest: "075e99bcb57fa2c861211ea2733080963acf30d95645d39baec55d9e04e112de",
     },
     OfficialSkillLockEntry {
@@ -67,7 +67,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/ecosystem-brief",
-        version: "sha-6f901a2d75ab",
+        version: "sha-fd880202eb0c",
         digest: "6f4fa6b0f4b4f90e66d4dc11f3e450a81b5e13274c9a3bb5318a28f9807f814e",
     },
     OfficialSkillLockEntry {
@@ -82,7 +82,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/github-sync",
-        version: "sha-6cdd28ec5b95",
+        version: "sha-601562732cb8",
         digest: "426b344b4391044f5cbfaf128aae1104f64d1e35a27cbb64b573ba66074b1dbc",
     },
     OfficialSkillLockEntry {
@@ -97,7 +97,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/governed-outbound",
-        version: "sha-65765b0056b4",
+        version: "sha-7411f47df8b9",
         digest: "07d1460815c1d48736a1f94996b6d67437e44fb5ac4b244366a70b0075ccd3e1",
     },
     OfficialSkillLockEntry {
@@ -117,7 +117,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/issue-triage",
-        version: "sha-35ed286eb070",
+        version: "sha-e3811464f451",
         digest: "c22df7a78e29399bbc13085000218cb8b33c0361da2fb17e6427084e92034dc8",
     },
     OfficialSkillLockEntry {
@@ -137,7 +137,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/least-privilege",
-        version: "sha-cbfcdf7c0b7c",
+        version: "sha-76804a9e34f8",
         digest: "d73cc71d159d6a460cf658d50e5c7678780589a8edacdea5affb2fbf12c3346f",
     },
     OfficialSkillLockEntry {
@@ -147,7 +147,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/messageboard",
-        version: "sha-ad7c269cb37c",
+        version: "sha-ff13c7ccaab5",
         digest: "2fb6945dd0de73e074ab9b1ad8083bee427615029a2c3d7b64e78a31b8b358b4",
     },
     OfficialSkillLockEntry {
@@ -207,12 +207,12 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/operator-inbox",
-        version: "sha-60af9cc13eae",
+        version: "sha-234f3fade87e",
         digest: "c7b40a328f98851e5898c23f808aca7119620f773121d334101bd3515cf2d2e3",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/ops-desk",
-        version: "sha-276b1d9f7cac",
+        version: "sha-079f85749e2a",
         digest: "59e1c6664b5fdc5bf3828e395da0758fe5fc48b13e9210a438f1efe699aa68fd",
     },
     OfficialSkillLockEntry {
@@ -232,7 +232,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/pr-review-note",
-        version: "sha-22038c5250f4",
+        version: "sha-fafd5906b90c",
         digest: "0cb2ed91b15f6ce6dbc989a63cae483ab43cc0255bad26f6e846334582ab041a",
     },
     OfficialSkillLockEntry {
@@ -247,7 +247,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/reflect-digest",
-        version: "sha-56585d6b9957",
+        version: "sha-260e7a7d202a",
         digest: "8d0a974c28876ae064595f780d34a3474aff223ac3e7b47e7f12cd0d9633bb66",
     },
     OfficialSkillLockEntry {
@@ -267,7 +267,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/review-receipt",
-        version: "sha-3a4c3541fec5",
+        version: "sha-42e1970138f3",
         digest: "a67ea0548844f022da13a1effbff2273def6ebdc5a9653a5b9b287a37c7c700a",
     },
     OfficialSkillLockEntry {
@@ -307,12 +307,12 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/slack",
-        version: "sha-a88486e65b51",
+        version: "sha-2258bbb37a56",
         digest: "7f0453023afd67f1e1195940f775eb8bfbd25d5c60e64c564265ec6fa38f090d",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/slack-notify",
-        version: "sha-0a6095c2c57c",
+        version: "sha-3313e7f697b3",
         digest: "9021c5912b54266754a611759605609c26f2c09bdf717bcc705a088486ca3143",
     },
     OfficialSkillLockEntry {
@@ -337,7 +337,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/stripe-pay",
-        version: "sha-8d5bd8a67e71",
+        version: "sha-31b6e1563f1f",
         digest: "efbfe5a40d0f247f6e1c8ed4ba23da7567314272ad62736eed2dde50e0ea55c5",
     },
     OfficialSkillLockEntry {
@@ -352,7 +352,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/twitter",
-        version: "sha-d409b27258b8",
+        version: "sha-6daf4dcb9e46",
         digest: "b8ed01a75a3e6ebde37572bbc74f5c4b6533d8700bc2200e1e5141f561f3688a",
     },
     OfficialSkillLockEntry {
@@ -387,7 +387,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/x402-pay",
-        version: "sha-070812a67001",
+        version: "sha-9f5c0fdfb165",
         digest: "c7804ff43b0ed5b0488e416d4e657c6c5fd870d71d4f1556eddf639e0dbec6ad",
     },
     OfficialSkillLockEntry {
