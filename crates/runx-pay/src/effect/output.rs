@@ -158,6 +158,11 @@ pub(super) fn persist_payment_output(
     };
     let proof = crate::supervisor::payment_supervisor_proof_from_metadata(&request.output.metadata)
         .map_err(|source| failed("reading supervisor proof metadata", source))?;
+    // A failed rail act carries its partial evidence packet in the failure
+    // value, not in the (success-only) contract claim. Durable state must
+    // still record that in-flight mutation so a later run escalates instead
+    // of issuing a second rail mutation.
+    let evidence = payment_effect_evidence(request.claim, request.output)?;
     persist_effect_step_state(
         request.env,
         request.graph_dir,
@@ -173,11 +178,36 @@ pub(super) fn persist_payment_output(
             run_spend: payment.run_spend.clone(),
             period_spend: payment.period_spend.clone(),
         },
-        request.claim,
+        evidence,
         request.receipt,
         proof.as_ref(),
     )
     .map_err(|source| failed("persisting state", source))
+}
+
+fn payment_effect_evidence<'a>(
+    claim: &'a JsonObject,
+    output: &'a InvocationOutput,
+) -> Result<&'a JsonObject, RuntimeEffectError> {
+    if read_effect_evidence_packet(claim)
+        .map_err(|source| failed("reading persisted rail packet", source))?
+        .is_some()
+    {
+        return Ok(claim);
+    }
+    let Some(value) = (!output.succeeded())
+        .then(|| output.value.as_object())
+        .flatten()
+    else {
+        return Ok(claim);
+    };
+    if read_effect_evidence_packet(value)
+        .map_err(|source| failed("reading failed rail packet", source))?
+        .is_some()
+    {
+        return Ok(value);
+    }
+    Ok(claim)
 }
 
 pub(super) fn payment_authority_grant_refs(

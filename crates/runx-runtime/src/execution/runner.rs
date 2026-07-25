@@ -668,9 +668,9 @@ fn declared_step_outputs(step: &StepRun) -> JsonObject {
     step.contract.clone()
 }
 
-/// Compact graph provenance for the public skill-run envelope. Full step
-/// inputs/outputs are durable in graph state and signed receipts; callers need
-/// stable step and receipt references, not duplicated execution payloads.
+/// Compact graph provenance for the public skill-run envelope. Declared step
+/// outputs remain in graph state and their claims are bound by signed receipts;
+/// callers need stable step and receipt references, not another payload copy.
 pub(crate) fn graph_run_trace(run: &GraphRun) -> JsonValue {
     let mut trace = JsonObject::new();
     trace.insert(
@@ -1026,7 +1026,7 @@ mod tests {
         contract: JsonObject,
     ) -> Result<StepRun, Box<dyn std::error::Error>> {
         let output = InvocationOutput::runtime_success(JsonValue::Null, 1, JsonObject::new());
-        let receipt = step_receipt(graph_name, step_id, 1, &output, TEST_CREATED_AT)?;
+        let receipt = step_receipt(graph_name, step_id, 1, &output, &contract, TEST_CREATED_AT)?;
         Ok(StepRun {
             step_id: step_id.to_owned(),
             attempt: 1,

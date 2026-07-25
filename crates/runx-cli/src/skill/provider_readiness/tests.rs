@@ -56,11 +56,13 @@ fn connect_setup_command_preserves_exact_provider_scopes() {
 }
 
 #[test]
-fn explicit_provider_scope_transport_preserves_opaque_values() {
+fn explicit_provider_scope_transport_preserves_opaque_values()
+-> Result<(), Box<dyn std::error::Error>> {
     let scopes = vec![
         "https://provider.example/auth/custom.scope?mode=read,write".to_owned(),
         "opaque capability with spaces".to_owned(),
     ];
+    let encoded_scopes = runx_runtime::encode_provider_scopes_env(&scopes)?;
     let env = BTreeMap::from([
         (
             runx_runtime::PROVIDER_PERMISSION_GRANT_ID_ENV.to_owned(),
@@ -68,7 +70,7 @@ fn explicit_provider_scope_transport_preserves_opaque_values() {
         ),
         (
             runx_runtime::PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
-            runx_runtime::encode_provider_scopes_env(&scopes).expect("scope transport"),
+            encoded_scopes,
         ),
         (
             runx_runtime::PROVIDER_PERMISSION_PRINCIPAL_REF_ENV.to_owned(),
@@ -81,11 +83,14 @@ fn explicit_provider_scope_transport_preserves_opaque_values() {
     assert_eq!(sources.explicit_scopes, Some(scopes));
     assert!(sources.explicit_principal);
     assert!(sources.hosted_grants.is_none());
+    Ok(())
 }
 
 #[test]
-fn incomplete_explicit_provider_evidence_never_reports_locally_ready() {
+fn incomplete_explicit_provider_evidence_never_reports_locally_ready()
+-> Result<(), Box<dyn std::error::Error>> {
     let scopes = vec!["future.scope,with delimiter".to_owned()];
+    let encoded_scopes = runx_runtime::encode_provider_scopes_env(&scopes)?;
     let env = BTreeMap::from([
         (
             runx_runtime::PROVIDER_PERMISSION_GRANT_ID_ENV.to_owned(),
@@ -93,7 +98,7 @@ fn incomplete_explicit_provider_evidence_never_reports_locally_ready() {
         ),
         (
             runx_runtime::PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
-            runx_runtime::encode_provider_scopes_env(&scopes).expect("scope transport"),
+            encoded_scopes,
         ),
     ]);
 
@@ -102,4 +107,5 @@ fn incomplete_explicit_provider_evidence_never_reports_locally_ready() {
     assert_eq!(sources.explicit_scopes, Some(scopes));
     assert!(!sources.explicit_principal);
     assert!(sources.hosted_grants.is_some());
+    Ok(())
 }

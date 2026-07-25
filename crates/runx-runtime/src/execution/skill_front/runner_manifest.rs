@@ -1,29 +1,20 @@
-use super::{SkillRunError, invalid};
-#[cfg(feature = "cli-tool")]
-use super::{identifier_segment, seal_skill_output, sealed_output};
+use super::{
+    SkillRunError, SkillSourceAdapter, identifier_segment, invalid, seal_skill_output,
+    sealed_output,
+};
 
 use std::collections::BTreeMap;
 use std::path::Path;
 
 use runx_contracts::{JsonObject, JsonValue};
 use runx_parser::{SkillRunnerDefinition, SkillRunnerManifest};
-#[cfg(feature = "cli-tool")]
 use sha2::{Digest, Sha256};
 
-use crate::adapter::SkillInvocation;
-#[cfg(feature = "cli-tool")]
-use crate::adapter::{InvocationOutput, SkillAdapter};
-#[cfg(feature = "cli-tool")]
-use crate::adapters::cli_tool::CliToolAdapter;
-#[cfg(feature = "cli-tool")]
-use crate::adapters::javascript::JavaScriptAdapter;
+use crate::adapter::{InvocationOutput, SkillAdapter, SkillInvocation};
 use crate::execution::orchestrator::SkillRunRequest;
-#[cfg(feature = "cli-tool")]
 use crate::output_contract::{attach_verified_metadata, verified_runner_metadata_with_artifacts};
-#[cfg(feature = "cli-tool")]
 use crate::receipts::StepSealClosure;
 use crate::services::{ReceiptServices, WorkspaceEnv};
-#[cfg(feature = "cli-tool")]
 use runx_contracts::ClosureDisposition;
 
 #[cfg(test)]
@@ -64,15 +55,6 @@ pub(super) fn runner_invocation(
     env: &BTreeMap<String, String>,
     local_credential: Option<&crate::execution::orchestrator::LocalCredentialDescriptor>,
 ) -> Result<SkillInvocation, SkillRunError> {
-    if !matches!(
-        runner.source.source_type.as_str(),
-        "agent" | "agent-task" | "cli-tool" | "javascript" | "graph"
-    ) {
-        return Err(invalid(format!(
-            "runx skill native execution only supports agent, agent-task, graph, cli-tool, and javascript runners, got {}",
-            runner.source.source_type
-        )));
-    }
     let credential_delivery = credential_delivery_from_invocation(env, local_credential)?;
     Ok(SkillInvocation {
         skill_name: runner.name.clone(),
@@ -123,8 +105,7 @@ pub(super) fn credential_delivery_from_invocation(
     Ok(crate::credentials::CredentialDelivery::none())
 }
 
-#[cfg(feature = "cli-tool")]
-pub(super) fn execute_process_skill_run(
+pub(super) fn execute_adapter_skill_run(
     request: &SkillRunRequest,
     workspace: &WorkspaceEnv,
     receipts: &ReceiptServices,
@@ -134,29 +115,34 @@ pub(super) fn execute_process_skill_run(
 ) -> Result<JsonValue, SkillRunError> {
     if request.answers_path.is_some() {
         return Err(invalid(
-            "process-backed runners do not support continuation answers",
+            "native adapter runners do not support continuation answers",
         ));
     }
     let run_id = request
         .run_id
         .clone()
-        .unwrap_or_else(|| process_run_id(runner, &request.inputs));
-    let ProcessAdapterOutput {
+        .unwrap_or_else(|| adapter_run_id(runner, &request.inputs));
+    let AdapterOutput {
         output,
         payload,
         source_type,
-    } = invoke_process_adapter(runner, invocation)?;
+    } = invoke_source_adapter(runner, invocation)?;
     let disposition = if output.succeeded() {
         ClosureDisposition::Closed
     } else {
         ClosureDisposition::Failed
     };
+    let reason_family = match source_type {
+        runx_parser::SourceKind::CliTool | runx_parser::SourceKind::JavaScript => "process",
+        _ => "adapter",
+    };
     let receipt = seal_skill_output(
         &run_id,
         runner,
         &output,
+        None,
         StepSealClosure {
-            reason_code: format!("process_{}", disposition.label()),
+            reason_code: format!("{reason_family}_{}", disposition.label()),
             summary: format!("{} {} completed", source_type.as_str(), runner.name),
             disposition,
         },
@@ -170,34 +156,20 @@ pub(super) fn execute_process_skill_run(
     )))
 }
 
-#[cfg(feature = "cli-tool")]
-struct ProcessAdapterOutput {
+struct AdapterOutput {
     output: InvocationOutput,
     payload: JsonValue,
     source_type: runx_parser::SourceKind,
 }
 
-#[cfg(feature = "cli-tool")]
-fn invoke_process_adapter(
+fn invoke_source_adapter(
     runner: &SkillRunnerDefinition,
     invocation: SkillInvocation,
-) -> Result<ProcessAdapterOutput, SkillRunError> {
-    let credential_observation = invocation.credential_delivery.public_observation().cloned();
+) -> Result<AdapterOutput, SkillRunError> {
     let skill_directory = invocation.skill_directory.clone();
     let invocation_env = invocation.env.clone();
     let source_type = invocation.source.source_type;
-    let mut output = match source_type {
-        runx_parser::SourceKind::CliTool => CliToolAdapter.invoke(invocation)?,
-        runx_parser::SourceKind::JavaScript => JavaScriptAdapter::default().invoke(invocation)?,
-        _ => {
-            return Err(invalid(format!(
-                "process runner does not support source type {source_type}"
-            )));
-        }
-    };
-    if let Some(observation) = &credential_observation {
-        output.record_credential_observation(observation)?;
-    }
+    let mut output = SkillSourceAdapter::default().invoke(invocation)?;
     let payload = output.value.clone();
     if output.succeeded() {
         let metadata = verified_runner_metadata_with_artifacts(
@@ -210,25 +182,11 @@ fn invoke_process_adapter(
         )?;
         attach_verified_metadata(&mut output, metadata)?;
     }
-    Ok(ProcessAdapterOutput {
+    Ok(AdapterOutput {
         output,
         payload,
         source_type,
     })
-}
-
-#[cfg(not(feature = "cli-tool"))]
-pub(super) fn execute_process_skill_run(
-    _request: &SkillRunRequest,
-    _workspace: &WorkspaceEnv,
-    _receipts: &ReceiptServices,
-    _manifest: &SkillRunnerManifest,
-    _runner: &SkillRunnerDefinition,
-    _invocation: SkillInvocation,
-) -> Result<JsonValue, SkillRunError> {
-    Err(invalid(
-        "runx skill cli-tool execution is unavailable because runx-runtime was built without the cli-tool feature",
-    ))
 }
 
 pub(super) fn write_skill_receipt(
@@ -243,8 +201,7 @@ pub(super) fn write_skill_receipt(
         .map_err(Into::into)
 }
 
-#[cfg(feature = "cli-tool")]
-fn process_run_id(runner: &SkillRunnerDefinition, inputs: &BTreeMap<String, JsonValue>) -> String {
+fn adapter_run_id(runner: &SkillRunnerDefinition, inputs: &BTreeMap<String, JsonValue>) -> String {
     let input_bytes = serde_json::to_vec(inputs).unwrap_or_default();
     let digest = Sha256::digest(input_bytes);
     format!(
@@ -254,7 +211,6 @@ fn process_run_id(runner: &SkillRunnerDefinition, inputs: &BTreeMap<String, Json
     )
 }
 
-#[cfg(feature = "cli-tool")]
 fn hex_prefix(bytes: &[u8], chars: usize) -> String {
     let full = bytes
         .iter()

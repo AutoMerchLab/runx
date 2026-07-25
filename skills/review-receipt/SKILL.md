@@ -44,6 +44,8 @@ Classify the failure:
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `ledger#read`
 
 ## Agent-mediated suspension is not a failure

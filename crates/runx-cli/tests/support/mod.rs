@@ -92,6 +92,77 @@ pub fn apply_fixture_signing(command: &mut Command, signing_key_id: &str) {
     command.env("RUNX_RECEIPT_SIGN_ISSUER_TYPE", "hosted");
 }
 
+/// JSON commands keep their machine envelope on stdout. A governed skill run
+/// may additionally emit the compact, human-readable operator preflight on
+/// stderr. Accept only those two exact channel shapes so tests do not hide
+/// arbitrary warnings or diagnostics.
+pub fn assert_json_stderr(stderr: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
+    let stderr = std::str::from_utf8(stderr)?;
+    if stderr.is_empty() {
+        return Ok(());
+    }
+    let Some(body) = stderr.strip_suffix("\n\n") else {
+        return Err(format!("unexpected stderr for JSON command:\n{stderr}").into());
+    };
+    let lines = body.split('\n').collect::<Vec<_>>();
+    let mut cursor = 0;
+    require_stderr_line(&lines, &mut cursor, "Prepared run")?;
+    require_stderr_prefix(&lines, &mut cursor, "  Skill:  ")?;
+    require_stderr_prefix(&lines, &mut cursor, "  Runner: ")?;
+    require_stderr_prefix(&lines, &mut cursor, "  Source: ")?;
+    if lines
+        .get(cursor)
+        .is_some_and(|line| line.starts_with("  Run:    "))
+    {
+        require_stderr_prefix(&lines, &mut cursor, "  Run:    ")?;
+    }
+    if lines
+        .get(cursor)
+        .is_some_and(|line| line.starts_with("  Receipts: "))
+    {
+        require_stderr_prefix(&lines, &mut cursor, "  Receipts: ")?;
+    }
+    require_stderr_prefix(&lines, &mut cursor, "  Steps:  ")?;
+    require_stderr_prefix(&lines, &mut cursor, "  Tools:  ")?;
+    require_stderr_prefix(&lines, &mut cursor, "  Managed agent: ")?;
+    require_stderr_prefix(&lines, &mut cursor, "  Inputs: ")?;
+    require_stderr_prefix(&lines, &mut cursor, "  Credential: ")?;
+    require_stderr_prefix(&lines, &mut cursor, "  Digest: sha256:")?;
+    require_stderr_line(
+        &lines,
+        &mut cursor,
+        "  Full context: add --full-operator-context",
+    )?;
+    if cursor != lines.len() {
+        return Err(format!("unexpected stderr for JSON command:\n{stderr}").into());
+    }
+    Ok(())
+}
+
+fn require_stderr_line(lines: &[&str], cursor: &mut usize, expected: &str) -> Result<(), String> {
+    match lines.get(*cursor) {
+        Some(actual) if *actual == expected => {
+            *cursor += 1;
+            Ok(())
+        }
+        actual => Err(format!(
+            "expected stderr line {expected:?}, received {actual:?}"
+        )),
+    }
+}
+
+fn require_stderr_prefix(lines: &[&str], cursor: &mut usize, prefix: &str) -> Result<(), String> {
+    match lines.get(*cursor) {
+        Some(actual) if actual.starts_with(prefix) && actual.len() > prefix.len() => {
+            *cursor += 1;
+            Ok(())
+        }
+        actual => Err(format!(
+            "expected stderr line prefixed by {prefix:?}, received {actual:?}"
+        )),
+    }
+}
+
 pub struct GovernedHarnessFixture {
     path: PathBuf,
     root: PathBuf,

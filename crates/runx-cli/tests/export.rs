@@ -583,7 +583,7 @@ impl ExportFixture {
         fs::write(
             dir.join("X.yaml"),
             format!(
-                "skill: {name}\ncatalog:\n  kind: skill\n  audience: operator\n  visibility: public\n  role: canonical\nrunners:\n  payments:\n    type: graph\n    graph:\n      name: payments\n      steps:\n        - id: read\n          tool: data.compare\n  payout_preflight:\n    type: graph\n    inputs:\n      claim:\n        type: string\n        required: true\n    graph:\n      name: payout-preflight\n      steps:\n        - id: read\n          tool: data.compare\n"
+                "skill: {name}\ncatalog:\n  kind: skill\n  audience: operator\n  visibility: public\n  role: canonical\nrunners:\n  payments:\n    type: graph\n    graph:\n      name: payments\n      result_from: [read]\n      steps:\n        - id: read\n          tool: data.compare\n  payout_preflight:\n    type: graph\n    inputs:\n      claim:\n        type: string\n        required: true\n    graph:\n      name: payout-preflight\n      result_from: [read]\n      steps:\n        - id: read\n          tool: data.compare\n"
             ),
         )?;
         Ok(())

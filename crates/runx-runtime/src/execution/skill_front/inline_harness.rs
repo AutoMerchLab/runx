@@ -151,34 +151,24 @@ fn run_inline_harness_case(
         runner: case.runner.clone(),
         seeded_answers: seeded_answers_from_caller(&case.caller),
     };
-    execute_inline_harness_case(
-        &request,
-        receipt_dir,
-        context.output_receipt_dir,
-        case,
-        is_graph,
-        &runner.name,
-        &overrides,
-        context.effects,
-    )
+    execute_inline_harness_case(context, &request, receipt_dir, case, runner, &overrides)
 }
 
 fn execute_inline_harness_case(
+    context: InlineHarnessContext<'_>,
     request: &SkillRunRequest,
     receipt_dir: Option<&Path>,
-    output_receipt_dir: Option<&Path>,
     case: &RunnerHarnessCase,
-    is_graph: bool,
-    runner_name: &str,
+    runner: &runx_parser::SkillRunnerDefinition,
     overrides: &SkillRunOverrides,
-    effects: &RuntimeEffectRegistry,
 ) -> InlineHarnessCaseOutcome {
-    match execute_skill_run_with_overrides(request, overrides, effects) {
+    let is_graph = runner.source.source_type == runx_parser::SourceKind::Graph;
+    match execute_skill_run_with_overrides(request, overrides, context.effects) {
         Ok(output) => {
             let receipt_id = receipt_id_from_output(&output);
             if receipt_id.is_some()
                 && let (Some(receipt_dir), Some(output_receipt_dir)) =
-                    (receipt_dir, output_receipt_dir)
+                    (receipt_dir, context.output_receipt_dir)
                 && let Err(error) =
                     persist_inline_case_receipts(request, receipt_dir, output_receipt_dir)
             {
@@ -198,7 +188,7 @@ fn execute_inline_harness_case(
                     request,
                     case,
                     is_graph,
-                    runner_name,
+                    &runner.name,
                     &output,
                 ),
             }

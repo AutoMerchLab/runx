@@ -241,6 +241,8 @@ runners:
     credential: github
     graph:
       name: javascript-credential-graph
+      result_from:
+        - finalize
       steps:
         - id: prepare
           run:

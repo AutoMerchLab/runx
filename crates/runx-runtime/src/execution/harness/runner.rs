@@ -29,14 +29,23 @@ use super::fixtures::{
 };
 use crate::RuntimeError;
 use crate::adapter::{InvocationOutput, SkillAdapter, SkillInvocation};
-use crate::agent_invocation::{AgentActInvocationSourceType, agent_act_invocation_id};
+use crate::agent_contract::{
+    agent_output_contract_payload, verified_agent_metadata_with_artifacts,
+};
+use crate::agent_invocation::{
+    AgentActInvocationSourceType, agent_act_invocation_id, agent_act_resolution_request,
+};
 use crate::effects::RuntimeEffectRegistry;
+use crate::execution::output_projection::project_step_claim;
 use crate::execution::runner::{GraphRun, Runtime, RuntimeOptions, StepRun};
 use crate::host::Host;
-use crate::output_contract::{attach_verified_metadata, verified_runner_metadata_with_artifacts};
+use crate::output_contract::{
+    attach_verified_metadata, project_declared_output_claim,
+    verified_runner_metadata_with_artifacts,
+};
 use crate::receipts::{
     GraphClosure, StepReceiptWithDisposition, graph_receipt_with_disposition_and_policy,
-    step_receipt_with_disposition_and_policy,
+    step_receipt_with_declared_claim_and_policy, step_receipt_with_disposition_and_policy,
 };
 
 #[derive(Clone, Debug)]
@@ -47,6 +56,7 @@ pub struct HarnessReplayOutput {
     pub step_receipts: Vec<Receipt>,
     pub steps: Vec<StepRun>,
     pub skill_output: Option<InvocationOutput>,
+    pub replayed_answers: JsonObject,
 }
 
 #[derive(Debug, Error)]
@@ -132,7 +142,7 @@ pub fn run_harness_fixture(
     {
         run_harness_fixture_with_adapter(
             fixture_path,
-            crate::execution::skill_front::SkillRunGraphAdapter::default(),
+            crate::execution::skill_front::SkillSourceAdapter::default(),
             fixture_runtime_options_from_env(env)?,
         )
     }
@@ -279,6 +289,7 @@ fn run_agent_task_fixture(
     let replay_name = fixture.runner.as_deref().unwrap_or(&fixture.name);
     let request_id = format!("agent_task.{replay_name}.output");
     let output = agent_task_output(fixture, &request_id)?;
+    let replayed_answers = replayed_fixture_answer(fixture, &request_id);
     let disposition = fixture
         .expect
         .status
@@ -291,6 +302,7 @@ fn run_agent_task_fixture(
                 ClosureDisposition::Failed
             }
         });
+    let claim = skill_output_object(&output);
     let receipt = step_receipt_with_disposition_and_policy(
         StepReceiptWithDisposition {
             graph_name: &fixture.name,
@@ -302,6 +314,7 @@ fn run_agent_task_fixture(
             reason_code: process_reason_code(&disposition),
             summary: format!("agent-task {} completed", fixture.name),
         },
+        &claim,
         options.signature_policy(),
     )?;
     Ok(HarnessReplayOutput {
@@ -311,6 +324,7 @@ fn run_agent_task_fixture(
         step_receipts: Vec::new(),
         steps: Vec::new(),
         skill_output: Some(output),
+        replayed_answers,
     })
 }
 
@@ -332,13 +346,16 @@ fn run_graph_replay_fixture(
     options: RuntimeOptions,
 ) -> Result<HarnessReplayOutput, HarnessReplayError> {
     let mut runs = Vec::new();
+    let mut replayed_answers = JsonObject::new();
     for replay_step in graph_replay_steps(fixture)? {
         let output = agent_task_output(fixture, &replay_step.request_id)?;
+        replayed_answers.extend(replayed_fixture_answer(fixture, &replay_step.request_id));
         let disposition = if output.succeeded() {
             ClosureDisposition::Closed
         } else {
             ClosureDisposition::Deferred
         };
+        let outputs = skill_output_object(&output);
         let receipt = step_receipt_with_disposition_and_policy(
             StepReceiptWithDisposition {
                 graph_name: &fixture.name,
@@ -356,9 +373,9 @@ fn run_graph_replay_fixture(
                         .unwrap_or_else(|| "agent-task replay failed".to_owned())
                 },
             },
+            &outputs,
             options.signature_policy(),
         )?;
-        let outputs = skill_output_object(&output);
         let succeeded = output.succeeded();
         let admission_witness =
             StepAdmissionWitness::local_runtime(&replay_step.step_id, receipt.id.as_str());
@@ -443,6 +460,7 @@ fn run_graph_replay_fixture(
         step_receipts,
         steps: runs,
         skill_output,
+        replayed_answers,
     })
 }
 
@@ -500,9 +518,26 @@ where
         }
         return run_graph_skill_fixture(fixture, skill_name, runner, invocation, adapter, options);
     }
-    let (skill_output, disposition, reason_code, summary) =
-        run_skill_invocation(fixture, &runner, invocation, adapter)?;
-    let receipt = step_receipt_with_disposition_and_policy(
+    let SkillFixtureInvocationOutcome {
+        output: skill_output,
+        claim_payload,
+        disposition,
+        reason_code,
+        summary,
+        replayed_answers,
+    } = run_skill_invocation(fixture, &runner, invocation, adapter)?;
+    let claim = if skill_output.succeeded() {
+        project_declared_output_claim(
+            &runner.name,
+            &claim_payload,
+            runner.source.outputs.as_ref(),
+            runner.artifacts.as_ref(),
+        )?
+    } else {
+        JsonObject::new()
+    };
+    let projection = project_step_claim(claim);
+    let receipt = step_receipt_with_declared_claim_and_policy(
         StepReceiptWithDisposition {
             graph_name: &fixture.name,
             step_id: &skill_name,
@@ -513,6 +548,8 @@ where
             reason_code,
             summary,
         },
+        &projection.outputs,
+        projection.refs,
         options.signature_policy(),
     )?;
     Ok(HarnessReplayOutput {
@@ -522,6 +559,7 @@ where
         step_receipts: Vec::new(),
         steps: Vec::new(),
         skill_output: Some(skill_output),
+        replayed_answers,
     })
 }
 
@@ -561,6 +599,7 @@ where
     let runtime = Runtime::new(adapter, options);
     let mut host = FixtureHost::new(fixture);
     let graph_run = runtime.run_graph_with_host(&invocation.skill_directory, graph, &mut host)?;
+    let replayed_answers = host.into_replayed_answers();
     // When the runner declares an `act:` block, seal the turn's primary receipt as
     // its domain act through the SAME production minting entry, so the fixture and
     // production/inline paths emit identical receipts. The graph trace receipt and
@@ -574,7 +613,7 @@ where
         &created_at,
         &signature_config,
     )?;
-    let mut output = replay_output_from_graph(fixture, graph_run);
+    let mut output = replay_output_from_graph(fixture, graph_run, replayed_answers);
     if let Some(domain_receipt) = minted {
         output.receipt = domain_receipt;
     }
@@ -650,12 +689,21 @@ fn skill_fixture_invocation(
     Ok((skill_name, runner, invocation))
 }
 
+struct SkillFixtureInvocationOutcome {
+    output: InvocationOutput,
+    claim_payload: JsonValue,
+    disposition: ClosureDisposition,
+    reason_code: String,
+    summary: String,
+    replayed_answers: JsonObject,
+}
+
 fn run_skill_invocation<A>(
     fixture: &HarnessFixture,
     runner: &SkillRunnerDefinition,
     invocation: SkillInvocation,
     adapter: A,
-) -> Result<(InvocationOutput, ClosureDisposition, String, String), HarnessReplayError>
+) -> Result<SkillFixtureInvocationOutcome, HarnessReplayError>
 where
     A: SkillAdapter,
 {
@@ -663,9 +711,58 @@ where
     let raw_output = invocation.source.outputs.clone();
     let skill_directory = invocation.skill_directory.clone();
     let invocation_env = invocation.env.clone();
-    let (skill_output, disposition, reason_code, summary) =
+    let (output, claim_payload, disposition, reason_code, summary, replayed_answers) =
         match invocation.source.source_type.as_str() {
-            "agent" | "agent-task" => replay_agent_skill_fixture(fixture, &invocation)?,
+            "agent" | "agent-task" => {
+                let source_type = AgentActInvocationSourceType::from_contract_value(
+                    invocation.source.source_type.as_str(),
+                )
+                .ok_or_else(|| RuntimeError::UnsupportedAdapter {
+                    adapter_type: invocation.source.source_type.as_str().to_owned(),
+                })?;
+                let resolution_request = agent_act_resolution_request(&invocation, source_type)?;
+                let request_id = agent_act_invocation_id(&invocation, source_type);
+                let (mut output, disposition, reason_code, summary) =
+                    replay_agent_skill_fixture(fixture, &request_id)?;
+                let claim_payload = match &resolution_request {
+                    ResolutionRequest::AgentAct { .. } => {
+                        agent_output_contract_payload(&output.value)
+                    }
+                    _ => {
+                        return Err(RuntimeError::ReceiptInvalid {
+                            message: "agent harness produced a non-agent request".to_owned(),
+                        }
+                        .into());
+                    }
+                };
+                if output.succeeded() {
+                    let metadata = verified_agent_metadata_with_artifacts(
+                        &resolution_request,
+                        &output.value,
+                        runner.artifacts.as_ref(),
+                        &skill_directory,
+                        &invocation_env,
+                    )?;
+                    for (key, value) in metadata {
+                        if output.metadata.insert(key.clone(), value).is_some() {
+                            return Err(RuntimeError::ReceiptInvalid {
+                                message: format!(
+                                    "agent harness produced duplicate runtime metadata {key:?}"
+                                ),
+                            }
+                            .into());
+                        }
+                    }
+                }
+                (
+                    output,
+                    claim_payload,
+                    disposition,
+                    reason_code,
+                    summary,
+                    replayed_fixture_answer(fixture, &request_id),
+                )
+            }
             _ => {
                 let mut output = adapter.invoke(invocation)?;
                 if output.succeeded() {
@@ -686,10 +783,25 @@ where
                 };
                 let reason_code = process_reason_code(&disposition);
                 let summary = format!("step {skill_name} completed");
-                (output, disposition, reason_code, summary)
+                let claim_payload = output.value.clone();
+                (
+                    output,
+                    claim_payload,
+                    disposition,
+                    reason_code,
+                    summary,
+                    JsonObject::new(),
+                )
             }
         };
-    Ok((skill_output, disposition, reason_code, summary))
+    Ok(SkillFixtureInvocationOutcome {
+        output,
+        claim_payload,
+        disposition,
+        reason_code,
+        summary,
+        replayed_answers,
+    })
 }
 
 fn select_harness_runner<'a>(
@@ -730,20 +842,14 @@ fn select_harness_runner<'a>(
 
 fn replay_agent_skill_fixture(
     fixture: &HarnessFixture,
-    invocation: &SkillInvocation,
+    request_id: &str,
 ) -> Result<(InvocationOutput, ClosureDisposition, String, String), HarnessReplayError> {
-    let source_type =
-        AgentActInvocationSourceType::from_contract_value(invocation.source.source_type.as_str())
-            .ok_or_else(|| RuntimeError::UnsupportedAdapter {
-            adapter_type: invocation.source.source_type.as_str().to_owned(),
-        })?;
-    let request_id = agent_act_invocation_id(invocation, source_type);
     let mut metadata = JsonObject::new();
     metadata.insert(
         "agent_request_id".to_owned(),
-        JsonValue::String(request_id.clone()),
+        JsonValue::String(request_id.to_owned()),
     );
-    let Some(answer) = fixture_answer(fixture, "answers", &request_id, &request_id) else {
+    let Some(answer) = fixture_answer(fixture, "answers", request_id, request_id) else {
         return Ok((
             InvocationOutput::runtime_failure(
                 JsonValue::Null,
@@ -803,17 +909,26 @@ where
     let runtime = Runtime::new(adapter, options);
     let mut host = FixtureHost::new(fixture);
     let graph_run = runtime.run_graph_file_for_harness(graph_path, &mut host)?;
-    let output = replay_output_from_graph(fixture, graph_run);
+    let replayed_answers = host.into_replayed_answers();
+    let output = replay_output_from_graph(fixture, graph_run, replayed_answers);
     Ok(output)
 }
 
 struct FixtureHost<'a> {
     fixture: &'a HarnessFixture,
+    replayed_answers: JsonObject,
 }
 
 impl<'a> FixtureHost<'a> {
     fn new(fixture: &'a HarnessFixture) -> Self {
-        Self { fixture }
+        Self {
+            fixture,
+            replayed_answers: JsonObject::new(),
+        }
+    }
+
+    fn into_replayed_answers(self) -> JsonObject {
+        self.replayed_answers
     }
 }
 
@@ -828,10 +943,23 @@ impl Host for FixtureHost<'_> {
     ) -> Result<Option<ResolutionResponse>, RuntimeError> {
         match request {
             ResolutionRequest::Approval { id, gate } => {
-                fixture_approval_response(self.fixture, &id, &gate.id)
+                let response = fixture_approval_response(self.fixture, &id, &gate.id)?;
+                if response.is_some()
+                    && fixture_answer(self.fixture, "approvals", &gate.id, &id).is_none()
+                    && let Some((key, answer)) =
+                        fixture_answer_entry(self.fixture, "answers", &id, &gate.id)
+                {
+                    self.replayed_answers.insert(key.to_owned(), answer.clone());
+                }
+                Ok(response)
             }
             ResolutionRequest::AgentAct { id, .. } => {
-                fixture_agent_act_response(self.fixture, id.as_str())
+                let response = fixture_agent_act_response(self.fixture, id.as_str())?;
+                if let Some(response) = &response {
+                    self.replayed_answers
+                        .insert(id.to_string(), response.payload.clone());
+                }
+                Ok(response)
             }
             ResolutionRequest::Input { .. } => Ok(None),
         }
@@ -878,15 +1006,20 @@ fn fixture_answer<'a>(
     primary_key: &str,
     secondary_key: &str,
 ) -> Option<&'a JsonValue> {
-    fixture
-        .caller
-        .get(group)
-        .and_then(JsonValue::as_object)
-        .and_then(|answers| {
-            answers
-                .get(primary_key)
-                .or_else(|| answers.get(secondary_key))
-        })
+    fixture_answer_entry(fixture, group, primary_key, secondary_key).map(|(_, answer)| answer)
+}
+
+fn fixture_answer_entry<'a>(
+    fixture: &'a HarnessFixture,
+    group: &str,
+    primary_key: &str,
+    secondary_key: &str,
+) -> Option<(&'a str, &'a JsonValue)> {
+    let answers = fixture.caller.get(group).and_then(JsonValue::as_object)?;
+    answers
+        .get_key_value(primary_key)
+        .or_else(|| answers.get_key_value(secondary_key))
+        .map(|(key, value)| (key.as_str(), value))
 }
 
 fn fixture_bool_answer(
@@ -934,7 +1067,17 @@ fn invalid_fixture_answer(request_id: &str, gate_id: &str) -> RuntimeError {
     }
 }
 
-fn replay_output_from_graph(fixture: &HarnessFixture, graph_run: GraphRun) -> HarnessReplayOutput {
+fn replayed_fixture_answer(fixture: &HarnessFixture, request_id: &str) -> JsonObject {
+    fixture_answer(fixture, "answers", request_id, request_id)
+        .map(|answer| JsonObject::from([(request_id.to_owned(), answer.clone())]))
+        .unwrap_or_default()
+}
+
+fn replay_output_from_graph(
+    fixture: &HarnessFixture,
+    graph_run: GraphRun,
+    replayed_answers: JsonObject,
+) -> HarnessReplayOutput {
     let result = crate::execution::runner::graph_run_result(&graph_run).ok();
     let skill_output = result.map(|result| {
         if graph_run.state.status == runx_core::state_machine::GraphStatus::Succeeded {
@@ -960,6 +1103,7 @@ fn replay_output_from_graph(fixture: &HarnessFixture, graph_run: GraphRun) -> Ha
         step_receipts,
         steps: graph_run.steps,
         skill_output,
+        replayed_answers,
     }
 }
 
@@ -969,7 +1113,14 @@ fn resolve_target_path(fixture_path: &Path, target: &str) -> Result<PathBuf, Har
             target: fixture_path.to_path_buf(),
         });
     };
-    Ok(parent.join(target))
+    let unresolved = parent.join(target);
+    fs::canonicalize(&unresolved).map_err(|source| {
+        RuntimeError::io(
+            format!("resolving harness target {}", unresolved.display()),
+            source,
+        )
+        .into()
+    })
 }
 
 fn overlay_harness_env(options: &mut RuntimeOptions, env: &BTreeMap<String, String>) {

@@ -205,7 +205,7 @@ runners:
         description: Existing approval evidence to record for the later provider action.
     graph:
       name: content-pipeline
-      result_from: [prepare-handoff]
+      result_from: [research-topic, draft-brief, package-content, prepare-handoff]
       steps:
         - id: research-topic
           skill: ../research

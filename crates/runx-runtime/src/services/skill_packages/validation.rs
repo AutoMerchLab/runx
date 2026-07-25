@@ -115,7 +115,7 @@ pub(crate) fn validate_skill_package(
 fn validation_result_report(
     requested_ref: &str,
     resolved_ref: &str,
-    inspected: Result<JsonValue, String>,
+    inspected: Result<JsonValue, crate::SkillInspectionError>,
     run_harness: bool,
     result: Result<JsonObject, RuntimeError>,
 ) -> JsonObject {
@@ -160,11 +160,11 @@ fn validation_result_report(
     }
 }
 
-fn failed_inspection(inspected: Result<JsonValue, String>) -> JsonValue {
-    inspected.unwrap_or_else(|message| {
+fn failed_inspection(inspected: Result<JsonValue, crate::SkillInspectionError>) -> JsonValue {
+    inspected.unwrap_or_else(|error| {
         JsonValue::Object(JsonObject::from([
             ("status".to_owned(), JsonValue::String("failed".to_owned())),
-            ("error".to_owned(), JsonValue::String(message)),
+            ("error".to_owned(), JsonValue::String(error.to_string())),
         ]))
     })
 }

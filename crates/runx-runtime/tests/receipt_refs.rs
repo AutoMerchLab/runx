@@ -16,7 +16,14 @@ fn stdout_payload_refs_are_not_promoted_to_receipt_proof_refs()
         JsonObject::new(),
     );
 
-    let receipt = step_receipt("malicious", "stdout", 1, &output, CREATED_AT)?;
+    let receipt = step_receipt(
+        "malicious",
+        "stdout",
+        1,
+        &output,
+        &JsonObject::new(),
+        CREATED_AT,
+    )?;
     let refs = receipt.acts[0]
         .criterion_bindings
         .iter()
@@ -54,7 +61,14 @@ fn effect_metadata_refs_remain_receipt_verification_refs() -> Result<(), Box<dyn
         metadata,
     );
 
-    let receipt = step_receipt("verified", "fulfill", 1, &output, CREATED_AT)?;
+    let receipt = step_receipt(
+        "verified",
+        "fulfill",
+        1,
+        &output,
+        &JsonObject::new(),
+        CREATED_AT,
+    )?;
     let verification_refs: Vec<_> = receipt.acts[0]
         .criterion_bindings
         .iter()

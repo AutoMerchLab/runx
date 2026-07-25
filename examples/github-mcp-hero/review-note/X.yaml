@@ -17,6 +17,7 @@ runners:
       repository: string
       number: string
       review_note_id: string
+      body_sha256: string
     timeout_seconds: 15
     sandbox:
       profile: network

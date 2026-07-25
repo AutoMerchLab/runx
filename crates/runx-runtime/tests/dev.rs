@@ -96,6 +96,11 @@ fn dev_runs_native_repo_integration_skill_with_fixture_cwd()
     let mut options = DevLoopOptions::new(root.path());
     options.unit_path = Some(root.join("units/native-repo"));
     options.lane = Some(DevFixtureLane::RepoIntegration);
+    // The dev loop never re-reads process state; the caller admits the
+    // environment. This fixture spawns a real node child, so admit PATH.
+    if let Ok(path) = std::env::var("PATH") {
+        options.env.insert("PATH".to_owned(), path);
+    }
 
     let report = run_dev_once(&options)?;
 

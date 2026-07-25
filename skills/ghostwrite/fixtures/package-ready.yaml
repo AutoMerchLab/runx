@@ -21,9 +21,10 @@ expect:
   output:
     subset:
       content_publish_packet:
-        decision: ready_for_handoff
-        delivery_status: not_sent
-        channel: blog
+        data:
+          decision: ready_for_handoff
+          delivery_status: not_sent
+          channel: blog
       handoff_notes:
         provider_delivery_required: true
   receipt: { schema: runx.receipt.v1 }

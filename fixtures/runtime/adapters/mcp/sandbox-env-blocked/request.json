@@ -20,10 +20,6 @@
     "sandbox": {
       "profile": "readonly",
       "cwdPolicy": "workspace",
-      "envAllowlist": [
-        "PATH",
-        "ALLOWED_VALUE"
-      ],
       "writablePaths": [],
       "raw": {}
     },

@@ -30,24 +30,6 @@ pub fn map_mcp_arguments(
         .collect()
 }
 
-pub fn stringify_mcp_tool_result(result: &JsonValue) -> Result<String, RuntimeError> {
-    if let JsonValue::Object(record) = result
-        && let Some(JsonValue::Array(content)) = record.get("content")
-    {
-        return content
-            .iter()
-            .map(stringify_content_entry)
-            .collect::<Result<Vec<_>, _>>()
-            .map(|entries| entries.join("\n"));
-    }
-
-    match result {
-        JsonValue::String(value) => Ok(value.clone()),
-        value => serde_json::to_string(value)
-            .map_err(|source| RuntimeError::json("serializing MCP tool result", source)),
-    }
-}
-
 fn map_template_string(
     template: &str,
     inputs: &JsonObject,
@@ -116,17 +98,6 @@ fn stringify_mcp_input(value: Option<&JsonValue>) -> Result<String, RuntimeError
         Some(value) => serde_json::to_string(value)
             .map_err(|source| RuntimeError::json("serializing MCP template input", source)),
     }
-}
-
-fn stringify_content_entry(entry: &JsonValue) -> Result<String, RuntimeError> {
-    if let JsonValue::Object(record) = entry
-        && record.get("type") == Some(&JsonValue::String("text".to_owned()))
-        && let Some(JsonValue::String(text)) = record.get("text")
-    {
-        return Ok(text.clone());
-    }
-    serde_json::to_string(entry)
-        .map_err(|source| RuntimeError::json("serializing MCP content entry", source))
 }
 
 pub(super) fn js_string(value: Option<&JsonValue>) -> String {

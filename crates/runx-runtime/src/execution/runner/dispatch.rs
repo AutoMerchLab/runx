@@ -108,24 +108,20 @@ where
         loaded_skill,
         host,
     } = request;
-    if let Some(skill) = loaded_skill {
-        return super::step_handlers::run_step_with_loaded_skill_inputs(
-            StepRunRequest {
-                runtime,
-                graph_dir,
-                graph_name,
-                step,
-                attempt,
-                inputs,
-                provenance,
-                host,
-            },
-            skill,
-        );
+    let request = StepRunRequest {
+        runtime,
+        graph_dir,
+        graph_name,
+        step,
+        attempt,
+        inputs,
+        provenance,
+        host,
+    };
+    match loaded_skill {
+        Some(skill) => super::step_handlers::run_step_with_loaded_skill_inputs(request, skill),
+        None => run_step_with_inputs(request),
     }
-    run_step_with_inputs(
-        runtime, graph_dir, graph_name, step, attempt, inputs, provenance, host,
-    )
 }
 
 #[cfg(test)]
@@ -159,15 +155,18 @@ mod tests {
     }
 
     #[test]
-    fn explicitly_wrapped_engine_failure_is_fatal() {
+    fn explicitly_wrapped_engine_failure_is_fatal() -> Result<(), Box<dyn std::error::Error>> {
+        let source = serde_json::from_str::<serde_json::Value>("{")
+            .err()
+            .ok_or("fixture unexpectedly contained valid JSON")?;
         let fault = StepFault::from(RuntimeError::engine(
             "sealing a graph step receipt",
             RuntimeError::Json {
                 context: "serializing invocation diagnostics".to_owned(),
-                source: serde_json::from_str::<serde_json::Value>("{")
-                    .expect_err("fixture must be invalid JSON"),
+                source,
             },
         ));
         assert!(matches!(fault, StepFault::Fatal(_)));
+        Ok(())
     }
 }

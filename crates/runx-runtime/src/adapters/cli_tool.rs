@@ -237,7 +237,14 @@ mod tests {
             provenance: Vec::new(),
             skill_directory: std::env::current_dir()
                 .map_err(|source| RuntimeError::io("reading current dir", source))?,
-            env: BTreeMap::new(),
+            // The workspace cwd policy requires an explicit workspace anchor.
+            env: BTreeMap::from([(
+                crate::receipts::paths::RUNX_CWD_ENV.to_owned(),
+                std::env::current_dir()
+                    .map_err(|source| RuntimeError::io("reading current dir", source))?
+                    .to_string_lossy()
+                    .into_owned(),
+            )]),
             credential_delivery: CredentialDelivery::none(),
         })?;
         DEFAULT_TIMEOUT_OVERRIDE_SECONDS.store(0, std::sync::atomic::Ordering::SeqCst);

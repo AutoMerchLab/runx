@@ -39,7 +39,7 @@ pub struct McpServerOptions {
     pub tools: Vec<McpServerTool>,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct McpServerExecutionOptions {
     pub runner: Option<String>,
     pub receipt_dir: Option<PathBuf>,
@@ -47,17 +47,6 @@ pub struct McpServerExecutionOptions {
     /// Credential deliveries resolved once at server startup, keyed by the
     /// canonical skill path they may serve.
     pub credential_deliveries: BTreeMap<PathBuf, crate::credentials::CredentialDelivery>,
-}
-
-impl Default for McpServerExecutionOptions {
-    fn default() -> Self {
-        Self {
-            runner: None,
-            receipt_dir: None,
-            env: BTreeMap::new(),
-            credential_deliveries: BTreeMap::new(),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

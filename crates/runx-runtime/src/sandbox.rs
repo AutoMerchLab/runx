@@ -338,12 +338,16 @@ pub fn prepare_mcp_process_sandbox(
         workspace_root.to_string_lossy().into_owned(),
     );
     prepare_sandbox_tmp_env(sandbox, &runtime, &mut sandbox_base_env, &mut cleanup_paths)?;
-    let env = match child_env(
-        environment,
-        &sandbox_base_env,
-        &JsonObject::new(),
-        &mut cleanup_paths,
-    ) {
+    // An MCP server is a protocol host: tool inputs travel over the wire, so
+    // its environment carries no input plumbing. Keeping the env free of
+    // per-invocation paths also keeps the session-pool key deterministic.
+    let env = match self::env::child_base_env(&sandbox_base_env).and_then(|mut env| {
+        env.extend(crate::execution_environment::resolve_environment(
+            environment,
+            &sandbox_base_env,
+        )?);
+        Ok(env)
+    }) {
         Ok(env) => env,
         Err(error) => {
             cleanup_paths_quietly(&cleanup_paths);

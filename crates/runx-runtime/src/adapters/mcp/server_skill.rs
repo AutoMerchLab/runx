@@ -12,12 +12,16 @@ use runx_parser::{SkillInput, SkillRunnerDefinition, ValidatedSkill};
 
 use crate::adapter::{InvocationOutput, SkillAdapter, SkillInvocation};
 use crate::agent_invocation::{AgentActInvocationSourceType, agent_act_resolution_request};
+use crate::execution::output_projection::project_step_claim;
 use crate::host::Host;
-use crate::receipts::step_receipt_with_signature_policy;
+use crate::output_contract::{
+    attach_verified_metadata, project_declared_output_claim,
+    verified_runner_metadata_with_artifacts,
+};
+use crate::receipts::{StepReceiptWithDisposition, step_receipt_with_declared_claim_and_policy};
 use crate::services::ReceiptServices;
 use crate::{GraphRun, Runtime, RuntimeError, RuntimeOptions};
 
-use super::adapter::McpAdapter;
 use super::server::mcp_tool_result_from_host_result;
 use super::types::{
     McpHostRunResult, McpServerExecutionOptions, McpServerOptions, McpServerSkillExecution,
@@ -224,9 +228,7 @@ fn execute_mcp_server_graph(
             message: error.to_string(),
         })?;
     let runtime = Runtime::with_native_services(
-        McpServerGraphAdapter {
-            javascript: javascript.clone(),
-        },
+        crate::execution::skill_front::SkillSourceAdapter::with_javascript(javascript.clone()),
         RuntimeOptions {
             created_at: crate::time::now_iso8601(),
             env,
@@ -311,12 +313,28 @@ fn complete_mcp_server_skill(
         }
     })?;
     let output = invoke_mcp_server_skill(&execution, inputs, javascript)?;
-    let receipt = step_receipt_with_signature_policy(
-        run_id,
-        &execution.skill_name,
-        1,
-        &output,
-        &crate::time::now_iso8601(),
+    let claim = if output.succeeded() {
+        project_declared_output_claim(
+            &execution.skill_name,
+            &output.value,
+            execution.runner.source.outputs.as_ref(),
+            execution.runner.artifacts.as_ref(),
+        )?
+    } else {
+        JsonObject::new()
+    };
+    let projection = project_step_claim(claim);
+    let created_at = crate::time::now_iso8601();
+    let receipt = step_receipt_with_declared_claim_and_policy(
+        StepReceiptWithDisposition::with_default_closure(
+            run_id,
+            &execution.skill_name,
+            1,
+            &output,
+            &created_at,
+        ),
+        &projection.outputs,
+        projection.refs,
         receipts.signature_config().signature_policy(),
     )?;
     if let Some(receipt_dir) = &execution.receipt_dir {
@@ -352,17 +370,21 @@ fn invoke_mcp_server_skill(
     javascript: &crate::adapters::javascript::JavaScriptAdapter,
 ) -> Result<InvocationOutput, RuntimeError> {
     let invocation = mcp_skill_invocation(execution, inputs);
-    match execution.runner.source.source_type.as_str() {
-        "mcp" => McpAdapter::default().invoke(invocation),
-        "cli-tool" => invoke_cli_tool_server_skill(invocation),
-        "javascript" => invoke_javascript_server_skill(javascript, invocation),
-        "graph" => Err(RuntimeError::UnsupportedAdapter {
-            adapter_type: "graph".to_owned(),
-        }),
-        other => Err(RuntimeError::UnsupportedAdapter {
-            adapter_type: other.to_owned(),
-        }),
+    let mut output =
+        crate::execution::skill_front::SkillSourceAdapter::with_javascript(javascript.clone())
+            .invoke(invocation)?;
+    if output.succeeded() {
+        let metadata = verified_runner_metadata_with_artifacts(
+            &execution.skill_name,
+            &output.value,
+            execution.runner.source.outputs.as_ref(),
+            execution.runner.artifacts.as_ref(),
+            &skill_directory_for_execution(&execution.skill_path),
+            &execution.env,
+        )?;
+        attach_verified_metadata(&mut output, metadata)?;
     }
+    Ok(output)
 }
 
 fn mcp_skill_invocation(
@@ -383,62 +405,6 @@ fn mcp_skill_invocation(
         skill_directory: skill_directory_for_execution(&execution.skill_path),
         env: execution.env.clone(),
         credential_delivery: execution.credential_delivery.clone(),
-    }
-}
-
-#[cfg(feature = "cli-tool")]
-fn invoke_cli_tool_server_skill(
-    invocation: SkillInvocation,
-) -> Result<InvocationOutput, RuntimeError> {
-    crate::adapters::cli_tool::CliToolAdapter.invoke(invocation)
-}
-
-#[cfg(feature = "cli-tool")]
-fn invoke_javascript_server_skill(
-    javascript: &crate::adapters::javascript::JavaScriptAdapter,
-    invocation: SkillInvocation,
-) -> Result<InvocationOutput, RuntimeError> {
-    javascript.invoke(invocation)
-}
-
-#[cfg(not(feature = "cli-tool"))]
-fn invoke_cli_tool_server_skill(
-    invocation: SkillInvocation,
-) -> Result<InvocationOutput, RuntimeError> {
-    Err(RuntimeError::UnsupportedAdapter {
-        adapter_type: invocation.source.source_type.as_str().to_owned(),
-    })
-}
-
-#[cfg(not(feature = "cli-tool"))]
-fn invoke_javascript_server_skill(
-    _javascript: &crate::adapters::javascript::JavaScriptAdapter,
-    invocation: SkillInvocation,
-) -> Result<InvocationOutput, RuntimeError> {
-    Err(RuntimeError::UnsupportedAdapter {
-        adapter_type: invocation.source.source_type.as_str().to_owned(),
-    })
-}
-
-#[derive(Clone, Debug)]
-struct McpServerGraphAdapter {
-    javascript: crate::adapters::javascript::JavaScriptAdapter,
-}
-
-impl SkillAdapter for McpServerGraphAdapter {
-    fn adapter_type(&self) -> &'static str {
-        "mcp-server-graph"
-    }
-
-    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
-        match request.source.source_type.as_str() {
-            "mcp" => McpAdapter::default().invoke(request),
-            "cli-tool" => invoke_cli_tool_server_skill(request),
-            "javascript" => invoke_javascript_server_skill(&self.javascript, request),
-            other => Err(RuntimeError::UnsupportedAdapter {
-                adapter_type: other.to_owned(),
-            }),
-        }
     }
 }
 

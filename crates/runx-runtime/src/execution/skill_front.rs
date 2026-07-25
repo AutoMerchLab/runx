@@ -20,7 +20,8 @@ use crate::agent_invocation::{AgentActInvocationSourceType, agent_act_resolution
 use crate::effects::RuntimeEffectRegistry;
 use crate::execution::disposition::agent_answer_disposition_or_closed;
 use crate::execution::orchestrator::SkillRunRequest;
-use crate::execution::output_projection::project_step_output;
+use crate::execution::output_projection::project_step_claim;
+use crate::output_contract::project_declared_output_claim;
 use crate::receipts::paths::RUNX_RECEIPT_DIR_ENV;
 use crate::receipts::signing::strip_receipt_signing_env;
 use crate::receipts::store::ReceiptStoreError;
@@ -37,16 +38,16 @@ mod graph_state;
 #[cfg(feature = "cli-tool")]
 mod inline_harness;
 pub(crate) mod runner_manifest;
+mod source_adapter;
 
-#[cfg(feature = "cli-tool")]
-pub(crate) use self::graph::SkillRunGraphAdapter;
 pub(crate) use self::graph::graph_domain_act_receipt;
 #[cfg(feature = "cli-tool")]
 pub(crate) use self::inline_harness::run_package_harness_with_effects;
+pub(crate) use self::source_adapter::SkillSourceAdapter;
 
-use self::agent::{AgentSkillExecutionContext, execute_agent_skill_run};
+use self::agent::execute_agent_skill_run;
 use self::graph::execute_graph_skill_run;
-use self::runner_manifest::{execute_process_skill_run, runner_invocation, selected_runner};
+use self::runner_manifest::{execute_adapter_skill_run, runner_invocation, selected_runner};
 
 pub use super::operator_context::{
     SkillOperatorContextChain, SkillOperatorContextContextSkill, SkillOperatorContextDocument,
@@ -95,6 +96,30 @@ pub(crate) struct SkillRunOverrides {
     pub(crate) seeded_answers: Option<JsonObject>,
 }
 
+pub(crate) struct ResolvedSkillRun<'a> {
+    pub(crate) request: &'a SkillRunRequest,
+    pub(crate) overrides: &'a SkillRunOverrides,
+    pub(crate) effects: &'a RuntimeEffectRegistry,
+    pub(crate) skill_dir: &'a Path,
+    pub(crate) manifest: &'a SkillRunnerManifest,
+    pub(crate) runner: &'a SkillRunnerDefinition,
+    pub(crate) package_digest: &'a str,
+    pub(crate) execution_closure_digest: Option<&'a str>,
+}
+
+#[derive(Clone, Copy)]
+struct SkillExecutionContext<'a> {
+    request: &'a SkillRunRequest,
+    overrides: &'a SkillRunOverrides,
+    effects: &'a RuntimeEffectRegistry,
+    workspace: &'a WorkspaceEnv,
+    receipts: &'a ReceiptServices,
+    manifest: &'a SkillRunnerManifest,
+    runner: &'a SkillRunnerDefinition,
+    package_digest: &'a str,
+    execution_closure_digest: Option<&'a str>,
+}
+
 pub(crate) fn execute_skill_run_with_effects(
     request: &SkillRunRequest,
     effects: &RuntimeEffectRegistry,
@@ -108,23 +133,31 @@ pub(crate) fn execute_skill_run_with_overrides(
     effects: &RuntimeEffectRegistry,
 ) -> Result<JsonValue, SkillRunError> {
     let loaded = crate::load_validated_skill_package(&request.skill_path)?;
-    let skill_dir = &loaded.directory;
-    let manifest = loaded.manifest().ok_or_else(|| {
+    let skill_dir = loaded.directory.clone();
+    let manifest = loaded.manifest().cloned().ok_or_else(|| {
         invalid(format!(
             "skill package {} does not declare X.yaml runners",
             skill_dir.display()
         ))
     })?;
-    let runner = selected_runner(manifest, overrides.runner.as_deref())?;
-    execute_skill_run_with_resolved(
+    let runner = selected_runner(&manifest, overrides.runner.as_deref())?.clone();
+    let package_digest = loaded.package.package_digest.clone();
+    // Every run binds its execution closure natively, so a paused run can
+    // always prove and resume the exact closure it prepared; the caller-bound
+    // path only adds expected-digest verification on top of the same binding.
+    let execution_closure_digest =
+        crate::skill_package::verify_loaded_execution_binding(loaded, &runner.name, None, None)
+            .map_err(|error| invalid(error.to_string()))?;
+    execute_skill_run_with_resolved(ResolvedSkillRun {
         request,
         overrides,
         effects,
-        skill_dir,
-        manifest,
-        runner,
-        &loaded.package.package_digest,
-    )
+        skill_dir: &skill_dir,
+        manifest: &manifest,
+        runner: &runner,
+        package_digest: &package_digest,
+        execution_closure_digest: execution_closure_digest.as_deref(),
+    })
 }
 
 pub(crate) fn execute_bound_skill_run_with_overrides(
@@ -150,53 +183,39 @@ pub(crate) fn execute_bound_skill_run_with_overrides(
         expected_package_digest,
         expected_execution_closure_digest,
     )
-    .map_err(invalid)?;
+    .map_err(|error| invalid(error.to_string()))?;
     execute_skill_run_with_resolved_trust(
-        request,
-        overrides,
-        effects,
-        &skill_dir,
-        &manifest,
-        &runner,
-        &package_digest,
-        execution_closure_digest.as_deref(),
+        ResolvedSkillRun {
+            request,
+            overrides,
+            effects,
+            skill_dir: &skill_dir,
+            manifest: &manifest,
+            runner: &runner,
+            package_digest: &package_digest,
+            execution_closure_digest: execution_closure_digest.as_deref(),
+        },
         false,
     )
 }
 
 pub(crate) fn execute_skill_run_with_resolved(
-    request: &SkillRunRequest,
-    overrides: &SkillRunOverrides,
-    effects: &RuntimeEffectRegistry,
-    skill_dir: &Path,
-    manifest: &SkillRunnerManifest,
-    runner: &SkillRunnerDefinition,
-    package_digest: &str,
+    resolved: ResolvedSkillRun<'_>,
 ) -> Result<JsonValue, SkillRunError> {
-    execute_skill_run_with_resolved_trust(
-        request,
-        overrides,
-        effects,
-        skill_dir,
-        manifest,
-        runner,
-        package_digest,
-        None,
-        false,
-    )
+    execute_skill_run_with_resolved_trust(resolved, false)
 }
 
 pub(crate) fn execute_prepared_skill_run_with_resolved(
-    request: &SkillRunRequest,
-    overrides: &SkillRunOverrides,
-    effects: &RuntimeEffectRegistry,
-    skill_dir: &Path,
-    manifest: &SkillRunnerManifest,
-    runner: &SkillRunnerDefinition,
-    package_digest: &str,
-    execution_closure_digest: Option<&str>,
+    resolved: ResolvedSkillRun<'_>,
 ) -> Result<JsonValue, SkillRunError> {
-    execute_skill_run_with_resolved_trust(
+    execute_skill_run_with_resolved_trust(resolved, true)
+}
+
+fn execute_skill_run_with_resolved_trust(
+    resolved: ResolvedSkillRun<'_>,
+    trusted_prepared: bool,
+) -> Result<JsonValue, SkillRunError> {
+    let ResolvedSkillRun {
         request,
         overrides,
         effects,
@@ -205,21 +224,7 @@ pub(crate) fn execute_prepared_skill_run_with_resolved(
         runner,
         package_digest,
         execution_closure_digest,
-        true,
-    )
-}
-
-fn execute_skill_run_with_resolved_trust(
-    request: &SkillRunRequest,
-    overrides: &SkillRunOverrides,
-    effects: &RuntimeEffectRegistry,
-    skill_dir: &Path,
-    manifest: &SkillRunnerManifest,
-    runner: &SkillRunnerDefinition,
-    package_digest: &str,
-    execution_closure_digest: Option<&str>,
-    trusted_prepared: bool,
-) -> Result<JsonValue, SkillRunError> {
+    } = resolved;
     let (request, workspace, receipts) =
         prepare_skill_execution(request, runner, trusted_prepared)?;
     let request = &request;
@@ -242,42 +247,30 @@ fn execute_skill_run_with_resolved_trust(
         &invocation.requirements,
         &invocation.env,
     )?;
-    if matches!(
+    let context = SkillExecutionContext {
+        request,
+        overrides,
+        effects,
+        workspace: &workspace,
+        receipts: &receipts,
+        manifest,
+        runner,
+        package_digest,
+        execution_closure_digest,
+    };
+    if runner.source.source_type == runx_parser::SourceKind::Graph {
+        return execute_graph_skill_run(&context);
+    }
+    if !matches!(
         runner.source.source_type,
-        runx_parser::SourceKind::CliTool | runx_parser::SourceKind::JavaScript
+        runx_parser::SourceKind::Agent | runx_parser::SourceKind::AgentStep
     ) {
-        return execute_process_skill_run(
+        return execute_adapter_skill_run(
             request, &workspace, &receipts, manifest, runner, invocation,
         );
     }
-    if runner.source.source_type == runx_parser::SourceKind::Graph {
-        return execute_graph_skill_run(
-            request,
-            overrides,
-            effects,
-            &workspace,
-            &receipts,
-            manifest,
-            runner,
-            package_digest,
-            execution_closure_digest,
-        );
-    }
 
-    execute_agent_skill_run(
-        AgentSkillExecutionContext {
-            request,
-            overrides,
-            effects,
-            workspace: &workspace,
-            receipts: &receipts,
-            manifest,
-            runner,
-            package_digest,
-            execution_closure_digest,
-        },
-        invocation,
-    )
+    execute_agent_skill_run(&context, invocation)
 }
 
 fn prepare_skill_execution(
@@ -477,6 +470,7 @@ fn seal_skill_answer(
     run_id: &str,
     runner: &SkillRunnerDefinition,
     answer: &JsonValue,
+    claim_payload: &JsonValue,
     disposition: ClosureDisposition,
     signature_config: &RuntimeReceiptSignatureConfig,
     env: &std::collections::BTreeMap<String, String>,
@@ -498,6 +492,7 @@ fn seal_skill_answer(
         run_id,
         runner,
         &skill_output,
+        Some(claim_payload),
         StepSealClosure {
             disposition,
             reason_code: format!("agent_act_{disposition_label}"),
@@ -730,6 +725,7 @@ fn seal_skill_output(
     run_id: &str,
     runner: &SkillRunnerDefinition,
     output: &InvocationOutput,
+    claim_payload: Option<&JsonValue>,
     closure: StepSealClosure,
     receipt_metadata: Option<JsonObject>,
     signature_config: &RuntimeReceiptSignatureConfig,
@@ -737,13 +733,24 @@ fn seal_skill_output(
 ) -> Result<runx_contracts::Receipt, SkillRunError> {
     let graph_name = identifier_segment(run_id);
     let step_id = identifier_segment(&runner.name);
-    let mut projection = project_step_output(output);
+    let claim = if output.succeeded() {
+        project_declared_output_claim(
+            &runner.name,
+            claim_payload.unwrap_or(&output.value),
+            runner.source.outputs.as_ref(),
+            runner.artifacts.as_ref(),
+        )?
+    } else {
+        JsonObject::new()
+    };
+    let mut projection = project_step_claim(claim);
     Ok(seal_step(
         StepSeal {
             graph_name: &graph_name,
             step_id: &step_id,
             attempt: 1,
             output,
+            claim: &projection.outputs,
             projection_refs: std::mem::take(&mut projection.refs),
             created_at: &crate::time::now_iso8601(),
             authority_grant_refs: Vec::new(),

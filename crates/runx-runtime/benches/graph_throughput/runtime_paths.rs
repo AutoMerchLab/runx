@@ -322,7 +322,7 @@ fn run_provider_graph<A: SkillAdapter>(
         std::io::Error::other("provider benchmark sample emitted no step receipt")
     })?;
     let operation = step
-        .outputs
+        .contract
         .get("provider_operation")
         .and_then(JsonValue::as_object)
         .and_then(|packet| packet.get("data"))
@@ -447,6 +447,10 @@ impl RuntimeHttpTransport for ProviderBenchmarkTransport {
 struct ProviderBenchmarkHost;
 
 impl Host for ProviderBenchmarkHost {
+    fn log(&mut self, _message: String) -> Result<(), runx_runtime::RuntimeError> {
+        Ok(())
+    }
+
     fn report(&mut self, _event: ExecutionEvent) -> Result<(), runx_runtime::RuntimeError> {
         Ok(())
     }
@@ -480,7 +484,12 @@ fn require_success(output: runx_runtime::InvocationOutput) -> Result<(), Box<dyn
     if output.succeeded() {
         return Ok(());
     }
-    Err(std::io::Error::other(output.stderr).into())
+    Err(std::io::Error::other(
+        output
+            .failure_message()
+            .unwrap_or_else(|| "runtime invocation failed".to_owned()),
+    )
+    .into())
 }
 
 fn write_modules(root: &Path) -> Result<(), std::io::Error> {

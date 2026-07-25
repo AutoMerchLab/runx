@@ -15,8 +15,8 @@ interface StepExpectation {
   readonly status: "success" | "failure";
   readonly attempt?: number;
   readonly fanoutGroup?: string;
-  readonly stdout?: string;
-  readonly stderr?: string;
+  readonly contract?: Record<string, unknown>;
+  readonly failure?: string;
 }
 
 interface SyncPointExpectation {
@@ -69,7 +69,7 @@ function staticAllSuccess() {
       step("market", "success", { recommendation: "go" }),
       step("risk", "success", { risk_score: 0.2 }),
       step("finance", "success", { budget: "approved" }),
-      { id: "synthesize", status: "success", stdout: "approved" },
+      { id: "synthesize", status: "success" },
     ] satisfies readonly StepExpectation[],
     syncPoints: [
       syncPoint({
@@ -95,7 +95,7 @@ function staticQuorumContinue() {
       step("market", "success", { confidence: 0.9, recommendation: "go" }),
       step("risk", "success", { recommendation: "go", risk_score: 0.4 }),
       step("finance", "failure", undefined, "fixture failure"),
-      { id: "synthesize", status: "success", stdout: "go" },
+      { id: "synthesize", status: "success" },
     ] satisfies readonly StepExpectation[],
     syncPoints: [
       syncPoint({
@@ -168,7 +168,7 @@ function generatedAll(branches: number) {
     branchCount: branches,
     steps: [
       ...branchIds.map((id, index) => step(id, "success", { recommendation: `go-${index}` })),
-      { id: "synthesize", status: "success", stdout: "go-0" },
+      { id: "synthesize", status: "success" },
     ],
     syncPoints: [
       syncPoint({
@@ -199,7 +199,7 @@ function generatedPartialFailure(branches: number) {
       ...branchIds.slice(0, successCount).map((id, index) =>
         step(id, "success", { recommendation: `go-${index}` })),
       step(branchIds[branches - 1]!, "failure", undefined, "fixture failure"),
-      { id: "synthesize", status: "success", stdout: "go-0" },
+      { id: "synthesize", status: "success" },
     ],
     syncPoints: [
       syncPoint({
@@ -316,16 +316,18 @@ ${retry}`;
 function step(
   id: string,
   status: "success" | "failure",
-  stdout?: Record<string, unknown>,
-  stderr?: string,
+  data?: Record<string, unknown>,
+  failure?: string,
 ): StepExpectation {
   return {
     id,
     status,
     attempt: 1,
     fanoutGroup: "advisors",
-    stdout: stdout ? JSON.stringify(stdout) : undefined,
-    stderr,
+    // Branch skills declare one `result` output; the runtime projects their
+    // JSON claim into the typed step contract wrapped in the data envelope.
+    contract: data ? { result: { data } } : undefined,
+    failure,
   };
 }
 

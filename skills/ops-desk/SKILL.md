@@ -24,6 +24,8 @@ gate.
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `data-store#read_projection`
 
 ## What this skill does

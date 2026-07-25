@@ -486,11 +486,12 @@ fn step_run(
             step_id,
             1,
             &output,
+            &contract,
             paid_echo_authority_refs(),
             CREATED_AT,
         )?
     } else {
-        step_receipt(graph_name, step_id, 1, &output, CREATED_AT)?
+        step_receipt(graph_name, step_id, 1, &output, &contract, CREATED_AT)?
     };
     let admission_witness = StepAdmissionWitness::local_runtime(step_id, receipt.id.as_str());
     Ok(StepRun {

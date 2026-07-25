@@ -281,6 +281,8 @@ runners:
         description: Exact UTF-8 note to digest.
     graph:
       name: digest-note
+      result_from:
+        - digest
       steps:
         - id: digest
           tool: data.digest

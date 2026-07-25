@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.runx.ai/runx/business_ops_route/v1.json",
+  "x-runx-packet-id": "runx.business_ops_route.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "signal",
+    "lanes"
+  ],
+  "properties": {
+    "schema": {
+      "const": "runx.business_ops_route.v1"
+    },
+    "signal": {
+      "type": "string"
+    },
+    "lanes": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "classify",
+        "docs",
+        "release",
+        "issue",
+        "send",
+        "spend",
+        "audit"
+      ],
+      "properties": {
+        "classify": {
+          "type": "object"
+        },
+        "docs": {
+          "type": "object"
+        },
+        "release": {
+          "type": "object"
+        },
+        "issue": {
+          "type": "object"
+        },
+        "send": {
+          "type": "object"
+        },
+        "spend": {
+          "type": "object"
+        },
+        "audit": {
+          "type": "object"
+        }
+      }
+    }
+  }
+}

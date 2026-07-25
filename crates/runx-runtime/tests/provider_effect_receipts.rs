@@ -81,6 +81,7 @@ fn provider_effect_receipts_bind_approval_ack_readback_and_grant() {
         "mutate",
         1,
         &output,
+        &claim,
         effect
             .authority_grant_refs(&admission)
             .expect("authority grant refs"),
@@ -264,6 +265,7 @@ fn provider_effect_redaction_keeps_secret_payload_out_of_approval_and_receipt() 
         "mutate",
         1,
         &output,
+        &claim,
         effect
             .authority_grant_refs(&admission)
             .expect("authority grant refs"),

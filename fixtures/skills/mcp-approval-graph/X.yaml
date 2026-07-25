@@ -6,6 +6,8 @@ runners:
     type: graph
     graph:
       name: mcp-approval-graph
+      result_from:
+        - approve
       steps:
         - id: approve
           run:

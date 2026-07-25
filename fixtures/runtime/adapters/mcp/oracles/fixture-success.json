@@ -10,46 +10,6 @@
       "tool": "echo",
       "server_command_hash": "545ea538461003efdc8c81c244531b003f6f26cfccf6c0073b3239fdedf49446",
       "server_args_hash": "81dfe7a9d471d3890417b000a8d85d3c55ee9628dc21e05a1998a5bfa9423cd9"
-    },
-    "sandbox": {
-      "profile": "readonly",
-      "cwd": "<repo>",
-      "workspace_root": "<repo>",
-      "cwd_policy": "skill-directory",
-      "env": {
-        "mode": "default-allowlist",
-        "allowlist": [
-          "PATH",
-          "HOME",
-          "TMPDIR",
-          "TMP",
-          "TEMP",
-          "SystemRoot",
-          "WINDIR",
-          "COMSPEC",
-          "PATHEXT"
-        ]
-      },
-      "network": {
-        "declared": false,
-        "enforcement": "not-enforced-local"
-      },
-      "writable_paths": [],
-      "require_enforcement": false,
-      "filesystem": {
-        "enforcement": "not-enforced-local",
-        "readonly_paths": true,
-        "writable_paths_enforced": false,
-        "private_tmp": false
-      },
-      "approval": {
-        "required": false,
-        "approved": false
-      },
-      "runtime": {
-        "enforcer": "declared-policy-only",
-        "reason": "local sandbox profile 'readonly' requires Linux bubblewrap or macOS sandbox-exec for filesystem and network enforcement"
-      }
     }
   }
 }

@@ -13,7 +13,7 @@ use runx_core::state_machine::{
     start_sequential_graph_step_indexed, succeed_sequential_graph_step_indexed,
 };
 use runx_runtime::{
-    InvocationOutput, InvocationStatus, RuntimeOptions, StepRun,
+    InvocationOutput, RuntimeOptions, StepRun,
     receipts::{graph_receipt_with_signature_policy, step_receipt_with_signature_policy},
 };
 use tempfile::TempDir;
@@ -344,6 +344,10 @@ fn synthetic_step_runs(options: &RuntimeOptions, count: usize) -> Vec<StepRun> {
     (0..count)
         .map(|index| {
             let step_id = format!("step_{index}");
+            let contract = object([(
+                "nested",
+                JsonValue::Object(object([("value", JsonValue::String(index.to_string()))])),
+            )]);
             let output = skill_output(&format!(
                 r#"{{"nested":{{"value":{index}}},"status":"ok"}}"#
             ));
@@ -352,6 +356,7 @@ fn synthetic_step_runs(options: &RuntimeOptions, count: usize) -> Vec<StepRun> {
                 &step_id,
                 1,
                 &output,
+                &contract,
                 CREATED_AT,
                 options.signature_policy(),
             ) {
@@ -364,16 +369,14 @@ fn synthetic_step_runs(options: &RuntimeOptions, count: usize) -> Vec<StepRun> {
                 skill: step_id.clone(),
                 runner: None,
                 fanout_group: None,
-                outputs: object([(
-                    "nested",
-                    JsonValue::Object(object([("value", JsonValue::String(index.to_string()))])),
-                )]),
+                contract,
+                outcome: output.into(),
                 admission_witness: StepAdmissionWitness::local_runtime(
                     &step_id,
                     receipt.id.as_str(),
                 ),
-                output,
                 receipt,
+                nested_receipts: Vec::new(),
             }
         })
         .collect()
@@ -386,15 +389,9 @@ fn synthetic_receipts(options: &RuntimeOptions, count: usize) -> Vec<runx_contra
         .collect()
 }
 
-fn skill_output(stdout: &str) -> InvocationOutput {
-    InvocationOutput {
-        status: InvocationStatus::Success,
-        stdout: stdout.to_owned(),
-        stderr: String::new(),
-        exit_code: Some(0),
-        duration_ms: 0,
-        metadata: JsonObject::new(),
-    }
+fn skill_output(value: &str) -> InvocationOutput {
+    let value = serde_json::from_str(value).unwrap_or_else(|_| JsonValue::String(value.to_owned()));
+    InvocationOutput::runtime_success(value, 0, JsonObject::new())
 }
 
 fn object(entries: impl IntoIterator<Item = (&'static str, JsonValue)>) -> JsonObject {

@@ -634,8 +634,9 @@ mod tests {
         .into_iter()
         .map(std::ffi::OsString::from)
         .collect::<Vec<_>>();
-        let error = super::parse_skill_plan(&args)
-            .expect_err("public skill runs must not bypass prepared admission");
+        let Err(error) = super::parse_skill_plan(&args) else {
+            panic!("public skill runs must not bypass prepared admission");
+        };
         assert!(error.contains("operator-context bypass is not supported"));
     }
 
@@ -650,8 +651,9 @@ mod tests {
         .into_iter()
         .map(std::ffi::OsString::from)
         .collect::<Vec<_>>();
-        let error = super::parse_skill_plan(&package_only)
-            .expect_err("a package digest alone is not a complete execution binding");
+        let Err(error) = super::parse_skill_plan(&package_only) else {
+            panic!("a package digest alone is not a complete execution binding");
+        };
         assert!(error.contains("requires both --package-digest"));
 
         let closure_only = [
@@ -663,8 +665,9 @@ mod tests {
         .into_iter()
         .map(std::ffi::OsString::from)
         .collect::<Vec<_>>();
-        let error = super::parse_skill_plan(&closure_only)
-            .expect_err("a closure digest alone is not a complete execution binding");
+        let Err(error) = super::parse_skill_plan(&closure_only) else {
+            panic!("a closure digest alone is not a complete execution binding");
+        };
         assert!(error.contains("requires both --package-digest"));
     }
 

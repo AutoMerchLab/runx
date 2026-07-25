@@ -77,23 +77,25 @@ impl InvocationLimits {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct WorkerInvocationRequest {
+    pub protocol_version: u16,
+    pub invocation_id: String,
+    pub entry_module: String,
+    pub export_name: String,
+    pub modules: BTreeMap<String, String>,
+    pub inputs: serde_json::Value,
+    /// Exact values selected by the manifest environment declaration. The
+    /// worker OS environment remains empty.
+    pub environment: BTreeMap<String, String>,
+    pub limits: InvocationLimits,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum WorkerRequest {
-    Hello {
-        protocol_version: u16,
-    },
-    Invoke {
-        protocol_version: u16,
-        invocation_id: String,
-        entry_module: String,
-        export_name: String,
-        modules: BTreeMap<String, String>,
-        inputs: serde_json::Value,
-        /// Exact values selected by the manifest environment declaration. The
-        /// worker OS environment remains empty.
-        environment: BTreeMap<String, String>,
-        limits: InvocationLimits,
-    },
+    Hello { protocol_version: u16 },
+    Invoke(Box<WorkerInvocationRequest>),
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

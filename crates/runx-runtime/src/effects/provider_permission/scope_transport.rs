@@ -35,7 +35,8 @@ mod tests {
     use super::*;
 
     #[test]
-    fn environment_transport_round_trips_opaque_capabilities_exactly() {
+    fn environment_transport_round_trips_opaque_capabilities_exactly()
+    -> Result<(), ProviderScopeTransportError> {
         let scopes = vec![
             "vendor.operation:v3".to_owned(),
             "https://provider.example/auth/custom.scope?mode=read,write".to_owned(),
@@ -43,10 +44,11 @@ mod tests {
             "vendor.operation:v3".to_owned(),
         ];
 
-        let encoded = encode_provider_scopes_env(&scopes).expect("encode");
-        let decoded = decode_provider_scopes_env(&encoded).expect("decode");
+        let encoded = encode_provider_scopes_env(&scopes)?;
+        let decoded = decode_provider_scopes_env(&encoded)?;
 
         assert_eq!(decoded, scopes);
+        Ok(())
     }
 
     #[test]

@@ -289,6 +289,7 @@ mod tests {
             "request-escaped",
             1,
             &skill_output,
+            &output,
             "2026-01-01T00:00:00Z",
         )?;
         let receipt_bytes = serde_json::to_vec(&receipt)?;

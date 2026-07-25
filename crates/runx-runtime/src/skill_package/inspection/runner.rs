@@ -4,10 +4,12 @@ use runx_parser::{
     ValidatedSkillPackage,
 };
 
+use super::SkillInspectionError;
+
 pub(super) fn inspect_runner(
     manifest: &SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
-) -> Result<JsonValue, String> {
+) -> Result<JsonValue, SkillInspectionError> {
     let mut output = JsonObject::from([
         ("name".to_owned(), JsonValue::String(runner.name.clone())),
         (
@@ -41,7 +43,10 @@ pub(super) fn inspect_runner(
         "requirements".to_owned(),
         serde_json::to_value(manifest.execution_requirements(runner))
             .and_then(serde_json::from_value)
-            .map_err(|error| format!("serializing runner requirements: {error}"))?,
+            .map_err(|source| SkillInspectionError::Json {
+                context: "serializing runner requirements",
+                source,
+            })?,
     );
     insert_runner_contract_metadata(&mut output, runner)?;
     let provider_requirements = inspect_provider_requirements(runner);
@@ -57,13 +62,16 @@ pub(super) fn inspect_runner(
 fn insert_runner_contract_metadata(
     output: &mut JsonObject,
     runner: &SkillRunnerDefinition,
-) -> Result<(), String> {
+) -> Result<(), SkillInspectionError> {
     if let Some(artifacts) = &runner.artifacts {
         output.insert(
             "artifacts".to_owned(),
             serde_json::to_value(artifacts)
                 .and_then(serde_json::from_value)
-                .map_err(|error| format!("serializing runner artifacts: {error}"))?,
+                .map_err(|source| SkillInspectionError::Json {
+                    context: "serializing runner artifacts",
+                    source,
+                })?,
         );
     }
     if let Some(allowed_tools) = &runner.allowed_tools {

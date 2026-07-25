@@ -439,6 +439,8 @@ runners:
     type: agent
     agent: assistant
     task: summarize
+    outputs:
+      summary: string
     inputs:
       topic:
         type: string

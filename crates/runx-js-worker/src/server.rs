@@ -6,7 +6,8 @@ use thiserror::Error;
 use crate::engine::{EngineError, evaluate};
 use crate::protocol::{
     JAVASCRIPT_STACK_BYTES, MAX_FRAME_BYTES, PROTOCOL_VERSION, ProtocolError, WorkerDisposition,
-    WorkerFailureCode, WorkerRequest, WorkerResponse, read_frame, write_frame,
+    WorkerFailureCode, WorkerInvocationRequest, WorkerRequest, WorkerResponse, read_frame,
+    write_frame,
 };
 
 #[derive(Debug, Error)]
@@ -58,17 +59,7 @@ pub fn serve() -> Result<(), WorkerServerError> {
         }
     }
     while let Some(request) = read_frame::<WorkerRequest>(&mut reader, MAX_FRAME_BYTES)? {
-        let WorkerRequest::Invoke {
-            protocol_version,
-            invocation_id,
-            entry_module,
-            export_name,
-            modules,
-            inputs,
-            environment,
-            limits,
-        } = request
-        else {
+        let WorkerRequest::Invoke(request) = request else {
             send_failure(
                 &mut writer,
                 None,
@@ -78,6 +69,16 @@ pub fn serve() -> Result<(), WorkerServerError> {
             )?;
             break;
         };
+        let WorkerInvocationRequest {
+            protocol_version,
+            invocation_id,
+            entry_module,
+            export_name,
+            modules,
+            inputs,
+            environment,
+            limits,
+        } = *request;
         if protocol_version != PROTOCOL_VERSION {
             send_failure(
                 &mut writer,

@@ -1078,7 +1078,7 @@ fn assert_json(
         String::from_utf8_lossy(&output.stderr),
         String::from_utf8_lossy(&output.stdout)
     );
-    assert_eq!(String::from_utf8(output.stderr.clone())?, "");
+    crate::support::assert_json_stderr(&output.stderr)?;
     Ok(serde_json::from_slice(&output.stdout)?)
 }
 

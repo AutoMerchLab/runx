@@ -54,6 +54,23 @@ pub enum OutputField {
     Spec(OutputFieldSpec),
 }
 
+impl OutputField {
+    /// Whether a successful producer must return this field.
+    ///
+    /// Bare type declarations and expanded declarations without an explicit
+    /// `required` value are required by default.
+    #[must_use]
+    pub const fn is_required(&self) -> bool {
+        match self {
+            Self::Type(_) => true,
+            Self::Spec(spec) => match spec.required {
+                Some(required) => required,
+                None => true,
+            },
+        }
+    }
+}
+
 /// The standalone `output.schema.json` document: a top-level open map of field
 /// name to [`OutputField`], carrying the bare `runx.ai/spec` `$id`.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize, RunxSchema)]
@@ -108,7 +125,7 @@ pub fn output_value_schema(output: Option<&BTreeMap<String, OutputField>>) -> Js
     let mut required = Vec::new();
     for (name, field) in output {
         properties.insert(name.clone(), output_field_schema(field));
-        if output_field_required(field) {
+        if field.is_required() {
             required.push(JsonValue::String(name.clone()));
         }
     }
@@ -155,7 +172,7 @@ pub fn validate_output_value(
     for (name, field) in output {
         match object.get(name) {
             Some(value) => validate_output_field(name, field, value)?,
-            None if output_field_required(field) => {
+            None if field.is_required() => {
                 return Err(OutputValidationError::new(
                     format!("$.{name}"),
                     "required field is missing",
@@ -171,13 +188,6 @@ fn object_schema() -> JsonValue {
     let mut schema = JsonObject::new();
     schema.insert("type".to_owned(), JsonValue::String("object".to_owned()));
     JsonValue::Object(schema)
-}
-
-fn output_field_required(field: &OutputField) -> bool {
-    match field {
-        OutputField::Type(_) => true,
-        OutputField::Spec(spec) => spec.required.unwrap_or(true),
-    }
 }
 
 fn output_field_schema(field: &OutputField) -> JsonValue {

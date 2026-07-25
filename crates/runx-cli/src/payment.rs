@@ -16,7 +16,8 @@ use crate::document_input::{DocumentInputError, read_document_input};
 pub use crate::document_input::DocumentInputSource as PaymentInputSource;
 
 pub const RUNX_PAYMENT_ADMISSION_KID_ENV: &str = "RUNX_PAYMENT_ADMISSION_KID";
-pub const RUNX_PAYMENT_ADMISSION_SIGNING_KEY_ENV: &str = "RUNX_PAYMENT_ADMISSION_SIGNING_KEY";
+pub const RUNX_PAYMENT_ADMISSION_SIGNING_KEY_ENV: &str =
+    "RUNX_INTERNAL_PAYMENT_ADMISSION_SIGNING_KEY";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct PaymentPlan {

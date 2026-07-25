@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -21,6 +21,8 @@ const allowedDecisions = new Set([
   "internal_runtime",
   "keep",
 ]);
+const generatedComposesMarker =
+  "<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->";
 let nativeProcessCount = 0;
 
 try {
@@ -53,6 +55,7 @@ function buildReport(options) {
   const catalog = readNativeCatalog(runx);
   const findings = validateCoverage({ official, review, catalog });
   const entries = [];
+  let rewrittenManualCount = 0;
 
   for (const record of official) {
     const name = officialName(record);
@@ -77,12 +80,25 @@ function buildReport(options) {
         runnerInspections,
       }),
     );
+    const manualPath = path.join(root, "skills", name, "SKILL.md");
+    let manualSource = readFileSync(manualPath, "utf8");
+    if (options.writeComposes && record.catalog_visibility === "public") {
+      const rewritten = rewriteComposesSection(
+        manualSource,
+        expectedCompositionRefs(runnerInspections),
+      );
+      if (rewritten !== manualSource) {
+        writeFileSync(manualPath, rewritten);
+        manualSource = rewritten;
+        rewrittenManualCount += 1;
+      }
+    }
     findings.push(
       ...validatePublicManual({
         name,
         record,
         runnerInspections,
-        source: readFileSync(path.join(root, "skills", name, "SKILL.md"), "utf8"),
+        source: manualSource,
       }),
     );
     const canonicalCatalogRole =
@@ -137,6 +153,7 @@ function buildReport(options) {
       public: publicCount,
       internal: internalCount,
       native_processes: nativeProcessCount,
+      rewritten_manuals: rewrittenManualCount,
       decisions,
       archetypes,
     },
@@ -371,7 +388,86 @@ function validatePublicManual({
       findings.push(`${name}: native direct external skill edge is malformed`);
     }
   }
+  const expectedCompositions = expectedCompositionRefs(runnerInspections);
+  const declaredCompositions = manualCompositionRefs(guide);
+  if (expectedCompositions.size > 0 && !guide.includes(generatedComposesMarker)) {
+    findings.push(`${name}: Composes section is not generator-owned`);
+  }
+  for (const expected of expectedCompositions) {
+    if (!declaredCompositions.has(expected)) {
+      findings.push(`${name}: Composes section omits native edge ${expected}`);
+    }
+  }
+  for (const declared of declaredCompositions) {
+    if (!expectedCompositions.has(declared)) {
+      findings.push(`${name}: Composes section declares stale edge ${declared}`);
+    }
+  }
   return findings;
+}
+
+function expectedCompositionRefs(runnerInspections) {
+  const refs = new Set();
+  for (const edge of runnerInspections.flatMap(
+    (inspection) => inspection.execution_closure?.direct_external_skill_edges ?? [],
+  )) {
+    if (
+      typeof edge?.skill === "string"
+      && edge.skill.length > 0
+      && typeof edge?.runner === "string"
+      && edge.runner.length > 0
+    ) {
+      refs.add(`${edge.skill}#${edge.runner}`);
+    }
+  }
+  return new Set([...refs].sort());
+}
+
+function manualCompositionRefs(source) {
+  const heading = /^##\s+Composes\s*$/imu.exec(source);
+  if (!heading) return new Set();
+  const bodyStart = heading.index + heading[0].length;
+  const remainder = source.slice(bodyStart);
+  const nextHeading = /^##\s+\S.*$/mu.exec(remainder);
+  const section = nextHeading ? remainder.slice(0, nextHeading.index) : remainder;
+  return new Set(
+    [...section.matchAll(/^\s*-\s+`([^`\s]+#[^`\s]+)`\s*$/gmu)]
+      .map((match) => match[1]),
+  );
+}
+
+function rewriteComposesSection(source, refs) {
+  const trailingNewline = source.endsWith("\n");
+  const lines = source.replace(/\n$/u, "").split("\n");
+  const start = lines.findIndex((line) => /^##\s+Composes\s*$/u.test(line));
+  const end = start < 0
+    ? -1
+    : lines.findIndex((line, index) => index > start && /^##\s+\S.*$/u.test(line));
+  const sectionEnd = end < 0 ? lines.length : end;
+  const block = refs.size === 0
+    ? []
+    : [
+        "## Composes",
+        "",
+        generatedComposesMarker,
+        "",
+        ...[...refs].map((ref) => `- \`${ref}\``),
+        "",
+      ];
+
+  if (start >= 0) {
+    lines.splice(start, sectionEnd - start, ...block);
+  } else if (block.length > 0) {
+    const firstSection = lines.findIndex((line) => /^##\s+\S.*$/u.test(line));
+    const insertion = firstSection < 0 ? lines.length : firstSection;
+    lines.splice(insertion, 0, ...block);
+  }
+
+  while (lines.length > 1 && lines.at(-1) === "" && lines.at(-2) === "") {
+    lines.pop();
+  }
+  const rewritten = lines.join("\n");
+  return trailingNewline ? `${rewritten}\n` : rewritten;
 }
 
 function countBy(entries, selector) {
@@ -414,12 +510,18 @@ function runJson(runx, args) {
 }
 
 function parseOptions(args) {
-  const options = { json: false, selfTest: false, runxBin: undefined };
+  const options = {
+    json: false,
+    selfTest: false,
+    runxBin: undefined,
+    writeComposes: false,
+  };
   for (let index = 0; index < args.length; index += 1) {
     const argument = args[index];
     if (argument === "--check") continue;
     if (argument === "--json") options.json = true;
     else if (argument === "--self-test") options.selfTest = true;
+    else if (argument === "--write-composes") options.writeComposes = true;
     else if (argument === "--runx-bin") {
       const value = args[index + 1];
       if (!value) throw new Error("--runx-bin requires a path");
@@ -535,6 +637,31 @@ function runSelfTests() {
   assert(
     guideFindings.some((finding) => finding.includes("operator guide")),
     "task contracts must not substitute for an operator guide",
+  );
+  const composingInspection = {
+    ...inspection,
+    execution_closure: {
+      ...inspection.execution_closure,
+      direct_external_skill_edges: [{ skill: "research", runner: "research" }],
+    },
+  };
+  const generatedGuide = rewriteComposesSection(
+    validGuide,
+    new Set(["research#research"]),
+  );
+  assert(
+    generatedGuide.includes(generatedComposesMarker)
+      && manualCompositionRefs(generatedGuide).has("research#research"),
+    "the generator must own the exact native composition section",
+  );
+  assert(
+    validatePublicManual({
+      name: "alpha",
+      record: official[0],
+      runnerInspections: [composingInspection],
+      source: generatedGuide,
+    }).length === 0,
+    "a generated exact composition section must pass",
   );
   let missingRunxPathRejected = false;
   try {

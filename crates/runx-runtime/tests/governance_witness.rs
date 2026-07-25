@@ -19,7 +19,12 @@ use runx_runtime::{
     RuntimeEffectRegistry, RuntimeOptions,
 };
 
-const HELLO_GRAPH: &str = "../../examples/hello-graph/graph.yaml";
+fn hello_graph_path() -> std::path::PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/hello-graph/graph.yaml")
+        .canonicalize()
+        .expect("hello-graph example exists")
+}
 
 /// An effect that admits every step, emitting a known authority witness so the test
 /// can assert the runtime records exactly that authority.
@@ -71,7 +76,7 @@ fn admitted_step_records_authority_in_sealed_witness() {
         options_with_effects(effects.unwrap_or_default()),
     );
     let run = runtime
-        .run_graph_file(Path::new(HELLO_GRAPH))
+        .run_graph_file(&hello_graph_path())
         .expect("graph runs to completion");
     let authority = run.steps[0]
         .admission_witness
@@ -89,7 +94,7 @@ fn unadmitted_step_records_local_runtime_witness() {
         options_with_effects(RuntimeEffectRegistry::empty()),
     );
     let run = runtime
-        .run_graph_file(Path::new(HELLO_GRAPH))
+        .run_graph_file(&hello_graph_path())
         .expect("graph runs to completion");
     assert!(
         run.steps[0].admission_witness.authority.is_none(),

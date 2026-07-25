@@ -156,9 +156,18 @@ impl RuntimeError {
     }
 
     pub(crate) fn engine(context: &'static str, source: RuntimeError) -> Self {
-        Self::EngineFailure {
-            context,
-            source: Box::new(source),
+        // Never absorb a governed flow outcome: the graph engine and refusal
+        // sealing match on these exact variants, so wrapping one would turn a
+        // provable denial into an anonymous engine fault.
+        match source {
+            source @ (Self::AuthorityDenied { .. }
+            | Self::GraphBlocked { .. }
+            | Self::GraphPaused { .. }
+            | Self::GraphEscalated { .. }) => source,
+            source => Self::EngineFailure {
+                context,
+                source: Box::new(source),
+            },
         }
     }
 

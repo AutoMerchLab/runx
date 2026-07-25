@@ -1303,10 +1303,12 @@ impl RecordingAdapter {
     }
 
     fn with_output_json(output_json: &str) -> Self {
+        let Ok(value) = serde_json::from_str(output_json) else {
+            panic!("test output fixture must be valid JSON");
+        };
         Self {
             invocations: Rc::new(RefCell::new(Vec::new())),
-            value: serde_json::from_str(output_json)
-                .expect("test output fixture must be valid JSON"),
+            value,
         }
     }
 
@@ -1566,7 +1568,10 @@ fn skill_failure_with_value(value: Value, message: &str) -> InvocationOutput {
 }
 
 fn runtime_value(value: Value) -> JsonValue {
-    serde_json::from_value(value).expect("test output fixture must match the Runx JSON contract")
+    let Ok(value) = serde_json::from_value(value) else {
+        panic!("test output fixture must match the Runx JSON contract");
+    };
+    value
 }
 
 fn paid_echo_rail_packet(

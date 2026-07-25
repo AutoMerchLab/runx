@@ -1362,6 +1362,7 @@ fn receipt_for_outputs(
         step_id,
         1,
         &output,
+        outputs,
         "2026-05-18T00:00:00Z",
     )?)
 }

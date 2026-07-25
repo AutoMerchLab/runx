@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::PathBuf;
 
 use runx_contracts::JsonObject;
 use runx_core::state_machine::GraphStatus;
@@ -33,7 +33,10 @@ fn hello_graph_matches_post_cutover_fixture() -> Result<(), Box<dyn std::error::
             ..RuntimeOptions::local_development(std::env::vars().collect())
         },
     );
-    let run = runtime.run_graph_file(Path::new("../../examples/hello-graph/graph.yaml"))?;
+    let graph_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/hello-graph/graph.yaml")
+        .canonicalize()?;
+    let run = runtime.run_graph_file(&graph_path)?;
 
     assert_eq!(run.graph.name, expected.graph_name);
     assert_eq!(status_name(&run.state.status), expected.state);

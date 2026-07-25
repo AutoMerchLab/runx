@@ -17,8 +17,8 @@ use crate::process::{OwnedTokioProcess, TokioProcessSpec, spawn_tokio_process};
 use crate::process::{ProcessSignal, signal_process_group_id};
 use crate::sandbox::SandboxPlan;
 
+use super::arguments::js_string;
 use super::rmcp_content_length::{RmcpContentLengthTransport, RmcpTransportErrorState};
-use super::templates::js_string;
 use super::types::{
     McpListToolsRequest, McpToolCallRequest, McpToolDescriptor, McpTransport, McpTransportError,
 };

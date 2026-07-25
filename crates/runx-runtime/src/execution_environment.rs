@@ -161,7 +161,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn hosted_workspace_policy_rejects_inline_cli_code() {
+    fn hosted_workspace_policy_rejects_inline_cli_code() -> Result<(), Box<dyn std::error::Error>> {
         let environment = BTreeMap::from([(
             RUNX_HOSTED_WORKSPACE_POLICY_JSON_ENV.to_owned(),
             r#"{"strictCliToolInlineCode":true}"#.to_owned(),
@@ -171,26 +171,31 @@ mod tests {
             &["--eval".to_owned(), "process.stdout.write('no')".to_owned()],
             &environment,
         )
-        .expect_err("strict hosted policy must reject inline code");
+        .err()
+        .ok_or("strict hosted policy did not reject inline code")?;
         assert!(
             error
                 .to_string()
                 .contains("rejected by strict workspace policy")
         );
+        Ok(())
     }
 
     #[test]
-    fn hosted_workspace_policy_is_typed_and_fail_closed() {
+    fn hosted_workspace_policy_is_typed_and_fail_closed() -> Result<(), Box<dyn std::error::Error>>
+    {
         let environment = BTreeMap::from([(
             RUNX_HOSTED_WORKSPACE_POLICY_JSON_ENV.to_owned(),
             r#"{"strictCliToolInlineCode":true,"unknown":true}"#.to_owned(),
         )]);
         let error = enforce_cli_tool_execution_policy(Some("node"), &[], &environment)
-            .expect_err("unknown hosted policy fields must fail closed");
+            .err()
+            .ok_or("unknown hosted policy fields did not fail closed")?;
         assert!(
             error
                 .to_string()
                 .contains("hosted workspace policy is invalid")
         );
+        Ok(())
     }
 }

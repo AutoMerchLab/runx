@@ -24,7 +24,10 @@ use runx_parser::{SkillExternalAdapterManifest, SkillSandbox, SkillSource, Sourc
 use thiserror::Error;
 
 use crate::RuntimeError;
-use crate::adapter::{InvocationOutput, InvocationStatus, SkillAdapter, SkillInvocation};
+use crate::adapter::{
+    CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA, InvocationOutput, InvocationStatus, SkillAdapter,
+    SkillInvocation,
+};
 use crate::adapter_pipeline::AdapterProjection;
 use crate::bytes::trim_ascii_whitespace;
 use crate::credentials::CredentialDelivery;
@@ -41,7 +44,6 @@ const MANIFEST_SCHEMA: &str = "runx.external_adapter.manifest.v1";
 const RESPONSE_SCHEMA: &str = "runx.external_adapter.response.v1";
 const CREDENTIAL_REQUEST_SCHEMA: &str = "runx.external_adapter.credential_request.v1";
 const HOST_RESOLUTION_SCHEMA: &str = "runx.external_adapter.host_resolution.v1";
-const CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA: &str = "credential_delivery_observations";
 const HOST_RESOLUTION_FRAME_ID_METADATA: &str = "external_adapter_host_resolution_frame_id";
 const HOST_RESOLUTION_REQUEST_METADATA: &str = "external_adapter_host_resolution_request";
 

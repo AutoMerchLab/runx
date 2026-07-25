@@ -663,11 +663,17 @@ fn generated_runtime_receipt_with(
         10,
         BTreeMap::new(),
     );
+    let claim = output
+        .value
+        .as_object()
+        .cloned()
+        .ok_or("fixture output must be an object")?;
     let mut receipt = runx_runtime::receipts::step_receipt(
         "journal-history",
         "strict-proof",
         1,
         &output,
+        &claim,
         created_at,
     )?;
     reseal_receipt(&mut receipt)?;
@@ -713,11 +719,17 @@ fn production_generated_receipt(
         10,
         BTreeMap::new(),
     );
+    let claim = output
+        .value
+        .as_object()
+        .cloned()
+        .ok_or("fixture output must be an object")?;
     Ok(step_receipt_with_signature_policy(
         "journal-history",
         "strict-proof",
         1,
         &output,
+        &claim,
         "2026-05-18T00:00:00Z",
         RuntimeReceiptSignaturePolicy::production_signing(signer, verifier),
     )?)

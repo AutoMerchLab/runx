@@ -123,6 +123,7 @@ fn runtime_tree_rejects_extra_child_receipt() -> Result<(), Box<dyn std::error::
         "orphan",
         1,
         &skill_output(InvocationStatus::Success),
+        &JsonObject::new(),
         CREATED_AT,
     )?);
 
@@ -332,7 +333,14 @@ fn step_run(
     status: InvocationStatus,
 ) -> Result<StepRun, Box<dyn std::error::Error>> {
     let output = skill_output(status);
-    let receipt = step_receipt(graph_name, step_id, 1, &output, CREATED_AT)?;
+    let receipt = step_receipt(
+        graph_name,
+        step_id,
+        1,
+        &output,
+        &JsonObject::new(),
+        CREATED_AT,
+    )?;
     let admission_witness = StepAdmissionWitness::local_runtime(step_id, receipt.id.as_str());
     Ok(StepRun {
         step_id: step_id.to_owned(),

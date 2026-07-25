@@ -10,6 +10,7 @@ use runx_parser::{GraphStep, SourceKind};
 use serde::Serialize;
 
 use super::super::LoadedSkillPackage;
+use super::SkillInspectionError;
 
 #[derive(Default)]
 struct ClosureAccumulator {
@@ -68,7 +69,7 @@ impl EdgeDepth {
 
 pub(super) fn inspect_execution_closures(
     loaded: Arc<LoadedSkillPackage>,
-) -> Result<BTreeMap<String, JsonValue>, String> {
+) -> Result<BTreeMap<String, JsonValue>, SkillInspectionError> {
     let runner_names = loaded
         .manifest()
         .map(|manifest| manifest.runners.keys().cloned().collect::<Vec<_>>())
@@ -91,7 +92,7 @@ struct ExecutionClosureInspector {
 }
 
 impl ExecutionClosureInspector {
-    fn new(root: Arc<LoadedSkillPackage>) -> Result<Self, String> {
+    fn new(root: Arc<LoadedSkillPackage>) -> Result<Self, SkillInspectionError> {
         let root_directory = canonical_directory(&root.directory, "inspected skill")?;
         let package_root = canonical_directory(&root.package_root, "inspected package")?;
         let loaded_by_directory = BTreeMap::from([(root_directory.clone(), root.clone())]);
@@ -103,7 +104,10 @@ impl ExecutionClosureInspector {
         })
     }
 
-    fn inspect_root_runner(&mut self, runner_name: &str) -> Result<JsonValue, String> {
+    fn inspect_root_runner(
+        &mut self,
+        runner_name: &str,
+    ) -> Result<JsonValue, SkillInspectionError> {
         let mut closure = ClosureAccumulator::default();
         let mut visited = BTreeSet::new();
         let mut walk = ExecutionWalkState {
@@ -135,7 +139,7 @@ impl ExecutionClosureInspector {
         runner_name: String,
         edge_depth: EdgeDepth,
         walk: &mut ExecutionWalkState<'_>,
-    ) -> Result<(), String> {
+    ) -> Result<(), SkillInspectionError> {
         if !walk.visited.insert((skill_directory, runner_name.clone())) {
             return Ok(());
         }
@@ -152,11 +156,9 @@ impl ExecutionClosureInspector {
         let runner = loaded
             .manifest()
             .and_then(|manifest| manifest.runners.get(&runner_name))
-            .ok_or_else(|| {
-                format!(
-                    "sub-skill {} has no selected runner {runner_name}",
-                    loaded.directory.display()
-                )
+            .ok_or_else(|| SkillInspectionError::SubSkillNamedRunnerMissing {
+                path: loaded.directory.clone(),
+                runner: runner_name.clone(),
             })?;
         walk.closure
             .profiles
@@ -179,13 +181,13 @@ impl ExecutionClosureInspector {
         declared_artifact: bool,
         edge_depth: EdgeDepth,
         walk: &mut ExecutionWalkState<'_>,
-    ) -> Result<(), String> {
+    ) -> Result<(), SkillInspectionError> {
         match source.source_type {
             SourceKind::Graph => {
                 let graph = source
                     .graph
                     .as_ref()
-                    .ok_or_else(|| "graph source omitted its validated graph".to_owned())?;
+                    .ok_or(SkillInspectionError::GraphMissing)?;
                 for step in &graph.steps {
                     if let Some(tool) = &step.tool {
                         walk.closure.components.insert(format!("tool:{tool}"));
@@ -277,7 +279,7 @@ impl ExecutionClosureInspector {
         loaded: Arc<LoadedSkillPackage>,
         profile_path: &str,
         step: &GraphStep,
-    ) -> Result<Option<ResolvedStepSkill>, String> {
+    ) -> Result<Option<ResolvedStepSkill>, SkillInspectionError> {
         let Some(reference) = step.skill.as_deref() else {
             return Ok(None);
         };
@@ -293,20 +295,16 @@ impl ExecutionClosureInspector {
         };
         let nested_profile = nested_profile_path(profile_path, reference)?;
         let nested_runner = select_inspection_runner_name(
-            nested.manifest().ok_or_else(|| {
-                format!(
-                    "sub-skill {} has no executable manifest",
-                    nested.directory.display()
-                )
-            })?,
+            nested
+                .manifest()
+                .ok_or_else(|| SkillInspectionError::SubSkillManifestMissing {
+                    path: nested.directory.clone(),
+                })?,
             step.runner.as_deref(),
         )
-        .ok_or_else(|| {
-            format!(
-                "sub-skill {} has no selected runner for step {}",
-                nested.directory.display(),
-                step.id
-            )
+        .ok_or_else(|| SkillInspectionError::SubSkillRunnerMissing {
+            path: nested.directory.clone(),
+            step: step.id.clone(),
         })?;
         Ok(Some(ResolvedStepSkill {
             edge: format!("{}#{nested_runner}", nested.package.skill.name),
@@ -324,20 +322,31 @@ impl ExecutionClosureInspector {
         &mut self,
         loaded: &LoadedSkillPackage,
         reference: &str,
-    ) -> Result<Option<(PathBuf, Arc<LoadedSkillPackage>)>, String> {
+    ) -> Result<Option<(PathBuf, Arc<LoadedSkillPackage>)>, SkillInspectionError> {
         if is_external_or_dynamic_skill_reference(reference) {
             return Ok(None);
         }
         let candidate = loaded.directory.join(reference);
-        let directory = super::super::resolve_skill_package_directory(&candidate)
-            .map_err(|error| local_skill_load_error(loaded, reference, error))?;
+        let directory =
+            super::super::resolve_skill_package_directory(&candidate).map_err(|source| {
+                SkillInspectionError::ReferencedSkill {
+                    reference: reference.to_owned(),
+                    from: loaded.directory.clone(),
+                    source: Box::new(source),
+                }
+            })?;
         let canonical_directory = canonical_directory(&directory, "referenced sub-skill")?;
         if let Some(cached) = self.loaded_by_directory.get(&canonical_directory) {
             return Ok(Some((canonical_directory, cached.clone())));
         }
         let nested = Arc::new(
-            super::super::load_validated_skill_package(&canonical_directory)
-                .map_err(|error| local_skill_load_error(loaded, reference, error))?,
+            super::super::load_validated_skill_package(&canonical_directory).map_err(|source| {
+                SkillInspectionError::ReferencedSkill {
+                    reference: reference.to_owned(),
+                    from: loaded.directory.clone(),
+                    source: Box::new(source),
+                }
+            })?,
         );
         self.loaded_by_directory
             .insert(canonical_directory.clone(), nested.clone());
@@ -385,23 +394,16 @@ fn record_direct_external_skill_edge(
     }
 }
 
-fn canonical_directory(path: &Path, label: &str) -> Result<PathBuf, String> {
+fn canonical_directory(path: &Path, label: &'static str) -> Result<PathBuf, SkillInspectionError> {
     path.canonicalize()
-        .map_err(|error| format!("canonicalizing {label} {}: {error}", path.display()))
+        .map_err(|source| SkillInspectionError::Canonicalize {
+            label,
+            path: path.to_path_buf(),
+            source,
+        })
 }
 
-fn local_skill_load_error(
-    loaded: &LoadedSkillPackage,
-    reference: &str,
-    error: impl std::fmt::Display,
-) -> String {
-    format!(
-        "loading referenced sub-skill {reference} from {}: {error}",
-        loaded.directory.display()
-    )
-}
-
-fn serialize_closure(closure: ClosureAccumulator) -> Result<JsonValue, String> {
+fn serialize_closure(closure: ClosureAccumulator) -> Result<JsonValue, SkillInspectionError> {
     let components = closure.components.into_iter().collect::<Vec<_>>();
     let package_bindings = closure.package_bindings.into_iter().collect::<Vec<_>>();
     let unresolved_skill_edges = closure
@@ -422,10 +424,14 @@ fn serialize_closure(closure: ClosureAccumulator) -> Result<JsonValue, String> {
         declared_artifact: closure.declared_artifact,
         profiles: closure.profiles.into_iter().collect(),
     };
-    let serialized = serde_json::to_vec(&output)
-        .map_err(|error| format!("serializing execution closure: {error}"))?;
-    serde_json::from_slice(&serialized)
-        .map_err(|error| format!("projecting execution closure: {error}"))
+    let serialized = serde_json::to_vec(&output).map_err(|source| SkillInspectionError::Json {
+        context: "serializing execution closure",
+        source,
+    })?;
+    serde_json::from_slice(&serialized).map_err(|source| SkillInspectionError::Json {
+        context: "projecting execution closure",
+        source,
+    })
 }
 
 fn execution_closure_digest(
@@ -471,12 +477,17 @@ fn is_external_or_dynamic_skill_reference(reference: &str) -> bool {
         || reference.starts_with("runx://skill/")
 }
 
-fn nested_profile_path(current_profile: &str, reference: &str) -> Result<String, String> {
+fn nested_profile_path(
+    current_profile: &str,
+    reference: &str,
+) -> Result<String, SkillInspectionError> {
     let current_dir = Path::new(current_profile)
         .parent()
         .unwrap_or_else(|| Path::new(""));
     normalize_relative_path(current_dir.join(reference).join("X.yaml")).ok_or_else(|| {
-        format!("sub-skill reference {reference} escapes the inspected execution closure")
+        SkillInspectionError::ProfileEscape {
+            reference: reference.to_owned(),
+        }
     })
 }
 

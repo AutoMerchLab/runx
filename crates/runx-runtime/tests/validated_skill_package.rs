@@ -65,7 +65,8 @@ fn validated_skill_package_resolves_internal_profile_to_owning_manual()
 
     let loaded = load_validated_skill_package(&profile_dir)?;
 
-    assert_eq!(loaded.package_root, temp.path());
+    // Package roots are canonical; macOS tempdirs resolve through /private.
+    assert_eq!(loaded.package_root, temp.path().canonicalize()?);
     assert_eq!(loaded.profile_path.as_deref(), Some("graph/plan/X.yaml"));
     assert!(loaded.manifest().is_some());
     assert_eq!(loaded.package.manual_markdown, manual);

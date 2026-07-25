@@ -48,7 +48,7 @@ struct FanoutRunPlan {
 struct PlannedFanoutStep<'a> {
     attempt: u32,
     step: &'a GraphStep,
-    loaded_skill: Option<LoadedStepSkill>,
+    loaded_skill: Result<Option<LoadedStepSkill>, RuntimeError>,
     lane: StepLane,
 }
 
@@ -101,6 +101,15 @@ pub(super) struct StepExecutionPlan<'a> {
     step_id: &'a str,
     attempt: u32,
     failure_mode: StepFailureMode,
+}
+
+struct StepExecutionContext<'a, A> {
+    runtime: &'a Runtime<A>,
+    graph_dir: &'a Path,
+    graph: &'a ExecutionGraph,
+    step: &'a GraphStep,
+    host: &'a mut dyn Host,
+    plan: StepExecutionPlan<'a>,
 }
 
 const DISABLE_RUNTIME_INDEXES_ENV: &str = "RUNX_RUNTIME_DISABLE_INDEXES";
@@ -376,17 +385,16 @@ impl GraphExecution {
             .iter()
             .map(|branch| {
                 let step = self.find_step(graph, &branch.step_id)?;
-                // Loading is speculative at this point: it determines whether
-                // the branch owns an isolated executor. A load failure must
-                // remain a branch failure under fanout policy, not escape as a
-                // fatal planner error before RecordAndContinue can seal it.
-                // The serial execution path retries the load and records the
-                // exact error on that branch.
-                let loaded_skill = self
-                    .cached_step_skill(runtime, graph_dir, step)
-                    .ok()
-                    .flatten();
-                let lane = self.plan_step_lane(runtime, step, loaded_skill.as_ref());
+                // Loading is speculative only for lane selection. Preserve the
+                // exact result so a failed load follows the serial branch path
+                // and is sealed under RecordAndContinue instead of being
+                // erased into an absent skill.
+                let loaded_skill = self.cached_step_skill(runtime, graph_dir, step);
+                let lane = self.plan_step_lane(
+                    runtime,
+                    step,
+                    loaded_skill.as_ref().ok().and_then(Option::as_ref),
+                );
                 Ok(PlannedFanoutStep {
                     attempt: branch.attempt,
                     step,
@@ -443,17 +451,19 @@ impl GraphExecution {
     {
         for planned in steps {
             self.run_loaded_step_with_mode(
-                runtime,
-                graph_dir,
-                graph,
-                planned.step,
-                Ok(planned.loaded_skill),
-                host,
-                StepExecutionPlan {
-                    step_id: &planned.step.id,
-                    attempt: planned.attempt,
-                    failure_mode: StepFailureMode::RecordAndContinue,
+                StepExecutionContext {
+                    runtime,
+                    graph_dir,
+                    graph,
+                    step: planned.step,
+                    host,
+                    plan: StepExecutionPlan {
+                        step_id: &planned.step.id,
+                        attempt: planned.attempt,
+                        failure_mode: StepFailureMode::RecordAndContinue,
+                    },
                 },
+                planned.loaded_skill,
             )?;
         }
         Ok(())
@@ -520,10 +530,16 @@ impl GraphExecution {
                         planned.step.id
                     )));
                 };
+                let loaded_skill = planned.loaded_skill.map_err(|error| {
+                    RuntimeError::engine(
+                        "parallel fanout admitted a step whose skill failed to load",
+                        error,
+                    )
+                })?;
                 Ok(Mutex::new(Some(ParallelFanoutJob {
                     attempt: planned.attempt,
                     step: planned.step,
-                    loaded_skill: planned.loaded_skill,
+                    loaded_skill,
                     executor,
                 })))
             })
@@ -707,40 +723,48 @@ impl GraphExecution {
     {
         let step = self.find_step(graph, plan.step_id)?;
         let loaded_skill = self.cached_step_skill(runtime, graph_dir, step);
-        self.run_loaded_step_with_mode(runtime, graph_dir, graph, step, loaded_skill, host, plan)
+        self.run_loaded_step_with_mode(
+            StepExecutionContext {
+                runtime,
+                graph_dir,
+                graph,
+                step,
+                host,
+                plan,
+            },
+            loaded_skill,
+        )
     }
 
     fn run_loaded_step_with_mode<A>(
         &mut self,
-        runtime: &Runtime<A>,
-        graph_dir: &Path,
-        graph: &ExecutionGraph,
-        step: &GraphStep,
+        mut context: StepExecutionContext<'_, A>,
         loaded_skill: Result<Option<LoadedStepSkill>, RuntimeError>,
-        host: &mut dyn Host,
-        plan: StepExecutionPlan<'_>,
     ) -> Result<(), RuntimeError>
     where
         A: SkillAdapter,
     {
-        enforce_guards(graph, step, &self.runs)?;
-        let retry_remaining = retry_budget_remaining(step, plan.attempt);
-        self.record_lifecycle(host, LifecycleEvent::step_started(plan.step_id))?;
-        self.start_step(runtime, plan.step_id);
-        let run =
-            self.execute_step_plan(runtime, graph_dir, graph, step, loaded_skill, host, plan)?;
-        self.commit_step_run(runtime, host, plan, run, retry_remaining)
+        enforce_guards(context.graph, context.step, &self.runs)?;
+        let retry_remaining = retry_budget_remaining(context.step, context.plan.attempt);
+        self.record_lifecycle(
+            context.host,
+            LifecycleEvent::step_started(context.plan.step_id),
+        )?;
+        self.start_step(context.runtime, context.plan.step_id);
+        let run = self.execute_step_plan(&mut context, loaded_skill)?;
+        self.commit_step_run(
+            context.runtime,
+            context.host,
+            context.plan,
+            run,
+            retry_remaining,
+        )
     }
 
     fn execute_step_plan<A>(
         &mut self,
-        runtime: &Runtime<A>,
-        graph_dir: &Path,
-        graph: &ExecutionGraph,
-        step: &GraphStep,
+        context: &mut StepExecutionContext<'_, A>,
         loaded_skill: Result<Option<LoadedStepSkill>, RuntimeError>,
-        host: &mut dyn Host,
-        plan: StepExecutionPlan<'_>,
     ) -> Result<StepRun, RuntimeError>
     where
         A: SkillAdapter,
@@ -748,39 +772,30 @@ impl GraphExecution {
         let run_result = loaded_skill
             .map_err(StepFault::from)
             .and_then(|loaded_skill| {
-                if runtime
+                if context
+                    .runtime
                     .options
                     .env
                     .contains_key(DISABLE_RUNTIME_INDEXES_ENV)
                 {
-                    self.execute_step_without_index(
-                        runtime,
-                        graph_dir,
-                        graph,
-                        step,
-                        loaded_skill,
-                        host,
-                        plan,
-                    )
+                    self.execute_step_without_index(context, loaded_skill)
                 } else {
-                    self.execute_step_with_index(
-                        runtime,
-                        graph_dir,
-                        graph,
-                        step,
-                        loaded_skill,
-                        host,
-                        plan,
-                    )
+                    self.execute_step_with_index(context, loaded_skill)
                 }
             });
-        let run_result = run_result.map_err(|fault| fault.at_graph_step(&step.id));
+        let run_result = run_result.map_err(|fault| fault.at_graph_step(&context.step.id));
         Ok(match run_result {
             Ok(run) => run,
             Err(StepFault::Sealable(error))
-                if plan.failure_mode == StepFailureMode::RecordAndContinue =>
+                if context.plan.failure_mode == StepFailureMode::RecordAndContinue =>
             {
-                runtime_error_step_run(runtime, &graph.name, step, plan.attempt, error)?
+                runtime_error_step_run(
+                    context.runtime,
+                    &context.graph.name,
+                    context.step,
+                    context.plan.attempt,
+                    error,
+                )?
             }
             Err(fault) => return Err(fault.into_runtime_error()),
         })
@@ -788,26 +803,21 @@ impl GraphExecution {
 
     fn execute_step_without_index<A>(
         &mut self,
-        runtime: &Runtime<A>,
-        graph_dir: &Path,
-        graph: &ExecutionGraph,
-        step: &GraphStep,
+        context: &mut StepExecutionContext<'_, A>,
         loaded_skill: Option<LoadedStepSkill>,
-        host: &mut dyn Host,
-        plan: StepExecutionPlan<'_>,
     ) -> Result<StepRun, StepFault>
     where
         A: SkillAdapter,
     {
         run_step_with_loaded_skill(
             LoadedStepExecutionRequest {
-                runtime,
-                graph_dir,
-                graph_name: &graph.name,
-                step,
-                attempt: plan.attempt,
+                runtime: context.runtime,
+                graph_dir: context.graph_dir,
+                graph_name: &context.graph.name,
+                step: context.step,
+                attempt: context.plan.attempt,
                 loaded_skill,
-                host,
+                host: context.host,
             },
             &self.runs,
         )
@@ -815,13 +825,8 @@ impl GraphExecution {
 
     fn execute_step_with_index<A>(
         &mut self,
-        runtime: &Runtime<A>,
-        graph_dir: &Path,
-        graph: &ExecutionGraph,
-        step: &GraphStep,
+        context: &mut StepExecutionContext<'_, A>,
         loaded_skill: Option<LoadedStepSkill>,
-        host: &mut dyn Host,
-        plan: StepExecutionPlan<'_>,
     ) -> Result<StepRun, StepFault>
     where
         A: SkillAdapter,
@@ -829,13 +834,13 @@ impl GraphExecution {
         let prior_run_index = PriorRunIndex::from_positions(&self.runs, &self.run_positions);
         run_step_with_loaded_skill_index(
             LoadedStepExecutionRequest {
-                runtime,
-                graph_dir,
-                graph_name: &graph.name,
-                step,
-                attempt: plan.attempt,
+                runtime: context.runtime,
+                graph_dir: context.graph_dir,
+                graph_name: &context.graph.name,
+                step: context.step,
+                attempt: context.plan.attempt,
                 loaded_skill,
-                host,
+                host: context.host,
             },
             &prior_run_index,
         )

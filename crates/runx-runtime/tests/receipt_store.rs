@@ -687,6 +687,7 @@ fn runtime_receipt(
         step_id,
         1,
         &skill_output(status),
+        &JsonObject::new(),
         "2026-05-18T00:01:00Z",
     )
     .map_err(Into::into)

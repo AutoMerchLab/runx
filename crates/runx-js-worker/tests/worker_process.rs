@@ -4,7 +4,7 @@ use std::process::{Command, Stdio};
 
 use runx_js_worker::protocol::{
     InvocationLimits, MAX_FRAME_BYTES, MAX_WORKER_POOL_SIZE, PROTOCOL_VERSION, WorkerDisposition,
-    WorkerRequest, WorkerResponse, read_frame, write_frame,
+    WorkerInvocationRequest, WorkerRequest, WorkerResponse, read_frame, write_frame,
 };
 
 #[test]
@@ -46,7 +46,7 @@ fn packaged_worker_performs_the_versioned_handshake_and_invocation()
 
     write_frame(
         &mut stdin,
-        &WorkerRequest::Invoke {
+        &WorkerRequest::Invoke(Box::new(WorkerInvocationRequest {
             protocol_version: PROTOCOL_VERSION,
             invocation_id: "process-test".to_owned(),
             entry_module: "main.mjs".to_owned(),
@@ -58,7 +58,7 @@ fn packaged_worker_performs_the_versioned_handshake_and_invocation()
             inputs: serde_json::json!({"value": "runx"}),
             environment: BTreeMap::new(),
             limits: InvocationLimits::default(),
-        },
+        })),
         MAX_FRAME_BYTES,
     )?;
     assert_eq!(
@@ -103,7 +103,7 @@ fn packaged_worker_serves_back_to_back_invocations() -> Result<(), Box<dyn std::
     for value in 0..MAX_WORKER_POOL_SIZE {
         write_frame(
             &mut stdin,
-            &WorkerRequest::Invoke {
+            &WorkerRequest::Invoke(Box::new(WorkerInvocationRequest {
                 protocol_version: PROTOCOL_VERSION,
                 invocation_id: format!("invoke-{value}"),
                 entry_module: "main.mjs".to_owned(),
@@ -115,7 +115,7 @@ fn packaged_worker_serves_back_to_back_invocations() -> Result<(), Box<dyn std::
                 inputs: serde_json::json!({"value": value, "rounds": rounds}),
                 environment: BTreeMap::new(),
                 limits: InvocationLimits::default(),
-            },
+            })),
             MAX_FRAME_BYTES,
         )?;
     }

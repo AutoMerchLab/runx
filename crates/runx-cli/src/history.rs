@@ -903,11 +903,20 @@ mod tests {
             10,
             BTreeMap::new(),
         );
+        let claim =
+            output
+                .value
+                .as_object()
+                .cloned()
+                .ok_or_else(|| RuntimeError::ReceiptInvalid {
+                    message: "history fixture output must be an object".to_owned(),
+                })?;
         step_receipt_with_signature_policy(
             "cli-history",
             "production-verified",
             1,
             &output,
+            &claim,
             "2026-05-25T00:00:00Z",
             RuntimeReceiptSignaturePolicy::production_signing(signer, &verifier),
         )

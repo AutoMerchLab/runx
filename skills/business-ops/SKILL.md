@@ -28,6 +28,8 @@ binding.
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `data-store#append_event`
 - `data-store#read_projection`
 
@@ -143,7 +145,23 @@ skill runner or provider tool.
 
 ## Output schema
 
-The graph output contains child step receipts plus one `lane_packet` per lane:
+The graph's public `result` contains one `lane_packets` packet keyed by stable step identity, while `context.step_outputs` and child receipts retain each producer's original output. Every value under `lanes` follows the lane contract shown below:
+
+```yaml
+lane_packets:
+  schema: runx.business_ops_route.v1
+  signal: string
+  lanes:
+    classify: lane_packet
+    docs: lane_packet
+    release: lane_packet
+    issue: lane_packet
+    send: lane_packet
+    spend: lane_packet
+    audit: lane_packet
+```
+
+Each `lane_packet` has this shape:
 
 ```yaml
 lane_packet:

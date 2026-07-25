@@ -63,7 +63,8 @@ mod tests {
     use super::read_responses;
 
     #[test]
-    fn rejects_a_stale_worker_before_decoding_its_response_shape() {
+    fn rejects_a_stale_worker_before_decoding_its_response_shape()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut frame = Vec::new();
         write_frame(
             &mut frame,
@@ -76,17 +77,17 @@ mod tests {
                 "discard_worker": true
             }),
             MAX_FRAME_BYTES,
-        )
-        .expect("frame");
+        )?;
         let (sender, receiver) = mpsc::channel();
 
         read_responses(Cursor::new(frame), sender);
 
         let error = receiver
-            .recv()
-            .expect("response")
-            .expect_err("stale worker must fail");
+            .recv()?
+            .err()
+            .ok_or("stale worker response did not fail")?;
         assert!(error.contains("protocol version mismatch"));
         assert!(error.contains(&format!("expected {PROTOCOL_VERSION}")));
+        Ok(())
     }
 }

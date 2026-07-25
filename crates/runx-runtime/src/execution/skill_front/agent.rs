@@ -1,5 +1,5 @@
 use super::{
-    SkillRunError, SkillRunOverrides, agent_invocation_source_type, agent_request,
+    SkillExecutionContext, SkillRunError, agent_invocation_source_type, agent_request,
     answer_disposition, contract_json_value, domain_act_frame, identifier_segment, invalid,
     needs_agent_output, read_answer, seal_skill_answer, sealed_output,
 };
@@ -10,7 +10,9 @@ use crate::RuntimeError;
 use crate::adapter::{InvocationOutput, SkillInvocation};
 #[cfg(feature = "agent")]
 use crate::adapters::agent::AgentAdapterSourceType;
-use crate::agent_contract::verified_agent_metadata_with_artifacts;
+use crate::agent_contract::{
+    agent_output_contract_payload, verified_agent_metadata_with_artifacts,
+};
 use crate::agent_invocation::agent_act_invocation_id;
 #[cfg(feature = "agent")]
 use crate::config::ManagedAgentConfig;
@@ -20,31 +22,20 @@ use crate::journal::{PausedRunCheckpoint, append_paused_run_checkpoint};
 #[cfg(feature = "agent")]
 use crate::receipts::StepSealClosure;
 use crate::receipts::{DomainActReceiptRequest, domain_act_receipt};
+#[cfg(feature = "agent")]
 use crate::services::{ReceiptServices, WorkspaceEnv};
 use runx_parser::{SkillRunnerDefinition, SkillRunnerManifest};
 
 use super::runner_manifest::write_skill_receipt;
 
-pub(super) struct AgentSkillExecutionContext<'a> {
-    pub request: &'a SkillRunRequest,
-    pub overrides: &'a SkillRunOverrides,
-    pub effects: &'a RuntimeEffectRegistry,
-    pub workspace: &'a WorkspaceEnv,
-    pub receipts: &'a ReceiptServices,
-    pub manifest: &'a SkillRunnerManifest,
-    pub runner: &'a SkillRunnerDefinition,
-    pub package_digest: &'a str,
-    pub execution_closure_digest: Option<&'a str>,
-}
-
 // Function rationale: one agent-front transaction resolves the
 // answer source, seals either a domain act or generic answer, and emits the
 // public skill output envelope.
 pub(super) fn execute_agent_skill_run(
-    context: AgentSkillExecutionContext<'_>,
+    context: &SkillExecutionContext<'_>,
     mut invocation: SkillInvocation,
 ) -> Result<JsonValue, SkillRunError> {
-    let AgentSkillExecutionContext {
+    let SkillExecutionContext {
         request,
         overrides,
         effects,
@@ -52,9 +43,9 @@ pub(super) fn execute_agent_skill_run(
         receipts,
         manifest,
         runner,
-        package_digest,
-        execution_closure_digest,
-    } = context;
+        package_digest: _,
+        execution_closure_digest: _,
+    } = *context;
     let source_type = agent_invocation_source_type(runner.source.source_type.as_str())?;
     let request_id = agent_act_invocation_id(&invocation, source_type);
     let run_id = agent_run_id(request, manifest, runner, &request_id)?;
@@ -91,17 +82,7 @@ pub(super) fn execute_agent_skill_run(
                         });
                     }
                     InlineAgentOutcome::HostDrives => {
-                        write_paused_agent_checkpoint(
-                            request,
-                            workspace,
-                            receipts,
-                            manifest,
-                            runner,
-                            package_digest,
-                            execution_closure_digest,
-                            &run_id,
-                            &request_id,
-                        )?;
+                        write_paused_agent_checkpoint(context, &run_id, &request_id)?;
                         return Ok(JsonValue::Object(needs_agent_output(
                             &run_id,
                             &request_id,
@@ -119,6 +100,16 @@ pub(super) fn execute_agent_skill_run(
         &invocation.skill_directory,
         workspace.env(),
     )?;
+    let claim_payload = match &resolution_request {
+        runx_contracts::ResolutionRequest::AgentAct { .. } => {
+            agent_output_contract_payload(&answer)
+        }
+        _ => {
+            return Err(SkillRunError::Runtime(RuntimeError::ReceiptInvalid {
+                message: "agent execution resolved a non-agent request".to_owned(),
+            }));
+        }
+    };
     let disposition = answer_disposition(&answer)?;
     let receipt = match domain_act_frame(&invocation, &answer, governed_effect.as_ref()) {
         Some(mut frame) => {
@@ -146,6 +137,7 @@ pub(super) fn execute_agent_skill_run(
             &run_id,
             runner,
             &answer,
+            &claim_payload,
             disposition,
             receipts.signature_config(),
             workspace.env(),
@@ -166,35 +158,35 @@ pub(super) fn execute_agent_skill_run(
 }
 
 fn write_paused_agent_checkpoint(
-    request: &SkillRunRequest,
-    workspace: &WorkspaceEnv,
-    receipts: &ReceiptServices,
-    manifest: &SkillRunnerManifest,
-    runner: &SkillRunnerDefinition,
-    package_digest: &str,
-    execution_closure_digest: Option<&str>,
+    context: &SkillExecutionContext<'_>,
     run_id: &str,
     request_id: &str,
 ) -> Result<(), SkillRunError> {
-    let receipt_path = receipts.resolve_path(workspace, request.receipt_dir.as_deref(), None);
+    let receipt_path = context.receipts.resolve_path(
+        context.workspace,
+        context.request.receipt_dir.as_deref(),
+        None,
+    );
     let checkpoint = PausedRunCheckpoint {
         id: run_id.to_owned(),
-        name: manifest
+        name: context
+            .manifest
             .skill
             .clone()
-            .unwrap_or_else(|| runner.name.clone()),
+            .unwrap_or_else(|| context.runner.name.clone()),
         kind: "agent".to_owned(),
         started_at: Some(crate::time::now_iso8601()),
-        resume_skill_ref: Some(request.skill_path.to_string_lossy().into_owned()),
-        selected_runner: Some(runner.name.clone()),
-        credential_profile: request
+        resume_skill_ref: Some(context.request.skill_path.to_string_lossy().into_owned()),
+        selected_runner: Some(context.runner.name.clone()),
+        credential_profile: context
+            .request
             .local_credential
             .as_ref()
             .and_then(|credential| credential.profile.clone()),
-        package_digest: Some(package_digest.to_owned()),
-        execution_closure_digest: execution_closure_digest.map(str::to_owned),
+        package_digest: Some(context.package_digest.to_owned()),
+        execution_closure_digest: context.execution_closure_digest.map(str::to_owned),
         step_ids: vec![request_id.to_owned()],
-        step_labels: vec![runner.name.clone()],
+        step_labels: vec![context.runner.name.clone()],
     };
     append_paused_run_checkpoint(&receipt_path.path, &checkpoint).map_err(|source| {
         RuntimeError::io(
@@ -327,6 +319,7 @@ fn seal_managed_agent_failure(
         context.run_id,
         context.runner,
         &output,
+        None,
         StepSealClosure {
             disposition: ClosureDisposition::Failed,
             reason_code,

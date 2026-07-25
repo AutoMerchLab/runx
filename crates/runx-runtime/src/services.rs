@@ -39,9 +39,8 @@ mod tests {
     use crate::services::{ReceiptServices, WorkspaceEnv};
 
     #[test]
-    fn skill_env_injects_workspace_and_project_paths() {
-        let workspace =
-            WorkspaceEnv::new(BTreeMap::new(), PathBuf::from("/tmp/runx-work")).unwrap();
+    fn skill_env_injects_workspace_and_project_paths() -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = WorkspaceEnv::new(BTreeMap::new(), PathBuf::from("/tmp/runx-work"))?;
 
         let env = workspace.skill_env_for_skill(Path::new("/tmp/runx-work/skills/demo"));
 
@@ -50,6 +49,7 @@ mod tests {
             env.get(RUNX_PROJECT_DIR_ENV),
             Some(&"/tmp/runx-work/.runx".to_owned())
         );
+        Ok(())
     }
 
     #[test]
@@ -71,9 +71,10 @@ mod tests {
     }
 
     #[test]
-    fn receipt_services_resolve_paths_from_workspace_env() {
+    fn receipt_services_resolve_paths_from_workspace_env() -> Result<(), Box<dyn std::error::Error>>
+    {
         let env = BTreeMap::from([(RUNX_PROJECT_DIR_ENV.to_owned(), ".runx-custom".to_owned())]);
-        let workspace = WorkspaceEnv::new(env, PathBuf::from("/tmp/runx-work")).unwrap();
+        let workspace = WorkspaceEnv::new(env, PathBuf::from("/tmp/runx-work"))?;
         let receipts = ReceiptServices::from_signature_config(
             RuntimeReceiptSignatureConfig::local_development(),
         );
@@ -84,6 +85,7 @@ mod tests {
             resolved.path,
             PathBuf::from("/tmp/runx-work/.runx-custom/receipts")
         );
+        Ok(())
     }
 
     #[test]

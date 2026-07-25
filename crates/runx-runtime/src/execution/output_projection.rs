@@ -1,8 +1,6 @@
 use runx_contracts::operational_policy_source_provider;
 use runx_contracts::{JsonObject, JsonValue, Reference, ReferenceType};
 
-use crate::adapter::InvocationOutput;
-
 pub(crate) struct StepOutputProjection {
     pub(crate) outputs: JsonObject,
     pub(crate) refs: StepOutputRefs,
@@ -18,65 +16,27 @@ pub(crate) struct StepOutputRefs {
     pub(crate) verification_refs: Vec<Reference>,
 }
 
-#[must_use]
-pub(crate) fn project_step_output(output: &InvocationOutput) -> StepOutputProjection {
-    let refs = output_refs(Some(&output.value));
-    StepOutputProjection {
-        outputs: JsonObject::new(),
-        refs,
-    }
-}
-
-/// Resolve one declared output from the producer's exact top-level claim.
-/// Transport-envelope probing is intentionally forbidden: producers emit the
-/// declared contract directly.
-pub(crate) fn declared_claim_value(claim: &JsonObject, name: &str) -> Option<JsonValue> {
-    claim.get(name).cloned()
-}
-
-/// Wrap a value in the canonical `{ "data": ... }` artifact envelope, idempotently.
+/// Build the durable graph/receipt projection from one already-verified claim.
 ///
-/// This is the single owner of the envelope convention. A runtime-created
-/// `{ "data": ... }` wrapper and a self-described `{ "schema": ..., "data": ... }`
-/// packet are already envelopes. A domain object that merely has its own `data` field
-/// is not: treating it as one loses the canonical wrapper and changes every sibling
-/// field's context path.
+/// Raw adapter values and diagnostics never enter this boundary. References
+/// are derived only from fields the producer declared and the runtime admitted
+/// into `claim`, keeping graph state and receipt identity on one exact surface.
 #[must_use]
-pub(crate) fn data_envelope(value: JsonValue) -> JsonValue {
-    match value {
-        JsonValue::Object(object) if is_data_envelope(&object) => JsonValue::Object(object),
-        other => {
-            let mut wrapper = JsonObject::new();
-            wrapper.insert("data".to_owned(), other);
-            JsonValue::Object(wrapper)
-        }
-    }
+pub(crate) fn project_step_claim(outputs: JsonObject) -> StepOutputProjection {
+    let refs = claim_refs(&outputs);
+    StepOutputProjection { outputs, refs }
 }
 
-fn is_data_envelope(object: &JsonObject) -> bool {
-    object.contains_key("data")
-        && (object.len() == 1
-            || object
-                .get("schema")
-                .and_then(JsonValue::as_str)
-                .is_some_and(|schema| !schema.trim().is_empty()))
-}
-
-fn output_refs(value: Option<&JsonValue>) -> StepOutputRefs {
+#[must_use]
+pub(crate) fn claim_refs(outputs: &JsonObject) -> StepOutputRefs {
     let mut refs = StepOutputRefs::default();
-    let Some(value) = value else {
-        return refs;
-    };
-    collect_output_artifact_refs(value, &mut refs);
-    collect_output_signal_refs(value, &mut refs);
-    collect_output_change_set_refs(value, &mut refs);
+    collect_output_artifact_refs(outputs, &mut refs);
+    collect_output_signal_refs(outputs, &mut refs);
+    collect_output_change_set_refs(outputs, &mut refs);
     refs
 }
 
-fn collect_output_artifact_refs(value: &JsonValue, refs: &mut StepOutputRefs) {
-    let Some(object) = value.as_object() else {
-        return;
-    };
+fn collect_output_artifact_refs(object: &JsonObject, refs: &mut StepOutputRefs) {
     if let Some(artifact) = object.get("artifact") {
         collect_artifact_reference(artifact, refs);
     }
@@ -117,10 +77,7 @@ fn collect_artifact_reference(value: &JsonValue, refs: &mut StepOutputRefs) {
     }
 }
 
-fn collect_output_signal_refs(value: &JsonValue, refs: &mut StepOutputRefs) {
-    let Some(object) = value.as_object() else {
-        return;
-    };
+fn collect_output_signal_refs(object: &JsonObject, refs: &mut StepOutputRefs) {
     if let Some(signal) = object.get("signal") {
         collect_signal_reference(signal, refs);
     }
@@ -129,10 +86,7 @@ fn collect_output_signal_refs(value: &JsonValue, refs: &mut StepOutputRefs) {
     }
 }
 
-fn collect_output_change_set_refs(value: &JsonValue, refs: &mut StepOutputRefs) {
-    let Some(object) = value.as_object() else {
-        return;
-    };
+fn collect_output_change_set_refs(object: &JsonObject, refs: &mut StepOutputRefs) {
     if let Some(change_set) = object.get("change_set") {
         collect_change_set_reference(change_set, refs);
     }
@@ -269,5 +223,30 @@ fn reference_type_for_source(provider: Option<&str>, locator: &str) -> Reference
         _ if locator.starts_with("slack://") => ReferenceType::SlackThread,
         _ if locator.starts_with("sentry://") => ReferenceType::SentryEvent,
         _ => ReferenceType::ExternalUrl,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::project_step_claim;
+    use runx_contracts::{JsonObject, JsonValue};
+
+    #[test]
+    fn references_are_derived_from_the_admitted_claim() {
+        let claim = JsonObject::from([(
+            "artifact".to_owned(),
+            JsonValue::Object(JsonObject::from([(
+                "artifact_id".to_owned(),
+                JsonValue::String("artifact_1".to_owned()),
+            )])),
+        )]);
+
+        let projection = project_step_claim(claim);
+
+        assert_eq!(projection.refs.artifact_refs.len(), 1);
+        assert_eq!(
+            projection.refs.artifact_refs[0].uri.as_str(),
+            "runx:artifact:artifact_1"
+        );
     }
 }

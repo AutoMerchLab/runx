@@ -1,7 +1,6 @@
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 
-#[cfg(feature = "cli-tool")]
 use runx_contracts::CredentialDeliveryObservation;
 use runx_contracts::{ContextEntry, ExecutionRequirements, JsonObject, JsonValue, ProvenanceEntry};
 use runx_parser::{SkillArtifactContract, SkillSource};
@@ -19,7 +18,7 @@ pub const CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA: &str = "credential_delivery
 pub const CONTRACT_VERIFICATION_METADATA: &str = "contract_verification";
 /// Runtime-enforced ceilings that shaped this invocation. The receipt sealer
 /// copies only this structured, runtime-owned metadata key.
-pub const EXECUTION_LIMITS_METADATA: &str = "execution_limits";
+pub use runx_contracts::EXECUTION_LIMITS_METADATA;
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum InvocationStatus {
@@ -222,7 +221,6 @@ impl InvocationOutput {
     /// Append one non-secret credential observation for receipt sealing. This
     /// records the runtime boundary observation as supplied; it does not imply
     /// that credential material entered the invoked subprocess.
-    #[cfg(feature = "cli-tool")]
     pub(crate) fn record_credential_observation(
         &mut self,
         observation: &CredentialDeliveryObservation,
@@ -232,11 +230,36 @@ impl InvocationOutput {
             .map_err(|source| {
                 RuntimeError::json("serializing credential delivery observation", source)
             })?;
+        let observation_id = value
+            .as_object()
+            .and_then(|object| object.get("observation_id"))
+            .and_then(JsonValue::as_str)
+            .ok_or_else(|| RuntimeError::ReceiptInvalid {
+                message: "credential delivery observation omitted observation_id".to_owned(),
+            })?;
         match self
             .metadata
             .get_mut(CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA)
         {
-            Some(JsonValue::Array(observations)) => observations.push(value),
+            Some(JsonValue::Array(observations)) => {
+                if let Some(existing) = observations.iter().find(|existing| {
+                    existing
+                        .as_object()
+                        .and_then(|object| object.get("observation_id"))
+                        .and_then(JsonValue::as_str)
+                        == Some(observation_id)
+                }) {
+                    if existing == &value {
+                        return Ok(());
+                    }
+                    return Err(RuntimeError::ReceiptInvalid {
+                        message: format!(
+                            "credential delivery observation {observation_id:?} was recorded with conflicting evidence"
+                        ),
+                    });
+                }
+                observations.push(value);
+            }
             Some(_) => {
                 return Err(RuntimeError::ReceiptInvalid {
                     message: format!(
@@ -326,5 +349,44 @@ where
         source: &SkillSource,
     ) -> Option<Box<dyn SkillAdapter + Send + Sync>> {
         self.as_ref().isolated_fanout_adapter(source)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn credential_observation_is_idempotent_and_rejects_conflicting_evidence()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let delivery = CredentialDelivery::from_local_descriptor(
+            "example",
+            "api_key",
+            "EXAMPLE_TOKEN",
+            "local:example:test",
+            vec!["example.read".to_owned()],
+            "secret",
+        )?;
+        let observation = delivery
+            .public_observation()
+            .cloned()
+            .ok_or("local delivery omitted its observation")?;
+        let mut output = InvocationOutput::runtime_success(JsonValue::Null, 0, JsonObject::new());
+
+        output.record_credential_observation(&observation)?;
+        output.record_credential_observation(&observation)?;
+        assert_eq!(
+            output
+                .metadata
+                .get(CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA)
+                .and_then(JsonValue::as_array)
+                .map(Vec::len),
+            Some(1)
+        );
+
+        let mut conflicting = observation;
+        conflicting.provider = "different".into();
+        assert!(output.record_credential_observation(&conflicting).is_err());
+        Ok(())
     }
 }

@@ -11,15 +11,16 @@ use crate::filesystem::{DirectoryEntry, find_files_named, read_dir_sorted};
 mod inspection;
 
 pub(crate) use inspection::inspect_loaded_execution_closure_binding;
-pub use inspection::inspect_skill_package;
+pub use inspection::{SkillInspectionError, inspect_skill_package};
 
 pub(crate) const MAX_PACKAGE_FILES: usize = 500;
 pub(crate) const MAX_PACKAGE_BYTES: usize = 20 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub struct LoadedSkillPackage {
-    /// Directory named by the caller. For an internal profile this is the
-    /// profile directory; for a public package it is the package root.
+    /// Canonical absolute directory selected by the caller. For an internal
+    /// profile this is the profile directory; for a public package it is the
+    /// package root.
     pub directory: PathBuf,
     pub package_root: PathBuf,
     pub profile_path: Option<String>,
@@ -40,34 +41,46 @@ pub(crate) fn verify_loaded_execution_binding(
     runner: &str,
     expected_package_digest: Option<&str>,
     expected_execution_closure_digest: Option<&str>,
-) -> Result<Option<String>, String> {
+) -> Result<Option<String>, SkillInspectionError> {
     if let Some(expected) = expected_package_digest
         && expected != loaded.package.package_digest
     {
-        return Err(format!(
-            "skill package digest mismatch: expected {expected}, received {}",
-            loaded.package.package_digest
-        ));
+        return Err(SkillInspectionError::PackageDigestMismatch {
+            expected: expected.to_owned(),
+            received: loaded.package.package_digest,
+        });
     }
     let closure = inspect_loaded_execution_closure_binding(loaded, runner)?;
     if let Some(expected) = expected_execution_closure_digest {
         if !closure.fully_bound {
-            return Err(format!(
-                "native execution closure for runner {runner} is not fully bound"
-            ));
+            return Err(SkillInspectionError::ClosureNotFullyBound {
+                runner: runner.to_owned(),
+            });
         }
         if closure.digest != expected {
-            return Err(format!(
-                "skill execution closure digest mismatch: expected {expected}, received {}",
-                closure.digest
-            ));
+            return Err(SkillInspectionError::ClosureDigestMismatch {
+                expected: expected.to_owned(),
+                received: closure.digest,
+            });
         }
     }
     Ok(closure.fully_bound.then_some(closure.digest))
 }
 
 pub fn load_validated_skill_package(path: &Path) -> Result<LoadedSkillPackage, RuntimeError> {
-    let directory = resolve_skill_package_directory(path)?;
+    let unresolved_directory = resolve_skill_package_directory(path)?;
+    // Runtime-owned package identity is absolute. Keeping caller-relative paths
+    // here makes nested adapters accidentally reinterpret a valid package
+    // against a harness, resume, or daemon workspace later in execution.
+    let directory = fs::canonicalize(&unresolved_directory).map_err(|source| {
+        RuntimeError::io(
+            format!(
+                "resolving skill package directory {}",
+                unresolved_directory.display()
+            ),
+            source,
+        )
+    })?;
     let package_root = resolve_owning_package_root(&directory)?;
     let mut source = SkillPackageSource::default();
     let mut totals = PackageTotals::default();

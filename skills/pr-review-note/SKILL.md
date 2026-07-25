@@ -20,6 +20,8 @@ request; comment authority cannot be promoted into merge authority.
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `github-mcp-merge-pr#default`
 - `github-mcp-pr-review-note#default`
 

@@ -827,6 +827,7 @@ function agentActResolutionRequest(): Readonly<Record<string, unknown>> {
         instructions: "Summarize receipt",
         instructions_sha256: sha256Prefixed("Summarize receipt"),
         provenance: [],
+        requirements: { declaration: {} },
         run_id: "run_1",
         skill: "review-receipt",
         step_id: "step_1",

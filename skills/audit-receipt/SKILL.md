@@ -21,6 +21,8 @@ grant from usage, this one verifies a run honored its grant.
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `ledger#read`
 
 ## What this skill does

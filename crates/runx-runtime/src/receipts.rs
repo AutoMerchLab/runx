@@ -19,7 +19,8 @@ pub(crate) use seal::{
     DomainActFrame, DomainActReceiptRequest, GraphClosure, RuntimeReceiptProofContextProvider,
     StepReceiptWithDisposition, StepSeal, StepSealClosure, domain_act_receipt,
     graph_receipt_with_disposition_and_policy, graph_receipt_with_effects_and_signature_policy,
-    seal_step, step_receipt_with_disposition_and_policy,
+    seal_step, step_receipt_with_declared_claim_and_policy,
+    step_receipt_with_disposition_and_policy,
 };
 pub use seal::{
     RuntimeReceiptSignaturePolicy, graph_receipt, graph_receipt_with_signature_policy,

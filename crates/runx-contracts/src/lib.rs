@@ -22,6 +22,7 @@ pub mod host_protocol;
 pub mod javascript_worker;
 pub mod json;
 pub mod ledger;
+pub mod limits;
 pub mod links;
 pub mod list;
 pub mod maturity;
@@ -135,6 +136,10 @@ pub use ledger::{
     LedgerCanonicalization, LedgerChain, LedgerChainVersion, LedgerEntry, LedgerEntryMeta,
     LedgerEntrySchemaVersion, LedgerHashAlgorithm, LedgerPayload, LedgerPayloadVersion,
     LedgerProducer, LedgerSha256Hex,
+};
+pub use limits::{
+    EXECUTION_LIMITS_METADATA, ExecutionLimit, ExecutionLimitHit, ExecutionLimitUnit,
+    ExecutionLimits,
 };
 pub use links::{DuplicateCandidate, Links};
 pub use list::{

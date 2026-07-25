@@ -623,7 +623,7 @@ fn invocation(tool: &str, timeout_seconds: Option<u64>, inputs: JsonObject) -> S
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
         provenance: Vec::new(),
-        skill_directory: PathBuf::from("."),
+        skill_directory: PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../.."),
         env: BTreeMap::new(),
         requirements: Default::default(),
         credential_delivery: runx_runtime::CredentialDelivery::none(),
@@ -635,6 +635,12 @@ fn fixture_case(case_name: &str) -> Result<SkillInvocation, Box<dyn std::error::
         serde_json::from_str(&fs::read_to_string(repo_root()?.join(format!(
             "fixtures/runtime/adapters/mcp/{case_name}/request.json"
         )))?)?;
+    // Mirror production resolution: the source's declared environment names
+    // become the invocation's execution requirements.
+    let requirements = runx_contracts::ExecutionRequirements {
+        environment: fixture.source.environment.clone(),
+        ..Default::default()
+    };
     Ok(SkillInvocation {
         skill_name: fixture.skill_name,
         step_id: None,
@@ -647,7 +653,7 @@ fn fixture_case(case_name: &str) -> Result<SkillInvocation, Box<dyn std::error::
         provenance: Vec::new(),
         skill_directory: repo_root()?,
         env: oracle_env()?,
-        requirements: Default::default(),
+        requirements,
         credential_delivery: runx_runtime::CredentialDelivery::none(),
     })
 }
@@ -865,11 +871,16 @@ fn oracle_text(case_name: &str, extension: &str) -> Result<String, Box<dyn std::
 
 fn oracle_value(case_name: &str) -> Result<JsonValue, Box<dyn std::error::Error>> {
     let value = oracle_text(case_name, "stdout")?;
-    Ok(if value.is_empty() {
-        JsonValue::Null
-    } else {
-        JsonValue::String(value)
-    })
+    // An empty stdout file is Null only for failed cases; a sealed case with
+    // empty text is the honest empty-string value (the two are distinguished
+    // by the sibling status oracle).
+    Ok(
+        if value.is_empty() && oracle_text(case_name, "status")?.trim_end() != "sealed" {
+            JsonValue::Null
+        } else {
+            JsonValue::String(value)
+        },
+    )
 }
 
 fn oracle_failure(case_name: &str) -> Result<Option<String>, Box<dyn std::error::Error>> {
@@ -889,10 +900,35 @@ fn normalized_output_metadata(metadata: &JsonObject) -> Result<Option<JsonValue>
     if metadata.is_empty() {
         return Ok(None);
     }
-    Ok(Some(normalize_metadata_value(
+    let mut normalized = normalize_metadata_value(
         &JsonValue::Object(metadata.clone()),
         &repo_root()?.to_string_lossy(),
-    )))
+    );
+    normalize_sandbox_host_facts(&mut normalized);
+    Ok(Some(normalized))
+}
+
+/// Replace host-dependent sandbox facts with a stable placeholder. Which OS
+/// enforcer ran (seatbelt, bubblewrap, declared-only) is a property of the
+/// host, not of the fixture contract; the declared profile, environment
+/// model, approval, and writable paths remain exact.
+fn normalize_sandbox_host_facts(metadata: &mut JsonValue) {
+    let JsonValue::Object(record) = metadata else {
+        return;
+    };
+    let Some(JsonValue::Object(sandbox)) = record.get_mut("sandbox") else {
+        return;
+    };
+    sandbox.insert("runtime".to_owned(), JsonValue::String("<host>".to_owned()));
+    for key in ["filesystem", "network"] {
+        if let Some(JsonValue::Object(section)) = sandbox.get_mut(key) {
+            section.insert(
+                "enforcement".to_owned(),
+                JsonValue::String("<host>".to_owned()),
+            );
+            section.remove("private_tmp");
+        }
+    }
 }
 
 fn normalize_metadata_value(value: &JsonValue, repo_root: &str) -> JsonValue {

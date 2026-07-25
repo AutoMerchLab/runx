@@ -389,7 +389,7 @@ pub(crate) fn prepare_skill_run_with_effects(
         entry.package_digest.as_deref(),
         entry.execution_closure_digest.as_deref(),
     )
-    .map_err(SkillRunError::Invalid)?;
+    .map_err(|error| SkillRunError::Invalid(error.to_string()))?;
     if entry.execution_closure_digest.is_none() {
         entry.execution_closure_digest = execution_closure_digest;
     }
@@ -912,7 +912,8 @@ mod tests {
                 ..PreparedEntryProvenance::default()
             },
         )
-        .expect_err("a mismatched execution package digest must fail closed");
+        .err()
+        .ok_or("mismatched execution package digest did not fail closed")?;
 
         assert!(error.to_string().contains("skill package digest mismatch"));
         Ok(())
@@ -930,7 +931,8 @@ mod tests {
                 ..PreparedEntryProvenance::default()
             },
         )
-        .expect_err("a mismatched execution closure digest must fail closed");
+        .err()
+        .ok_or("mismatched execution closure digest did not fail closed")?;
 
         assert!(
             error
@@ -980,7 +982,8 @@ mod tests {
         )?;
         let error = prepared
             .verify_artifacts()
-            .expect_err("sibling package drift must invalidate the bound closure");
+            .err()
+            .ok_or("sibling package drift did not invalidate the bound closure")?;
         assert!(
             error
                 .to_string()
@@ -1008,7 +1011,8 @@ mod tests {
                 None,
                 Some("sha256:not-the-closure"),
             )
-            .expect_err("a resumed continuation must retain its execution closure binding");
+            .err()
+            .ok_or("resumed continuation discarded its execution closure binding")?;
         assert!(
             error
                 .to_string()
@@ -1437,7 +1441,6 @@ runners:
     fn prepared_skill_receipt_binds_context_artifact_and_approval_decision()
     -> Result<(), Box<dyn Error>> {
         use crate::adapter::InvocationOutput;
-        use crate::execution::output_projection::project_step_output;
         use crate::receipts::{
             RuntimeReceiptSignaturePolicy, StepSeal, StepSealClosure, seal_step,
         };
@@ -1465,13 +1468,15 @@ runners:
             0,
             BTreeMap::new(),
         );
-        let mut projection = project_step_output(&output);
+        let mut projection =
+            crate::execution::output_projection::project_step_claim(BTreeMap::new());
         let receipt = seal_step(
             StepSeal {
                 graph_name: "prepared",
                 step_id: "execute",
                 attempt: 1,
                 output: &output,
+                claim: &projection.outputs,
                 projection_refs: std::mem::take(&mut projection.refs),
                 created_at: "2026-07-12T00:00:00Z",
                 authority_grant_refs: Vec::new(),

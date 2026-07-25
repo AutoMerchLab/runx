@@ -22,6 +22,8 @@ receipt evidence, and non-goals for later governed execution.
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `data-store#list_stream_heads`
 
 ## Inputs

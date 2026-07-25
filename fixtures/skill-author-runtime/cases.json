@@ -20,7 +20,7 @@
         "status": "sealed",
         "stdout_json": {
           "cwd_basename": "skill",
-          "inputs_source": "json",
+          "inputs_source": "path",
           "message": "hi",
           "mode": "inspect-env",
           "repeated_separator_env": "ok",
@@ -92,7 +92,7 @@
         "status": "sealed",
         "stdout_json": {
           "cwd_basename": "workspace-target",
-          "inputs_source": "json",
+          "inputs_source": "path",
           "message": "cwd",
           "mode": "inspect-env",
           "repeated_separator_env": null,

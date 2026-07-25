@@ -48,15 +48,13 @@ pub fn sandbox_requires_approval(sandbox: Option<&SandboxDeclaration>) -> bool {
 pub fn is_reserved_runx_sandbox_env_name(name: &str) -> bool {
     let upper = name.to_ascii_uppercase();
     upper.starts_with("RUNX_RECEIPT_SIGN_")
-        || upper.starts_with("RUNX_INTERNAL_PREPARED_")
+        || upper.starts_with("RUNX_INTERNAL_")
         || matches!(
             upper.as_str(),
             "RUNX_AGENT_API_KEY"
                 | "RUNX_HOSTED_API_ADMIN_TOKEN"
                 | "RUNX_HOSTED_CREDENTIAL_HANDLES_JSON"
                 | "RUNX_HOSTED_REGISTRY_PUBLISH_TOKEN"
-                | "RUNX_PAYMENT_ADMISSION_SIGNING_KEY"
-                | "RUNX_PROVIDER_ADMISSION_SIGNING_KEY"
                 | "RUNX_PUBLIC_API_TOKEN"
                 | "RUNX_REGISTRY_MANIFEST_TRUST_KEY_BASE64"
         )
@@ -222,7 +220,7 @@ mod tests {
         assert!(is_reserved_runx_sandbox_env_name("RUNX_AGENT_API_KEY"));
         assert!(!is_reserved_runx_sandbox_env_name("RUNX_GIT_ASKPASS_TOKEN"));
         assert!(is_reserved_runx_sandbox_env_name(
-            "RUNX_PROVIDER_ADMISSION_SIGNING_KEY"
+            "RUNX_INTERNAL_PROVIDER_ADMISSION_SIGNING_KEY"
         ));
         assert!(!is_reserved_runx_sandbox_env_name("RUNX_CWD"));
         assert!(!is_reserved_runx_sandbox_env_name("RUNX_MCP_SCOPE"));

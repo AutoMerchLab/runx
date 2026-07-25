@@ -177,7 +177,7 @@ fn project_worker_outcome(
                     InvocationStatus::Success,
                     value,
                     None,
-                    javascript_metadata("completed", outcome.isolation, limits),
+                    javascript_metadata("completed", outcome.isolation, limits, None)?,
                 ),
             )
         }
@@ -191,7 +191,7 @@ fn project_worker_outcome(
                 InvocationStatus::Failure,
                 JsonValue::Null,
                 Some(message),
-                javascript_failure_metadata(&code, limit, outcome.isolation, limits),
+                javascript_failure_metadata(&code, limit, outcome.isolation, limits)?,
             ),
         ),
     }
@@ -231,8 +231,13 @@ fn javascript_metadata(
     state: &str,
     isolation: JsonObject,
     limits: runx_contracts::javascript_worker::InvocationLimits,
-) -> JsonObject {
-    [
+    hit: Option<runx_contracts::javascript_worker::WorkerLimit>,
+) -> Result<JsonObject, RuntimeError> {
+    let execution_limits = javascript_execution_limits(limits, hit);
+    let execution_limits = serde_json::to_value(execution_limits)
+        .and_then(serde_json::from_value)
+        .map_err(|source| RuntimeError::json("serializing execution limits", source))?;
+    Ok([
         (
             "javascript_runtime".to_owned(),
             JsonValue::String("runx-js-worker".to_owned()),
@@ -247,31 +252,11 @@ fn javascript_metadata(
         ),
         (
             crate::adapter::EXECUTION_LIMITS_METADATA.to_owned(),
-            JsonValue::Object(JsonObject::from([(
-                "javascript_wall".to_owned(),
-                JsonValue::Object(JsonObject::from([
-                    (
-                        "configured".to_owned(),
-                        JsonValue::Number(runx_contracts::JsonNumber::U64(
-                            limits.wall_milliseconds,
-                        )),
-                    ),
-                    (
-                        "maximum".to_owned(),
-                        JsonValue::Number(runx_contracts::JsonNumber::U64(
-                            runx_contracts::javascript_worker::MAX_WALL_MILLISECONDS,
-                        )),
-                    ),
-                    (
-                        "unit".to_owned(),
-                        JsonValue::String("milliseconds".to_owned()),
-                    ),
-                ])),
-            )])),
+            execution_limits,
         ),
     ]
     .into_iter()
-    .collect()
+    .collect())
 }
 
 fn javascript_failure_metadata(
@@ -279,86 +264,141 @@ fn javascript_failure_metadata(
     limit: Option<runx_contracts::javascript_worker::WorkerLimit>,
     isolation: JsonObject,
     limits: runx_contracts::javascript_worker::InvocationLimits,
-) -> JsonObject {
-    let mut metadata = javascript_metadata("failed", isolation, limits);
+) -> Result<JsonObject, RuntimeError> {
+    let mut metadata = javascript_metadata("failed", isolation, limits, limit)?;
     metadata.insert(
         "javascript_failure_code".to_owned(),
         JsonValue::String(code.as_str().to_owned()),
     );
-    if let Some(limit) = limit {
-        if let Some(JsonValue::Object(execution_limits)) =
-            metadata.get_mut(crate::adapter::EXECUTION_LIMITS_METADATA)
-        {
-            execution_limits.insert(
-                "hit".to_owned(),
-                JsonValue::Object(javascript_limit_hit(limit, limits)),
-            );
-        }
-    }
-    metadata
+    Ok(metadata)
 }
 
-fn javascript_limit_hit(
-    limit: runx_contracts::javascript_worker::WorkerLimit,
+fn javascript_execution_limits(
     limits: runx_contracts::javascript_worker::InvocationLimits,
-) -> JsonObject {
+    hit: Option<runx_contracts::javascript_worker::WorkerLimit>,
+) -> runx_contracts::ExecutionLimits {
     use runx_contracts::javascript_worker::{InvocationLimits, WorkerLimit};
+    use runx_contracts::{ExecutionLimitHit, ExecutionLimitUnit, ExecutionLimits};
 
-    let maximum = InvocationLimits::default();
-    let (configured, ceiling, unit, manifest_field) = match limit {
-        WorkerLimit::SourceBytes => (
-            usize_as_u64(limits.source_bytes),
-            usize_as_u64(maximum.source_bytes),
-            "bytes",
-            None,
-        ),
-        WorkerLimit::InputBytes => (
-            usize_as_u64(limits.input_bytes),
-            usize_as_u64(maximum.input_bytes),
-            "bytes",
-            None,
-        ),
-        WorkerLimit::OutputBytes => (
-            usize_as_u64(limits.output_bytes),
-            usize_as_u64(maximum.output_bytes),
-            "bytes",
-            None,
-        ),
-        WorkerLimit::WallMilliseconds => (
-            limits.wall_milliseconds,
-            runx_contracts::javascript_worker::MAX_WALL_MILLISECONDS,
-            "milliseconds",
-            Some("source.timeout_seconds"),
-        ),
-        WorkerLimit::QueuedJobs => (
-            u64::from(limits.queued_jobs),
-            u64::from(maximum.queued_jobs),
-            "jobs",
-            None,
-        ),
-    };
-    let mut hit = JsonObject::from([
+    let ceiling = InvocationLimits::default();
+    let configured = std::collections::BTreeMap::from([
         (
-            "id".to_owned(),
-            JsonValue::String(format!("javascript.{}", limit.as_str())),
+            "javascript.source_bytes".to_owned(),
+            execution_limit(
+                usize_as_u64(limits.source_bytes),
+                usize_as_u64(ceiling.source_bytes),
+                ExecutionLimitUnit::Bytes,
+                None,
+            ),
         ),
         (
-            "configured".to_owned(),
-            JsonValue::Number(runx_contracts::JsonNumber::U64(configured)),
+            "javascript.input_bytes".to_owned(),
+            execution_limit(
+                usize_as_u64(limits.input_bytes),
+                usize_as_u64(ceiling.input_bytes),
+                ExecutionLimitUnit::Bytes,
+                None,
+            ),
         ),
         (
-            "maximum".to_owned(),
-            JsonValue::Number(runx_contracts::JsonNumber::U64(ceiling)),
+            "javascript.output_bytes".to_owned(),
+            execution_limit(
+                usize_as_u64(limits.output_bytes),
+                usize_as_u64(ceiling.output_bytes),
+                ExecutionLimitUnit::Bytes,
+                None,
+            ),
         ),
-        ("unit".to_owned(), JsonValue::String(unit.to_owned())),
+        (
+            "javascript.heap_bytes".to_owned(),
+            execution_limit(
+                limits.heap_bytes,
+                ceiling.heap_bytes,
+                ExecutionLimitUnit::Bytes,
+                None,
+            ),
+        ),
+        (
+            "javascript.stack_bytes".to_owned(),
+            execution_limit(
+                usize_as_u64(limits.stack_bytes),
+                usize_as_u64(ceiling.stack_bytes),
+                ExecutionLimitUnit::Bytes,
+                None,
+            ),
+        ),
+        (
+            "javascript.wall_milliseconds".to_owned(),
+            execution_limit(
+                limits.wall_milliseconds,
+                runx_contracts::javascript_worker::MAX_WALL_MILLISECONDS,
+                ExecutionLimitUnit::Milliseconds,
+                Some("source.timeout_seconds"),
+            ),
+        ),
+        (
+            "javascript.queued_jobs".to_owned(),
+            execution_limit(
+                u64::from(limits.queued_jobs),
+                u64::from(ceiling.queued_jobs),
+                ExecutionLimitUnit::Jobs,
+                None,
+            ),
+        ),
     ]);
-    if let Some(field) = manifest_field {
-        hit.insert(
-            "manifest_field".to_owned(),
-            JsonValue::String(field.to_owned()),
-        );
+    let hit = hit.map(|limit| {
+        let (configured, maximum, unit, manifest_field) = match limit {
+            WorkerLimit::SourceBytes => (
+                usize_as_u64(limits.source_bytes),
+                usize_as_u64(ceiling.source_bytes),
+                ExecutionLimitUnit::Bytes,
+                None,
+            ),
+            WorkerLimit::InputBytes => (
+                usize_as_u64(limits.input_bytes),
+                usize_as_u64(ceiling.input_bytes),
+                ExecutionLimitUnit::Bytes,
+                None,
+            ),
+            WorkerLimit::OutputBytes => (
+                usize_as_u64(limits.output_bytes),
+                usize_as_u64(ceiling.output_bytes),
+                ExecutionLimitUnit::Bytes,
+                None,
+            ),
+            WorkerLimit::WallMilliseconds => (
+                limits.wall_milliseconds,
+                runx_contracts::javascript_worker::MAX_WALL_MILLISECONDS,
+                ExecutionLimitUnit::Milliseconds,
+                Some("source.timeout_seconds"),
+            ),
+            WorkerLimit::QueuedJobs => (
+                u64::from(limits.queued_jobs),
+                u64::from(ceiling.queued_jobs),
+                ExecutionLimitUnit::Jobs,
+                None,
+            ),
+        };
+        ExecutionLimitHit {
+            id: format!("javascript.{}", limit.as_str()),
+            limit: execution_limit(configured, maximum, unit, manifest_field),
+        }
+    });
+    ExecutionLimits { configured, hit }
+}
+
+fn execution_limit(
+    configured: u64,
+    maximum: u64,
+    unit: runx_contracts::ExecutionLimitUnit,
+    manifest_field: Option<&str>,
+) -> runx_contracts::ExecutionLimit {
+    runx_contracts::ExecutionLimit {
+        configured,
+        maximum,
+        unit,
+        manifest_field: manifest_field.map(str::to_owned),
     }
-    hit
 }
 
 fn usize_as_u64(value: usize) -> u64 {

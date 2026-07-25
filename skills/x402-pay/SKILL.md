@@ -18,6 +18,8 @@ synthetic transaction as settlement.
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `spend#plan`
 
 ## When to use it

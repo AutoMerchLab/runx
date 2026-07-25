@@ -7,7 +7,7 @@ use crate::RuntimeError;
 use crate::effects::RuntimeEffectRegistry;
 use crate::execution::harness::HarnessFixtureKind;
 use crate::execution::runner::RuntimeOptions;
-use crate::execution::skill_front::{PackageHarnessReport, SkillRunError, SkillRunGraphAdapter};
+use crate::execution::skill_front::{PackageHarnessReport, SkillRunError, SkillSourceAdapter};
 use crate::receipts::paths::{RUNX_CWD_ENV, RUNX_RECEIPT_DIR_ENV};
 use crate::services::ReceiptServices;
 
@@ -71,7 +71,7 @@ fn replay_conventional_fixtures(
         report.case_count += 1;
         match crate::execution::harness::run_harness_fixture_with_adapter(
             &fixture_path,
-            SkillRunGraphAdapter::default(),
+            SkillSourceAdapter::default(),
             options.clone(),
         ) {
             Ok(output) => {
@@ -452,6 +452,8 @@ runners:
     type: graph
     graph:
       name: demo
+      result_from:
+        - digest
       steps:
         - id: digest
           tool: data.digest

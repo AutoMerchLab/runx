@@ -5,7 +5,7 @@
 //! Successful evidence is carried as structured output metadata for the generic
 //! receipt sealer to bind into the signed act and seal.
 
-use runx_contracts::{JsonObject, JsonValue, OutputField, ResolutionRequest};
+use runx_contracts::{JsonObject, JsonValue, ResolutionRequest};
 use runx_parser::SkillArtifactContract;
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -35,7 +35,7 @@ pub(crate) fn verified_agent_metadata_with_artifacts(
             message: "agent result verification requires an agent-act request".to_owned(),
         });
     };
-    let contract_payload = output_contract_payload(payload, invocation.envelope.output.as_ref());
+    let contract_payload = agent_output_contract_payload(payload);
     let open_output = BTreeMap::new();
     let output = invocation.envelope.output.as_ref().unwrap_or(&open_output);
     let mut metadata = verified_output_metadata_with_artifacts(
@@ -64,10 +64,7 @@ pub(crate) fn verified_agent_metadata_with_artifacts(
     Ok(metadata)
 }
 
-fn output_contract_payload(
-    payload: &JsonValue,
-    output: Option<&BTreeMap<String, OutputField>>,
-) -> JsonValue {
+pub(crate) fn agent_output_contract_payload(payload: &JsonValue) -> JsonValue {
     let JsonValue::Object(fields) = payload else {
         return payload.clone();
     };
@@ -75,16 +72,6 @@ fn output_contract_payload(
     // `closure` is Runx control metadata consumed by the receipt disposition
     // parser. It is validated by that protocol and is not a skill output.
     declared.remove("closure");
-    if declared.len() == 1 {
-        for envelope in ["output", "outputs", "payload"] {
-            if output.is_some_and(|fields| fields.contains_key(envelope)) {
-                continue;
-            }
-            if let Some(JsonValue::Object(inner)) = declared.get(envelope) {
-                return JsonValue::Object(inner.clone());
-            }
-        }
-    }
     JsonValue::Object(declared)
 }
 
@@ -108,6 +95,7 @@ mod tests {
             "instructions_sha256": "sha256:d264e5fb6c699b5793b06863a0c2d1e77beb6f01e8a7263da65a3986c3836c26",
             "inputs": {},
             "allowed_tools": [],
+            "requirements": { "declaration": {} },
             "current_context": [],
             "historical_context": [],
             "provenance": [],
@@ -159,7 +147,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_output_envelope_is_validated_as_the_declared_payload()
+    fn transport_output_envelope_is_not_guessed_as_the_declared_payload()
     -> Result<(), Box<dyn std::error::Error>> {
         let answer = JsonValue::Object(
             [(
@@ -174,7 +162,7 @@ mod tests {
             .collect(),
         );
 
-        assert!(verified_agent_metadata(&request()?, &answer).is_ok());
+        assert!(verified_agent_metadata(&request()?, &answer).is_err());
         Ok(())
     }
 

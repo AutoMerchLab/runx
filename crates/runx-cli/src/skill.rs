@@ -201,6 +201,8 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
                 );
             }
         };
+        // Operator context is written to stderr, so it never pollutes a
+        // --json stdout payload; every invocation gets the same preflight facts.
         if let Err(error) = write_operator_context(prepared.report(), plan.full_operator_context) {
             return write_skill_failure(
                 &error,
@@ -425,7 +427,8 @@ fn inspect_skill(
     env: &BTreeMap<String, String>,
     cwd: &Path,
 ) -> Result<JsonValue, String> {
-    let mut output = runx_runtime::inspect_skill_package(skill_path, selected_runner)?;
+    let mut output = runx_runtime::inspect_skill_package(skill_path, selected_runner)
+        .map_err(|error| error.to_string())?;
     let JsonValue::Object(object) = &mut output else {
         return Err("native skill inspection returned a non-object".to_owned());
     };

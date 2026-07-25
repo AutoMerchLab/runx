@@ -22,6 +22,8 @@ operation.
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `github-mcp-read-issue#default`
 
 ## When to use it

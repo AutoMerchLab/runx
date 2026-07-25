@@ -8,7 +8,7 @@ use crate::adapter::{
     EXECUTION_LIMITS_METADATA, InvocationOutput,
 };
 use crate::effects::{RuntimeEffectRegistry, effect_verification_refs};
-use crate::execution::output_projection::{StepOutputRefs, project_step_output};
+use crate::execution::output_projection::{StepOutputRefs, claim_refs};
 use crate::{RuntimeError, StepRun};
 use runx_contracts::fingerprint::sha256_hex;
 use runx_contracts::schema::NonEmptyString;
@@ -38,12 +38,15 @@ pub fn step_receipt(
     step_id: &str,
     attempt: u32,
     output: &InvocationOutput,
+    claim: &JsonObject,
     created_at: &str,
 ) -> Result<Receipt, RuntimeError> {
-    step_receipt_with_disposition_and_policy(
+    step_receipt_with_declared_claim_and_policy(
         StepReceiptWithDisposition::with_default_closure(
             graph_name, step_id, attempt, output, created_at,
         ),
+        claim,
+        claim_refs(claim),
         RuntimeReceiptSignaturePolicy::local_development(),
     )
 }
@@ -53,13 +56,16 @@ pub fn step_receipt_with_signature_policy(
     step_id: &str,
     attempt: u32,
     output: &InvocationOutput,
+    claim: &JsonObject,
     created_at: &str,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<Receipt, RuntimeError> {
-    step_receipt_with_disposition_and_policy(
+    step_receipt_with_declared_claim_and_policy(
         StepReceiptWithDisposition::with_default_closure(
             graph_name, step_id, attempt, output, created_at,
         ),
+        claim,
+        claim_refs(claim),
         signature_policy,
     )
 }
@@ -69,22 +75,24 @@ pub fn step_receipt_with_authority_grant_refs(
     step_id: &str,
     attempt: u32,
     output: &InvocationOutput,
+    claim: &JsonObject,
     authority_grant_refs: Vec<Reference>,
     created_at: &str,
 ) -> Result<Receipt, RuntimeError> {
-    let projection = project_step_output(output);
-    step_receipt_with_disposition_projection_authority_and_policy(
-        StepReceiptWithDisposition::with_default_closure(
+    let refs = claim_refs(claim);
+    step_receipt_with_disposition_projection_authority_and_policy(StepReceiptSeal {
+        params: StepReceiptWithDisposition::with_default_closure(
             graph_name, step_id, attempt, output, created_at,
         ),
-        projection.refs,
-        &[],
-        &[],
+        claim,
+        projection_refs: refs,
+        child_receipts: &[],
+        descendant_receipts: &[],
         authority_grant_refs,
-        Vec::new(),
-        None,
-        RuntimeReceiptSignaturePolicy::local_development(),
-    )
+        authority_scope_refs: Vec::new(),
+        receipt_metadata: None,
+        signature_policy: RuntimeReceiptSignaturePolicy::local_development(),
+    })
 }
 
 pub(crate) struct StepReceiptWithDisposition<'a> {
@@ -96,6 +104,18 @@ pub(crate) struct StepReceiptWithDisposition<'a> {
     pub(crate) disposition: ClosureDisposition,
     pub(crate) reason_code: String,
     pub(crate) summary: String,
+}
+
+struct StepReceiptSeal<'a> {
+    params: StepReceiptWithDisposition<'a>,
+    claim: &'a JsonObject,
+    projection_refs: StepOutputRefs,
+    child_receipts: &'a [Receipt],
+    descendant_receipts: &'a [Receipt],
+    authority_grant_refs: Vec<Reference>,
+    authority_scope_refs: Vec<Reference>,
+    receipt_metadata: Option<JsonObject>,
+    signature_policy: RuntimeReceiptSignaturePolicy<'a>,
 }
 
 impl<'a> StepReceiptWithDisposition<'a> {
@@ -130,31 +150,46 @@ impl<'a> StepReceiptWithDisposition<'a> {
 
 pub(crate) fn step_receipt_with_disposition_and_policy(
     params: StepReceiptWithDisposition<'_>,
+    claim: &JsonObject,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<Receipt, RuntimeError> {
-    let projection = project_step_output(params.output);
-    step_receipt_with_disposition_projection_authority_and_policy(
+    let refs = claim_refs(claim);
+    step_receipt_with_declared_claim_and_policy(params, claim, refs, signature_policy)
+}
+
+pub(crate) fn step_receipt_with_declared_claim_and_policy(
+    params: StepReceiptWithDisposition<'_>,
+    claim: &JsonObject,
+    projection_refs: StepOutputRefs,
+    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+) -> Result<Receipt, RuntimeError> {
+    step_receipt_with_disposition_projection_authority_and_policy(StepReceiptSeal {
         params,
-        projection.refs,
-        &[],
-        &[],
-        Vec::new(),
-        Vec::new(),
-        None,
+        claim,
+        projection_refs,
+        child_receipts: &[],
+        descendant_receipts: &[],
+        authority_grant_refs: Vec::new(),
+        authority_scope_refs: Vec::new(),
+        receipt_metadata: None,
         signature_policy,
-    )
+    })
 }
 
 fn step_receipt_with_disposition_projection_authority_and_policy(
-    params: StepReceiptWithDisposition<'_>,
-    projection_refs: StepOutputRefs,
-    child_receipts: &[Receipt],
-    descendant_receipts: &[Receipt],
-    authority_grant_refs: Vec<Reference>,
-    authority_scope_refs: Vec<Reference>,
-    receipt_metadata: Option<JsonObject>,
-    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+    request: StepReceiptSeal<'_>,
 ) -> Result<Receipt, RuntimeError> {
+    let StepReceiptSeal {
+        params,
+        claim,
+        projection_refs,
+        child_receipts,
+        descendant_receipts,
+        authority_grant_refs,
+        authority_scope_refs,
+        receipt_metadata,
+        signature_policy,
+    } = request;
     let StepReceiptWithDisposition {
         graph_name,
         step_id,
@@ -165,7 +200,7 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
         reason_code,
         summary,
     } = params;
-    let output_refs = output_refs(output, projection_refs);
+    let output_refs = output_refs(output, projection_refs)?;
     let verification = contract_verification_criteria(&output.metadata)?;
     let act = RuntimeAct::observation(step_id)
         .with_verified_criteria(verification.criteria.clone(), verification.bindings.clone())
@@ -186,7 +221,7 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
         &output_refs.signal_refs,
         &output_refs.artifact_refs,
     );
-    let mut receipt = build_receipt(BuildReceipt {
+    let mut receipt = build_unsealed_receipt(BuildReceipt {
         id: step_receipt_id(graph_name, step_id, attempt),
         graph_name,
         node_id: step_id,
@@ -203,9 +238,9 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
         authority_override: None,
         previous: None,
     });
-    bind_step_output_identity(&mut receipt, output)?;
-    receipt.metadata = receipt_metadata_with_execution_limits(receipt_metadata, output)?;
-    seal_receipt_unvalidated(&mut receipt, signature_policy)?;
+    bind_step_output_identity(receipt.as_mut(), output, claim)?;
+    receipt.as_mut().metadata = receipt_metadata_with_execution_limits(receipt_metadata, output)?;
+    let receipt = receipt.seal(signature_policy)?;
     if !child_receipts.is_empty() {
         validate_receipt_tree_with_policy(
             &receipt,
@@ -244,6 +279,9 @@ pub(crate) struct StepSeal<'a> {
     pub(crate) step_id: &'a str,
     pub(crate) attempt: u32,
     pub(crate) output: &'a InvocationOutput,
+    /// The sealed contract claim (the step's declared outputs). Output
+    /// identity binds to this claim, never to raw transport values.
+    pub(crate) claim: &'a JsonObject,
     pub(crate) projection_refs: StepOutputRefs,
     pub(crate) created_at: &'a str,
     pub(crate) authority_grant_refs: Vec<Reference>,
@@ -293,6 +331,7 @@ pub(crate) fn seal_step(
         step_id,
         attempt,
         output,
+        claim,
         mut projection_refs,
         created_at,
         authority_grant_refs,
@@ -317,8 +356,8 @@ pub(crate) fn seal_step(
         }
         projection_refs.evidence_refs.push(reference);
     }
-    step_receipt_with_disposition_projection_authority_and_policy(
-        StepReceiptWithDisposition {
+    step_receipt_with_disposition_projection_authority_and_policy(StepReceiptSeal {
+        params: StepReceiptWithDisposition {
             graph_name,
             step_id,
             attempt,
@@ -328,6 +367,7 @@ pub(crate) fn seal_step(
             reason_code,
             summary,
         },
+        claim,
         projection_refs,
         child_receipts,
         descendant_receipts,
@@ -335,7 +375,7 @@ pub(crate) fn seal_step(
         authority_scope_refs,
         receipt_metadata,
         signature_policy,
-    )
+    })
 }
 
 /// The single runtime-outcome criterion a step receipt seals on, independent
@@ -653,8 +693,8 @@ pub(crate) fn graph_receipt_with_disposition_and_policy(
     // of acquiring one post-hoc parent link.
     let mut receipt =
         build_graph_receipt(graph_name, child_refs, sync_points, created_at, &closure);
-    bind_graph_operator_refs(&mut receipt, steps);
-    seal_receipt_unvalidated(&mut receipt, signature_policy)?;
+    bind_graph_operator_refs(receipt.as_mut(), steps);
+    let receipt = receipt.seal(signature_policy)?;
 
     validate_receipt_tree_with_policy(
         &receipt,
@@ -722,9 +762,9 @@ fn build_graph_receipt(
     sync_points: &[FanoutReceiptSyncPoint],
     created_at: &str,
     closure: &GraphClosure,
-) -> Receipt {
+) -> UnsealedReceipt {
     let child_identity = graph_child_identity(&children);
-    let mut receipt = build_receipt(BuildReceipt {
+    let mut receipt = build_unsealed_receipt(BuildReceipt {
         id: format!("hrn_rcpt_{graph_name}"),
         graph_name,
         node_id: "graph",
@@ -747,17 +787,20 @@ fn build_graph_receipt(
         authority_override: None,
         previous: None,
     });
-    receipt.subject.reference.locator = Some(child_identity.into());
+    receipt.as_mut().subject.reference.locator = Some(child_identity.into());
     receipt
 }
 
+// Output identity binds the sealed contract claim: status plus the step's
+// declared outputs. Raw transport values and diagnostics (duration, stderr,
+// exit codes) are observability, deliberately excluded: a sealed-effect replay
+// rebuilds identity from the durable claim alone and must bind to the same
+// locator.
 fn bind_step_output_identity(
     receipt: &mut Receipt,
     output: &InvocationOutput,
+    claim: &JsonObject,
 ) -> Result<(), RuntimeError> {
-    let diagnostics = serde_json::to_value(&output.diagnostics)
-        .and_then(serde_json::from_value)
-        .map_err(|source| RuntimeError::json("serializing invocation diagnostics", source))?;
     let material = canonical_stable_json(&JsonValue::Object(JsonObject::from([
         (
             "status".to_owned(),
@@ -770,8 +813,7 @@ fn bind_step_output_identity(
                 .to_owned(),
             ),
         ),
-        ("value".to_owned(), output.value.clone()),
-        ("diagnostics".to_owned(), diagnostics),
+        ("claim".to_owned(), JsonValue::Object(claim.clone())),
     ])))
     .map_err(|error| RuntimeError::ReceiptInvalid {
         message: error.to_string(),
@@ -848,7 +890,33 @@ struct BuildReceipt<'a> {
     previous: Option<Reference>,
 }
 
-fn build_receipt(parts: BuildReceipt<'_>) -> Receipt {
+struct UnsealedReceipt(Receipt);
+
+impl UnsealedReceipt {
+    fn as_mut(&mut self) -> &mut Receipt {
+        &mut self.0
+    }
+
+    fn seal(
+        mut self,
+        signature_policy: RuntimeReceiptSignaturePolicy<'_>,
+    ) -> Result<Receipt, RuntimeError> {
+        // Content-address the id over the canonical body (id = hash(canonical_body),
+        // excluding id/signature/digest/metadata/lineage) before the digest commits
+        // it. Lineage is excluded so parent<->child wiring does not perturb the id.
+        content_address_receipt(&mut self.0, signature_policy)?;
+        let digest = canonical_receipt_body_digest(&self.0).map_err(|error| {
+            RuntimeError::ReceiptInvalid {
+                message: error.to_string(),
+            }
+        })?;
+        self.0.digest = digest.clone().into();
+        signature_policy.sign_receipt(&mut self.0, &digest)?;
+        Ok(self.0)
+    }
+}
+
+fn build_unsealed_receipt(parts: BuildReceipt<'_>) -> UnsealedReceipt {
     let BuildReceipt {
         id,
         graph_name,
@@ -873,7 +941,7 @@ fn build_receipt(parts: BuildReceipt<'_>) -> Receipt {
         sync: sync_points,
         resume_ref: None,
     };
-    Receipt {
+    UnsealedReceipt(Receipt {
         schema: ReceiptSchema::V1,
         id: id.into(),
         created_at: created_at.into(),
@@ -891,7 +959,7 @@ fn build_receipt(parts: BuildReceipt<'_>) -> Receipt {
         seal,
         lineage: Some(lineage),
         metadata: None,
-    }
+    })
 }
 
 /// The planner deliberation, inline in `decisions[]`. The `selected_act_id`
@@ -1046,7 +1114,8 @@ pub(crate) struct DomainActReceiptRequest<'a> {
 }
 
 /// Seal a governed turn as its domain act. Reuses the generic receipt assembly
-/// (`build_receipt`/`seal`) but fills the act, decision, and authority from the
+/// (`build_unsealed_receipt`/`UnsealedReceipt::seal`) but fills the act,
+/// decision, and authority from the
 /// trusted `DomainActFrame`. Transport (tool names, urls, status codes, tokens)
 /// never enters the receipt.
 // Function rationale: domain-act receipt assembly binds act,
@@ -1156,7 +1225,7 @@ pub(crate) fn domain_act_receipt(
         created_at,
         seal_criteria,
     );
-    let mut receipt = build_receipt(BuildReceipt {
+    let receipt = build_unsealed_receipt(BuildReceipt {
         id: step_receipt_id(graph_name, step_id, 1),
         graph_name,
         node_id: step_id,
@@ -1173,8 +1242,7 @@ pub(crate) fn domain_act_receipt(
         authority_override: Some(authority),
         previous: frame.previous,
     });
-    seal_receipt_unvalidated(&mut receipt, signature_policy)?;
-    Ok(receipt)
+    receipt.seal(signature_policy)
 }
 
 fn idempotency(graph_name: &str, node_id: &str) -> ReceiptIdempotency {
@@ -1185,7 +1253,10 @@ fn idempotency(graph_name: &str, node_id: &str) -> ReceiptIdempotency {
     }
 }
 
-fn output_refs(output: &InvocationOutput, mut refs: StepOutputRefs) -> StepOutputRefs {
+fn output_refs(
+    output: &InvocationOutput,
+    mut refs: StepOutputRefs,
+) -> Result<StepOutputRefs, RuntimeError> {
     if let Some(request_id) = json_string_field(&output.metadata, "agent_request_id") {
         let reference = Reference {
             uri: format!("runx:agent_act:{request_id}").into(),
@@ -1199,29 +1270,35 @@ fn output_refs(output: &InvocationOutput, mut refs: StepOutputRefs) -> StepOutpu
         refs.source_refs.insert(0, reference.clone());
         refs.evidence_refs.insert(0, reference);
     }
-    collect_supervisor_metadata_refs(&output.metadata, &mut refs);
-    collect_credential_delivery_refs(&output.metadata, &mut refs);
-    refs
+    collect_supervisor_metadata_refs(&output.metadata, &mut refs)?;
+    collect_credential_delivery_refs(&output.metadata, &mut refs)?;
+    Ok(refs)
 }
 
-fn collect_supervisor_metadata_refs(metadata: &JsonObject, refs: &mut StepOutputRefs) {
-    let Ok(mut verification_refs) = effect_verification_refs(metadata) else {
-        return;
-    };
+fn collect_supervisor_metadata_refs(
+    metadata: &JsonObject,
+    refs: &mut StepOutputRefs,
+) -> Result<(), RuntimeError> {
+    let mut verification_refs =
+        effect_verification_refs(metadata).map_err(|error| RuntimeError::ReceiptInvalid {
+            message: format!("invalid effect verification metadata: {error}"),
+        })?;
     refs.verification_refs.append(&mut verification_refs);
+    Ok(())
 }
 
-fn collect_credential_delivery_refs(metadata: &JsonObject, refs: &mut StepOutputRefs) {
+fn collect_credential_delivery_refs(
+    metadata: &JsonObject,
+    refs: &mut StepOutputRefs,
+) -> Result<(), RuntimeError> {
     let Some(value) = metadata.get(CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA) else {
-        return;
+        return Ok(());
     };
-    let Ok(encoded) = serde_json::to_string(value) else {
-        return;
-    };
-    let Ok(observations) = serde_json::from_str::<Vec<CredentialDeliveryObservation>>(&encoded)
-    else {
-        return;
-    };
+    let observations = serde_json::to_value(value)
+        .and_then(serde_json::from_value::<Vec<CredentialDeliveryObservation>>)
+        .map_err(|error| RuntimeError::ReceiptInvalid {
+            message: format!("invalid credential delivery observation metadata: {error}"),
+        })?;
 
     for reference in observations
         .into_iter()
@@ -1235,6 +1312,7 @@ fn collect_credential_delivery_refs(metadata: &JsonObject, refs: &mut StepOutput
             refs.verification_refs.push(reference);
         }
     }
+    Ok(())
 }
 
 fn disposition(output: &InvocationOutput) -> ClosureDisposition {
@@ -1284,23 +1362,6 @@ fn placeholder_signature() -> ReceiptSignature {
         alg: SignatureAlgorithm::Ed25519,
         value: "sig:pending".into(),
     }
-}
-
-fn seal_receipt_unvalidated(
-    receipt: &mut Receipt,
-    signature_policy: RuntimeReceiptSignaturePolicy<'_>,
-) -> Result<String, RuntimeError> {
-    // Content-address the id over the canonical body (id = hash(canonical_body),
-    // excluding id/signature/digest/metadata/lineage) before the digest commits
-    // it. Lineage is excluded so parent<->child wiring does not perturb the id.
-    content_address_receipt(receipt, signature_policy)?;
-    let digest =
-        canonical_receipt_body_digest(receipt).map_err(|error| RuntimeError::ReceiptInvalid {
-            message: error.to_string(),
-        })?;
-    receipt.digest = digest.clone().into();
-    signature_policy.sign_receipt(receipt, &digest)?;
-    Ok(digest)
 }
 
 fn content_address_receipt(
@@ -1594,6 +1655,7 @@ mod tests {
             "credential_step",
             1,
             &credential_output()?,
+            &JsonObject::new(),
             "2026-05-28T00:00:00Z",
         )?;
 
@@ -1669,6 +1731,7 @@ mod tests {
             "agent_step",
             1,
             &output,
+            &JsonObject::new(),
             "2026-05-28T00:00:00Z",
         )?;
 
@@ -1708,10 +1771,38 @@ mod tests {
                 "agent_step",
                 1,
                 &output,
+                &JsonObject::new(),
                 "2026-05-28T00:00:00Z"
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn malformed_runtime_evidence_metadata_fails_closed() {
+        for key in [
+            crate::effects::EFFECT_VERIFICATION_REFS_METADATA,
+            CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA,
+        ] {
+            let output = InvocationOutput::runtime_success(
+                JsonValue::Object(JsonObject::new()),
+                1,
+                JsonObject::from([(key.to_owned(), JsonValue::String("untrusted".to_owned()))]),
+            );
+
+            assert!(
+                step_receipt(
+                    "evidence_graph",
+                    "evidence_step",
+                    1,
+                    &output,
+                    &JsonObject::new(),
+                    "2026-05-28T00:00:00Z"
+                )
+                .is_err(),
+                "{key} must not be silently discarded"
+            );
+        }
     }
 
     #[test]
@@ -1744,6 +1835,7 @@ mod tests {
             "limit_step",
             1,
             &output,
+            &JsonObject::new(),
             "2026-05-28T00:00:00Z",
         )?;
         assert_eq!(
@@ -1756,30 +1848,59 @@ mod tests {
         Ok(())
     }
 
-    #[test]
-    fn step_receipt_identity_commits_semantic_output() -> Result<(), TestError> {
-        let first = step_receipt(
-            "identity_graph",
-            "identity_step",
-            1,
-            &successful_output("{\"a\":1,\"b\":2}"),
-            "2026-05-28T00:00:00Z",
-        )?;
-        let reordered = step_receipt(
-            "identity_graph",
-            "identity_step",
-            1,
-            &successful_output("{\"b\":2,\"a\":1}"),
-            "2026-05-28T00:00:00Z",
-        )?;
-        let changed = step_receipt(
-            "identity_graph",
-            "identity_step",
-            1,
-            &successful_output("{\"a\":1,\"b\":3}"),
-            "2026-05-28T00:00:00Z",
-        )?;
+    fn identity_receipt(stdout: &str, claim: JsonObject) -> Result<Receipt, TestError> {
+        let output = successful_output(stdout);
+        Ok(
+            step_receipt_with_disposition_projection_authority_and_policy(StepReceiptSeal {
+                params: StepReceiptWithDisposition::with_default_closure(
+                    "identity_graph",
+                    "identity_step",
+                    1,
+                    &output,
+                    "2026-05-28T00:00:00Z",
+                ),
+                claim: &claim,
+                projection_refs: StepOutputRefs::default(),
+                child_receipts: &[],
+                descendant_receipts: &[],
+                authority_grant_refs: Vec::new(),
+                authority_scope_refs: Vec::new(),
+                receipt_metadata: None,
+                signature_policy: RuntimeReceiptSignaturePolicy::local_development(),
+            })?,
+        )
+    }
 
+    #[test]
+    fn step_receipt_identity_commits_sealed_claim_not_transport_value() -> Result<(), TestError> {
+        let claim = |a: &str, b: &str| {
+            JsonObject::from([
+                ("a".to_owned(), JsonValue::String(a.to_owned())),
+                ("b".to_owned(), JsonValue::String(b.to_owned())),
+            ])
+        };
+
+        let first = identity_receipt("{\"a\":\"1\",\"b\":\"2\"}", claim("1", "2"))?;
+        // Same sealed claim, entirely different transport bytes: identity is
+        // unchanged, because a receipt binds its declared claim, never the raw
+        // transport value or its diagnostics.
+        let other_transport = identity_receipt("unrelated transport bytes", claim("1", "2"))?;
+        // A reordered claim canonicalises to the same identity.
+        let reordered = identity_receipt(
+            "{\"a\":\"1\",\"b\":\"2\"}",
+            JsonObject::from([
+                ("b".to_owned(), JsonValue::String("2".to_owned())),
+                ("a".to_owned(), JsonValue::String("1".to_owned())),
+            ]),
+        )?;
+        // A changed claim value moves the identity.
+        let changed = identity_receipt("{\"a\":\"1\",\"b\":\"2\"}", claim("1", "3"))?;
+
+        assert_eq!(first.id, other_transport.id);
+        assert_eq!(
+            first.subject.reference.locator,
+            other_transport.subject.reference.locator
+        );
         assert_eq!(first.id, reordered.id);
         assert_eq!(
             first.subject.reference.locator,

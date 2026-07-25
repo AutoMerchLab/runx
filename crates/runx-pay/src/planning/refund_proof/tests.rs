@@ -120,6 +120,7 @@ fn payment_receipt(
         step_id,
         1,
         &output,
+        &JsonObject::new(),
         "2026-07-20T00:00:00Z",
     )
     .expect("base receipt");

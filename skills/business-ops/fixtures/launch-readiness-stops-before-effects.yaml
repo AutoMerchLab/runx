@@ -12,7 +12,7 @@ expect:
     state: sealed
     disposition: closed
     reason_code: graph_closed
-    child_receipt_count: 7
+    child_receipt_count: 8
   steps:
     - classify
     - docs
@@ -21,6 +21,20 @@ expect:
     - send
     - spend
     - audit
+    - package-route
+  output:
+    subset:
+      lane_packets:
+        data:
+          schema: runx.business_ops_route.v1
+          lanes:
+            classify: { lane: classify }
+            docs: { lane: sourcey }
+            release: { lane: release.prepare }
+            issue: { lane: issue-to-pr }
+            send: { lane: outreach.plan }
+            spend: { lane: spend.quote }
+            audit: { lane: receipt-audit }
   step_outputs:
     classify:
       subset:

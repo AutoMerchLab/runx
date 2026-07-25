@@ -43,7 +43,7 @@ use crate::approval::ApprovalResolution;
 use crate::effects::EffectStepRequest;
 use crate::effects::{EffectReplay, ResolvedEffectTarget};
 use crate::execution::disposition::agent_answer_disposition_or_closed;
-use crate::execution::output_projection::{StepOutputProjection, project_step_output};
+use crate::execution::output_projection::{StepOutputProjection, project_step_claim};
 use crate::host::Host;
 use crate::output_contract::{attach_verified_metadata, verified_runner_metadata_with_artifacts};
 use crate::receipts::{RuntimeReceiptSignaturePolicy, StepSeal, StepSealClosure, seal_step};
@@ -145,31 +145,12 @@ pub(super) fn output_error(run: &StepRun) -> String {
 // Function rationale: step execution is one linear admit/run/seal sequence; splitting
 // it would scatter the ordering invariants between admission, invocation, and receipt sealing.
 pub(super) fn run_step_with_inputs<A>(
-    runtime: &Runtime<A>,
-    graph_dir: &Path,
-    graph_name: &str,
-    step: &GraphStep,
-    attempt: u32,
-    inputs: JsonObject,
-    provenance: Vec<ProvenanceEntry>,
-    host: &mut dyn Host,
+    request: StepRunRequest<'_, A>,
 ) -> Result<StepRun, RuntimeError>
 where
     A: SkillAdapter,
 {
-    run_step_with_optional_loaded_skill(
-        StepRunRequest {
-            runtime,
-            graph_dir,
-            graph_name,
-            step,
-            attempt,
-            inputs,
-            provenance,
-            host,
-        },
-        None,
-    )
+    run_step_with_optional_loaded_skill(request, None)
 }
 
 pub(super) fn run_step_with_loaded_skill_inputs<A>(
@@ -285,16 +266,7 @@ where
     // OUTER step exposes the sub-skill packet (e.g. `research_packet`) at
     // `<step>.<packet>.data`, never the sub-skill's internal step ids.
     let runner_artifacts = skill.runner.artifacts.clone();
-    let (skill_name, invocation) = loaded_skill_invocation(
-        skill,
-        request.graph_dir,
-        request.step,
-        request.inputs.clone(),
-        request.provenance.clone(),
-        &request.runtime.options.created_at,
-        &request.runtime.options.env,
-        &request.runtime.options.credential_delivery,
-    )?;
+    let (skill_name, invocation) = loaded_skill_invocation(skill, &request)?;
     crate::execution_environment::resolve_declared_environment(
         &invocation.requirements,
         &invocation.env,
@@ -466,36 +438,33 @@ fn adopt_nested_graph_result(result: &JsonValue, outputs: &mut JsonObject) {
 
 fn loaded_skill_invocation(
     skill: LoadedStepSkill,
-    graph_dir: &Path,
-    step: &GraphStep,
-    inputs: JsonObject,
-    provenance: Vec<ProvenanceEntry>,
-    created_at: &str,
-    env: &std::collections::BTreeMap<String, String>,
-    credential_delivery: &crate::credentials::CredentialDelivery,
+    request: &StepHandlerCtx<'_, impl SkillAdapter>,
 ) -> Result<(String, SkillInvocation), RuntimeError> {
     let skill_name = skill.runner.name.clone();
+    let env = &request.runtime.options.env;
     let mut invocation_env = env.clone();
     merge_inferred_tool_roots(&mut invocation_env, &skill.directory);
-    let credential_delivery =
-        project_credential_delivery(&skill.runner.source.source_type, credential_delivery);
+    let credential_delivery = project_credential_delivery(
+        &skill.runner.source.source_type,
+        &request.runtime.options.credential_delivery,
+    );
     let invocation = SkillInvocation {
         skill_name: skill.runner.name,
-        step_id: Some(step.id.clone()),
+        step_id: Some(request.step.id.clone()),
         source: skill.runner.source,
         requirements: skill.requirements,
         artifacts: skill.runner.artifacts,
         allowed_tools: skill.runner.allowed_tools,
-        inputs,
+        inputs: request.inputs.clone(),
         resolved_inputs: JsonObject::new(),
         current_context: load_context_skills(
-            &step.id,
-            graph_dir,
-            &step.context_skills,
+            &request.step.id,
+            request.graph_dir,
+            &request.step.context_skills,
             env,
-            created_at,
+            &request.runtime.options.created_at,
         )?,
-        provenance,
+        provenance: request.provenance.clone(),
         skill_directory: skill.directory,
         env: invocation_env,
         credential_delivery,
@@ -610,6 +579,7 @@ where
             step_id: &context.step.id,
             attempt: context.attempt,
             output: &output,
+            claim: &projection.outputs,
             projection_refs,
             created_at: &context.runtime.options.created_at,
             authority_grant_refs,
@@ -653,40 +623,18 @@ where
     // finalization above.
     let admission_witness =
         StepAdmissionWitness::local_runtime(&context.step.id, receipt.id.as_str());
-    Ok(regular_step_run(
-        context.step,
-        context.attempt,
-        context.skill_name,
-        output,
-        projection.outputs,
-        receipt,
-        receipt_lineage.into_nested_receipts(),
-        admission_witness,
-    ))
-}
-
-fn regular_step_run(
-    step: &GraphStep,
-    attempt: u32,
-    skill_name: String,
-    output: InvocationOutput,
-    outputs: JsonObject,
-    receipt: Receipt,
-    nested_receipts: Vec<Receipt>,
-    admission_witness: StepAdmissionWitness,
-) -> StepRun {
-    StepRun {
-        step_id: step.id.clone(),
-        attempt,
-        skill: skill_name,
-        runner: step.runner.clone(),
-        fanout_group: step.fanout_group.clone(),
-        contract: outputs,
+    Ok(StepRun {
+        step_id: context.step.id.clone(),
+        attempt: context.attempt,
+        skill: context.skill_name,
+        runner: context.step.runner.clone(),
+        fanout_group: context.step.fanout_group.clone(),
+        contract: projection.outputs,
         outcome: output.into(),
         receipt,
-        nested_receipts,
+        nested_receipts: receipt_lineage.into_nested_receipts(),
         admission_witness,
-    }
+    })
 }
 
 fn route_external_adapter_host_resolution(
@@ -793,6 +741,7 @@ fn run_replayed_effect_step(
             step_id: &step.id,
             attempt,
             output: &output,
+            claim: &projection.outputs,
             projection_refs: std::mem::take(&mut projection.refs),
             created_at: replay.receipt_created_at(),
             authority_grant_refs,
@@ -906,16 +855,7 @@ where
             request.inputs,
             request.host,
         )?,
-        StepExecutionKind::AgentTask => run_agent_task(
-            request.runtime,
-            request.graph_dir,
-            request.graph_name,
-            request.step,
-            request.attempt,
-            request.inputs,
-            request.provenance,
-            request.host,
-        )?,
+        StepExecutionKind::AgentTask => run_agent_task(request)?,
         StepExecutionKind::InlineSource => run_inline_source_step(request)?,
         StepExecutionKind::Tool => run_tool_step(request)?,
         StepExecutionKind::Subskill => run_subskill_step(request)?,
@@ -1068,6 +1008,7 @@ fn seal_agent_act_step<A>(
             step_id: &step.id,
             attempt,
             output: &output,
+            claim: &projection.outputs,
             projection_refs: std::mem::take(&mut projection.refs),
             created_at: &runtime.options.created_at,
             authority_grant_refs: Vec::new(),
@@ -1103,19 +1044,22 @@ fn seal_agent_act_step<A>(
 
 // Function rationale: agent-task execution is one
 // request/resolve/seal trust-boundary path.
-fn run_agent_task<A>(
-    runtime: &Runtime<A>,
-    graph_dir: &Path,
-    graph_name: &str,
-    step: &GraphStep,
-    attempt: u32,
-    inputs: JsonObject,
-    provenance: Vec<ProvenanceEntry>,
-    host: &mut dyn Host,
-) -> Result<StepRun, RuntimeError>
+fn run_agent_task<A>(request: StepHandlerCtx<'_, A>) -> Result<StepRun, RuntimeError>
 where
     A: SkillAdapter,
 {
+    let StepHandlerCtx {
+        runtime,
+        graph_dir,
+        graph_name,
+        step,
+        attempt,
+        inputs,
+        provenance,
+        host,
+        authority: _,
+        loaded_skill: _,
+    } = request;
     let source = agent_task_source(step)?;
     let requirements = inline_step_requirements(step, &source);
     let invocation = SkillInvocation {
@@ -1389,6 +1333,7 @@ where
                 step_id: &step.id,
                 attempt,
                 output: &output,
+                claim: effect_claim,
                 projection_refs,
                 created_at: &runtime.options.created_at,
                 authority_grant_refs,
@@ -1510,13 +1455,14 @@ where
     let outputs = approval_outputs(step, &gate, &resolution)?;
     let output =
         InvocationOutput::runtime_success(JsonValue::Object(outputs.clone()), 0, JsonObject::new());
-    let mut projection = project_step_output(&output);
+    let mut projection = project_step_claim(outputs);
     let receipt = seal_executed_step(
         StepSeal {
             graph_name,
             step_id: &step.id,
             attempt,
             output: &output,
+            claim: &projection.outputs,
             projection_refs: std::mem::take(&mut projection.refs),
             created_at: &runtime.options.created_at,
             authority_grant_refs: Vec::new(),
@@ -1538,7 +1484,7 @@ where
         skill: "run:approval".to_owned(),
         runner: step.runner.clone(),
         fanout_group: step.fanout_group.clone(),
-        contract: outputs,
+        contract: projection.outputs,
         outcome: output.into(),
         receipt,
         nested_receipts: Vec::new(),
@@ -1688,13 +1634,14 @@ where
     #[cfg(not(feature = "agent"))]
     let (value, metadata, receipt_metadata) = (JsonValue::Null, JsonObject::new(), None);
     let output = InvocationOutput::runtime_failure(value, error.to_string(), 0, metadata);
-    let mut projection = project_step_output(&output);
+    let mut projection = project_step_claim(JsonObject::new());
     let receipt = seal_step(
         StepSeal {
             graph_name,
             step_id: &step.id,
             attempt,
             output: &output,
+            claim: &projection.outputs,
             projection_refs: std::mem::take(&mut projection.refs),
             created_at: &runtime.options.created_at,
             authority_grant_refs: Vec::new(),

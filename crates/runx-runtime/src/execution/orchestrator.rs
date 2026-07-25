@@ -325,14 +325,16 @@ impl LocalOrchestrator {
             seeded_answers: None,
         };
         let output = super::skill_front::execute_prepared_skill_run_with_resolved(
-            prepared.request(),
-            &overrides,
-            &self.effects,
-            &prepared.report().request.skill_path,
-            prepared.manifest(),
-            prepared.runner(),
-            prepared.package_digest(),
-            prepared.execution_closure_digest(),
+            super::skill_front::ResolvedSkillRun {
+                request: prepared.request(),
+                overrides: &overrides,
+                effects: &self.effects,
+                skill_dir: &prepared.report().request.skill_path,
+                manifest: prepared.manifest(),
+                runner: prepared.runner(),
+                package_digest: prepared.package_digest(),
+                execution_closure_digest: prepared.execution_closure_digest(),
+            },
         )?;
         Ok(skill_result(output))
     }
@@ -380,10 +382,7 @@ impl LocalOrchestrator {
         options.effects = self.effects.clone();
         let output = super::harness::run_harness_fixture_with_adapter(
             &request.fixture_path,
-            super::skill_front::SkillRunGraphAdapter::with_runtime(
-                self.effects.clone(),
-                options.created_at.clone(),
-            ),
+            super::skill_front::SkillSourceAdapter::default(),
             options.clone(),
         )?;
         persist_harness_receipts(&output, &options, &receipt_dir)?;

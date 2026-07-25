@@ -59,7 +59,12 @@ fn payment_rail_receipts_carry_supervisor_evidence_refs() -> Result<(), Box<dyn 
     }))?;
     let output = InvocationOutput::runtime_success(output_value, 10, metadata);
 
-    let receipt = step_receipt("payment_execute", "fulfill", 1, &output, CREATED_AT)?;
+    let claim = output
+        .value
+        .as_object()
+        .cloned()
+        .ok_or("payment output must be an object")?;
+    let receipt = step_receipt("payment_execute", "fulfill", 1, &output, &claim, CREATED_AT)?;
     let act = &receipt.acts[0];
 
     let verification_refs: Vec<_> = act

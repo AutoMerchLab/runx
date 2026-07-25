@@ -323,6 +323,9 @@ fn native_agent_task_skill_run_infers_bundled_tool_roots() -> Result<(), Box<dyn
     let skill_dir = write_agent_task_skill(temp.path())?;
     let bundled_tools = skill_dir.join("tools");
     fs::create_dir_all(&bundled_tools)?;
+    // The runtime canonicalizes inferred tool roots; macOS tempdirs resolve
+    // through /private, so compare against the canonical form.
+    let bundled_tools = bundled_tools.canonicalize()?;
 
     let result = run_skill(SkillRunRequest {
         skill_path: skill_dir,
@@ -704,6 +707,8 @@ runners:
         required: true
     graph:
       name: javascript-module-skill
+      result_from:
+        - transform
       steps:
         - id: transform
           inputs:
@@ -737,10 +742,7 @@ runners:
         skill_dir.join("domain.mjs"),
         "export const transform = ({ value }) => ({ transformed: { value: value.toUpperCase() } });\n",
     )?;
-    let env = std::env::var("PATH")
-        .ok()
-        .map(|path| BTreeMap::from([("PATH".to_owned(), path)]))
-        .unwrap_or_default();
+    let env = path_env();
 
     let result = run_skill(SkillRunRequest {
         skill_path: skill_dir,
@@ -758,6 +760,8 @@ runners:
     assert_eq!(string_field(output, "status"), Some("sealed"));
     let result = object_field(output, "result").ok_or("missing result")?;
     let transformed = object_field(result, "transformed").ok_or("missing transformed output")?;
+    let transformed =
+        object_field(transformed, "data").ok_or("missing transformed data envelope")?;
     assert_eq!(string_field(transformed, "value"), Some("RUNX"));
     let steps = object_field(output, "trace")
         .and_then(|trace| trace.get("steps"))
@@ -824,10 +828,7 @@ runners:
   "additionalProperties": false
 }"#,
     )?;
-    let env = std::env::var("PATH")
-        .ok()
-        .map(|path| BTreeMap::from([("PATH".to_owned(), path)]))
-        .unwrap_or_default();
+    let env = path_env();
 
     let error = match run_skill(SkillRunRequest {
         skill_path: skill_dir,
@@ -1674,6 +1675,7 @@ fn native_graph_skill_run_executes_local_tool_step() -> Result<(), Box<dyn std::
     assert_eq!(string_field(output, "status"), Some("sealed"));
     let public_result = object_field(output, "result").ok_or("missing result")?;
     let echo = object_field(public_result, "echo").ok_or("missing echo")?;
+    let echo = object_field(echo, "data").ok_or("missing echo data envelope")?;
     assert_eq!(string_field(echo, "message"), Some("Graph tool bug"));
 
     Ok(())
@@ -1772,6 +1774,7 @@ fn native_graph_skill_run_resolves_agent_task_named_emit_context()
     assert_eq!(string_field(output, "status"), Some("sealed"));
     let public_result = object_field(output, "result").ok_or("missing result")?;
     let echo = object_field(public_result, "echo").ok_or("missing echo")?;
+    let echo = object_field(echo, "data").ok_or("missing echo data envelope")?;
     assert_eq!(string_field(echo, "message"), Some("Graph tool bug"));
 
     Ok(())
@@ -1849,14 +1852,18 @@ fn native_graph_skill_resume_preserves_initial_inputs_for_later_tool_steps()
     assert_eq!(string_field(output, "status"), Some("sealed"));
     let public_result = object_field(output, "result").ok_or("missing result")?;
     let echo = object_field(public_result, "echo").ok_or("missing echo")?;
+    let echo = object_field(echo, "data").ok_or("missing echo data envelope")?;
     assert_eq!(string_field(echo, "message"), Some("Graph tool bug"));
 
     Ok(())
 }
 
+// Transport-envelope probing is intentionally forbidden: an agent claim must
+// return the declared contract directly, so an `output`-wrapped answer fails
+// with the typed missing-output error instead of being silently unwrapped.
 #[cfg(feature = "catalog")]
 #[test]
-fn native_graph_skill_run_resolves_agent_task_output_envelope_named_emit_context()
+fn native_graph_skill_run_rejects_agent_task_output_envelope_claim()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let skill_dir = write_graph_agent_artifact_context_skill(temp.path())?;
@@ -1908,7 +1915,7 @@ fn native_graph_skill_run_resolves_agent_task_output_envelope_named_emit_context
         .ok_or("pending graph agent artifact envelope result missing run_id")?
         .to_owned();
 
-    let result = run_skill(SkillRunRequest {
+    let error = match run_skill(SkillRunRequest {
         skill_path: skill_dir,
         receipt_dir: Some(receipt_dir),
         run_id: Some(run_id),
@@ -1918,13 +1925,21 @@ fn native_graph_skill_run_resolves_agent_task_output_envelope_named_emit_context
         cwd: temp.path().to_path_buf(),
         managed_agent: Default::default(),
         local_credential: None,
-    })?;
-
-    let output = object(&result.output, "graph agent artifact envelope result")?;
-    assert_eq!(string_field(output, "status"), Some("sealed"));
-    let public_result = object_field(output, "result").ok_or("missing result")?;
-    let echo = object_field(public_result, "echo").ok_or("missing echo")?;
-    assert_eq!(string_field(echo, "message"), Some("Graph tool bug"));
+    }) {
+        Ok(result) => {
+            return Err(format!(
+                "envelope-wrapped agent claim unexpectedly sealed: {:?}",
+                result.output
+            )
+            .into());
+        }
+        Err(error) => error,
+    };
+    let message = error.to_string();
+    assert!(
+        message.contains("declared run output \"fix_bundle\" was not returned"),
+        "unexpected envelope rejection: {message}"
+    );
 
     Ok(())
 }
@@ -1967,6 +1982,7 @@ fn native_graph_skill_run_omits_missing_optional_graph_input_references()
     assert_eq!(string_field(output, "status"), Some("sealed"));
     let public_result = object_field(output, "result").ok_or("missing result")?;
     let echo = object_field(public_result, "echo").ok_or("missing echo")?;
+    let echo = object_field(echo, "data").ok_or("missing echo data envelope")?;
     assert_eq!(
         string_field(echo, "message"),
         Some("Graph optional JSON bug")
@@ -2224,7 +2240,7 @@ fn native_graph_skill_run_executes_nested_cli_tool_skill() -> Result<(), Box<dyn
         run_id: None,
         answers_path: None,
         inputs,
-        env: BTreeMap::new(),
+        env: path_env(),
         cwd: temp.path().to_path_buf(),
         managed_agent: Default::default(),
         local_credential: None,
@@ -2564,7 +2580,7 @@ fn native_graph_skill_run_does_not_rerun_final_step() -> Result<(), Box<dyn std:
         run_id: None,
         answers_path: None,
         inputs,
-        env: BTreeMap::new(),
+        env: path_env(),
         cwd: temp.path().to_path_buf(),
         managed_agent: Default::default(),
         local_credential: None,
@@ -2597,7 +2613,7 @@ fn native_graph_skill_run_executes_graph_stage_cli_tool_skill()
         run_id: None,
         answers_path: None,
         inputs,
-        env: BTreeMap::new(),
+        env: path_env(),
         cwd: temp.path().to_path_buf(),
         managed_agent: Default::default(),
         local_credential: None,
@@ -2639,7 +2655,7 @@ fn native_graph_skill_run_executes_nested_x_yaml_runner_skill()
         run_id: None,
         answers_path: None,
         inputs,
-        env: BTreeMap::new(),
+        env: path_env(),
         cwd: temp.path().to_path_buf(),
         managed_agent: Default::default(),
         local_credential: None,
@@ -2772,6 +2788,8 @@ runners:
     type: graph
     graph:
       name: graph-issue-to-pr
+      result_from:
+        - decide
       steps:
         - id: decide
           run:
@@ -2806,6 +2824,8 @@ runners:
     type: graph
     graph:
       name: graph-agent-context-skill
+      result_from:
+        - apply_taste
       steps:
         - id: apply_taste
           run:
@@ -2847,6 +2867,8 @@ runners:
     type: graph
     graph:
       name: graph-gated-agent-task
+      result_from:
+        - gated
       steps:
         - id: decide
           run:
@@ -2933,6 +2955,8 @@ runners:
     type: graph
     graph:
       name: graph-nested-{source_type}
+      result_from:
+        - nested
       steps:
         - id: nested
           skill: ../{child_name}
@@ -3075,6 +3099,8 @@ runners:
     type: graph
     graph:
       name: graph-agent-artifact-context
+      result_from:
+        - echo
       steps:
         - id: author
           run:
@@ -3115,6 +3141,8 @@ runners:
     type: graph
     graph:
       name: graph-agent-then-input-tool
+      result_from:
+        - echo
       steps:
         - id: author
           run:
@@ -3152,6 +3180,8 @@ runners:
     type: graph
     graph:
       name: graph-optional-json-tool
+      result_from:
+        - echo
       steps:
         - id: echo
           tool: test.optional-json
@@ -3185,6 +3215,8 @@ runners:
         description: Lead packet to route.
     graph:
       name: graph-required-input
+      result_from:
+        - approve
       steps:
         - id: approve
           run:
@@ -3214,6 +3246,8 @@ runners:
     type: graph
     graph:
       name: approval-resume
+      result_from:
+        - approve
       steps:
         - id: approve
           run:
@@ -3293,6 +3327,11 @@ fn write_optional_json_tool(root: &Path) -> Result<(), Box<dyn std::error::Error
   "inputs": {
     "message": { "type": "string", "required": true },
     "harness": { "type": "json", "required": false }
+  },
+  "artifacts": {
+    "named_emits": {
+      "echo": "test.optional-json.v1"
+    }
   },
   "scopes": ["test.optional-json"]
 }
@@ -3420,6 +3459,8 @@ runners:
     type: graph
     graph:
       name: graph-nested-registry
+      result_from:
+        - nested
       steps:
         - id: nested
           skill: {skill_ref}
@@ -3485,6 +3526,8 @@ runners:
         required: true
     graph:
       name: graph-stage-cli
+      result_from:
+        - nested
       steps:
         - id: nested
           skill: graph/child-echo
@@ -3520,6 +3563,8 @@ runners:
     args:
       - run.mjs
     input_mode: stdin
+    outputs:
+      counted: object
 "#,
     )?;
     fs::write(
@@ -3558,6 +3603,8 @@ runners:
         required: true
     graph:
       name: graph-nested-cli-counter
+      result_from:
+        - counted
       steps:
         - id: counted
           skill: ../child-counter
@@ -3625,6 +3672,8 @@ runners:
         required: true
     graph:
       name: graph-nested-x-yaml-cli
+      result_from:
+        - nested
       steps:
         - id: nested
           skill: ../child-x-cli
@@ -3675,6 +3724,16 @@ fn array_field<'a>(
     }
 }
 
+/// Minimal operator environment for tests that spawn real subprocesses: the
+/// runtime passes through only declared and baseline variables, so the tests
+/// forward the host PATH explicitly instead of relying on ambient fallback.
+fn path_env() -> BTreeMap<String, String> {
+    std::env::var("PATH")
+        .ok()
+        .map(|path| BTreeMap::from([("PATH".to_owned(), path)]))
+        .unwrap_or_default()
+}
+
 fn string_field<'a>(object: &'a runx_contracts::JsonObject, field: &str) -> Option<&'a str> {
     match object.get(field) {
         Some(JsonValue::String(value)) => Some(value),
@@ -3699,6 +3758,9 @@ runners:
     type: graph
     graph:
       name: graph-when-branch
+      result_from:
+        - branch_go
+        - branch_stop
       steps:
         - id: decide
           run:

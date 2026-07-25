@@ -22,6 +22,8 @@ state belongs in a higher-level operator skill and normally composes
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `send-as#plan`
 
 ## Runners

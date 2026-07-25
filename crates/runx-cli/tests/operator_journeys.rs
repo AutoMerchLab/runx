@@ -268,7 +268,27 @@ fn composite_business_ops_journey_runs_verifies_and_reads_receipt_tree() -> Test
     assert_eq!(run["closure"]["disposition"], "closed");
     assert_eq!(run["trace"]["graph"], "business-ops");
     assert_eq!(run["trace"]["status"], "succeeded");
-    assert_eq!(run["trace"]["steps"].as_array().map(Vec::len), Some(7));
+    assert_eq!(
+        run["trace"]["steps"].as_array().map(|steps| steps
+            .iter()
+            .map(|step| step["step_id"].clone())
+            .collect::<Vec<_>>()),
+        Some(
+            [
+                "classify",
+                "docs",
+                "release",
+                "issue",
+                "send",
+                "spend",
+                "audit",
+                "package-route",
+            ]
+            .into_iter()
+            .map(serde_json::Value::from)
+            .collect()
+        )
+    );
     assert!(run.get("receipt").is_none());
     assert!(run.get("execution").is_none());
     let receipt_id = json_string(&run, "receipt_id")?;
@@ -428,7 +448,7 @@ fn assert_exit(output: &Output, expected_exit: i32) -> TestResult {
         String::from_utf8_lossy(&output.stderr),
         String::from_utf8_lossy(&output.stdout)
     );
-    assert_eq!(String::from_utf8(output.stderr.clone())?, "");
+    crate::support::assert_json_stderr(&output.stderr)?;
     Ok(())
 }
 

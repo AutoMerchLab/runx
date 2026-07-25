@@ -19,6 +19,8 @@ owns the final channel-post boundary.
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `send-as#plan`
 
 ## Runners

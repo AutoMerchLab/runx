@@ -19,6 +19,8 @@ reviewable attenuation proposal, not an automatic change.
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `ledger#read`
 
 ## What this skill does

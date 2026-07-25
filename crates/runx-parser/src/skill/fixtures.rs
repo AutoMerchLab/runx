@@ -171,6 +171,8 @@ runners:
     type: graph
     graph:
       name: fixture
+      result_from:
+        - digest
       steps:
         - id: digest
           tool: data.digest

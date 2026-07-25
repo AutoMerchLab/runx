@@ -9,7 +9,7 @@ use crate::credentials::CredentialDelivery;
 use crate::sandbox::sandbox_metadata;
 use crate::services::SandboxServices;
 
-use super::templates::map_mcp_arguments;
+use super::arguments::map_mcp_arguments;
 use super::transport::ProcessMcpTransport;
 use super::types::{McpToolCallRequest, McpTransport};
 
@@ -49,17 +49,39 @@ where
             Err(output) => return Ok(output),
         };
         match self.transport.call_tool(prepared.request) {
-            Ok(mut result) => {
+            Ok(result) => {
                 // MCP results are structured. Redact their decoded values and
                 // keys before rendering; redacting the serialized form first can
                 // be bypassed by JSON escapes that reconstruct a credential when
                 // graph context or receipt projection parses stdout again.
+                let projection = super::tool_result::project_mcp_tool_result(&result);
+                let mut result = projection.value;
+                let mut runx = projection.runx.map(JsonValue::Object);
                 prepared.credential_delivery.redact_json_value(&mut result);
+                if let Some(runx) = &mut runx {
+                    prepared.credential_delivery.redact_json_value(runx);
+                }
+                let mut metadata = if projection.is_error {
+                    prepared.failure_metadata
+                } else {
+                    prepared.success_metadata
+                };
+                if let Some(runx) = runx
+                    && let Some(JsonValue::Object(mcp)) = metadata.get_mut("mcp")
+                {
+                    mcp.insert("runx".to_owned(), runx);
+                }
                 Ok(context.projection().runtime_output(
-                    InvocationStatus::Success,
+                    if projection.is_error {
+                        InvocationStatus::Failure
+                    } else {
+                        InvocationStatus::Success
+                    },
                     result,
-                    None,
-                    prepared.success_metadata,
+                    projection
+                        .is_error
+                        .then(|| "MCP tool reported an error.".to_owned()),
+                    metadata,
                 ))
             }
             Err(error) => Ok(failure(

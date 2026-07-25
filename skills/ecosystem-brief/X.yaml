@@ -238,7 +238,7 @@ runners:
         description: Entities to include or compare.
     graph:
       name: ecosystem-brief
-      result_from: [draft-brief]
+      result_from: [freshness, research-topic, draft-brief]
       steps:
         - id: freshness
           label: admit fresh ecosystem sources

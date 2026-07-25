@@ -1,7 +1,7 @@
 mod execution_closure;
 mod runner;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use runx_contracts::{JsonObject, JsonValue};
@@ -10,32 +10,92 @@ use runx_parser::{CatalogMetadata, SkillRunnerDefinition, SourceKind};
 use super::LoadedSkillPackage;
 use execution_closure::inspect_execution_closures;
 use runner::{catalog_capabilities, fixture_examples, inspect_runner};
+use thiserror::Error;
+
+use crate::RuntimeError;
+
+#[derive(Debug, Error)]
+pub enum SkillInspectionError {
+    #[error(transparent)]
+    Runtime(Box<RuntimeError>),
+    #[error("skill has no runner '{runner}'")]
+    RunnerNotFound { runner: String },
+    #[error("runner manifest is unavailable")]
+    ManifestUnavailable,
+    #[error("native execution closure omitted runner {runner}")]
+    ClosureMissing { runner: String },
+    #[error("native execution closure {problem} for runner {runner}")]
+    ClosureInvalid {
+        runner: String,
+        problem: &'static str,
+    },
+    #[error("skill package digest mismatch: expected {expected}, received {received}")]
+    PackageDigestMismatch { expected: String, received: String },
+    #[error("native execution closure for runner {runner} is not fully bound")]
+    ClosureNotFullyBound { runner: String },
+    #[error("skill execution closure digest mismatch: expected {expected}, received {received}")]
+    ClosureDigestMismatch { expected: String, received: String },
+    #[error("sub-skill {path} has no executable manifest")]
+    SubSkillManifestMissing { path: PathBuf },
+    #[error("sub-skill {path} has no selected runner for step {step}")]
+    SubSkillRunnerMissing { path: PathBuf, step: String },
+    #[error("sub-skill {path} has no selected runner {runner}")]
+    SubSkillNamedRunnerMissing { path: PathBuf, runner: String },
+    #[error("graph source omitted its validated graph")]
+    GraphMissing,
+    #[error("canonicalizing {label} {path}: {source}")]
+    Canonicalize {
+        label: &'static str,
+        path: PathBuf,
+        #[source]
+        source: std::io::Error,
+    },
+    #[error("loading referenced sub-skill {reference} from {from}: {source}")]
+    ReferencedSkill {
+        reference: String,
+        from: PathBuf,
+        #[source]
+        source: Box<RuntimeError>,
+    },
+    #[error("sub-skill reference {reference} escapes the inspected execution closure")]
+    ProfileEscape { reference: String },
+    #[error("{context}: {source}")]
+    Json {
+        context: &'static str,
+        #[source]
+        source: serde_json::Error,
+    },
+}
+
+impl From<RuntimeError> for SkillInspectionError {
+    fn from(error: RuntimeError) -> Self {
+        Self::Runtime(Box::new(error))
+    }
+}
 
 /// Project one already-validated package into the stable operator inspection
 /// envelope. No source document is reparsed here.
 pub fn inspect_skill_package(
     skill_path: &Path,
     selected_runner: Option<&str>,
-) -> Result<JsonValue, String> {
-    let loaded =
-        super::load_validated_skill_package(skill_path).map_err(|error| error.to_string())?;
+) -> Result<JsonValue, SkillInspectionError> {
+    let loaded = super::load_validated_skill_package(skill_path)?;
     inspect_loaded_skill_package(loaded, selected_runner)
 }
 
 pub(crate) fn inspect_loaded_skill_package(
     loaded: LoadedSkillPackage,
     selected_runner: Option<&str>,
-) -> Result<JsonValue, String> {
+) -> Result<JsonValue, SkillInspectionError> {
     let loaded = Arc::new(loaded);
     let mut output = base_inspection(&loaded);
     let manifest = loaded.manifest();
     let runner = match (manifest, selected_runner) {
-        (Some(manifest), Some(name)) => Some(
-            manifest
-                .runners
-                .get(name)
-                .ok_or_else(|| format!("skill has no runner '{name}'"))?,
-        ),
+        (Some(manifest), Some(name)) => Some(manifest.runners.get(name).ok_or_else(|| {
+            SkillInspectionError::RunnerNotFound {
+                runner: name.to_owned(),
+            }
+        })?),
         (Some(manifest), None) => manifest
             .runners
             .values()
@@ -45,7 +105,11 @@ pub(crate) fn inspect_loaded_skill_package(
                     .then(|| manifest.runners.values().next())
                     .flatten()
             }),
-        (None, Some(name)) => return Err(format!("skill has no runner '{name}'")),
+        (None, Some(name)) => {
+            return Err(SkillInspectionError::RunnerNotFound {
+                runner: name.to_owned(),
+            });
+        }
         (None, None) => None,
     };
     let mut execution_closures = inspect_execution_closures(loaded.clone())?;
@@ -61,29 +125,28 @@ pub(crate) fn inspect_loaded_skill_package(
                             execution_closures
                                 .get(&runner.name)
                                 .cloned()
-                                .ok_or_else(|| {
-                                    format!(
-                                        "native execution closure omitted runner {}",
-                                        runner.name
-                                    )
+                                .ok_or_else(|| SkillInspectionError::ClosureMissing {
+                                    runner: runner.name.clone(),
                                 })?;
                         Ok(JsonValue::Object(JsonObject::from([
                             ("runner".to_owned(), inspect_runner(manifest, runner)?),
                             ("execution_closure".to_owned(), closure),
                         ])))
                     })
-                    .collect::<Result<Vec<_>, String>>()?,
+                    .collect::<Result<Vec<_>, SkillInspectionError>>()?,
             ),
         );
     }
     if let Some(runner) = runner {
-        let closure = execution_closures
-            .remove(&runner.name)
-            .ok_or_else(|| format!("native execution closure omitted runner {}", runner.name))?;
+        let closure = execution_closures.remove(&runner.name).ok_or_else(|| {
+            SkillInspectionError::ClosureMissing {
+                runner: runner.name.clone(),
+            }
+        })?;
         append_runner_inspection(
             &mut output,
             &loaded,
-            manifest.ok_or_else(|| "runner manifest is unavailable".to_owned())?,
+            manifest.ok_or(SkillInspectionError::ManifestUnavailable)?,
             runner,
             closure,
         )?;
@@ -99,27 +162,35 @@ pub(crate) struct InspectedExecutionClosureBinding {
 pub(crate) fn inspect_loaded_execution_closure_binding(
     loaded: LoadedSkillPackage,
     selected_runner: &str,
-) -> Result<InspectedExecutionClosureBinding, String> {
+) -> Result<InspectedExecutionClosureBinding, SkillInspectionError> {
     let mut closures = inspect_execution_closures(Arc::new(loaded))?;
-    let closure = closures
-        .remove(selected_runner)
-        .ok_or_else(|| format!("native execution closure omitted runner {selected_runner}"))?;
+    let closure =
+        closures
+            .remove(selected_runner)
+            .ok_or_else(|| SkillInspectionError::ClosureMissing {
+                runner: selected_runner.to_owned(),
+            })?;
     let closure = closure
         .as_object()
-        .ok_or_else(|| "native execution closure is not an object".to_owned())?;
+        .ok_or_else(|| SkillInspectionError::ClosureInvalid {
+            runner: selected_runner.to_owned(),
+            problem: "is not an object",
+        })?;
     let fully_bound = closure
         .get("fully_bound")
         .and_then(JsonValue::as_bool)
-        .ok_or_else(|| {
-            format!("native execution closure omitted binding state for runner {selected_runner}")
+        .ok_or_else(|| SkillInspectionError::ClosureInvalid {
+            runner: selected_runner.to_owned(),
+            problem: "omitted binding state",
         })?;
     let digest = closure
         .get("closure_digest")
         .and_then(JsonValue::as_str)
         .filter(|value| !value.trim().is_empty())
         .map(str::to_owned)
-        .ok_or_else(|| {
-            format!("native execution closure omitted digest for runner {selected_runner}")
+        .ok_or_else(|| SkillInspectionError::ClosureInvalid {
+            runner: selected_runner.to_owned(),
+            problem: "omitted digest",
         })?;
     Ok(InspectedExecutionClosureBinding {
         digest,
@@ -191,7 +262,7 @@ fn append_runner_inspection(
     manifest: &runx_parser::SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
     execution_closure: JsonValue,
-) -> Result<(), String> {
+) -> Result<(), SkillInspectionError> {
     output.insert("runner".to_owned(), inspect_runner(manifest, runner)?);
     output.insert("execution_closure".to_owned(), execution_closure);
     output.insert(

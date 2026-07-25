@@ -17,6 +17,8 @@ The delivery adapter remains separate. This skill never claims a message was sen
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `redact-pii#redact-pii`
 - `send-as#plan`
 - `web-fetch#web-fetch`

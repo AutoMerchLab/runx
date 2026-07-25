@@ -433,18 +433,9 @@ fn mcp_adapter_delivers_secret_env_and_redacts_tool_result()
     })?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    assert_eq!(
-        output
-            .value
-            .as_object()
-            .and_then(|value| value.get("content"))
-            .and_then(runx_contracts::JsonValue::as_array)
-            .and_then(|content| content.first())
-            .and_then(runx_contracts::JsonValue::as_object)
-            .and_then(|content| content.get("text"))
-            .and_then(runx_contracts::JsonValue::as_str),
-        Some("[redacted-credential]")
-    );
+    // The MCP envelope is projected to its semantic value; the delivered
+    // secret must arrive redacted.
+    assert_eq!(output.value.as_str(), Some("[redacted-credential]"));
     assert!(!output.rendered_value().contains("ghs_secret_token"));
     assert!(!serde_json::to_string(&output.metadata)?.contains("ghs_secret_token"));
     Ok(())

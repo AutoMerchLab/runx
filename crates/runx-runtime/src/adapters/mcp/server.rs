@@ -73,13 +73,13 @@ fn completed_mcp_tool_result(
     runx: JsonObject,
 ) -> McpToolResult {
     let fallback = || format!("{skill_name} completed. Inspect receipt {receipt_id}.");
-    let text = match output {
+    let text = match &output {
         JsonValue::Null => fallback(),
         JsonValue::String(value) if value.trim().is_empty() => fallback(),
-        JsonValue::String(value) => value,
+        JsonValue::String(value) => value.clone(),
         value => serde_json::to_string(&value).unwrap_or_else(|_| fallback()),
     };
-    mcp_host_tool_result(text, runx, false)
+    mcp_host_tool_result(text, runx, Some(output), false)
 }
 
 fn needs_agent_mcp_tool_result(
@@ -93,6 +93,7 @@ fn needs_agent_mcp_tool_result(
             "{skill_name} needs agent input at {run_id}. Resolve {request_count} request(s), write answers.json, then run: runx resume {run_id} answers.json."
         ),
         runx,
+        None,
         false,
     )
 }
@@ -106,7 +107,7 @@ fn denied_mcp_tool_result(
         Some(receipt_id) => format!("{skill_name} was denied by policy (receipt {receipt_id})."),
         None => format!("{skill_name} was denied by policy."),
     };
-    mcp_host_tool_result(text, runx, true)
+    mcp_host_tool_result(text, runx, None, true)
 }
 
 fn escalated_mcp_tool_result(
@@ -120,6 +121,7 @@ fn escalated_mcp_tool_result(
             .trim()
             .to_owned(),
         runx,
+        None,
         true,
     )
 }
@@ -138,20 +140,30 @@ fn failed_mcp_tool_result(
         .trim()
         .to_owned(),
         runx,
+        None,
         true,
     )
 }
 
-fn mcp_host_tool_result(text: String, runx: JsonObject, is_error: bool) -> McpToolResult {
+fn mcp_host_tool_result(
+    text: String,
+    runx: JsonObject,
+    output: Option<JsonValue>,
+    is_error: bool,
+) -> McpToolResult {
     McpToolResult {
         content: vec![McpContent { text }],
-        structured_content: Some(runx_content(runx)),
+        structured_content: Some(runx_content(runx, output)),
         is_error,
     }
 }
 
-fn runx_content(runx: JsonObject) -> JsonObject {
-    [("runx".to_owned(), JsonValue::Object(runx))].into()
+fn runx_content(runx: JsonObject, output: Option<JsonValue>) -> JsonObject {
+    let mut content = JsonObject::from([("runx".to_owned(), JsonValue::Object(runx))]);
+    if let Some(output) = output {
+        content.insert("output".to_owned(), output);
+    }
+    content
 }
 
 fn serve_mcp_json_rpc_with_rmcp(
@@ -655,7 +667,8 @@ mod tests {
     }
 
     #[test]
-    fn scoped_mcp_tool_requires_operator_grant_before_dispatch() {
+    fn scoped_mcp_tool_requires_operator_grant_before_dispatch()
+    -> Result<(), Box<dyn std::error::Error>> {
         let required_scopes = vec!["repo.read".to_owned(), "issues.write".to_owned()];
         let result = admit_mcp_tool_scopes("github-write", &required_scopes, &BTreeMap::new());
         assert!(
@@ -670,8 +683,7 @@ mod tests {
             ),
             (
                 PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
-                crate::encode_provider_scopes_env(&["repo.read".to_owned()])
-                    .expect("scope transport"),
+                crate::encode_provider_scopes_env(&["repo.read".to_owned()])?,
             ),
         ]);
         let result = admit_mcp_tool_scopes("github-write", &required_scopes, &env);
@@ -682,13 +694,16 @@ mod tests {
 
         env.insert(
             PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
-            crate::encode_provider_scopes_env(&["repo.read".to_owned(), "issues.write".to_owned()])
-                .expect("scope transport"),
+            crate::encode_provider_scopes_env(&[
+                "repo.read".to_owned(),
+                "issues.write".to_owned(),
+            ])?,
         );
         let result = admit_mcp_tool_scopes("github-write", &required_scopes, &env);
         assert!(
             result.is_ok(),
             "matching operator grant scopes should admit the MCP tool; got: {result:?}"
         );
+        Ok(())
     }
 }

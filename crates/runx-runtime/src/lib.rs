@@ -201,7 +201,9 @@ pub use services::{
     VerifiedReceiptStore, WorkspaceEnv, WorkspaceEnvError, WorkspaceFileError, read_workspace_text,
 };
 pub use skill_front::PackageHarnessReport;
-pub use skill_package::{LoadedSkillPackage, inspect_skill_package, load_validated_skill_package};
+pub use skill_package::{
+    LoadedSkillPackage, SkillInspectionError, inspect_skill_package, load_validated_skill_package,
+};
 pub use tool_catalogs::{
     ToolBuildOptions, ToolCatalogError, ToolInspectOptions, ToolSearchOptions, build_tool_catalogs,
     inspect_tool, inspect_tool_with_effects, search_tools, search_tools_with_effects,

@@ -1,6 +1,6 @@
 #![cfg(feature = "cli-tool")]
 
-use std::path::Path;
+use std::path::PathBuf;
 
 use runx_core::state_machine::GraphStatus;
 use runx_parser::{parse_graph_yaml, validate_graph};
@@ -17,13 +17,15 @@ fn hello_graph_resumes_from_checkpoint() -> Result<(), Box<dyn std::error::Error
         CliToolAdapter,
         RuntimeOptions::local_development(std::env::vars().collect()),
     );
-    let graph_path = Path::new("../../examples/hello-graph/graph.yaml");
+    let graph_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../examples/hello-graph/graph.yaml")
+        .canonicalize()?;
 
-    let checkpoint = runtime.run_graph_file_until_steps(graph_path, 1)?;
+    let checkpoint = runtime.run_graph_file_until_steps(&graph_path, 1)?;
     assert_eq!(checkpoint.steps.len(), 1);
     assert_eq!(checkpoint.steps[0].step_id, "first");
 
-    let run = runtime.resume_graph_file(graph_path, checkpoint)?;
+    let run = runtime.resume_graph_file(&graph_path, checkpoint)?;
     assert_eq!(run.state.status, GraphStatus::Succeeded);
     assert_eq!(
         run.steps

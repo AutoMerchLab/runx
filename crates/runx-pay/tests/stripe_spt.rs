@@ -507,7 +507,10 @@ fn skill_failure_with_value(value: Value, message: &str) -> InvocationOutput {
 }
 
 fn runtime_value(value: Value) -> JsonValue {
-    serde_json::from_value(value).expect("test output fixture must match the Runx JSON contract")
+    let Ok(value) = serde_json::from_value(value) else {
+        panic!("test output fixture must match the Runx JSON contract");
+    };
+    value
 }
 
 struct ApprovalHost {

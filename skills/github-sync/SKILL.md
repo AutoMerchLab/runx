@@ -20,6 +20,8 @@ close only on GitHub provider readback. No GitHub token enters this package.
 
 ## Composes
 
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
 - `data-store#append_event`
 - `data-store#read_projection`
 

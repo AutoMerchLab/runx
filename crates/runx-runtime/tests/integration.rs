@@ -18,7 +18,6 @@ mod credential_grant_policy;
 mod dev;
 mod doctor;
 mod effect_finality;
-mod external;
 mod external_adapter;
 mod fanout_parity;
 mod fanout_proptest;

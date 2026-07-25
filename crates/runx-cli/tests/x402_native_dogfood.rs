@@ -13,7 +13,7 @@ fn payment_command_loads_its_workspace_environment_once_at_cli_admission()
         root.join(".env"),
         concat!(
             "RUNX_PAYMENT_ADMISSION_KID=workspace-kid\n",
-            "RUNX_PAYMENT_ADMISSION_SIGNING_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n",
+            "RUNX_INTERNAL_PAYMENT_ADMISSION_SIGNING_KEY=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=\n",
             "RUNX_CWD=/must/not/override/discovery\n"
         ),
     )?;

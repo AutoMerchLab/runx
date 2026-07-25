@@ -102,6 +102,7 @@ fn production_sealing_fails_closed_without_signer_or_verifier() -> Result<(), Bo
         "signer",
         1,
         &skill_output(InvocationStatus::Success),
+        &JsonObject::new(),
         CREATED_AT,
         RuntimeReceiptSignaturePolicy::production(&verifier),
     ) else {
@@ -114,6 +115,7 @@ fn production_sealing_fails_closed_without_signer_or_verifier() -> Result<(), Bo
         "verifier",
         1,
         &skill_output(InvocationStatus::Success),
+        &JsonObject::new(),
         CREATED_AT,
         RuntimeReceiptSignaturePolicy::production_signing_without_verifier(&signer),
     ) else {
@@ -253,6 +255,7 @@ fn production_signing_env_requires_non_local_issuer_type() -> Result<(), Box<dyn
         "seal",
         1,
         &skill_output(InvocationStatus::Success),
+        &JsonObject::new(),
         CREATED_AT,
         config.signature_policy(),
     )?;
@@ -269,6 +272,7 @@ fn production_step_receipt(
         "seal",
         1,
         &skill_output(InvocationStatus::Success),
+        &JsonObject::new(),
         CREATED_AT,
         RuntimeReceiptSignaturePolicy::production_signing(signer, verifier),
     )?)
@@ -286,6 +290,7 @@ fn production_step_run(
         step_id,
         1,
         &output,
+        &JsonObject::new(),
         CREATED_AT,
         RuntimeReceiptSignaturePolicy::production_signing(signer, verifier),
     )?;
@@ -367,6 +372,7 @@ fn sign_with_fixed_signer(
         "seal",
         1,
         &skill_output(InvocationStatus::Success),
+        &JsonObject::new(),
         CREATED_AT,
         RuntimeReceiptSignaturePolicy::production_signing(signer, verifier),
     )

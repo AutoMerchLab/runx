@@ -383,12 +383,13 @@ mod tests {
 
     #[test]
     fn resume_rejects_a_binding_that_disagrees_with_its_checkpoint() {
-        let error = super::resume_binding(
+        let Err(error) = super::resume_binding(
             "execution closure",
             Some("sha256:requested"),
             Some("sha256:checkpoint"),
-        )
-        .expect_err("resume must not replace its durable execution binding");
+        ) else {
+            panic!("resume replaced its durable execution binding");
+        };
         assert!(error.contains("resume execution closure binding mismatch"));
     }
 

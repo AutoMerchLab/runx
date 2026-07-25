@@ -141,12 +141,13 @@ mod tests {
     }
 
     #[test]
-    fn clamps_parallel_schedule_to_the_narrowest_adapter_limit() {
+    fn clamps_parallel_schedule_to_the_narrowest_adapter_limit()
+    -> Result<(), Box<dyn std::error::Error>> {
         let scheduler = FanoutScheduler {
             max_concurrency: HARD_MAX_FANOUT_CONCURRENCY,
         };
-        let four = NonZeroUsize::new(4).expect("non-zero fixture width");
-        let eight = NonZeroUsize::new(8).expect("non-zero fixture width");
+        let four = NonZeroUsize::new(4).ok_or("fixture width must be non-zero")?;
+        let eight = NonZeroUsize::new(8).ok_or("fixture width must be non-zero")?;
         let schedule = scheduler.schedule(
             vec![
                 Parallelism::Isolated(ParallelWidth::Bounded(four)),
@@ -161,5 +162,6 @@ mod tests {
                 ..
             })
         ));
+        Ok(())
     }
 }

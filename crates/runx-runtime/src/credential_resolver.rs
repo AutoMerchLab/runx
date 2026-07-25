@@ -297,13 +297,16 @@ mod tests {
         }
     }
 
-    fn workspace(root: &std::path::Path, env: BTreeMap<String, String>) -> WorkspaceEnv {
+    fn workspace(
+        root: &std::path::Path,
+        env: BTreeMap<String, String>,
+    ) -> Result<WorkspaceEnv, crate::services::WorkspaceEnvError> {
         let mut env = env;
         env.insert(
             "RUNX_HOME".to_owned(),
             root.join("home").display().to_string(),
         );
-        WorkspaceEnv::new(env, root.to_path_buf()).expect("test workspace cwd must be absolute")
+        WorkspaceEnv::new(env, root.to_path_buf())
     }
 
     fn multi_auth_request(profile: Option<&str>) -> SkillCredentialRequest {
@@ -347,7 +350,7 @@ mod tests {
                 "NITROSEND_API_KEY".to_owned(),
                 "environment-secret-sentinel".to_owned(),
             )]),
-        );
+        )?;
         let resolved = resolve_skill_credential(&request(None), &workspace)?;
         let SkillCredentialResolution::Ready(resolved) = resolved else {
             return Err("credential should resolve".into());
@@ -362,7 +365,7 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempfile::tempdir()?;
         fs::create_dir_all(temp.path().join(".runx"))?;
-        let workspace = workspace(temp.path(), BTreeMap::new());
+        let workspace = workspace(temp.path(), BTreeMap::new())?;
         set_local_credential_profile(
             &workspace,
             "default",
@@ -405,7 +408,7 @@ mod tests {
     fn stored_profile_auth_mode_selects_declared_delivery() -> Result<(), Box<dyn std::error::Error>>
     {
         let temp = tempfile::tempdir()?;
-        let workspace = workspace(temp.path(), BTreeMap::new());
+        let workspace = workspace(temp.path(), BTreeMap::new())?;
         set_local_credential_profile(
             &workspace,
             "twitter-app",
@@ -429,7 +432,7 @@ mod tests {
     fn stored_profile_can_bind_a_dynamic_provider_to_one_https_audience()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempfile::tempdir()?;
-        let workspace = workspace(temp.path(), BTreeMap::new());
+        let workspace = workspace(temp.path(), BTreeMap::new())?;
         set_local_credential_profile(
             &workspace,
             "n8n-workflow",
@@ -467,7 +470,7 @@ mod tests {
     fn profile_audience_cannot_override_a_skill_audience() -> Result<(), Box<dyn std::error::Error>>
     {
         let temp = tempfile::tempdir()?;
-        let workspace = workspace(temp.path(), BTreeMap::new());
+        let workspace = workspace(temp.path(), BTreeMap::new())?;
         set_local_credential_profile(
             &workspace,
             "wrong-host",
@@ -498,7 +501,7 @@ mod tests {
                 ("TWITTER_BEARER_TOKEN".to_owned(), "bearer".to_owned()),
                 ("TWITTER_USER_AUTH".to_owned(), "oauth".to_owned()),
             ]),
-        );
+        )?;
         let error = match resolve_skill_credential(&multi_auth_request(None), &workspace) {
             Ok(_) => return Err("ambiguous ambient credentials unexpectedly resolved".into()),
             Err(error) => error,

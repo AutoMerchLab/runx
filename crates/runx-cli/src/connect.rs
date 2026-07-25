@@ -313,10 +313,12 @@ mod tests {
                 })
                 .to_string(),
             ),
+            // The CLI treats the hosted start status as an opaque string; the
+            // stub deliberately avoids private broker vocabulary.
             RuntimeHttpResponse::new(
                 201,
                 serde_json::json!({
-                    "status": "oauth_required",
+                    "status": "pending",
                     "session_id": "flow_1"
                 })
                 .to_string(),

@@ -72,18 +72,19 @@ fn javascript_receives_only_exact_manifest_declared_environment()
 fn javascript_fails_before_worker_execution_when_required_environment_is_missing()
 -> Result<(), Box<dyn std::error::Error>> {
     let package = JavaScriptPackage::new("export default () => ({ executed: true });")?;
-    let error = package
-        .invoke_with_environment(
-            JsonObject::new(),
-            EnvironmentRequirements {
-                required: vec!["REQUIRED_VALUE".to_owned()],
-                optional: vec!["OPTIONAL_VALUE".to_owned()],
-            },
-            [("OPTIONAL_VALUE".to_owned(), "present".to_owned())]
-                .into_iter()
-                .collect(),
-        )
-        .expect_err("missing required environment must fail closed");
+    let result = package.invoke_with_environment(
+        JsonObject::new(),
+        EnvironmentRequirements {
+            required: vec!["REQUIRED_VALUE".to_owned()],
+            optional: vec!["OPTIONAL_VALUE".to_owned()],
+        },
+        [("OPTIONAL_VALUE".to_owned(), "present".to_owned())]
+            .into_iter()
+            .collect(),
+    );
+    let error = result
+        .err()
+        .ok_or("missing required environment did not fail closed")?;
 
     assert!(matches!(
         error,

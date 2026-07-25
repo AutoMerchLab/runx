@@ -61,7 +61,7 @@ fn native_cli_smoke_runs_without_node_or_typescript_env() -> Result<(), Box<dyn 
         String::from_utf8_lossy(&skill.stderr),
         String::from_utf8_lossy(&skill.stdout)
     );
-    assert_eq!(String::from_utf8(skill.stderr.clone())?, "");
+    crate::support::assert_json_stderr(&skill.stderr)?;
     let skill_json = serde_json::from_slice::<serde_json::Value>(&skill.stdout)?;
     assert_eq!(skill_json["status"], "needs_agent");
     assert_eq!(skill_json["requests"][0]["kind"], "agent_act");

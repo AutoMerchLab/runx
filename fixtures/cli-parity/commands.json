@@ -206,7 +206,7 @@
       "name": "resume",
       "topLevelUsage": [],
       "usage": [
-        "runx resume <run-id> <answers.json> [-R dir] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]"
+        "runx resume <run-id> <answers.json> [-R dir] [--package-digest sha256] [--execution-closure-digest sha256] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]"
       ],
       "notes": [],
       "options": [
@@ -215,6 +215,9 @@
         "--non-interactive  Accepted for automation; resume never prompts",
         "--managed-agent  Explicitly allow an in-process model loop for this continuation",
         "--managed-agent-rounds n  Bound each managed act to 1-32 rounds (default 4)",
+        "--package-digest sha256   Reassert the checkpointed package binding",
+        "--execution-closure-digest sha256",
+        "                          Reassert the checkpointed execution closure",
         "-j, --json"
       ],
       "id": "resume",
@@ -356,7 +359,7 @@
     {
       "name": "config",
       "topLevelUsage": [
-        "runx config set|get|list [provider|model|api-key|public-token|auto-approve] [value] [-j|--json]"
+        "runx config set|get|list [provider|model|api-key|public-token] [value] [-j|--json]"
       ],
       "usage": [
         "runx config set <key> <value> [-j|--json]",
@@ -365,8 +368,7 @@
         "runx config list [-j|--json]"
       ],
       "notes": [
-        "Short keys: provider, model, api-key, public-token, and auto-approve. Fully qualified config keys are also accepted. Secret values are accepted only on stdin.",
-        "development.auto_approve applies only to local-development receipt runs and is recorded in approval evidence."
+        "Short keys: provider, model, api-key, and public-token. Fully qualified config keys are also accepted. Secret values are accepted only on stdin."
       ],
       "options": [
         "--from-stdin",

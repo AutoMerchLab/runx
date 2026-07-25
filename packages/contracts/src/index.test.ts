@@ -400,6 +400,9 @@ describe("@runxhq/contracts", () => {
       instructions: "Do the work.",
       inputs: {},
       allowed_tools: ["fs.read"],
+      requirements: {
+        declaration: {},
+      },
       current_context: [],
       historical_context: [],
       provenance: [],
@@ -421,6 +424,9 @@ describe("@runxhq/contracts", () => {
       instructions: "Do the work.",
       inputs: {},
       allowed_tools: [],
+      requirements: {
+        declaration: {},
+      },
       current_context: [],
       historical_context: [],
       provenance: [],
@@ -438,6 +444,9 @@ describe("@runxhq/contracts", () => {
       instructions: "Do the work.",
       inputs: {},
       allowed_tools: ["fs.read"],
+      requirements: {
+        declaration: {},
+      },
       current_context: [],
       historical_context: [],
       provenance: [],

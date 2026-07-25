@@ -4,8 +4,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use runx_contracts::javascript_worker::{
-    InvocationLimits, PROTOCOL_VERSION, WorkerDisposition, WorkerFailureCode, WorkerLimit,
-    WorkerRequest,
+    InvocationLimits, PROTOCOL_VERSION, WorkerDisposition, WorkerFailureCode,
+    WorkerInvocationRequest, WorkerLimit, WorkerRequest,
 };
 
 use crate::RuntimeError;
@@ -66,7 +66,7 @@ impl JavaScriptWorkerSupervisor {
         );
         let timeout = Duration::from_millis(invocation.limits.wall_milliseconds);
         let worker_path = invocation.worker_path;
-        let request = WorkerRequest::Invoke {
+        let request = WorkerRequest::Invoke(Box::new(WorkerInvocationRequest {
             protocol_version: PROTOCOL_VERSION,
             invocation_id: invocation_id.clone(),
             entry_module: invocation.entry_module,
@@ -75,7 +75,7 @@ impl JavaScriptWorkerSupervisor {
             inputs: invocation.inputs,
             environment: invocation.environment,
             limits: invocation.limits,
-        };
+        }));
         let mut lease = self.pool.acquire(worker_path.as_deref())?;
         let (isolation, result) = {
             let session = lease.session_mut()?;

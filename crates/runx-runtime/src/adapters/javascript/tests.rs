@@ -80,9 +80,13 @@ fn wall_limit_failure_records_exact_receipt_metadata() -> Result<(), Box<dyn std
             "javascript.wall_milliseconds".to_owned()
         ))
     );
+    // Compare canonical JSON, not the JsonNumber variant: the serde bridge
+    // stores in-range integers as I64 and the wire encoding is identical.
     assert_eq!(
-        hit.get("configured"),
-        Some(&JsonValue::Number(runx_contracts::JsonNumber::U64(7_000)))
+        hit.get("configured")
+            .map(serde_json::to_string)
+            .transpose()?,
+        Some("7000".to_owned())
     );
     assert_eq!(
         hit.get("manifest_field"),
