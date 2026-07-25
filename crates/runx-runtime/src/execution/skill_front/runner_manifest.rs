@@ -1,6 +1,5 @@
 use super::{
-    SkillRunError, SkillSourceAdapter, identifier_segment, invalid, seal_skill_output,
-    sealed_output,
+    SkillRunError, SkillSealContext, SkillSourceAdapter, identifier_segment, invalid, sealed_output,
 };
 
 use std::collections::BTreeMap;
@@ -136,20 +135,17 @@ pub(super) fn execute_adapter_skill_run(
         runx_parser::SourceKind::CliTool | runx_parser::SourceKind::JavaScript => "process",
         _ => "adapter",
     };
-    let receipt = seal_skill_output(
-        &run_id,
-        runner,
-        &output,
-        None,
-        StepSealClosure {
-            reason_code: format!("{reason_family}_{}", disposition.label()),
-            summary: format!("{} {} completed", source_type.as_str(), runner.name),
-            disposition,
-        },
-        None,
-        receipts.signature_config(),
-        workspace.env(),
-    )?;
+    let receipt = SkillSealContext::from_services(&run_id, runner, receipts, workspace)
+        .seal_output(
+            &output,
+            None,
+            StepSealClosure {
+                reason_code: format!("{reason_family}_{}", disposition.label()),
+                summary: format!("{} {} completed", source_type.as_str(), runner.name),
+                disposition,
+            },
+            None,
+        )?;
     write_skill_receipt(request, workspace, receipts, &receipt)?;
     Ok(JsonValue::Object(sealed_output(
         manifest, &run_id, &output, &payload, None, None, &receipt,

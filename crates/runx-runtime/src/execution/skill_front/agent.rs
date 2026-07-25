@@ -1,7 +1,7 @@
 use super::{
-    SkillExecutionContext, SkillRunError, agent_invocation_source_type, agent_request,
-    answer_disposition, contract_json_value, domain_act_frame, identifier_segment, invalid,
-    needs_agent_output, read_answer, seal_skill_answer, sealed_output,
+    SkillExecutionContext, SkillRunError, SkillSealContext, agent_invocation_source_type,
+    agent_request, answer_disposition, contract_json_value, domain_act_frame, identifier_segment,
+    invalid, needs_agent_output, read_answer, sealed_output,
 };
 
 use runx_contracts::{ClosureDisposition, JsonObject, JsonValue};
@@ -133,14 +133,10 @@ pub(super) fn execute_agent_skill_run(
                 signature_policy: receipts.signature_config().signature_policy(),
             })?
         }
-        None => seal_skill_answer(
-            &run_id,
-            runner,
+        None => SkillSealContext::from_services(&run_id, runner, receipts, workspace).seal_answer(
             &answer,
             &claim_payload,
             disposition,
-            receipts.signature_config(),
-            workspace.env(),
             verification_metadata.clone(),
         )?,
     };
@@ -315,9 +311,13 @@ fn seal_managed_agent_failure(
         metadata,
     );
     let reason_code = format!("managed_agent_{}", context.error.reason_code());
-    let receipt = super::seal_skill_output(
+    let receipt = SkillSealContext::from_services(
         context.run_id,
         context.runner,
+        context.receipts,
+        context.workspace,
+    )
+    .seal_output(
         &output,
         None,
         StepSealClosure {
@@ -326,8 +326,6 @@ fn seal_managed_agent_failure(
             summary: format!("managed agent failed ({})", context.error.reason_code()),
         },
         Some(context.error.receipt_metadata()),
-        context.receipts.signature_config(),
-        context.workspace.env(),
     )?;
     write_skill_receipt(
         context.request,

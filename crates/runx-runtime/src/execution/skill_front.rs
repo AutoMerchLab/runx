@@ -466,42 +466,59 @@ fn read_answer(path: &Path, request_id: &str) -> Result<JsonValue, SkillRunError
         .ok_or_else(|| invalid(format!("answers file did not include {request_id}")))
 }
 
-fn seal_skill_answer(
-    run_id: &str,
-    runner: &SkillRunnerDefinition,
-    answer: &JsonValue,
-    claim_payload: &JsonValue,
-    disposition: ClosureDisposition,
-    signature_config: &RuntimeReceiptSignatureConfig,
-    env: &std::collections::BTreeMap<String, String>,
-    metadata: JsonObject,
-) -> Result<runx_contracts::Receipt, SkillRunError> {
-    let disposition_label = disposition.label();
-    let succeeded = disposition == ClosureDisposition::Closed;
-    let skill_output = if succeeded {
-        InvocationOutput::runtime_success(answer.clone(), 0, metadata)
-    } else {
-        InvocationOutput::runtime_failure(
-            answer.clone(),
-            format!("agent act closed with {disposition_label}"),
-            0,
-            metadata,
+#[derive(Clone, Copy)]
+struct SkillSealContext<'a> {
+    run_id: &'a str,
+    runner: &'a SkillRunnerDefinition,
+    signature_config: &'a RuntimeReceiptSignatureConfig,
+    env: &'a std::collections::BTreeMap<String, String>,
+}
+
+impl<'a> SkillSealContext<'a> {
+    fn from_services(
+        run_id: &'a str,
+        runner: &'a SkillRunnerDefinition,
+        receipts: &'a ReceiptServices,
+        workspace: &'a WorkspaceEnv,
+    ) -> Self {
+        Self {
+            run_id,
+            runner,
+            signature_config: receipts.signature_config(),
+            env: workspace.env(),
+        }
+    }
+
+    fn seal_answer(
+        self,
+        answer: &JsonValue,
+        claim_payload: &JsonValue,
+        disposition: ClosureDisposition,
+        metadata: JsonObject,
+    ) -> Result<runx_contracts::Receipt, SkillRunError> {
+        let disposition_label = disposition.label();
+        let succeeded = disposition == ClosureDisposition::Closed;
+        let skill_output = if succeeded {
+            InvocationOutput::runtime_success(answer.clone(), 0, metadata)
+        } else {
+            InvocationOutput::runtime_failure(
+                answer.clone(),
+                format!("agent act closed with {disposition_label}"),
+                0,
+                metadata,
+            )
+        };
+        self.seal_output(
+            &skill_output,
+            Some(claim_payload),
+            StepSealClosure {
+                disposition,
+                reason_code: format!("agent_act_{disposition_label}"),
+                summary: format!("agent act closed with {disposition_label}"),
+            },
+            None,
         )
-    };
-    seal_skill_output(
-        run_id,
-        runner,
-        &skill_output,
-        Some(claim_payload),
-        StepSealClosure {
-            disposition,
-            reason_code: format!("agent_act_{disposition_label}"),
-            summary: format!("agent act closed with {disposition_label}"),
-        },
-        None,
-        signature_config,
-        env,
-    )
+    }
 }
 
 /// Build the domain act frame for a governed turn when its runner declares an
@@ -721,48 +738,47 @@ fn map_decision_choice(value: &str) -> Option<runx_contracts::DecisionChoice> {
     }
 }
 
-fn seal_skill_output(
-    run_id: &str,
-    runner: &SkillRunnerDefinition,
-    output: &InvocationOutput,
-    claim_payload: Option<&JsonValue>,
-    closure: StepSealClosure,
-    receipt_metadata: Option<JsonObject>,
-    signature_config: &RuntimeReceiptSignatureConfig,
-    env: &std::collections::BTreeMap<String, String>,
-) -> Result<runx_contracts::Receipt, SkillRunError> {
-    let graph_name = identifier_segment(run_id);
-    let step_id = identifier_segment(&runner.name);
-    let claim = if output.succeeded() {
-        project_declared_output_claim(
-            &runner.name,
-            claim_payload.unwrap_or(&output.value),
-            runner.source.outputs.as_ref(),
-            runner.artifacts.as_ref(),
-        )?
-    } else {
-        JsonObject::new()
-    };
-    let mut projection = project_step_claim(claim);
-    Ok(seal_step(
-        StepSeal {
-            graph_name: &graph_name,
-            step_id: &step_id,
-            attempt: 1,
-            output,
-            claim: &projection.outputs,
-            projection_refs: std::mem::take(&mut projection.refs),
-            created_at: &crate::time::now_iso8601(),
-            authority_grant_refs: Vec::new(),
-            authority_scope_refs: Vec::new(),
-            operator_refs: super::prepared_skill::prepared_receipt_references(env),
-            child_receipts: &[],
-            descendant_receipts: &[],
-            closure: Some(closure),
-            receipt_metadata,
-        },
-        signature_config.signature_policy(),
-    )?)
+impl SkillSealContext<'_> {
+    fn seal_output(
+        self,
+        output: &InvocationOutput,
+        claim_payload: Option<&JsonValue>,
+        closure: StepSealClosure,
+        receipt_metadata: Option<JsonObject>,
+    ) -> Result<runx_contracts::Receipt, SkillRunError> {
+        let graph_name = identifier_segment(self.run_id);
+        let step_id = identifier_segment(&self.runner.name);
+        let claim = if output.succeeded() {
+            project_declared_output_claim(
+                &self.runner.name,
+                claim_payload.unwrap_or(&output.value),
+                self.runner.source.outputs.as_ref(),
+                self.runner.artifacts.as_ref(),
+            )?
+        } else {
+            JsonObject::new()
+        };
+        let mut projection = project_step_claim(claim);
+        Ok(seal_step(
+            StepSeal {
+                graph_name: &graph_name,
+                step_id: &step_id,
+                attempt: 1,
+                output,
+                claim: &projection.outputs,
+                projection_refs: std::mem::take(&mut projection.refs),
+                created_at: &crate::time::now_iso8601(),
+                authority_grant_refs: Vec::new(),
+                authority_scope_refs: Vec::new(),
+                operator_refs: super::prepared_skill::prepared_receipt_references(self.env),
+                child_receipts: &[],
+                descendant_receipts: &[],
+                closure: Some(closure),
+                receipt_metadata,
+            },
+            self.signature_config.signature_policy(),
+        )?)
+    }
 }
 
 fn answer_disposition(answer: &JsonValue) -> Result<ClosureDisposition, SkillRunError> {
