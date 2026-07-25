@@ -23,6 +23,7 @@ runners:
       operator_context: { type: string, required: false, description: "Bounded release context, never authority." }
     graph:
       name: release-prepare
+      result_from: [finalize-ready-brief, finalize-blocked-brief]
       steps:
         - id: read-profile
           tool: fs.read
@@ -173,6 +174,7 @@ runners:
       operator_context: { type: string, required: false, description: "Bounded release context, never authority." }
     graph:
       name: release
+      result_from: [interpret-verify]
       steps:
         - id: prepare
           skill: .

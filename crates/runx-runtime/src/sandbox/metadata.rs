@@ -1,20 +1,27 @@
-use runx_contracts::{JsonObject, JsonValue};
+use runx_contracts::{EnvironmentRequirements, JsonObject, JsonValue};
 use runx_core::policy::SandboxProfile;
 use runx_parser::SkillSandbox;
 
 use super::backend::SandboxRuntime;
 use super::command::sandbox_network_enabled;
-use super::env::DEFAULT_ENV_ALLOWLIST;
+use crate::execution_environment::PROCESS_BASELINE_ENV;
 
 pub fn sandbox_metadata(sandbox: Option<&SkillSandbox>) -> JsonObject {
     let writable_paths = sandbox
         .map(|sandbox| sandbox.writable_paths.clone())
         .unwrap_or_default();
-    sandbox_metadata_with_runtime(sandbox, &writable_paths, None, false)
+    sandbox_metadata_with_runtime(
+        sandbox,
+        &EnvironmentRequirements::default(),
+        &writable_paths,
+        None,
+        false,
+    )
 }
 
 pub(super) fn sandbox_metadata_with_runtime(
     sandbox: Option<&SkillSandbox>,
+    environment: &EnvironmentRequirements,
     writable_paths: &[String],
     runtime: Option<&SandboxRuntime>,
     private_tmp_enabled: bool,
@@ -33,7 +40,7 @@ pub(super) fn sandbox_metadata_with_runtime(
         }
         metadata.insert(
             "env".to_owned(),
-            JsonValue::Object(sandbox_env_metadata(sandbox)),
+            JsonValue::Object(sandbox_env_metadata(environment)),
         );
         insert_network_metadata(&mut metadata, sandbox, runtime);
         insert_writable_paths_metadata(&mut metadata, writable_paths);
@@ -48,25 +55,40 @@ pub(super) fn sandbox_metadata_with_runtime(
     metadata
 }
 
-fn sandbox_env_metadata(sandbox: &SkillSandbox) -> JsonObject {
-    let allowlist = sandbox.env_allowlist.clone().unwrap_or_else(|| {
-        DEFAULT_ENV_ALLOWLIST
-            .into_iter()
-            .map(str::to_owned)
-            .collect()
-    });
+fn sandbox_env_metadata(environment: &EnvironmentRequirements) -> JsonObject {
     [
+        ("mode".to_owned(), JsonValue::String("declared".to_owned())),
         (
-            "mode".to_owned(),
-            JsonValue::String(if sandbox.env_allowlist.is_some() {
-                "allowlist".to_owned()
-            } else {
-                "default-allowlist".to_owned()
-            }),
+            "baseline".to_owned(),
+            JsonValue::Array(
+                PROCESS_BASELINE_ENV
+                    .into_iter()
+                    .map(str::to_owned)
+                    .map(JsonValue::String)
+                    .collect(),
+            ),
         ),
         (
-            "allowlist".to_owned(),
-            JsonValue::Array(allowlist.into_iter().map(JsonValue::String).collect()),
+            "required".to_owned(),
+            JsonValue::Array(
+                environment
+                    .required
+                    .iter()
+                    .cloned()
+                    .map(JsonValue::String)
+                    .collect(),
+            ),
+        ),
+        (
+            "optional".to_owned(),
+            JsonValue::Array(
+                environment
+                    .optional
+                    .iter()
+                    .cloned()
+                    .map(JsonValue::String)
+                    .collect(),
+            ),
         ),
     ]
     .into()

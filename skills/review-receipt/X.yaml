@@ -166,6 +166,7 @@ runners:
         description: Explicit native-projection rows for deterministic replay only.
     graph:
       name: review-receipt
+      result_from: [diagnose]
       steps:
         - id: evidence
           label: resolve and verify receipt evidence

@@ -26,6 +26,7 @@ runners:
         description: Full typed parent refund AuthorityTerm.
     graph:
       name: stripe-refund
+      result_from: [refund]
       steps:
         - id: refund
           skill: ../refund

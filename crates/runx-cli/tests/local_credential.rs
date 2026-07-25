@@ -46,7 +46,6 @@ fn malformed_workspace_env_fails_json_safe_without_secret_exposure()
         .arg("skill")
         .arg(&skill_dir)
         .arg("--json")
-        .arg("--skip-operator-context")
         .output()?;
 
     assert_eq!(output.status.code(), Some(1));
@@ -78,7 +77,6 @@ fn cli_tool_receives_allowlisted_workspace_env_without_wrapper()
         .arg("skill")
         .arg(&skill_dir)
         .arg("--json")
-        .arg("--skip-operator-context")
         .output()?;
 
     let stdout = String::from_utf8(output.stdout)?;
@@ -87,7 +85,8 @@ fn cli_tool_receives_allowlisted_workspace_env_without_wrapper()
         output.status.success(),
         "workspace env run failed: {stderr}\n{stdout}"
     );
-    assert!(stdout.contains(r#"\"configured\":true"#));
+    let value = serde_json::from_str::<Value>(&stdout)?;
+    assert_eq!(value["result"]["configured"], true);
     assert!(!stdout.contains(SECRET) && !stderr.contains(SECRET));
     Ok(())
 }
@@ -109,7 +108,6 @@ fn workspace_env_is_loaded_from_discovered_project_root() -> Result<(), Box<dyn 
         .arg("skill")
         .arg(&skill_dir)
         .arg("--json")
-        .arg("--skip-operator-context")
         .output()?;
 
     let stdout = String::from_utf8(output.stdout)?;
@@ -118,7 +116,8 @@ fn workspace_env_is_loaded_from_discovered_project_root() -> Result<(), Box<dyn 
         output.status.success(),
         "nested workspace env run failed: {stderr}\n{stdout}"
     );
-    assert!(stdout.contains(r#"\"configured\":true"#));
+    let value = serde_json::from_str::<Value>(&stdout)?;
+    assert_eq!(value["result"]["configured"], true);
     assert!(!stdout.contains(SECRET) && !stderr.contains(SECRET));
     Ok(())
 }
@@ -138,7 +137,6 @@ fn workspace_env_supports_quoted_values() -> Result<(), Box<dyn std::error::Erro
         .arg("skill")
         .arg(&skill_dir)
         .arg("--json")
-        .arg("--skip-operator-context")
         .output()?;
 
     let stdout = String::from_utf8(output.stdout)?;
@@ -147,7 +145,8 @@ fn workspace_env_supports_quoted_values() -> Result<(), Box<dyn std::error::Erro
         output.status.success(),
         "quoted workspace env run failed: {stderr}\n{stdout}"
     );
-    assert!(stdout.contains(r#"\"configured\":true"#));
+    let value = serde_json::from_str::<Value>(&stdout)?;
+    assert_eq!(value["result"]["configured"], true);
     assert!(!stdout.contains("quoted # value") && !stderr.contains("quoted # value"));
     Ok(())
 }
@@ -165,7 +164,6 @@ fn workspace_env_remains_blocked_without_sandbox_allowlist()
         .arg("skill")
         .arg(&skill_dir)
         .arg("--json")
-        .arg("--skip-operator-context")
         .output()?;
 
     let stdout = String::from_utf8(output.stdout)?;
@@ -174,7 +172,8 @@ fn workspace_env_remains_blocked_without_sandbox_allowlist()
         output.status.success(),
         "deny-by-default workspace env run failed: {stderr}\n{stdout}"
     );
-    assert!(stdout.contains(r#"\"blocked\":true"#));
+    let value = serde_json::from_str::<Value>(&stdout)?;
+    assert_eq!(value["result"]["blocked"], true);
     assert!(!stdout.contains(SECRET) && !stderr.contains(SECRET));
     Ok(())
 }
@@ -191,7 +190,6 @@ fn process_env_takes_precedence_over_workspace_env() -> Result<(), Box<dyn std::
         .arg("skill")
         .arg(&skill_dir)
         .arg("--json")
-        .arg("--skip-operator-context")
         .env("GITHUB_TOKEN", SECRET)
         .env("EXPECTED_TOKEN", SECRET)
         .output()?;
@@ -202,7 +200,8 @@ fn process_env_takes_precedence_over_workspace_env() -> Result<(), Box<dyn std::
         output.status.success(),
         "workspace env precedence run failed: {stderr}\n{stdout}"
     );
-    assert!(stdout.contains(r#"\"configured\":true"#));
+    let value = serde_json::from_str::<Value>(&stdout)?;
+    assert_eq!(value["result"]["configured"], true);
     assert!(!stdout.contains(SECRET) && !stderr.contains(SECRET));
     Ok(())
 }
@@ -241,7 +240,6 @@ fn stored_credential_profile_delivers_to_cli_tool_and_redacts_output()
         .arg("--profile")
         .arg("github")
         .arg("--json")
-        .arg("--skip-operator-context")
         .output()?;
 
     let stdout = String::from_utf8(output.stdout)?;
@@ -320,7 +318,6 @@ fn official_nitrosend_contract_delivers_fake_profile_to_fixture_without_leak()
             "account-one",
             "--receipt-dir",
             receipt_dir.to_str().ok_or("invalid receipt path")?,
-            "--skip-operator-context",
             "--json",
         ])
         .output()?;
@@ -358,7 +355,6 @@ fn resume_loads_workspace_env_from_discovered_project_root()
         .arg(&receipt_dir)
         .arg("--json")
         .arg("--non-interactive")
-        .arg("--skip-operator-context")
         .output()?;
     assert_eq!(pause.status.code(), Some(2));
     let pause_json = serde_json::from_slice::<Value>(&pause.stdout)?;
@@ -435,7 +431,6 @@ fn resume_persists_only_profile_selector_and_resolves_rotated_material()
         .arg(&receipt_dir)
         .arg("--json")
         .arg("--non-interactive")
-        .arg("--skip-operator-context")
         .output()?;
     assert_eq!(pause.status.code(), Some(2));
     let pause_json = serde_json::from_slice::<Value>(&pause.stdout)?;
@@ -508,7 +503,6 @@ fn inline_graph_cli_tool_preserves_timeout_policy() -> Result<(), Box<dyn std::e
         .arg("skill")
         .arg(&skill_dir)
         .arg("--json")
-        .arg("--skip-operator-context")
         .output()?;
     let elapsed = started.elapsed();
     let stdout = String::from_utf8(output.stdout)?;
@@ -537,7 +531,6 @@ fn missing_declared_credential_returns_structured_setup_action()
         .arg("skill")
         .arg(&skill_dir)
         .arg("--json")
-        .arg("--skip-operator-context")
         .output()?;
 
     assert_eq!(output.status.code(), Some(2));
@@ -564,7 +557,6 @@ fn cli_rejects_retired_one_shot_credential_flags() -> Result<(), Box<dyn std::er
         .arg("--credential")
         .arg("github:bearer:local")
         .arg("--json")
-        .arg("--skip-operator-context")
         .env("GITHUB_TOKEN", SECRET)
         .output()?;
 
@@ -776,11 +768,12 @@ runners:
     args:
       - "-c"
       - 'test -n "$GITHUB_TOKEN" && { test -z "$EXPECTED_TOKEN" || test "$GITHUB_TOKEN" = "$EXPECTED_TOKEN"; } && printf ''{"configured":true}'''
+    environment:
+      optional:
+        - EXPECTED_TOKEN
     sandbox:
       profile: readonly
       cwd_policy: skill-directory
-      env_allowlist:
-        - EXPECTED_TOKEN
       require_enforcement: false
 "#,
     )?;
@@ -832,6 +825,7 @@ runners:
     type: graph
     graph:
       name: resume-env
+      result_from: [approve]
       steps:
         - id: approve
           run:
@@ -849,11 +843,12 @@ runners:
               - 'payload="$(cat)"; if test -z "$payload"; then echo missing-stdin >&2; exit 9; elif test -z "$RESUME_PROBE_TOKEN"; then echo missing-probe >&2; exit 10; elif test "$RESUME_PROBE_TOKEN" != "after-resume"; then echo stale-probe >&2; exit 11; fi'
             timeout_seconds: 5
             input_mode: stdin
+            environment:
+              required:
+                - RESUME_PROBE_TOKEN
             sandbox:
               profile: readonly
               cwd_policy: skill-directory
-              env_allowlist:
-                - RESUME_PROBE_TOKEN
               require_enforcement: false
 "#,
     )?;
@@ -886,6 +881,7 @@ runners:
     credential: github
     graph:
       name: resume-credential
+      result_from: [approve]
       steps:
         - id: approve
           run:

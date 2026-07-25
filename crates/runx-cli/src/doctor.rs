@@ -1,6 +1,5 @@
 // Module rationale: doctor aggregates path, registry, and authority diagnostics until those surfaces split.
 use std::collections::BTreeMap;
-use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -15,8 +14,9 @@ use runx_pay::effect_state::{
 };
 use runx_runtime::{
     HostedApiEnvironment, PROVIDER_PERMISSION_GRANT_ID_ENV, PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
-    RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV, RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
-    RUNX_RECEIPT_SIGN_KID_ENV, RuntimeError, default_doctor_options, load_runx_config_file,
+    PROVIDER_PERMISSION_PRINCIPAL_REF_ENV, RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
+    RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV, RUNX_RECEIPT_SIGN_KID_ENV, RuntimeError, WorkspaceEnv,
+    decode_provider_scopes_env, default_doctor_options, load_runx_config_file,
     resolve_runx_home_dir, run_doctor,
 };
 
@@ -28,19 +28,8 @@ use runx_runtime::{
 
 const OFFICIAL_SKILLS_DIR_ENV: &str = "RUNX_OFFICIAL_SKILLS_DIR";
 
-pub fn run_native_doctor(plan: DoctorPlan) -> ExitCode {
-    let env = crate::history::env_map();
-    let cwd = match env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(error) => {
-            let _ignored = crate::cli_io::write_stderr_code(&format!(
-                "runx: failed to resolve cwd: {error}\n"
-            ));
-            return ExitCode::from(1);
-        }
-    };
-
-    match run_doctor_command(&plan, &env, &cwd) {
+pub fn run_native_doctor(plan: DoctorPlan, workspace: &WorkspaceEnv) -> ExitCode {
+    match run_doctor_command(&plan, workspace.env(), workspace.cwd()) {
         Ok(output) => crate::cli_io::write_stdout_code(&output.stdout, output.exit_code),
         Err(error) => {
             let _ignored = crate::cli_io::write_stderr_code(&format!("runx: {error}\n"));
@@ -603,16 +592,31 @@ fn run_authority_doctor(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorRep
 
 fn provider_grant_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorDiagnostic {
     let explicit_grant = env_contains_non_empty(env, PROVIDER_PERMISSION_GRANT_ID_ENV);
-    let explicit_scopes = env_contains_non_empty(env, PROVIDER_PERMISSION_GRANTED_SCOPES_ENV);
+    let explicit_scope_value = env
+        .get(PROVIDER_PERMISSION_GRANTED_SCOPES_ENV)
+        .map(|value| value.trim())
+        .filter(|value| !value.is_empty());
+    let malformed_scopes =
+        explicit_scope_value.is_some_and(|value| decode_provider_scopes_env(value).is_err());
+    let explicit_scopes = explicit_scope_value.is_some() && !malformed_scopes;
+    let explicit_principal = env_contains_non_empty(env, PROVIDER_PERMISSION_PRINCIPAL_REF_ENV);
+    let explicit_complete = explicit_grant && explicit_scopes && explicit_principal;
     let connect_available = HostedApiEnvironment::resolve(None, None, env, cwd)
         .and_then(|environment| environment.require_token().map(|_| ()))
         .is_ok();
-    let configured = (explicit_grant && explicit_scopes) || connect_available;
-    let message = provider_grant_message(explicit_grant, explicit_scopes, connect_available);
+    let configured = !malformed_scopes && (explicit_complete || connect_available);
+    let message = provider_grant_message(
+        explicit_grant,
+        explicit_scopes,
+        explicit_principal,
+        malformed_scopes,
+        connect_available,
+    );
     let mut evidence = authority_evidence(
         &[
             PROVIDER_PERMISSION_GRANT_ID_ENV,
             PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
+            PROVIDER_PERMISSION_PRINCIPAL_REF_ENV,
         ],
         configured,
         None,
@@ -622,6 +626,14 @@ fn provider_grant_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -> Doct
         JsonValue::Bool(connect_available),
     );
     evidence.insert("explicit_grant".to_owned(), JsonValue::Bool(explicit_grant));
+    evidence.insert(
+        "explicit_principal".to_owned(),
+        JsonValue::Bool(explicit_principal),
+    );
+    evidence.insert(
+        "malformed_scopes".to_owned(),
+        JsonValue::Bool(malformed_scopes),
+    );
     DoctorDiagnostic {
         id: "runx.authority.provider_grant".to_owned(),
         instance_id: "runx:doctor-authority:runx.authority.provider_grant".to_owned(),
@@ -649,8 +661,9 @@ fn provider_grant_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -> Doct
                 &[
                     PROVIDER_PERMISSION_GRANT_ID_ENV,
                     PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
+                    PROVIDER_PERMISSION_PRINCIPAL_REF_ENV,
                 ],
-                "Configure Runx Connect for automatic grant discovery, or inject an explicit provider grant and scopes from the operator host.",
+                "Configure Runx Connect for automatic grant discovery, or inject a complete provider grant, JSON scope array, and principal reference from the operator host.",
                 DoctorRepairRisk::Sensitive,
             )]
         },
@@ -660,16 +673,28 @@ fn provider_grant_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -> Doct
 fn provider_grant_message(
     explicit_grant: bool,
     explicit_scopes: bool,
+    explicit_principal: bool,
+    malformed_scopes: bool,
     connect_available: bool,
 ) -> String {
-    match (explicit_grant, explicit_scopes, connect_available) {
-        (true, true, _) => {
+    if malformed_scopes {
+        return format!(
+            "{PROVIDER_PERMISSION_GRANTED_SCOPES_ENV} is malformed; it must be a JSON array of exact capability strings."
+        );
+    }
+    match (
+        explicit_grant,
+        explicit_scopes,
+        explicit_principal,
+        connect_available,
+    ) {
+        (true, true, true, _) => {
             "Provider permission grant supplied by the operator environment.".to_owned()
         }
-        (true, false, true) => "Provider grant selected by the operator; Runx Connect will resolve its active scopes at execution.".to_owned(),
-        (false, _, true) => "Runx Connect is configured; native provider tools will resolve the unique active provider/scope grant at execution.".to_owned(),
+        (true, _, _, true) => "Provider grant selected by the operator; Runx Connect will resolve its active scopes and principal at execution.".to_owned(),
+        (_, _, _, true) => "Runx Connect is configured; native provider tools will resolve the unique active provider/scope grant at execution.".to_owned(),
         _ => format!(
-            "Provider permission grant is unavailable; configure Runx Connect, or set {PROVIDER_PERMISSION_GRANT_ID_ENV} and {PROVIDER_PERMISSION_GRANTED_SCOPES_ENV} for a host-injected grant."
+            "Provider permission grant is unavailable; configure Runx Connect, or set {PROVIDER_PERMISSION_GRANT_ID_ENV}, {PROVIDER_PERMISSION_GRANTED_SCOPES_ENV}, and {PROVIDER_PERMISSION_PRINCIPAL_REF_ENV} for a host-injected grant."
         ),
     }
 }

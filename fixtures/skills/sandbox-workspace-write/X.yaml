@@ -10,8 +10,6 @@ runners:
     timeout_seconds: 10
     sandbox:
       profile: workspace-write
-      env_allowlist:
-        - PATH
       writable_paths:
         - "{{output_path}}"
     inputs:

@@ -35,6 +35,7 @@ runners:
         description: Optional network, writable-path, environment, and enforcement ceilings.
     graph:
       name: sandbox-harden
+      result_from: [plan]
       steps:
         - id: plan
           tool: sandbox.plan

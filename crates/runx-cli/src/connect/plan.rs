@@ -126,8 +126,10 @@ fn apply_value(parsed: &mut ParsedConnectArgs, flag: &str, value: String) -> Res
     match flag {
         "--api-base-url" => parsed.api_base_url = Some(value),
         "--token" => parsed.token = Some(value),
-        "--scope" if !parsed.scopes.contains(&value) => parsed.scopes.push(value),
-        "--scope" => {}
+        "--scope" if value.trim().is_empty() => {
+            return Err("--scope requires a non-blank capability".to_owned());
+        }
+        "--scope" => parsed.scopes.push(value),
         "--scope-family" => parsed.scope_family = Some(value),
         "--authority-kind" => parsed.authority_kind = Some(value),
         "--target-repo" => parsed.target_repo = Some(value),

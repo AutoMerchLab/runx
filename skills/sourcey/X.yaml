@@ -50,6 +50,7 @@ runners:
         description: "Explicit Sourcey executable or JS entrypoint; defaults to SOURCEY_BIN or sourcey on PATH."
     graph:
       name: sourcey
+      result_from: [package]
       steps:
         - id: discover
           label: inspect repo

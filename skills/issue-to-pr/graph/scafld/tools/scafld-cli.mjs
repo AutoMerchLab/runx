@@ -249,11 +249,11 @@ function truthy(value) {
 }
 
 function loadInputs() {
-  if (process.env.RUNX_INPUTS_JSON) {
-    return JSON.parse(process.env.RUNX_INPUTS_JSON);
-  }
   if (process.env.RUNX_INPUTS_PATH) {
     return JSON.parse(readFileSync(process.env.RUNX_INPUTS_PATH, "utf8"));
+  }
+  if (process.env.RUNX_INPUTS_JSON) {
+    return JSON.parse(process.env.RUNX_INPUTS_JSON);
   }
   return {};
 }

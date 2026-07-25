@@ -502,8 +502,8 @@ esac
     assert_eq!(run.state.status, GraphStatus::Succeeded);
     assert_eq!(run.steps.len(), 1);
     assert_eq!(
-        run.steps[0].output.stdout,
-        "{\"summary\":\"graph reached supervisor\"}"
+        run.steps[0].contract.get("summary"),
+        Some(&JsonValue::String("graph reached supervisor".to_owned()))
     );
     Ok(())
 }
@@ -666,7 +666,7 @@ fn external_adapter_skill_adapter_preserves_response_stderr()
     )?)?;
 
     assert_eq!(output.status, runx_runtime::InvocationStatus::Success);
-    assert_eq!(output.stderr, "adapter warning");
+    assert_eq!(output.process_stderr(), Some("adapter warning"));
     Ok(())
 }
 
@@ -823,7 +823,7 @@ fn external_adapter_skill_adapter_preserves_supervisor_fail_closed_response_mism
 }
 
 #[test]
-fn external_adapter_skill_adapter_filters_ambient_env_from_invocation()
+fn external_adapter_skill_adapter_forwards_only_declared_environment()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     let capture_path = temp.path().join("captured-invocation.json");
@@ -865,7 +865,7 @@ printf '%s' "$invocation" > "$RUNX_CAPTURE_INVOCATION"
     let scoped_env = captured
         .env
         .as_ref()
-        .ok_or("expected RUNX control env in external adapter invocation")?;
+        .ok_or("expected declared environment in external adapter invocation")?;
     assert!(scoped_env.contains_key("RUNX_RESPONSE_PATH"));
     assert!(
         !scoped_env.contains_key("SECRET_TOKEN"),
@@ -873,12 +873,44 @@ printf '%s' "$invocation" > "$RUNX_CAPTURE_INVOCATION"
     );
     assert!(
         !scoped_env.contains_key("RUNX_API_TOKEN"),
-        "secret-like RUNX env must not be forwarded to external adapters"
+        "undeclared RUNX env must not be forwarded to external adapters"
     );
     assert!(
         !serde_json::to_string(&captured)?.contains("do-not-forward"),
         "ambient secret value must not be serialized into adapter stdin"
     );
+    Ok(())
+}
+
+#[test]
+fn external_adapter_skill_adapter_fails_before_spawn_when_required_environment_is_missing()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let script = write_script(
+        temp.path(),
+        r#"set -eu
+exit 99
+"#,
+    )?;
+    let manifest = manifest_for_script(&script)?;
+    let mut request =
+        skill_invocation(temp.path(), Some(manifest), [local_sandbox_fallback_env()])?;
+    let environment = runx_contracts::EnvironmentRequirements {
+        required: vec!["PROVIDER_REGION".to_owned()],
+        optional: Vec::new(),
+    };
+    request.source.environment = environment.clone();
+    request.requirements.environment = environment;
+
+    let Err(error) = ExternalAdapterSkillAdapter::default().invoke(request) else {
+        return Err("missing required external-adapter environment unexpectedly passed".into());
+    };
+
+    assert!(matches!(
+        error,
+        RuntimeError::SkillFailed { message, .. }
+            if message.contains("required environment variable(s) are unavailable: PROVIDER_REGION")
+    ));
     Ok(())
 }
 
@@ -923,7 +955,7 @@ IFS= read -r _invocation
 }
 
 fn local_runtime_options_with_sandbox_fallback() -> RuntimeOptions {
-    let mut options = RuntimeOptions::local_development();
+    let mut options = RuntimeOptions::local_development(std::env::vars().collect());
     options.env.insert(
         SANDBOX_FALLBACK_ENV.to_owned(),
         SANDBOX_FALLBACK_VALUE.to_owned(),
@@ -959,6 +991,8 @@ runners:
       issue_number:
         type: integer
         required: true
+    outputs:
+      summary: string
     external_adapter:
       manifest_path: manifest.json
 "#,
@@ -1031,12 +1065,33 @@ fn skill_invocation<const N: usize>(
 
 fn skill_invocation_with_source<const N: usize>(
     skill_dir: &Path,
-    source: SkillSource,
+    mut source: SkillSource,
     env: [(&str, String); N],
     credential_delivery: CredentialDelivery,
 ) -> Result<SkillInvocation, Box<dyn std::error::Error>> {
+    const DECLARED_ADAPTER_ENVIRONMENT: [&str; 5] = [
+        "RUNX_CAPTURE_INVOCATION",
+        "RUNX_DESCENDANT_SENTINEL",
+        "RUNX_DESCENDANT_STARTED",
+        "RUNX_RESPONSE_PATH",
+        "RUNX_SPAWNED_MARKER",
+    ];
+    let env = env
+        .into_iter()
+        .map(|(key, value)| (key.to_owned(), value))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let environment = runx_contracts::EnvironmentRequirements {
+        required: DECLARED_ADAPTER_ENVIRONMENT
+            .into_iter()
+            .filter(|name| env.contains_key(*name))
+            .map(str::to_owned)
+            .collect(),
+        optional: Vec::new(),
+    };
+    source.environment = environment.clone();
     Ok(SkillInvocation {
         skill_name: "external-smoke".to_owned(),
+        step_id: None,
         source,
         artifacts: None,
         allowed_tools: None,
@@ -1048,11 +1103,13 @@ fn skill_invocation_with_source<const N: usize>(
         .collect(),
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: skill_dir.to_path_buf(),
-        env: env
-            .into_iter()
-            .map(|(key, value)| (key.to_owned(), value))
-            .collect(),
+        env,
+        requirements: runx_contracts::ExecutionRequirements {
+            environment,
+            ..Default::default()
+        },
         credential_delivery,
     })
 }
@@ -1300,5 +1357,9 @@ impl Host for RecordingHost {
     ) -> Result<Option<ResolutionResponse>, RuntimeError> {
         self.requests.borrow_mut().push(request);
         Ok(self.responses.borrow_mut().pop_front().flatten())
+    }
+
+    fn log(&mut self, _message: String) -> Result<(), RuntimeError> {
+        Ok(())
     }
 }

@@ -26,14 +26,15 @@ use self::backend::resolve_sandbox_runtime;
 #[cfg(not(windows))]
 use self::command::javascript_worker_spawn_command;
 use self::command::{SandboxSpawnCommand, sandbox_network_enabled, sandbox_spawn_command};
+#[cfg(feature = "cli-tool")]
+use self::env::child_base_env as sandbox_child_base_env;
 use self::env::{
-    child_base_env as sandbox_child_base_env, child_env, cleanup_paths_quietly,
-    prepare_sandbox_tmp_env, sandbox_private_tmp_enabled,
+    child_env, cleanup_paths_quietly, prepare_sandbox_tmp_env, sandbox_private_tmp_enabled,
 };
 use self::metadata::sandbox_metadata_with_runtime;
 use self::policy::{
-    resolve_cwd, resolve_cwd_value, resolved_writable_paths, validate_sandbox,
-    validated_writable_paths, workspace_cwd,
+    execution_workspace_root, resolve_cwd, resolve_cwd_value, resolved_skill_directory,
+    resolved_writable_paths, validate_sandbox, validated_writable_paths, workspace_cwd,
 };
 use self::template::resolve_template;
 
@@ -43,7 +44,7 @@ pub use self::metadata::sandbox_metadata;
 pub(crate) fn child_base_env(
     base_env: &std::collections::BTreeMap<String, String>,
 ) -> Result<std::collections::BTreeMap<String, String>, RuntimeError> {
-    sandbox_child_base_env(None, base_env)
+    sandbox_child_base_env(base_env)
 }
 
 pub(crate) const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV: &str =
@@ -102,6 +103,7 @@ impl Drop for SandboxPlan {
 
 pub fn prepare_process_sandbox(
     source: &SkillSource,
+    environment: &runx_contracts::EnvironmentRequirements,
     skill_directory: &Path,
     inputs: &JsonObject,
     base_env: &BTreeMap<String, String>,
@@ -110,7 +112,9 @@ pub fn prepare_process_sandbox(
     let sandbox = source.sandbox.as_ref();
     validate_sandbox(sandbox)?;
     let workspace_cwd = workspace_cwd(base_env)?;
-    let cwd = resolve_cwd(source, sandbox, skill_directory, workspace_cwd.as_deref())?;
+    let skill_directory = resolved_skill_directory(skill_directory, workspace_cwd.as_deref())?;
+    let workspace_root = execution_workspace_root(workspace_cwd.as_deref(), &skill_directory);
+    let cwd = resolve_cwd(source, sandbox, &skill_directory, workspace_cwd.as_deref())?;
     let args = source
         .args
         .iter()
@@ -118,13 +122,17 @@ pub fn prepare_process_sandbox(
         .collect();
     let writable_paths = resolved_writable_paths(sandbox, inputs, base_env);
     let validated_writable_paths =
-        validated_writable_paths(sandbox, &writable_paths, &cwd, workspace_cwd.as_deref())?;
+        validated_writable_paths(sandbox, &writable_paths, &cwd, &workspace_root)?;
     let runtime = resolve_sandbox_runtime(sandbox, base_env)?;
     let private_tmp_enabled = sandbox_private_tmp_enabled(sandbox, runtime.as_ref());
     let mut cleanup_paths = Vec::new();
     let mut sandbox_base_env = base_env.clone();
+    sandbox_base_env.insert(
+        crate::receipts::paths::RUNX_CWD_ENV.to_owned(),
+        workspace_root.to_string_lossy().into_owned(),
+    );
     prepare_sandbox_tmp_env(sandbox, &runtime, &mut sandbox_base_env, &mut cleanup_paths)?;
-    let env = match child_env(sandbox, &sandbox_base_env, inputs, &mut cleanup_paths) {
+    let env = match child_env(environment, &sandbox_base_env, inputs, &mut cleanup_paths) {
         Ok(env) => env,
         Err(error) => {
             cleanup_paths_quietly(&cleanup_paths);
@@ -141,8 +149,8 @@ pub fn prepare_process_sandbox(
         command,
         args,
         cwd: &cwd,
-        skill_directory,
-        workspace_cwd: workspace_cwd.as_deref(),
+        skill_directory: &skill_directory,
+        workspace_cwd: &workspace_root,
         writable_paths: &validated_writable_paths,
         network: sandbox_network_enabled(sandbox),
         private_tmp: cleanup_paths.first().map(PathBuf::as_path),
@@ -154,6 +162,7 @@ pub fn prepare_process_sandbox(
         env,
         metadata: sandbox_metadata_with_runtime(
             sandbox,
+            environment,
             &writable_paths,
             runtime.as_ref(),
             private_tmp_enabled,
@@ -181,7 +190,7 @@ pub(crate) fn prepare_native_command_sandbox(
 
     let writable_paths = resolved_writable_paths(Some(&sandbox), &JsonObject::new(), base_env);
     let validated_writable_paths =
-        validated_writable_paths(Some(&sandbox), &writable_paths, cwd, Some(workspace_root))?;
+        validated_writable_paths(Some(&sandbox), &writable_paths, cwd, workspace_root)?;
     let mut sandbox_base_env = base_env.clone();
     sandbox_base_env.insert(
         crate::receipts::paths::RUNX_CWD_ENV.to_owned(),
@@ -196,7 +205,7 @@ pub(crate) fn prepare_native_command_sandbox(
         &mut sandbox_base_env,
         &mut cleanup_paths,
     )?;
-    let mut env = sandbox_child_base_env(Some(&sandbox), &sandbox_base_env)?;
+    let mut env = sandbox_child_base_env(&sandbox_base_env)?;
     env.extend(explicit_env.clone());
     prepare_writable_bind_sources_or_cleanup(
         runtime.as_ref(),
@@ -209,7 +218,7 @@ pub(crate) fn prepare_native_command_sandbox(
         args,
         cwd,
         skill_directory: workspace_root,
-        workspace_cwd: Some(workspace_root),
+        workspace_cwd: workspace_root,
         writable_paths: &validated_writable_paths,
         network: false,
         private_tmp: cleanup_paths.first().map(PathBuf::as_path),
@@ -221,6 +230,7 @@ pub(crate) fn prepare_native_command_sandbox(
         env,
         metadata: sandbox_metadata_with_runtime(
             Some(&sandbox),
+            &runx_contracts::EnvironmentRequirements::default(),
             &writable_paths,
             runtime.as_ref(),
             private_tmp_enabled,
@@ -234,7 +244,6 @@ fn native_command_sandbox(workspace_root: &Path) -> SkillSandbox {
     SkillSandbox {
         profile: SandboxProfile::WorkspaceWrite,
         cwd_policy: Some(CwdPolicy::Workspace),
-        env_allowlist: None,
         network: Some(false),
         writable_paths: vec![workspace_root.to_string_lossy().into_owned()],
         require_enforcement: Some(true),
@@ -268,7 +277,6 @@ pub(crate) fn prepare_javascript_worker_sandbox(
         let sandbox = SkillSandbox {
             profile: SandboxProfile::Readonly,
             cwd_policy: Some(CwdPolicy::SkillDirectory),
-            env_allowlist: None,
             network: Some(false),
             writable_paths: Vec::new(),
             require_enforcement: Some(true),
@@ -282,7 +290,13 @@ pub(crate) fn prepare_javascript_worker_sandbox(
             args,
             cwd,
             env: BTreeMap::new(),
-            metadata: sandbox_metadata_with_runtime(Some(&sandbox), &[], runtime.as_ref(), false),
+            metadata: sandbox_metadata_with_runtime(
+                Some(&sandbox),
+                &runx_contracts::EnvironmentRequirements::default(),
+                &[],
+                runtime.as_ref(),
+                false,
+            ),
             cleanup_paths: Vec::new(),
         })
     }
@@ -296,6 +310,7 @@ fn javascript_worker_cwd() -> Result<PathBuf, RuntimeError> {
 
 pub fn prepare_mcp_process_sandbox(
     source: &SkillSource,
+    environment: &runx_contracts::EnvironmentRequirements,
     server: &SkillMcpServer,
     skill_directory: &Path,
     base_env: &BTreeMap<String, String>,
@@ -303,21 +318,32 @@ pub fn prepare_mcp_process_sandbox(
     let sandbox = source.sandbox.as_ref();
     validate_sandbox(sandbox)?;
     let workspace_cwd = workspace_cwd(base_env)?;
+    let skill_directory = resolved_skill_directory(skill_directory, workspace_cwd.as_deref())?;
+    let workspace_root = execution_workspace_root(workspace_cwd.as_deref(), &skill_directory);
     let cwd = resolve_cwd_value(
         server.cwd.as_deref(),
         sandbox,
-        skill_directory,
+        &skill_directory,
         workspace_cwd.as_deref(),
     )?;
     let writable_paths = resolved_writable_paths(sandbox, &JsonObject::new(), base_env);
     let validated_writable_paths =
-        validated_writable_paths(sandbox, &writable_paths, &cwd, workspace_cwd.as_deref())?;
+        validated_writable_paths(sandbox, &writable_paths, &cwd, &workspace_root)?;
     let runtime = resolve_sandbox_runtime(sandbox, base_env)?;
     let private_tmp_enabled = sandbox_private_tmp_enabled(sandbox, runtime.as_ref());
     let mut cleanup_paths = Vec::new();
     let mut sandbox_base_env = base_env.clone();
+    sandbox_base_env.insert(
+        crate::receipts::paths::RUNX_CWD_ENV.to_owned(),
+        workspace_root.to_string_lossy().into_owned(),
+    );
     prepare_sandbox_tmp_env(sandbox, &runtime, &mut sandbox_base_env, &mut cleanup_paths)?;
-    let env = match sandbox_child_base_env(sandbox, &sandbox_base_env) {
+    let env = match child_env(
+        environment,
+        &sandbox_base_env,
+        &JsonObject::new(),
+        &mut cleanup_paths,
+    ) {
         Ok(env) => env,
         Err(error) => {
             cleanup_paths_quietly(&cleanup_paths);
@@ -334,8 +360,8 @@ pub fn prepare_mcp_process_sandbox(
         command: server.command.clone(),
         args: server.args.clone(),
         cwd: &cwd,
-        skill_directory,
-        workspace_cwd: workspace_cwd.as_deref(),
+        skill_directory: &skill_directory,
+        workspace_cwd: &workspace_root,
         writable_paths: &validated_writable_paths,
         network: sandbox_network_enabled(sandbox),
         private_tmp: cleanup_paths.first().map(PathBuf::as_path),
@@ -347,6 +373,7 @@ pub fn prepare_mcp_process_sandbox(
         env,
         metadata: sandbox_metadata_with_runtime(
             sandbox,
+            environment,
             &writable_paths,
             runtime.as_ref(),
             private_tmp_enabled,
@@ -473,7 +500,6 @@ mod tests {
         let sandbox = SkillSandbox {
             profile: SandboxProfile::WorkspaceWrite,
             cwd_policy: None,
-            env_allowlist: None,
             network: None,
             writable_paths: vec![
                 "{{workspace_path}}".to_owned(),
@@ -611,10 +637,45 @@ mod tests {
         let source = source_for_child_env(SourceKind::CliTool);
         let base_env = signing_env(temp.path());
 
-        let plan = prepare_process_sandbox(&source, temp.path(), &JsonObject::new(), &base_env)
-            .map_err(|source| source.to_string())?;
+        let plan = prepare_process_sandbox(
+            &source,
+            &Default::default(),
+            temp.path(),
+            &JsonObject::new(),
+            &base_env,
+        )
+        .map_err(|source| source.to_string())?;
 
         assert_child_env_has_no_receipt_signing_env(&plan.env);
+        Ok(())
+    }
+
+    #[test]
+    fn process_child_env_rejects_declared_environment_that_shadows_runtime_input()
+    -> Result<(), String> {
+        let temp = tempfile::tempdir().map_err(|source| source.to_string())?;
+        let source = source_for_child_env(SourceKind::CliTool);
+        let mut base_env = signing_env(temp.path());
+        base_env.insert("RUNX_INPUT_MESSAGE".to_owned(), "declared".to_owned());
+        let requirements = runx_contracts::EnvironmentRequirements {
+            required: vec!["RUNX_INPUT_MESSAGE".to_owned()],
+            optional: Vec::new(),
+        };
+        let inputs = JsonObject::from([(
+            "message".to_owned(),
+            JsonValue::String("runtime".to_owned()),
+        )]);
+
+        let error =
+            prepare_process_sandbox(&source, &requirements, temp.path(), &inputs, &base_env)
+                .err()
+                .ok_or_else(|| "runtime input collision unexpectedly passed".to_owned())?;
+
+        assert!(
+            error
+                .to_string()
+                .contains("collides with declared environment")
+        );
         Ok(())
     }
 
@@ -629,8 +690,14 @@ mod tests {
         };
         let base_env = signing_env(temp.path());
 
-        let plan = prepare_mcp_process_sandbox(&source, &server, temp.path(), &base_env)
-            .map_err(|source| source.to_string())?;
+        let plan = prepare_mcp_process_sandbox(
+            &source,
+            &Default::default(),
+            &server,
+            temp.path(),
+            &base_env,
+        )
+        .map_err(|source| source.to_string())?;
 
         assert_child_env_has_no_receipt_signing_env(&plan.env);
         Ok(())
@@ -640,7 +707,6 @@ mod tests {
         SkillSandbox {
             profile: SandboxProfile::Readonly,
             cwd_policy: None,
-            env_allowlist: None,
             network: None,
             writable_paths: Vec::new(),
             require_enforcement: None,
@@ -661,6 +727,7 @@ mod tests {
             cwd: None,
             timeout_seconds: None,
             input_mode: None,
+            environment: Default::default(),
             sandbox: None,
             server: None,
             tool: None,
@@ -716,7 +783,6 @@ mod tests {
         let sandbox = SkillSandbox {
             profile: SandboxProfile::WorkspaceWrite,
             cwd_policy: None,
-            env_allowlist: None,
             network: None,
             writable_paths: Vec::new(),
             require_enforcement: None,
@@ -728,7 +794,7 @@ mod tests {
             Some(&sandbox),
             &["safe\")) (allow network*)".to_owned()],
             &workspace,
-            Some(&workspace),
+            &workspace,
         )
         .err()
         .ok_or_else(|| "sexpr metacharacter path unexpectedly passed".to_owned())?;
@@ -748,7 +814,6 @@ mod tests {
         let sandbox = SkillSandbox {
             profile: SandboxProfile::WorkspaceWrite,
             cwd_policy: None,
-            env_allowlist: None,
             network: None,
             writable_paths: Vec::new(),
             require_enforcement: None,
@@ -760,7 +825,7 @@ mod tests {
             Some(&sandbox),
             &["dist/cache/output.json".to_owned()],
             &workspace,
-            Some(&workspace),
+            &workspace,
         )
         .map(|_| ())
         .map_err(|source| source.to_string())
@@ -779,7 +844,6 @@ mod tests {
         let sandbox = SkillSandbox {
             profile: SandboxProfile::WorkspaceWrite,
             cwd_policy: None,
-            env_allowlist: None,
             network: None,
             writable_paths: Vec::new(),
             require_enforcement: None,
@@ -791,7 +855,7 @@ mod tests {
             Some(&sandbox),
             &["link/escape.txt".to_owned()],
             &workspace,
-            Some(&workspace),
+            &workspace,
         )
         .err()
         .ok_or_else(|| "symlink escape unexpectedly passed".to_owned())?;

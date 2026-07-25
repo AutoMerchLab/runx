@@ -19,8 +19,8 @@ use runx_pay::{
 };
 use runx_runtime::effects::RuntimeEffectRegistry;
 use runx_runtime::{
-    Host, InvocationStatus, RUNX_RUN_ID_ENV, Runtime, RuntimeError, RuntimeOptions, SkillAdapter,
-    SkillInvocation, SkillOutput,
+    Host, InvocationOutput, RUNX_RUN_ID_ENV, Runtime, RuntimeError, RuntimeOptions, SkillAdapter,
+    SkillInvocation,
 };
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -208,7 +208,7 @@ fn runtime_options_with_effects(
     RuntimeOptions {
         env,
         effects: effects.unwrap_or_default(),
-        ..RuntimeOptions::local_development()
+        ..RuntimeOptions::local_development(std::env::vars().collect())
     }
 }
 
@@ -371,7 +371,7 @@ impl SkillAdapter for StripeSptAdapter {
         "stripe-spt-test"
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         self.invocations.borrow_mut().push(StripeSptInvocation {
             skill_name: request.skill_name.clone(),
             inputs: request.inputs.clone(),
@@ -416,7 +416,7 @@ impl SkillAdapter for StripeSptAdapter {
     }
 }
 
-fn stripe_spt_fulfill_output(scenario: StripeSptScenario) -> SkillOutput {
+fn stripe_spt_fulfill_output(scenario: StripeSptScenario) -> InvocationOutput {
     match scenario {
         StripeSptScenario::Fulfilled => skill_success(stripe_spt_rail_packet(
             "fulfilled",
@@ -432,7 +432,7 @@ fn stripe_spt_fulfill_output(scenario: StripeSptScenario) -> SkillOutput {
             })),
             json!({ "status": "sealed" }),
         )),
-        StripeSptScenario::Declined => skill_failure_with_stdout(
+        StripeSptScenario::Declined => skill_failure_with_value(
             stripe_spt_rail_packet(
                 "declined",
                 None,
@@ -444,7 +444,7 @@ fn stripe_spt_fulfill_output(scenario: StripeSptScenario) -> SkillOutput {
             ),
             &format!("stripe-spt declined payment for {STRIPE_SPT_IDEMPOTENCY_KEY}"),
         ),
-        StripeSptScenario::Timeout => skill_failure_with_stdout(
+        StripeSptScenario::Timeout => skill_failure_with_value(
             stripe_spt_rail_packet(
                 "pending",
                 None,
@@ -494,49 +494,20 @@ fn stripe_spt_rail_packet(
     json!({ "effect_evidence_packet": { "data": data } })
 }
 
-fn skill_success(value: Value) -> SkillOutput {
-    let stdout = match serde_json::to_string(&value) {
-        Ok(stdout) => stdout,
-        Err(error) => return skill_failure(&format!("test JSON serialization failed: {error}")),
-    };
-    SkillOutput {
-        status: InvocationStatus::Success,
-        stdout,
-        stderr: String::new(),
-        exit_code: Some(0),
-        duration_ms: 1,
-        metadata: JsonObject::new(),
-    }
+fn skill_success(value: Value) -> InvocationOutput {
+    InvocationOutput::runtime_success(runtime_value(value), 1, JsonObject::new())
 }
 
-fn skill_failure(message: &str) -> SkillOutput {
-    SkillOutput {
-        status: InvocationStatus::Failure,
-        stdout: String::new(),
-        stderr: message.to_owned(),
-        exit_code: Some(1),
-        duration_ms: 1,
-        metadata: JsonObject::new(),
-    }
+fn skill_failure(message: &str) -> InvocationOutput {
+    InvocationOutput::runtime_failure(JsonValue::Null, message, 1, JsonObject::new())
 }
 
-fn skill_failure_with_stdout(value: Value, message: &str) -> SkillOutput {
-    let stdout = match serde_json::to_string(&value) {
-        Ok(stdout) => stdout,
-        Err(error) => {
-            return skill_failure(&format!(
-                "{message}; test JSON serialization failed: {error}"
-            ));
-        }
-    };
-    SkillOutput {
-        status: InvocationStatus::Failure,
-        stdout,
-        stderr: message.to_owned(),
-        exit_code: Some(1),
-        duration_ms: 1,
-        metadata: JsonObject::new(),
-    }
+fn skill_failure_with_value(value: Value, message: &str) -> InvocationOutput {
+    InvocationOutput::runtime_failure(runtime_value(value), message, 1, JsonObject::new())
+}
+
+fn runtime_value(value: Value) -> JsonValue {
+    serde_json::from_value(value).expect("test output fixture must match the Runx JSON contract")
 }
 
 struct ApprovalHost {
@@ -567,6 +538,10 @@ impl Host for ApprovalHost {
     ) -> Result<Option<ResolutionResponse>, RuntimeError> {
         self.requests.borrow_mut().push(request);
         Ok(self.responses.borrow_mut().pop_front().flatten())
+    }
+
+    fn log(&mut self, _message: String) -> Result<(), RuntimeError> {
+        Ok(())
     }
 }
 

@@ -42,6 +42,7 @@ runners:
         description: Explicit native redacted receipt-detail projections for deterministic replay only.
     graph:
       name: ledger-read
+      result_from: [finalize-live, finalize-replay, finalize-empty]
       steps:
         - id: prepare
           label: normalize the bounded ledger query

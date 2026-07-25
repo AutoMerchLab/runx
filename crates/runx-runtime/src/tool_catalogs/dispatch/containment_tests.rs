@@ -7,7 +7,7 @@ use runx_contracts::{JsonObject, JsonValue};
 
 use super::{ToolDispatchRequest, dispatch_tool};
 use crate::{
-    CredentialDelivery, InvocationStatus, RuntimeEffectRegistry, RuntimeError, SkillOutput,
+    CredentialDelivery, InvocationOutput, InvocationStatus, RuntimeEffectRegistry, RuntimeError,
 };
 
 fn invoke(
@@ -15,7 +15,7 @@ fn invoke(
     inputs: JsonObject,
     workspace: &Path,
     credential_delivery: CredentialDelivery,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     let env = BTreeMap::from([
         (
             "RUNX_CWD".to_owned(),
@@ -68,8 +68,8 @@ fn native_filesystem_containment_rejects_caller_selected_absolute_roots()
     assert_eq!(output.status, InvocationStatus::Failure);
     assert!(
         output
-            .stderr
-            .contains("must be relative to the runtime workspace")
+            .failure_message()
+            .is_some_and(|message| message.contains("must be relative to the runtime workspace"))
     );
     Ok(())
 }
@@ -97,7 +97,11 @@ fn native_command_sandbox_keeps_generic_commands_credential_free()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(output.stderr.contains("not supported"));
+    assert!(
+        output
+            .failure_message()
+            .is_some_and(|message| message.contains("not supported"))
+    );
     Ok(())
 }
 
@@ -117,7 +121,7 @@ fn native_command_sandbox_never_degrades_to_unenforced_execution()
 
     match output.status {
         InvocationStatus::Success => {
-            let payload = serde_json::from_str::<JsonValue>(&output.stdout)?;
+            let payload = output.value;
             let execution = payload
                 .as_object()
                 .and_then(|value| value.get("command_execution"))
@@ -132,11 +136,9 @@ fn native_command_sandbox_never_degrades_to_unenforced_execution()
             assert_eq!(decision, Some(&JsonValue::String("completed".to_owned())));
         }
         InvocationStatus::Failure => {
-            assert!(
-                output
-                    .stderr
-                    .contains("requires Linux bubblewrap or macOS sandbox-exec")
-            );
+            assert!(output.failure_message().is_some_and(|message| {
+                message.contains("requires Linux bubblewrap or macOS sandbox-exec")
+            }));
         }
     }
     Ok(())
@@ -184,8 +186,8 @@ fn native_http_credential_binding_rejects_caller_host_widening()
     assert_eq!(output.status, InvocationStatus::Failure);
     assert!(
         output
-            .stderr
-            .contains("outside the resolved credential audience")
+            .failure_message()
+            .is_some_and(|message| message.contains("outside the resolved credential audience"))
     );
     Ok(())
 }

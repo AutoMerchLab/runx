@@ -68,12 +68,11 @@ approval rules.
 - Put task-specific agent clauses after the human-readable operating guide.
   They sharpen individual agent acts; they do not replace the guide or carry
   the product's voice by themselves.
-- When a package directly composes another skill, give the operator a
-  `## Composes` section with one exact `- \`skill#runner\`` entry per native
-  direct edge. Keep the surrounding prose natural and useful; the explicit set
-  is the stable map, not a substitute for explaining why the chain exists.
-  Native inspection must report the same set exactly, so stale declarations
-  and undocumented dependencies both fail.
+- Explain meaningful upstream and downstream skill relationships naturally in
+  the operator guide. Do not maintain a second machine-readable dependency
+  registry in `SKILL.md`: native execution-closure inspection owns the exact
+  edge set and operator preflight surfaces it. Prose explains why the chain
+  exists; the runtime proves what it actually calls.
 - A skill declares domain procedure and policy. Runx owns generic input,
   packet, evidence, approval, request, credential, effect, and receipt mechanics.
 - Place the capability in its real owner before choosing an implementation.
@@ -107,8 +106,15 @@ approval rules.
 - Put every typed output and packet contract on the step that actually produces
   it. A graph runner is composition and its receipt proves that composition; it
   must not declare a second runner-level `outputs` or `artifacts` contract with
-  ambiguous ownership. When a graph needs one public result, end it with an
-  explicit package/finalize step and let that producer own the packet schema.
+  ambiguous ownership. Every graph runner declares `graph.result_from` as the
+  intentional public result boundary. Name the final provider readback or
+  package/finalize step, not every leaf: approvals, evidence gathering, and
+  intermediate writes remain available in operator context and receipts without
+  polluting the result. Multiple producers are valid only for mutually exclusive
+  branches or when their distinct contracts are intentionally returned together;
+  simultaneous producers may not emit the same key. When a graph needs one
+  public result, end it with an explicit package/finalize step and let that
+  producer own the packet schema.
 - Add executable code only for irreducible deterministic domain computation.
   Explain its domain boundary and why native tools plus a declarative graph
   cannot express it. Do not add code merely to transform Runx contracts.
@@ -127,14 +133,23 @@ approval rules.
   source dependency before the package can run or publish.
 - When that computation is JavaScript, use the native `type: javascript`
   source. Prefer one cohesive module named for the skill with focused named
-  exports of the form `(inputs) => JSON`; split it only when the computations
-  have genuinely separate ownership. Runx owns input delivery, output
-  serialization, errors, timeouts, and isolation. Do not add fake operation
-  inputs, Node command declarations, per-runner wrapper files, or stdout/env
-  plumbing. Pure JavaScript receives only its validated in-memory module bundle
-  and JSON input through the dedicated Runx worker. It has no workspace path,
-  filesystem, network, clock, randomness, subprocess, environment, credential,
-  or provider surface. The worker is ECMAScript, not a browser: use the frozen
+  exports of the form `(inputs, context) => JSON`; split it only when the
+  computations have genuinely separate ownership. Runx owns input delivery,
+  output serialization, errors, wall limits, and isolation. Do not add fake
+  operation inputs, Node command declarations, per-runner wrapper files, or
+  stdout/environment plumbing. Pure JavaScript receives only its validated
+  in-memory module bundle, JSON input, and a frozen
+  `context.environment` object containing the exact names declared in the
+  runner's `environment.required` and `environment.optional` lists. A missing
+  required name stops before worker execution; an absent optional name is
+  omitted. Values never enter the manifest, agent context, inspection output,
+  or receipts. Environment declarations are for non-secret runtime
+  configuration; credentials stay on the native credential/provider boundary.
+  The worker process itself has an empty ambient environment and no workspace
+  path, filesystem, network, clock, randomness, subprocess, credential, or
+  provider surface. The default wall limit is two seconds; a runner may declare
+  `timeout_seconds` from 1 through 30 when irreducible computation genuinely
+  needs it. The worker is ECMAScript, not a browser: use the frozen
   `Runx.parseUrl(value)` helper for absolute URLs and do not assume Web or Node
   globals exist.
 - Classify volume before authoring. Small typed control values belong in normal
@@ -180,9 +195,9 @@ approval rules.
   improvement only when the removed material was false, duplicated, or
   irrelevant and the remaining document still passes the cold-operator test.
 - Treat the catalog's manual check as an anti-stub backstop, not a writing
-  target. The structural title/section/prose floor and exact `## Composes` set
-  do not prove a guide is substantive. Do not pad prose to satisfy a word floor
-  or turn natural operating guidance into a template checklist.
+  target. The structural title/section/prose floor does not prove a guide is
+  substantive. Do not pad prose to satisfy a word floor or turn natural
+  operating guidance into a template checklist.
 - Prefer extending an existing owner over adding a near-duplicate skill.
 - Include a realistic happy path and refusal, stop, or error path.
 - Never treat supplied agent answers as provider-effect proof.

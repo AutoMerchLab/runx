@@ -40,6 +40,25 @@ pub struct ValidatedTool {
     pub artifacts: Option<SkillArtifactContract>,
 }
 
+impl ValidatedTool {
+    /// Return the exact non-secret execution requirements selected by this
+    /// tool manifest. Runtime callers consume this typed projection instead of
+    /// rescanning the source or normalizing provider scope strings.
+    #[must_use]
+    pub fn execution_requirements(&self) -> runx_contracts::ExecutionRequirements {
+        runx_contracts::ExecutionRequirements {
+            scopes: self.scopes.clone(),
+            environment: self.source.environment.clone(),
+            sandbox: self
+                .source
+                .sandbox
+                .as_ref()
+                .map(|sandbox| JsonValue::Object(sandbox.raw.clone())),
+            ..runx_contracts::ExecutionRequirements::default()
+        }
+    }
+}
+
 pub fn parse_tool_manifest_yaml(yaml: &str) -> Result<RawToolManifestIr, ParseError> {
     assert_yaml_parity_subset("tool_manifest", yaml)?;
     let parsed: JsonValue =
@@ -99,15 +118,24 @@ pub fn validate_tool_manifest(raw: RawToolManifestIr) -> Result<ValidatedTool, V
                 .optional_object(raw.document.get("inputs"), "inputs")?
                 .unwrap_or_default(),
         )?,
-        scopes: FIELDS
-            .optional_string_array(raw.document.get("scopes"), "scopes")?
-            .unwrap_or_default(),
+        scopes: validate_scopes(
+            FIELDS
+                .optional_string_array(raw.document.get("scopes"), "scopes")?
+                .unwrap_or_default(),
+        )?,
         risk,
         retry: validate_retry(raw.document.get("retry"), "retry")?,
         idempotency: validate_idempotency(raw.document.get("idempotency"), "idempotency")?,
         mutating: validate_mutating(raw.document.get("mutating"), "mutating")?,
         artifacts: validate_skill_artifact_contract(raw.document.get("artifacts"), "artifacts")?,
     })
+}
+
+fn validate_scopes(scopes: Vec<String>) -> Result<Vec<String>, ValidationError> {
+    if scopes.iter().any(|scope| scope.trim().is_empty()) {
+        return Err(FIELDS.validation_error("scopes must contain only non-empty scope strings"));
+    }
+    Ok(scopes)
 }
 
 fn validate_tool_source(source: SkillSource, field: &str) -> Result<SkillSource, ValidationError> {

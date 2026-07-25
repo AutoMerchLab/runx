@@ -94,6 +94,7 @@ runners:
         description: Optional receiver metadata such as Zap id, endpoint ref, or support owner.
     graph:
       name: zapier-handoff-preflight
+      result_from: [build-handoff-context]
       steps:
         - id: build-handoff-context
           tool: orchestrators.build_handoff_context
@@ -154,6 +155,7 @@ runners:
         description: Optional receiver metadata such as Zap id, endpoint ref, or support owner.
     graph:
       name: zapier-handoff-send
+      result_from: [post-to-zapier]
       steps:
         - id: build-handoff-context
           tool: orchestrators.build_handoff_context

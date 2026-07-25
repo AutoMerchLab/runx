@@ -72,6 +72,7 @@ runners:
         description: Stable caller-owned challenge seed.
     graph:
       name: mpp-charge
+      result_from: [charge]
       steps:
         - id: charge
           skill: ../charge

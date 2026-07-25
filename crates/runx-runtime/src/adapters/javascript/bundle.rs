@@ -19,7 +19,20 @@ pub(super) fn validated_module(
             })?;
     let entry_module = package_relative(profile_directory(loaded.profile_path.as_deref()), module);
     let modules = reachable_modules(&loaded.package, &entry_module)?;
-    let limits = InvocationLimits::default();
+    let mut limits = InvocationLimits::default();
+    if let Some(timeout_seconds) = request.source.timeout_seconds {
+        limits.wall_milliseconds =
+            timeout_seconds
+                .checked_mul(1_000)
+                .ok_or_else(|| RuntimeError::JavaScriptWorker {
+                    message: "JavaScript wall limit overflowed milliseconds".to_owned(),
+                })?;
+    }
+    let limits = limits
+        .validate()
+        .map_err(|error| RuntimeError::JavaScriptWorker {
+            message: format!("JavaScript invocation limits are invalid: {error}"),
+        })?;
     Ok(PreparedJavaScriptInvocation {
         entry_module,
         export_name: request
@@ -28,6 +41,11 @@ pub(super) fn validated_module(
             .clone()
             .unwrap_or_else(|| "default".to_owned()),
         modules,
+        environment: crate::execution_environment::resolve_declared_environment(
+            &request.requirements,
+            &request.env,
+        )?,
+        worker_path: request.env.get(super::WORKER_PATH_ENV).cloned(),
         limits,
     })
 }

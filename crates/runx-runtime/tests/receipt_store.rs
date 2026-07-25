@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use runx_contracts::{JsonObject, Receipt};
 use runx_runtime::receipts::{RuntimeReceiptSignaturePolicy, step_receipt};
-use runx_runtime::{InvocationStatus, LocalReceiptStore, ReceiptStoreError, SkillOutput};
+use runx_runtime::{InvocationOutput, InvocationStatus, LocalReceiptStore, ReceiptStoreError};
 use serde_json::json;
 
 // Receipt ids are content-addressed (`id = hash(canonical_body)`), so the
@@ -692,19 +692,12 @@ fn runtime_receipt(
     .map_err(Into::into)
 }
 
-fn skill_output(status: InvocationStatus) -> SkillOutput {
+fn skill_output(status: InvocationStatus) -> InvocationOutput {
     let (stdout, stderr, exit_code) = match status {
         InvocationStatus::Success => ("ok".to_owned(), String::new(), Some(0)),
         InvocationStatus::Failure => (String::new(), "failed".to_owned(), Some(1)),
     };
-    SkillOutput {
-        status,
-        stdout,
-        stderr,
-        exit_code,
-        duration_ms: 1,
-        metadata: JsonObject::new(),
-    }
+    InvocationOutput::process(status, stdout, stderr, exit_code, 1, JsonObject::new())
 }
 
 fn receipt_file_name(receipt_id: &str) -> String {

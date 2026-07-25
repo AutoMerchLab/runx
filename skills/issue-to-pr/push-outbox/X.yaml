@@ -40,6 +40,7 @@ runners:
         description: Outbox status recorded after a successful provider push.
     graph:
       name: issue-to-pr-push-outbox
+      result_from: [provider-push]
       steps:
         - id: provider-push
           label: push one digest-bound outbox entry

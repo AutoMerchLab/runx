@@ -359,11 +359,9 @@ function validatePublicManual({
     );
   }
 
-  const edges = runnerInspections.flatMap(
+  for (const edge of runnerInspections.flatMap(
     (inspection) => inspection.execution_closure?.direct_external_skill_edges ?? [],
-  );
-  const expectedCompositions = new Set();
-  for (const edge of edges) {
+  )) {
     if (
       typeof edge?.skill !== "string"
       || edge.skill.length === 0
@@ -371,35 +369,9 @@ function validatePublicManual({
       || edge.runner.length === 0
     ) {
       findings.push(`${name}: native direct external skill edge is malformed`);
-      continue;
-    }
-    expectedCompositions.add(`${edge.skill}#${edge.runner}`);
-  }
-  const declaredCompositions = manualCompositionRefs(guide);
-  for (const expected of expectedCompositions) {
-    if (!declaredCompositions.has(expected)) {
-      findings.push(`${name}: Composes section omits native edge ${expected}`);
-    }
-  }
-  for (const declared of declaredCompositions) {
-    if (!expectedCompositions.has(declared)) {
-      findings.push(`${name}: Composes section declares stale edge ${declared}`);
     }
   }
   return findings;
-}
-
-function manualCompositionRefs(source) {
-  const heading = /^##\s+Composes\s*$/imu.exec(source);
-  if (!heading) return new Set();
-  const bodyStart = heading.index + heading[0].length;
-  const remainder = source.slice(bodyStart);
-  const nextHeading = /^##\s+\S.*$/mu.exec(remainder);
-  const section = nextHeading ? remainder.slice(0, nextHeading.index) : remainder;
-  return new Set(
-    [...section.matchAll(/^\s*-\s+`([^`\s]+#[^`\s]+)`\s*$/gmu)]
-      .map((match) => match[1]),
-  );
 }
 
 function countBy(entries, selector) {
@@ -528,13 +500,6 @@ function runSelfTests() {
     }).length === 0,
     "matching catalog and execution claims must pass",
   );
-  const guideInspection = {
-    ...inspection,
-    execution_closure: {
-      ...inspection.execution_closure,
-      direct_external_skill_edges: [{ skill: "research", runner: "brief" }],
-    },
-  };
   const validGuide = [
     "---",
     "name: alpha",
@@ -547,10 +512,6 @@ function runSelfTests() {
     "",
     "Compose `research` evidence before making the decision.",
     "",
-    "## Composes",
-    "",
-    "- `research#brief`",
-    "",
     "## Agent task contracts",
     "",
     "Return the bounded decision.",
@@ -559,25 +520,21 @@ function runSelfTests() {
     validatePublicManual({
       name: "alpha",
       record: official[0],
-      runnerInspections: [guideInspection],
+      runnerInspections: [inspection],
       source: validGuide,
     }).length === 0,
-    "a real guide before task contracts with direct composition names must pass",
+    "a real guide before task contracts must pass",
   );
-  const invalidGuide = validGuide.replace("## Operating model\n\nCompose `research` evidence before making the decision.\n\n## Composes\n\n- `research#brief`\n\n", "");
+  const invalidGuide = validGuide.replace("## Operating model\n\nCompose `research` evidence before making the decision.\n\n", "");
   const guideFindings = validatePublicManual({
     name: "alpha",
     record: official[0],
-    runnerInspections: [guideInspection],
+    runnerInspections: [inspection],
     source: invalidGuide,
   });
   assert(
     guideFindings.some((finding) => finding.includes("operator guide")),
     "task contracts must not substitute for an operator guide",
-  );
-  assert(
-    guideFindings.some((finding) => finding.includes("research#brief")),
-    "directly composed skills must be declared exactly in the Composes section",
   );
   let missingRunxPathRejected = false;
   try {

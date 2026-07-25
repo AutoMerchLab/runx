@@ -63,39 +63,48 @@ fn rust_matches_skill_author_runtime_fixtures() -> Result<(), Box<dyn std::error
         let started = Instant::now();
         let output = CliToolAdapter.invoke(SkillInvocation {
             skill_name: format!("skill-author-runtime.{}", fixture.id),
+            step_id: None,
             artifacts: None,
             allowed_tools: None,
             source: fixture_source(&fixture, &probe_path)?,
             inputs: fixture_inputs(&fixture),
             resolved_inputs: JsonObject::new(),
             current_context: Vec::new(),
+            provenance: Vec::new(),
             skill_directory: skill_directory.clone(),
             env: fixture_env(&fixture_root, temp_dir.path())?,
+            requirements: Default::default(),
             credential_delivery: CredentialDelivery::none(),
         })?;
         let duration_ms = started.elapsed().as_millis();
 
         assert_eq!(
-            normalized_status(output.status),
+            normalized_status(&output.status),
             fixture.expected.status,
             "{} status",
             fixture.id
         );
         if let Some(expected) = fixture.expected.stderr_contains.as_ref() {
             assert!(
-                output.stderr.contains(expected),
+                output
+                    .process_stderr()
+                    .is_some_and(|stderr| stderr.contains(expected)),
                 "{} stderr should contain {expected:?}",
                 fixture.id
             );
         } else {
-            assert_eq!(output.stderr, "", "{} stderr", fixture.id);
+            assert_eq!(output.process_stderr(), Some(""), "{} stderr", fixture.id);
         }
         if let Some(expected) = fixture.expected.stdout_json {
-            let actual: JsonValue = serde_json::from_str(&output.stdout)?;
-            assert_eq!(actual, expected, "{} stdout_json", fixture.id);
+            assert_eq!(output.value, expected, "{} stdout_json", fixture.id);
         }
         if let Some(expected) = fixture.expected.stdout_bytes {
-            assert_eq!(output.stdout.len(), expected, "{} stdout_bytes", fixture.id);
+            assert_eq!(
+                output.rendered_value().len(),
+                expected,
+                "{} stdout_bytes",
+                fixture.id
+            );
         }
         if let Some(max_duration_ms) = fixture.expected.max_duration_ms {
             assert!(
@@ -132,7 +141,6 @@ fn fixture_source(
         sandbox: Some(SkillSandbox {
             profile: fixture.sandbox.profile.clone(),
             cwd_policy: fixture.sandbox.cwd_policy.clone(),
-            env_allowlist: None,
             network: None,
             writable_paths: Vec::new(),
             require_enforcement: None,
@@ -152,6 +160,7 @@ fn fixture_source(
         graph: None,
         external_adapter: None,
         thread_outbox_provider: None,
+        environment: Default::default(),
         raw: JsonObject::new(),
     })
 }
@@ -181,7 +190,7 @@ fn fixture_env(
     Ok(env)
 }
 
-fn normalized_status(status: InvocationStatus) -> &'static str {
+fn normalized_status(status: &InvocationStatus) -> &'static str {
     match status {
         InvocationStatus::Success => "sealed",
         InvocationStatus::Failure => "failure",

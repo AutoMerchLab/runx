@@ -4,8 +4,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use runx_contracts::JsonObject;
-use runx_core::policy::{SandboxProfile, is_reserved_runx_sandbox_env_name};
+use runx_contracts::{EnvironmentRequirements, JsonObject};
+use runx_core::policy::SandboxProfile;
 use runx_parser::SkillSandbox;
 
 use crate::RuntimeError;
@@ -20,44 +20,38 @@ use super::template::json_value_env;
 
 const MAX_INLINE_INPUTS_BYTES: usize = 48 * 1024;
 const MAX_INLINE_INPUT_VALUE_BYTES: usize = 8 * 1024;
-pub(super) const DEFAULT_ENV_ALLOWLIST: [&str; 9] = [
-    "PATH",
-    "HOME",
-    "TMPDIR",
-    "TMP",
-    "TEMP",
-    "SystemRoot",
-    "WINDIR",
-    "COMSPEC",
-    "PATHEXT",
-];
 
 pub(super) fn child_env(
-    sandbox: Option<&SkillSandbox>,
+    requirements: &EnvironmentRequirements,
     base_env: &BTreeMap<String, String>,
     inputs: &JsonObject,
     cleanup_paths: &mut Vec<PathBuf>,
 ) -> Result<BTreeMap<String, String>, RuntimeError> {
-    let mut env = child_base_env(sandbox, base_env)?;
+    let mut env = child_base_env(base_env)?;
+    env.extend(crate::execution_environment::resolve_environment(
+        requirements,
+        base_env,
+    )?);
     let serialized = serde_json::to_string(inputs)
         .map_err(|source| RuntimeError::json("serializing runtime inputs", source))?;
-    if serialized.len() > MAX_INLINE_INPUTS_BYTES {
-        let (inputs_path, cleanup_path) = write_inputs_file(base_env, &serialized)?;
-        env.insert("RUNX_INPUTS_PATH".to_owned(), inputs_path);
-        push_cleanup_path(cleanup_paths, cleanup_path);
-    } else {
+    let (inputs_path, cleanup_path) = write_inputs_file(base_env, &serialized)?;
+    env.insert("RUNX_INPUTS_PATH".to_owned(), inputs_path);
+    if serialized.len() <= MAX_INLINE_INPUTS_BYTES {
         env.insert("RUNX_INPUTS_JSON".to_owned(), serialized);
     }
+    push_cleanup_path(cleanup_paths, cleanup_path.clone());
     let mut input_env_names = BTreeMap::new();
-    for (key, value) in inputs {
+    for (index, (key, value)) in inputs.iter().enumerate() {
         let serialized = json_value_env(value)?;
+        let env_name = input_env_name(key);
+        let path_env_name = format!("{env_name}_PATH");
+        register_input_env_name(&mut input_env_names, &env_name, key)?;
+        register_input_env_name(&mut input_env_names, &path_env_name, key)?;
+        reject_runtime_input_env_collision(&env, &env_name, key)?;
+        reject_runtime_input_env_collision(&env, &path_env_name, key)?;
+        let value_path = write_input_value_file(&cleanup_path, index, &serialized)?;
+        env.insert(path_env_name, value_path);
         if serialized.len() <= MAX_INLINE_INPUT_VALUE_BYTES {
-            let env_name = input_env_name(key);
-            if let Some(prior_key) = input_env_names.insert(env_name.clone(), key) {
-                return Err(sandbox_violation(format!(
-                    "input keys {prior_key:?} and {key:?} collide on environment variable {env_name}"
-                )));
-            }
             env.insert(env_name, serialized);
         }
     }
@@ -65,10 +59,9 @@ pub(super) fn child_env(
 }
 
 pub(super) fn child_base_env(
-    sandbox: Option<&SkillSandbox>,
     base_env: &BTreeMap<String, String>,
 ) -> Result<BTreeMap<String, String>, RuntimeError> {
-    let mut env = allowed_base_env(sandbox, base_env)?;
+    let mut env = allowed_base_env(base_env);
     env.insert(
         RUNX_CWD_ENV.to_owned(),
         workspace_root(base_env)?.to_string_lossy().into_owned(),
@@ -88,13 +81,13 @@ pub(super) fn child_base_env(
 }
 
 fn workspace_root(base_env: &BTreeMap<String, String>) -> Result<PathBuf, RuntimeError> {
-    workspace_cwd(base_env)?.map_or_else(
-        || {
-            std::env::current_dir()
-                .map_err(|source| RuntimeError::io("resolving workspace cwd", source))
-        },
-        Ok,
-    )
+    workspace_cwd(base_env)?.ok_or_else(|| {
+        sandbox_violation(format!(
+            "sandbox environment requires {} or {}",
+            crate::receipts::paths::RUNX_CWD_ENV,
+            crate::receipts::paths::INIT_CWD_ENV
+        ))
+    })
 }
 
 fn write_inputs_file(
@@ -110,33 +103,47 @@ fn write_inputs_file(
     Ok((path.to_string_lossy().into_owned(), dir))
 }
 
-fn allowed_base_env(
-    sandbox: Option<&SkillSandbox>,
-    base_env: &BTreeMap<String, String>,
-) -> Result<BTreeMap<String, String>, RuntimeError> {
-    let mut allowed = DEFAULT_ENV_ALLOWLIST
-        .iter()
-        .filter_map(|key| {
-            base_env
-                .get(*key)
-                .cloned()
-                .map(|value| ((*key).to_owned(), value))
-        })
-        .collect::<BTreeMap<_, _>>();
-    if let Some(env_allowlist) = sandbox.and_then(|sandbox| sandbox.env_allowlist.as_ref()) {
-        for key in env_allowlist {
-            if is_reserved_runx_sandbox_env_name(key) {
-                return Err(sandbox_violation(format!(
-                    "sandbox env_allowlist cannot include reserved runx environment variable {key}"
-                )));
-            }
-            if let Some(value) = base_env.get(key) {
-                allowed.insert(key.clone(), value.clone());
-            }
-        }
+fn allowed_base_env(base_env: &BTreeMap<String, String>) -> BTreeMap<String, String> {
+    crate::execution_environment::process_baseline_environment(base_env)
+}
+
+fn reject_runtime_input_env_collision(
+    environment: &BTreeMap<String, String>,
+    name: &str,
+    input: &str,
+) -> Result<(), RuntimeError> {
+    if environment.contains_key(name) {
+        return Err(sandbox_violation(format!(
+            "input {input:?} runtime environment variable {name} collides with declared environment"
+        )));
     }
-    allowed.retain(|key, _| !is_reserved_runx_sandbox_env_name(key));
-    Ok(allowed)
+    Ok(())
+}
+
+fn register_input_env_name<'a>(
+    names: &mut BTreeMap<String, &'a str>,
+    env_name: &str,
+    input: &'a str,
+) -> Result<(), RuntimeError> {
+    if let Some(prior_key) = names.insert(env_name.to_owned(), input) {
+        return Err(sandbox_violation(format!(
+            "input keys {prior_key:?} and {input:?} collide on environment variable {env_name}"
+        )));
+    }
+    Ok(())
+}
+
+fn write_input_value_file(
+    directory: &std::path::Path,
+    index: usize,
+    serialized: &str,
+) -> Result<String, RuntimeError> {
+    let path = directory.join(format!("input-{index}.json"));
+    let mut file = fs::File::create(&path)
+        .map_err(|source| RuntimeError::io("creating input value file", source))?;
+    file.write_all(serialized.as_bytes())
+        .map_err(|source| RuntimeError::io("writing input value file", source))?;
+    Ok(path.to_string_lossy().into_owned())
 }
 
 pub(super) fn prepare_sandbox_tmp_env(

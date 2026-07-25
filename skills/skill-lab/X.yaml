@@ -110,6 +110,7 @@ runners:
         description: Product, repository, and operator constraints.
     graph:
       name: skill-lab-design
+      result_from: [plan]
       steps:
         - id: inspect
           label: inspect target and catalog
@@ -175,6 +176,7 @@ runners:
         description: Product, repository, and operator constraints.
     graph:
       name: skill-lab-build
+      result_from: [apply]
       steps:
         - id: inspect
           label: inspect target and catalog
@@ -295,6 +297,7 @@ runners:
         description: Stable runx.review.receipt.v1 failure packet from review-receipt.
     graph:
       name: skill-lab-improve
+      result_from: [apply]
       steps:
         - id: inspect
           label: inspect target and evidence posture
@@ -409,6 +412,7 @@ runners:
         description: Existing harness evidence to reproduce or strengthen.
     graph:
       name: skill-lab-harness
+      result_from: [apply]
       steps:
         - id: inspect
           label: inspect target package

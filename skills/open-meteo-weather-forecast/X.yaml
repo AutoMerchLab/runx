@@ -38,6 +38,7 @@ runners:
         description: Number of forecast days to request.
     graph:
       name: open-meteo-weather-forecast
+      result_from: [locate, forecast]
       steps:
         - id: locate
           tool: http.read
@@ -92,6 +93,7 @@ runners:
         description: Decimal longitude selected from the location evidence.
     graph:
       name: open-meteo-air-quality
+      result_from: [locate, air_quality]
       steps:
         - id: locate
           tool: http.read

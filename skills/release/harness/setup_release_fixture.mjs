@@ -3,7 +3,9 @@
 import fs from "node:fs";
 import path from "node:path";
 
-const inputs = JSON.parse(process.env.RUNX_INPUTS_JSON || "{}");
+const inputs = process.env.RUNX_INPUTS_PATH
+  ? JSON.parse(fs.readFileSync(process.env.RUNX_INPUTS_PATH, "utf8"))
+  : JSON.parse(process.env.RUNX_INPUTS_JSON || "{}");
 const prepareStatus = inputs.prepare_status === "blocked" ? "blocked" : "ready";
 const root = path.resolve(process.env.RUNX_CWD || process.cwd());
 const project = path.join(root, "release-fixture-project");

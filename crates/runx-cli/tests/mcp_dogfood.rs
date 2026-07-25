@@ -611,11 +611,12 @@ runners:
     arguments:
       name: MCP_DOGFOOD_MARKER
     timeout_seconds: 15
+    environment:
+      required:
+        - MCP_DOGFOOD_MARKER
     sandbox:
       profile: readonly
       cwd_policy: skill-directory
-      env_allowlist:
-        - MCP_DOGFOOD_MARKER
       require_enforcement: false
 "#,
     )?;

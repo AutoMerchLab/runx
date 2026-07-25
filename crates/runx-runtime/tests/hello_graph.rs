@@ -13,7 +13,10 @@ use runx_runtime::{Runtime, RuntimeOptions};
 
 #[test]
 fn hello_graph_resumes_from_checkpoint() -> Result<(), Box<dyn std::error::Error>> {
-    let runtime = Runtime::new(CliToolAdapter, RuntimeOptions::local_development());
+    let runtime = Runtime::new(
+        CliToolAdapter,
+        RuntimeOptions::local_development(std::env::vars().collect()),
+    );
     let graph_path = Path::new("../../examples/hello-graph/graph.yaml");
 
     let checkpoint = runtime.run_graph_file_until_steps(graph_path, 1)?;

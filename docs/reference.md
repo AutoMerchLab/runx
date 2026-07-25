@@ -116,22 +116,37 @@ runx config set agent.model gpt-5.1
 printf '%s' "$OPENAI_API_KEY" | runx config set agent.api_key --from-stdin
 ```
 
+Hosted and replay drivers may bind `runx skill` or `runx resume` with
+`--package-digest` and `--execution-closure-digest`. Runx recomputes both at the
+native execution boundary, persists them in pause checkpoints, and rejects a
+resume whose supplied bindings disagree with that checkpoint. These flags bind
+execution; they are never skill inputs. The closure digest includes the
+immutable Runx release identity, so a pending continuation cannot silently
+cross a runtime upgrade.
+
+Execution ceilings remain owned by the capability they constrain rather than
+being flattened into one misleading global number: an MCP call timeout, an
+outbox timeout, a native command argument budget, and a file-bundle budget are
+different contracts. Their constants use capability-qualified names. Limits
+that are selectable per invocation or materially shape a sealed execution are
+typed at the invocation boundary; deterministic-module limits and any limit hit
+are copied into signed receipt metadata.
+
+Credential redaction and untrusted-data admission are also distinct. Exact
+values delivered by Runx enter the run-scoped taint set and are scrubbed at
+every output boundary. External configuration and provider output can contain
+raw material Runx never delivered, so those narrow boundaries additionally
+reject exact secret-field names before the data can enter receipts. That check
+is not a general text heuristic and never removes URLs or unrelated operator
+diagnostics.
+
 With `agent.provider`, `agent.model`, and `agent.api_key` configured, the CLI
 can now resolve managed agent work directly. Deterministic tools, approvals,
 and required human inputs keep their existing local behavior.
 
-For a local development loop, approval prompts can be disabled globally:
-
-```bash
-runx config set development.auto_approve true
-```
-
-The short key `auto-approve` is equivalent. The override covers prepared
-operator-context approval and approval steps inside skill graphs. It is ignored
-when production receipt signing is configured, explicit gate answers still take
-precedence, and receipts identify the decision as `development_auto_approve`.
-Disable it with `runx config set development.auto_approve false`. For an
-ephemeral override, set `RUNX_DEVELOPMENT_AUTO_APPROVE=true`.
+Mutating prepared runs and explicit approval steps always stop for an operator
+decision. There is no persistent or environment-based auto-approval override:
+development configuration must not silently acquire live authority.
 
 Provider-backed skills declare requirements in `X.yaml`; configure them with
 `runx credential` or an ignored workspace `.env`. See
@@ -143,6 +158,46 @@ active Runx context, including supervised tool, JavaScript, adapter, and MCP
 child process groups. Runx allows a two-second cleanup window, exits with status
 130, and treats a second interrupt as an immediate exit. On macOS, Cmd-C is
 normally copy; Ctrl-C is the interrupt.
+
+### Skill result JSON
+
+`runx skill ... --json` and `runx resume ... --json` return the canonical
+`runx.skill_run.v1` envelope. A sealed run has one caller-facing `result`, a compact
+`trace` for graph runs, the terminal `closure`, and the `receipt_id` needed for
+independent inspection:
+
+```json
+{
+  "schema": "runx.skill_run.v1",
+  "status": "sealed",
+  "skill_name": "example",
+  "run_id": "run_example_123",
+  "receipt_id": "sha256:...",
+  "closure": { "disposition": "closed" },
+  "result": {},
+  "trace": {
+    "graph": "example-read",
+    "status": "succeeded",
+    "steps": [
+      {
+        "step_id": "read",
+        "skill": "provider.read",
+        "status": "success",
+        "receipt_id": "sha256:..."
+      }
+    ]
+  }
+}
+```
+
+`result` is the selected runner's normalized output or the declared contract of
+a graph's terminal successful producer. `trace` deliberately carries
+references rather than step payloads. Intermediate graph state, child receipts,
+and the full signed receipt are written to the local Runx state and receipt
+stores; process output identity is committed by the receipt. Inspect proof
+through `runx history` and `runx verify` instead of paying to copy it through
+every agent response. Paused runs keep their exact `requests` and resume
+instructions.
 
 ### Structured input documents
 
@@ -262,16 +317,18 @@ one contained regular file, binds its media type, byte count, and whole-file
 digest to an opaque invocation-scoped reference, and never exposes the host
 path. The current total admission ceiling is 512 MiB. Reads return exact
 offsets, range and whole-file digests, `next_offset`, and `eof` in pages of at
-most 1 MiB using base64, character-safe UTF-8, or JSON-array record framing.
-The 1 MiB limit is a page ceiling, not a total-file ceiling. `fs.read` and
-`fs.read_bundle` share the same containment and hashing owner for bounded text;
-they are not alternate large-file transports.
+most 4 MiB using base64, character-safe UTF-8, or JSON-array record framing;
+the default page is 1 MiB. The 4 MiB limit is a page ceiling, not a total-file
+ceiling. `fs.read` and `fs.read_bundle` share the same containment and hashing
+owner for bounded text; they are not alternate large-file transports.
 
 ### Local Sandbox Posture
 
-`cli-tool` and `javascript` sources declare sandbox intent in `X.yaml`: profile,
-cwd policy, environment allowlist, network intent, and writable paths. Receipts
-record both the declared policy and the actual local enforcement mode.
+`cli-tool` and MCP process sources declare sandbox intent in `X.yaml`: profile,
+cwd policy, network intent, and writable paths. Their exact non-secret host
+configuration is declared separately through `environment.required` and
+`environment.optional`. Receipts record both the declaration and actual local
+enforcement mode.
 
 For every restricted profile, Runx selects a trusted OS enforcer: Bubblewrap on
 Linux or `sandbox-exec` on macOS. Filesystem and network policy are applied by
@@ -282,10 +339,10 @@ development run may explicitly opt into declared-policy-only degradation with
 filesystem and network isolation as `not-enforced-local`.
 
 Set `sandbox.require_enforcement: true` when even that explicit local
-degradation must remain unavailable. JavaScript-module sources always
-materialize this requirement together with a read-only skill-directory cwd, no
-network, no writable paths, no extra environment, and no credentials; a host
-without the OS backend cannot execute them.
+degradation must remain unavailable. JavaScript-module sources cannot select a
+sandbox. Runx gives their worker no workspace mount, network, writable paths,
+ambient OS environment, or credentials; only exact manifest-declared
+non-secret values cross the typed worker protocol.
 
 ## Capability Packs
 
@@ -335,8 +392,10 @@ skills and runtime code, not the community package catalog.
 Prefer declarative graphs composed from native tools and existing skills. When
 irreducible deterministic domain computation needs JavaScript, declare
 `type: javascript`; the module receives resolved inputs and returns JSON while
-Runx owns the process protocol. Use `cli-tool` only for a real executable or
-protocol boundary. See [Skill Author Runtime Contract](skill-author-runtime-contract.md).
+Runx owns the process protocol. A frozen second argument carries exact
+manifest-declared non-secret environment values when needed. Use `cli-tool`
+only for a real executable or protocol boundary. See
+[Skill Author Runtime Contract](skill-author-runtime-contract.md).
 
 Registry search and install now normalize public trust into three tiers:
 `first_party`, `verified`, and `community`. Richer provenance and attestation
@@ -373,6 +432,29 @@ Execution profiles use a strict YAML subset: no anchors, aliases, merge keys,
 custom tags, multi-document markers, duplicate mapping keys, or unknown profile
 fields. Keep capability and receipt mappings explicit in the runner that uses
 them.
+
+Every graph runner declares its intentional public result producers:
+
+```yaml
+graph:
+  name: publish-and-readback
+  result_from: [readback]
+  steps:
+    - id: approve
+      run:
+        type: approval
+    - id: publish
+      tool: provider.mutate
+    - id: readback
+      tool: provider.read
+```
+
+`result_from` is not a list of graph leaves. It returns each selected successful
+step's complete declared contract, including packet envelopes. Approvals and
+intermediate evidence remain in the separate operator context and signed
+receipts. Multiple names are for mutually exclusive result branches or
+deliberately combined, non-overlapping contracts; two successful producers may
+not emit the same key.
 
 Public catalog packages must keep examples in standalone fixtures, not inline
 manifest harness blocks. The package should contain only the files the skill
@@ -516,7 +598,9 @@ Graph receipt lineage is an immutable one-way DAG. The parent commits each
 child receipt ID and exact signed-body digest; a reusable child is not re-signed
 with one `lineage.parent`. This keeps receipt identity content-addressed and
 allows the same child proof to participate in more than one graph without a
-store collision.
+store collision. Runtime tree resolution collapses only identical repeated
+child receipts into one DAG node; two different signed bodies under the same
+receipt ID remain ambiguous and fail verification.
 
 Publish a local receipt to the hosted notary with:
 

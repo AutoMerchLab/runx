@@ -303,7 +303,7 @@ mod tests {
             "RUNX_HOME".to_owned(),
             root.join("home").display().to_string(),
         );
-        WorkspaceEnv::new(env, root.to_path_buf())
+        WorkspaceEnv::new(env, root.to_path_buf()).expect("test workspace cwd must be absolute")
     }
 
     fn multi_auth_request(profile: Option<&str>) -> SkillCredentialRequest {

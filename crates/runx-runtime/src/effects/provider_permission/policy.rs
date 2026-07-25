@@ -1,11 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use runx_contracts::{AuthorityVerb, JsonObject, JsonValue};
+use runx_contracts::{AuthorityVerb, JsonObject, JsonValue, sha256_prefixed};
 use runx_core::state_machine::AuthorityAdmissionWitness;
 
 use super::{
     PROVIDER_PERMISSION_EFFECT_FAMILY, PROVIDER_PERMISSION_GRANT_ID_ENV,
-    PROVIDER_PERMISSION_GRANTED_SCOPES_ENV, ProviderNativeAccess,
+    PROVIDER_PERMISSION_GRANTED_SCOPES_ENV, ProviderNativeAccess, decode_provider_scopes_env,
 };
 use crate::effects::{EffectStepRequest, RuntimeEffectError};
 
@@ -45,9 +45,16 @@ pub(super) struct ProviderPermissionPlan {
     pub(super) verb: AuthorityVerb,
 }
 
+#[derive(Clone, Copy)]
+pub(super) struct ProviderGrantEvidence<'a> {
+    pub(super) grant_id: &'a str,
+    pub(super) granted_scopes: &'a [String],
+}
+
 pub(super) fn provider_permission_plan(
     request: &EffectStepRequest<'_>,
     policy: &JsonObject,
+    evidence: Option<ProviderGrantEvidence<'_>>,
 ) -> Result<Option<ProviderPermissionPlan>, RuntimeEffectError> {
     let verb = required_verb_field(policy)?;
     if policy.contains_key("granted_scopes") {
@@ -61,10 +68,18 @@ pub(super) fn provider_permission_plan(
     if required_scopes.is_empty() {
         return Ok(None);
     }
-    let granted_scopes = granted_scopes_from_env(request.env);
+    let (grant_id, granted_scopes) = match evidence {
+        Some(evidence) => (
+            evidence.grant_id.to_owned(),
+            evidence.granted_scopes.to_vec(),
+        ),
+        None => (
+            provider_grant_id(request.env, &verb)?,
+            granted_scopes_from_env(request.env)?,
+        ),
+    };
     let missing_scopes = missing_scopes(&required_scopes, &granted_scopes);
     let expected_grant_id = string_field(policy, "grant_id");
-    let grant_id = provider_grant_id(request.env, &verb)?;
     if let Some(expected) = expected_grant_id
         && expected != grant_id
     {
@@ -91,8 +106,14 @@ pub(super) fn required_scopes_for(
     request: &EffectStepRequest<'_>,
     policy: &JsonObject,
 ) -> Result<Vec<String>, RuntimeEffectError> {
-    Ok(string_array_field(policy, "required_scopes")?
-        .unwrap_or_else(|| request.step.scopes.clone()))
+    let scopes = string_array_field(policy, "required_scopes")?
+        .unwrap_or_else(|| request.step.scopes.clone());
+    if scopes.iter().any(|scope| scope.trim().is_empty()) {
+        return Err(provider_permission_policy_error(
+            "provider scopes must be non-blank strings".to_owned(),
+        ));
+    }
+    Ok(scopes)
 }
 
 pub(super) fn provider_permission_denial(
@@ -103,11 +124,11 @@ pub(super) fn provider_permission_denial(
         family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
         verb: plan.verb.clone(),
         message: format!(
-            "step '{}' requires scopes [{}], but grant '{}' only provides [{}]",
+            "step '{}' requires scopes {}, but grant '{}' only provides {}",
             request.step.id,
-            plan.required_scopes.join(", "),
+            display_scopes(&plan.required_scopes),
             plan.grant_id,
-            plan.granted_scopes.join(", ")
+            display_scopes(&plan.granted_scopes)
         ),
     }
 }
@@ -122,11 +143,24 @@ pub(super) fn provider_permission_witness(
         child_term_id: format!(
             "provider-permission:{}:{}",
             request.step.id,
-            plan.required_scopes.join("+")
+            scope_list_digest(&plan.required_scopes)
         ),
         idempotency_key: request.step.idempotency_key.clone(),
         capability_ref: None,
     }
+}
+
+fn scope_list_digest(scopes: &[String]) -> String {
+    let mut bytes = Vec::new();
+    for scope in scopes {
+        bytes.extend_from_slice(&(scope.len() as u64).to_be_bytes());
+        bytes.extend_from_slice(scope.as_bytes());
+    }
+    sha256_prefixed(&bytes)
+}
+
+pub(super) fn display_scopes(scopes: &[String]) -> String {
+    format!("{scopes:?}")
 }
 
 pub(super) fn provider_permission_policy(policy: Option<&JsonObject>) -> Option<&JsonObject> {
@@ -155,7 +189,7 @@ fn string_array_field(
         .iter()
         .enumerate()
         .map(|(index, value)| match value {
-            JsonValue::String(scope) if !scope.trim().is_empty() => Ok(scope.trim().to_owned()),
+            JsonValue::String(scope) if !scope.trim().is_empty() => Ok(scope.clone()),
             JsonValue::String(_) => Err(provider_permission_policy_error(format!(
                 "{key}[{index}] must be a non-empty string"
             ))),
@@ -184,19 +218,15 @@ fn provider_grant_id(
         })
 }
 
-fn granted_scopes_from_env(env: &BTreeMap<String, String>) -> Vec<String> {
+fn granted_scopes_from_env(
+    env: &BTreeMap<String, String>,
+) -> Result<Vec<String>, RuntimeEffectError> {
     env.get(PROVIDER_PERMISSION_GRANTED_SCOPES_ENV)
-        .map(|value| parse_scope_list(value))
-        .unwrap_or_default()
-}
-
-fn parse_scope_list(value: &str) -> Vec<String> {
-    value
-        .split([',', '\n', '\t', ' '])
-        .map(str::trim)
-        .filter(|scope| !scope.is_empty())
-        .map(str::to_owned)
-        .collect()
+        .map(|value| {
+            decode_provider_scopes_env(value)
+                .map_err(|error| provider_permission_policy_error(error.to_string()))
+        })
+        .unwrap_or_else(|| Ok(Vec::new()))
 }
 
 pub(super) fn required_verb_field(

@@ -258,7 +258,7 @@ function normalizeMessage(value) {
       message_locator: text(message.message_locator, 500, "context.message_locator"),
       author: normalizeAuthor(message.author),
       occurred_at: isoTime(message.occurred_at, "context.occurred_at"),
-      preview: optionalText(message.preview, 500, "context.preview") ?? "",
+      preview: boundedPreview(message.preview, 500, "context.preview"),
     };
   });
   return {
@@ -270,7 +270,7 @@ function normalizeMessage(value) {
     author: normalizeAuthor(input.author),
     conversation: normalizeConversation(input.conversation),
     occurred_at: isoTime(input.occurred_at, "message.occurred_at"),
-    preview: optionalText(input.preview, 2_000, "message.preview") ?? "",
+    preview: boundedPreview(input.preview, 2_000, "message.preview"),
     ...(optionalHttpsUrl(input.permalink) ? { permalink: optionalHttpsUrl(input.permalink) } : {}),
     ...(Number.isSafeInteger(input.reply_count) && input.reply_count >= 0 ? { reply_count: input.reply_count } : {}),
     context,
@@ -330,7 +330,19 @@ function text(value, max, field) {
 }
 
 function optionalText(value, max, field) {
-  return value === undefined || value === null ? undefined : text(value, max, field);
+  if (value === undefined || value === null) return undefined;
+  if (typeof value === "string" && value.trim() === "") return undefined;
+  return text(value, max, field);
+}
+
+function boundedPreview(value, max, field) {
+  if (value === undefined || value === null) return "";
+  if (typeof value !== "string") throw new Error(`${field} must be a string`);
+  return value
+    .replace(/[\u0000-\u001f\u007f]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
 }
 
 function isoTime(value, field) {

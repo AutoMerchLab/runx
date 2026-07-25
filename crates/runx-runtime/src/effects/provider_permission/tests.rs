@@ -113,7 +113,7 @@ fn provider_env(grant_id: &str, scopes: &str) -> BTreeMap<String, String> {
         ),
         (
             PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
-            scopes.to_owned(),
+            encode_provider_scopes_env(&[scopes.to_owned()]).expect("scope transport"),
         ),
         (
             PROVIDER_PERMISSION_PRINCIPAL_REF_ENV.to_owned(),

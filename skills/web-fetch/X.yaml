@@ -38,6 +38,7 @@ runners:
         description: "Positive cap on response bytes read; a clipped read is flagged truncated."
     graph:
       name: web-fetch
+      result_from: [fetch]
       steps:
         - id: fetch
           label: fetch one allowlisted web source

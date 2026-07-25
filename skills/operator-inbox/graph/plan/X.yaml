@@ -56,6 +56,7 @@ runners:
         description: Existing action snapshot for import_action.
     graph:
       name: operator-inbox-plan-transition
+      result_from: [finalize]
       steps:
         - id: subjects
           inputs:

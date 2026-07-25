@@ -7,7 +7,7 @@ use super::HttpBatchInput;
 use super::auth::{RequestAuth, request_auth};
 use super::request::{RequestExecution, execute_one};
 use super::resolution::{allowed_hosts, estimated_size, json_u64, method, required_string};
-use super::{BatchMode, MAX_OUTPUT_BYTES, MAX_REQUESTS, invalid};
+use super::{BatchMode, MAX_HTTP_OUTPUT_BYTES, MAX_REQUESTS, invalid};
 use crate::RuntimeError;
 use crate::http::ReqwestHttpTransport;
 
@@ -56,9 +56,9 @@ impl BatchAccumulator {
                 .saturating_add(response.get("page_count").and_then(json_u64).unwrap_or(1));
         }
         self.output_bytes = self.output_bytes.saturating_add(estimated_size(&response)?);
-        if self.output_bytes > MAX_OUTPUT_BYTES {
+        if self.output_bytes > MAX_HTTP_OUTPUT_BYTES {
             return Err(invalid(format!(
-                "HTTP batch output exceeded {MAX_OUTPUT_BYTES} bytes"
+                "HTTP batch output exceeded {MAX_HTTP_OUTPUT_BYTES} bytes"
             )));
         }
         let status = response

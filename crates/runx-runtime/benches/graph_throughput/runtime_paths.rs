@@ -21,7 +21,7 @@ use runx_runtime::{
     PROVIDER_PERMISSION_PRINCIPAL_REF_ENV, ProviderPermissionEffect,
     RUNX_MAX_FANOUT_CONCURRENCY_ENV, RUNX_RECEIPT_DIR_ENV, Runtime, RuntimeEffectRegistry,
     RuntimeHttpError, RuntimeHttpRequest, RuntimeHttpResponse, RuntimeHttpTransport,
-    RuntimeOptions, SkillAdapter, SkillInvocation,
+    RuntimeOptions, SkillAdapter, SkillInvocation, encode_provider_scopes_env,
 };
 use tempfile::TempDir;
 
@@ -179,7 +179,7 @@ impl RuntimePathFixtures {
         );
         provider_options.env.insert(
             PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
-            "runtime:perf:write".to_owned(),
+            encode_provider_scopes_env(&["runtime:perf:write".to_owned()])?,
         );
         provider_options.env.insert(
             PROVIDER_PERMISSION_PRINCIPAL_REF_ENV.to_owned(),
@@ -284,7 +284,7 @@ impl RuntimePathFixtures {
 fn runtime_options() -> RuntimeOptions {
     RuntimeOptions {
         created_at: CREATED_AT.to_owned(),
-        ..RuntimeOptions::local_development()
+        ..RuntimeOptions::local_development(std::env::vars().collect())
     }
 }
 
@@ -476,7 +476,7 @@ fn benchmark_transport_error(message: impl Into<String>) -> RuntimeHttpError {
     }
 }
 
-fn require_success(output: runx_runtime::SkillOutput) -> Result<(), Box<dyn Error>> {
+fn require_success(output: runx_runtime::InvocationOutput) -> Result<(), Box<dyn Error>> {
     if output.succeeded() {
         return Ok(());
     }
@@ -516,6 +516,8 @@ fn write_modules(root: &Path) -> Result<(), std::io::Error> {
 fn javascript_invocation(root: &Path, inputs: JsonObject) -> SkillInvocation {
     SkillInvocation {
         skill_name: "runtime-perf-module".to_owned(),
+        step_id: None,
+        requirements: Default::default(),
         artifacts: None,
         allowed_tools: None,
         source: SkillSource {
@@ -526,8 +528,9 @@ fn javascript_invocation(root: &Path, inputs: JsonObject) -> SkillInvocation {
         inputs,
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: root.to_path_buf(),
-        env: RuntimeOptions::safe_process_env(),
+        env: std::env::vars().collect(),
         credential_delivery: CredentialDelivery::none(),
     }
 }
@@ -543,6 +546,7 @@ fn empty_source() -> SkillSource {
         cwd: None,
         timeout_seconds: None,
         input_mode: None,
+        environment: Default::default(),
         sandbox: None,
         server: None,
         tool: None,

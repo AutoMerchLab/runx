@@ -1,7 +1,6 @@
 use runx_contracts::JsonValue;
 use runx_core::policy::{
-    CwdPolicy, SandboxDeclaration, SandboxProfile, is_reserved_runx_sandbox_env_name,
-    normalize_sandbox_declaration,
+    CwdPolicy, SandboxDeclaration, SandboxProfile, normalize_sandbox_declaration,
 };
 
 use crate::ValidationError;
@@ -17,9 +16,18 @@ pub(super) fn validate_sandbox(
     let record = FIELDS.required_object(Some(record), "sandbox")?;
     let profile = required_sandbox_profile(record.get("profile"), "sandbox.profile")?;
     let cwd_policy = optional_cwd_policy(record.get("cwd_policy"))?;
-    let env_allowlist =
-        FIELDS.optional_string_array(record.get("env_allowlist"), "sandbox.env_allowlist")?;
-    validate_env_allowlist(env_allowlist.as_deref())?;
+    FIELDS.reject_unknown_fields(
+        record,
+        "sandbox",
+        &[
+            "approvedEscalation",
+            "cwd_policy",
+            "network",
+            "profile",
+            "require_enforcement",
+            "writable_paths",
+        ],
+    )?;
     let network = FIELDS.optional_bool(record.get("network"), "sandbox.network")?;
     let writable_paths = FIELDS
         .optional_string_array(record.get("writable_paths"), "sandbox.writable_paths")?
@@ -31,7 +39,6 @@ pub(super) fn validate_sandbox(
     let declaration = sandbox_declaration(
         &profile,
         cwd_policy.as_deref(),
-        env_allowlist.clone(),
         network,
         Some(writable_paths.clone()),
         require_enforcement,
@@ -40,7 +47,6 @@ pub(super) fn validate_sandbox(
     Ok(Some(SkillSandbox {
         profile: normalized.profile,
         cwd_policy: Some(normalized.cwd_policy),
-        env_allowlist: normalized.env_allowlist,
         network: Some(normalized.network),
         writable_paths: normalized.writable_paths,
         require_enforcement,
@@ -48,20 +54,6 @@ pub(super) fn validate_sandbox(
         approved_escalation: None,
         raw: record.clone(),
     }))
-}
-
-fn validate_env_allowlist(env_allowlist: Option<&[String]>) -> Result<(), ValidationError> {
-    let Some(env_allowlist) = env_allowlist else {
-        return Ok(());
-    };
-    for name in env_allowlist {
-        if is_reserved_runx_sandbox_env_name(name) {
-            return Err(FIELDS.validation_error(format!(
-                "sandbox.env_allowlist cannot include reserved runx environment variable {name}."
-            )));
-        }
-    }
-    Ok(())
 }
 
 fn required_sandbox_profile(
@@ -94,7 +86,6 @@ fn optional_cwd_policy(value: Option<&JsonValue>) -> Result<Option<String>, Vali
 fn sandbox_declaration(
     profile: &str,
     cwd_policy: Option<&str>,
-    env_allowlist: Option<Vec<String>>,
     network: Option<bool>,
     writable_paths: Option<Vec<String>>,
     require_enforcement: Option<bool>,
@@ -114,7 +105,7 @@ fn sandbox_declaration(
             Some("custom") => Some(CwdPolicy::Custom),
             Some(_) => return Err(FIELDS.validation_error("sandbox.cwd_policy is invalid.")),
         },
-        env_allowlist,
+        env_allowlist: None,
         network,
         writable_paths,
         require_enforcement,

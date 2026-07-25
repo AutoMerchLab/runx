@@ -344,6 +344,7 @@ runners:
         description: Zero-based pagination offset.
     graph:
       name: google-search-console-performance
+      result_from: [finalize]
       steps:
         - id: read
           tool: provider.read
@@ -414,6 +415,7 @@ runners:
         description: Expected request identity used to bind the supplied result.
     graph:
       name: google-search-console-normalize-performance
+      result_from: [finalize]
       steps:
         - id: normalize
           inputs:
@@ -448,6 +450,7 @@ runners:
     inputs: {}
     graph:
       name: google-search-console-sites
+      result_from: [read]
       steps:
         - id: read
           tool: provider.read
@@ -479,6 +482,7 @@ runners:
         description: Requested issue-message language.
     graph:
       name: google-search-console-inspect-url
+      result_from: [finalize]
       steps:
         - id: read
           tool: provider.read
@@ -534,6 +538,7 @@ runners:
         description: Exact Search Console property.
     graph:
       name: google-search-console-sitemaps
+      result_from: [read]
       steps:
         - id: read
           tool: provider.read
@@ -560,6 +565,7 @@ runners:
         description: Absolute HTTP(S) sitemap URL covered by the property.
     graph:
       name: google-search-console-plan-sitemap
+      result_from: [bind]
       steps:
         - id: prepare
           inputs:
@@ -602,6 +608,7 @@ runners:
         description: Stable UUID for this unchanged sitemap submission.
     graph:
       name: google-search-console-submit-sitemap
+      result_from: [finalize]
       steps:
         - id: digest
           tool: data.digest
@@ -694,6 +701,7 @@ runners:
         description: Operator rationale for the request.
     graph:
       name: google-search-console-plan-indexing
+      result_from: [classify]
       steps:
         - id: classify
           inputs:

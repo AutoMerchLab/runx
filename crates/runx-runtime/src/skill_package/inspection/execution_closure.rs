@@ -5,7 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
-use runx_contracts::JsonValue;
+use runx_contracts::{JsonValue, sha256_prefixed};
 use runx_parser::{GraphStep, SourceKind};
 use serde::Serialize;
 
@@ -16,6 +16,8 @@ struct ClosureAccumulator {
     components: BTreeSet<String>,
     skill_edges: BTreeSet<String>,
     direct_external_skill_edges: BTreeSet<DirectExternalSkillEdge>,
+    unresolved_skill_edges: BTreeSet<String>,
+    package_bindings: BTreeSet<ExecutionPackageBinding>,
     profiles: BTreeSet<String>,
     agent_acts: usize,
     declared_artifact: bool,
@@ -23,13 +25,27 @@ struct ClosureAccumulator {
 
 #[derive(Serialize)]
 struct ExecutionClosure {
+    closure_digest: String,
+    runtime_release: String,
+    fully_bound: bool,
     summary: String,
     components: Vec<String>,
     skill_edges: Vec<String>,
     direct_external_skill_edges: Vec<DirectExternalSkillEdge>,
+    unresolved_skill_edges: Vec<String>,
+    package_bindings: Vec<ExecutionPackageBinding>,
     agent_acts: u64,
     declared_artifact: bool,
     profiles: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct ExecutionPackageBinding {
+    skill: String,
+    runner: String,
+    package_digest: String,
+    source_path: String,
+    source_files: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -114,18 +130,25 @@ impl ExecutionClosureInspector {
     fn walk_runner(
         &mut self,
         loaded: Arc<LoadedSkillPackage>,
-        canonical_directory: PathBuf,
+        skill_directory: PathBuf,
         profile_path: String,
         runner_name: String,
         edge_depth: EdgeDepth,
         walk: &mut ExecutionWalkState<'_>,
     ) -> Result<(), String> {
-        if !walk
-            .visited
-            .insert((canonical_directory, runner_name.clone()))
-        {
+        if !walk.visited.insert((skill_directory, runner_name.clone())) {
             return Ok(());
         }
+        let package_root = canonical_directory(&loaded.package_root, "bound skill package")?;
+        walk.closure
+            .package_bindings
+            .insert(ExecutionPackageBinding {
+                skill: loaded.package.skill.name.clone(),
+                runner: runner_name.clone(),
+                package_digest: loaded.package.package_digest.clone(),
+                source_path: package_root.to_string_lossy().into_owned(),
+                source_files: loaded.package.source.files.keys().cloned().collect(),
+            });
         let runner = loaded
             .manifest()
             .and_then(|manifest| manifest.runners.get(&runner_name))
@@ -175,7 +198,10 @@ impl ExecutionClosureInspector {
                             static_external_name,
                             nested,
                         } = resolved;
-                        walk.closure.skill_edges.insert(edge);
+                        walk.closure.skill_edges.insert(edge.clone());
+                        if nested.is_none() {
+                            walk.closure.unresolved_skill_edges.insert(edge);
+                        }
                         if edge_depth.records_direct_edges() {
                             record_direct_external_skill_edge(
                                 static_external_name,
@@ -377,11 +403,21 @@ fn local_skill_load_error(
 
 fn serialize_closure(closure: ClosureAccumulator) -> Result<JsonValue, String> {
     let components = closure.components.into_iter().collect::<Vec<_>>();
+    let package_bindings = closure.package_bindings.into_iter().collect::<Vec<_>>();
+    let unresolved_skill_edges = closure
+        .unresolved_skill_edges
+        .into_iter()
+        .collect::<Vec<_>>();
     let output = ExecutionClosure {
+        closure_digest: execution_closure_digest(&package_bindings, &unresolved_skill_edges),
+        runtime_release: crate::EXECUTION_RUNTIME_RELEASE.to_owned(),
+        fully_bound: unresolved_skill_edges.is_empty(),
         summary: execution_summary(&components, closure.agent_acts, closure.declared_artifact),
         components,
         skill_edges: closure.skill_edges.into_iter().collect(),
         direct_external_skill_edges: closure.direct_external_skill_edges.into_iter().collect(),
+        unresolved_skill_edges,
+        package_bindings,
         agent_acts: u64::try_from(closure.agent_acts).unwrap_or(u64::MAX),
         declared_artifact: closure.declared_artifact,
         profiles: closure.profiles.into_iter().collect(),
@@ -390,6 +426,30 @@ fn serialize_closure(closure: ClosureAccumulator) -> Result<JsonValue, String> {
         .map_err(|error| format!("serializing execution closure: {error}"))?;
     serde_json::from_slice(&serialized)
         .map_err(|error| format!("projecting execution closure: {error}"))
+}
+
+fn execution_closure_digest(
+    package_bindings: &[ExecutionPackageBinding],
+    unresolved_skill_edges: &[String],
+) -> String {
+    let mut canonical = Vec::new();
+    canonical.extend_from_slice(b"runx.execution-closure.v1\0");
+    append_digest_field(&mut canonical, crate::EXECUTION_RUNTIME_RELEASE.as_bytes());
+    for binding in package_bindings {
+        append_digest_field(&mut canonical, binding.skill.as_bytes());
+        append_digest_field(&mut canonical, binding.runner.as_bytes());
+        append_digest_field(&mut canonical, binding.package_digest.as_bytes());
+    }
+    for edge in unresolved_skill_edges {
+        append_digest_field(&mut canonical, b"unresolved");
+        append_digest_field(&mut canonical, edge.as_bytes());
+    }
+    sha256_prefixed(&canonical)
+}
+
+fn append_digest_field(target: &mut Vec<u8>, value: &[u8]) {
+    target.extend_from_slice(&(value.len() as u64).to_be_bytes());
+    target.extend_from_slice(value);
 }
 
 fn registry_skill_name(reference: &str) -> Option<String> {

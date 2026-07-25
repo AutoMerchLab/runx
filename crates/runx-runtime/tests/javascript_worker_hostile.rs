@@ -101,7 +101,11 @@ fn javascript_worker_typed_failures_preserve_the_isolated_session()
         JsonValue::Bool(true),
     )]))?;
     assert_eq!(failed.status, InvocationStatus::Failure);
-    assert!(failed.stderr.contains("Math.random"));
+    assert!(
+        failed
+            .failure_message()
+            .is_some_and(|message| message.contains("Math.random"))
+    );
 
     let recovered = package.invoke(JsonObject::from([(
         "fail".to_owned(),
@@ -173,14 +177,22 @@ fn javascript_worker_hostile_promises_are_immediate_and_job_bounded()
     let pending = JavaScriptPackage::new("export default () => new Promise(() => {});")?;
     let output = pending.invoke(JsonObject::new())?;
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(output.stderr.contains("did not settle"));
+    assert!(
+        output
+            .failure_message()
+            .is_some_and(|message| message.contains("did not settle"))
+    );
 
     let storm = JavaScriptPackage::new(
         "export default () => { let value = Promise.resolve(0); for (let index = 0; index < 5000; index += 1) value = value.then(number => number + 1); return value; };",
     )?;
     let output = storm.invoke(JsonObject::new())?;
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(output.stderr.contains("job"));
+    assert!(
+        output
+            .failure_message()
+            .is_some_and(|message| message.contains("job"))
+    );
     Ok(())
 }
 
@@ -212,7 +224,19 @@ fn javascript_worker_hostile_input_and_output_bounds_fail_closed()
         "value".to_owned(),
         JsonValue::String("x".repeat((4 * 1024 * 1024) + 1)),
     )]);
-    assert!(echo.invoke(oversized_input).is_err());
+    let input_output = echo.invoke(oversized_input)?;
+    assert_eq!(input_output.status, InvocationStatus::Failure);
+    let input_limit = input_output
+        .metadata
+        .get(runx_runtime::adapter::EXECUTION_LIMITS_METADATA)
+        .and_then(JsonValue::as_object)
+        .and_then(|limits| limits.get("hit"))
+        .and_then(JsonValue::as_object)
+        .ok_or("worker input limit failure omitted structured metadata")?;
+    assert_eq!(
+        input_limit.get("id"),
+        Some(&JsonValue::String("javascript.input_bytes".to_owned()))
+    );
 
     let accepted_source = format!(
         "export default () => ({{ accepted: true }}); /*{}*/",
@@ -302,6 +326,10 @@ fn javascript_worker_hostile_undefined_output_is_rejected() -> Result<(), Box<dy
     let package = JavaScriptPackage::new("export default () => undefined;")?;
     let output = package.invoke(JsonObject::new())?;
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(output.stderr.contains("not JSON-compatible"));
+    assert!(
+        output
+            .failure_message()
+            .is_some_and(|message| message.contains("not JSON-compatible"))
+    );
     Ok(())
 }

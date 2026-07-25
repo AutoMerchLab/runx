@@ -4,7 +4,7 @@ target: ..
 runner: mcp-read
 env:
   RUNX_PROVIDER_PERMISSION_GRANT_ID: github-mcp-issue-triage-read
-  RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: repo.read
+  RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: '["repo.read"]'
 inputs:
   repository: runxhq/runx
   issue_number: "241"

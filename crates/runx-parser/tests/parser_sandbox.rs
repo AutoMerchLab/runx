@@ -93,7 +93,7 @@ source:
 }
 
 #[test]
-fn sandbox_env_allowlist_rejects_receipt_signing_env() -> Result<(), String> {
+fn sandbox_env_allowlist_is_rejected_in_favor_of_source_environment() -> Result<(), String> {
     let raw = parse_skill_markdown(
         r#"---
 name: cli-tool
@@ -104,7 +104,7 @@ source:
     profile: readonly
     env_allowlist:
       - PATH
-      - RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64
+      - PROVIDER_REGION
 ---
 # CLI tool
 "#,
@@ -113,43 +113,12 @@ source:
 
     let error = validate_skill(raw)
         .err()
-        .ok_or_else(|| "reserved env allowlist unexpectedly passed".to_owned())?;
+        .ok_or_else(|| "retired env allowlist unexpectedly passed".to_owned())?;
 
     assert!(
         error
             .to_string()
-            .contains("reserved runx environment variable RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64"),
-        "unexpected error: {error}"
-    );
-    Ok(())
-}
-
-#[test]
-fn sandbox_env_allowlist_rejects_runx_secret_like_env() -> Result<(), String> {
-    let raw = parse_skill_markdown(
-        r#"---
-name: cli-tool
-source:
-  type: cli-tool
-  command: node
-  sandbox:
-    profile: readonly
-    env_allowlist:
-      - RUNX_AGENT_API_KEY
----
-# CLI tool
-"#,
-    )
-    .map_err(|error| error.to_string())?;
-
-    let error = validate_skill(raw)
-        .err()
-        .ok_or_else(|| "reserved env allowlist unexpectedly passed".to_owned())?;
-
-    assert!(
-        error
-            .to_string()
-            .contains("reserved runx environment variable RUNX_AGENT_API_KEY"),
+            .contains("sandbox.env_allowlist is not supported"),
         "unexpected error: {error}"
     );
     Ok(())

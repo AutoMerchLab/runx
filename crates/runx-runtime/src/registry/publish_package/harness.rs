@@ -53,12 +53,16 @@ pub(super) fn stage_publish_harness(
 pub(super) fn run_publish_harness(
     orchestrator: &LocalOrchestrator,
     harness_path: &Path,
+    workspace_env: &BTreeMap<String, String>,
 ) -> Result<RegistryPublishHarnessReport, RegistryPublishPackageError> {
     let receipt_root = TempDirectory::create("runx-publish-harness")?;
+    let orchestrator = orchestrator.with_environment(publish_harness_env(
+        workspace_env,
+        &receipt_root.path().join("home"),
+    ));
     let request = PackageHarnessRequest {
         skill_path: harness_path.to_path_buf(),
         receipt_dir: Some(receipt_root.path().to_path_buf()),
-        env: Some(publish_harness_env(&receipt_root.path().join("home"))),
     };
     let report = orchestrator
         .run_package_harness(&request)
@@ -162,8 +166,11 @@ fn mark_executable_if_script(
     Ok(())
 }
 
-fn publish_harness_env(runx_home: &Path) -> BTreeMap<String, String> {
-    let mut env = crate::RuntimeOptions::safe_process_env();
+fn publish_harness_env(
+    workspace_env: &BTreeMap<String, String>,
+    runx_home: &Path,
+) -> BTreeMap<String, String> {
+    let mut env = workspace_env.clone();
     env.retain(|key, _| !key.starts_with("RUNX_HOSTED_"));
     env.remove("RUNX_AGENT_PROVIDER");
     env.remove("RUNX_AGENT_MODEL");
@@ -247,9 +254,18 @@ mod tests {
 
     #[test]
     fn harness_environment_removes_hosted_and_agent_credentials() {
-        let env = publish_harness_env(Path::new("/tmp/runx-publish-home"));
+        let workspace_env = BTreeMap::from([
+            ("RUNX_HOSTED_API_KEY".to_owned(), "hosted-secret".to_owned()),
+            ("RUNX_AGENT_API_KEY".to_owned(), "agent-secret".to_owned()),
+            ("HTTP_PROXY".to_owned(), "http://proxy.test".to_owned()),
+        ]);
+        let env = publish_harness_env(&workspace_env, Path::new("/tmp/runx-publish-home"));
         assert!(env.keys().all(|key| !key.starts_with("RUNX_HOSTED_")));
         assert!(!env.contains_key("RUNX_AGENT_API_KEY"));
+        assert_eq!(
+            env.get("HTTP_PROXY").map(String::as_str),
+            Some("http://proxy.test")
+        );
         assert!(env.contains_key(RUNX_RECEIPT_SIGN_KID_ENV));
     }
 }

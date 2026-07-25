@@ -110,7 +110,11 @@ fn provider_grant_listing_returns_only_bounded_authority_metadata() {
                 "grants": [{
                     "grant_id": "grant_slack_1",
                     "provider": "slack",
-                    "scopes": ["channel.post"],
+                    "scopes": [
+                        "channel.post",
+                        "https://provider.example/auth/custom.scope?mode=read,write",
+                        "opaque capability with spaces"
+                    ],
                     "status": "active",
                     "credential_material_bound": true
                 }]
@@ -131,7 +135,11 @@ fn provider_grant_listing_returns_only_bounded_authority_metadata() {
         vec![HostedProviderGrant {
             grant_id: "grant_slack_1".to_owned(),
             provider: "slack".to_owned(),
-            scopes: vec!["channel.post".to_owned()],
+            scopes: vec![
+                "channel.post".to_owned(),
+                "https://provider.example/auth/custom.scope?mode=read,write".to_owned(),
+                "opaque capability with spaces".to_owned(),
+            ],
             status: "active".to_owned(),
         }]
     );

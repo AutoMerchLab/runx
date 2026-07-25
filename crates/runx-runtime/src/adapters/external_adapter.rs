@@ -24,14 +24,14 @@ use runx_parser::{SkillExternalAdapterManifest, SkillSandbox, SkillSource, Sourc
 use thiserror::Error;
 
 use crate::RuntimeError;
-use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
-use crate::adapter_pipeline::{AdapterCapture, AdapterProjection};
+use crate::adapter::{InvocationOutput, InvocationStatus, SkillAdapter, SkillInvocation};
+use crate::adapter_pipeline::AdapterProjection;
+use crate::bytes::trim_ascii_whitespace;
 use crate::credentials::CredentialDelivery;
 use crate::process::{
     ProcessOutcome, ProcessSpec, ProcessStdin, STANDARD_PROCESS_OUTPUT_BYTES, run_process,
 };
 use crate::receipts::paths::RUNX_RECEIPT_DIR_ENV;
-use crate::redaction::trim_ascii_whitespace;
 use crate::sandbox::SandboxPlan;
 use crate::services::SandboxServices;
 use crate::time::now_iso8601;
@@ -94,7 +94,7 @@ where
         "external-adapter"
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         if request.source.source_type != runx_parser::SourceKind::ExternalAdapter {
             return Err(RuntimeError::UnsupportedAdapter {
                 adapter_type: request.source.source_type.as_str().to_owned(),
@@ -122,6 +122,7 @@ pub trait ExternalAdapterSupervisor {
         &self,
         manifest: &ExternalAdapterManifest,
         invocation: &ExternalAdapterInvocation,
+        runtime_environment: &BTreeMap<String, String>,
         credential_delivery: &CredentialDelivery,
     ) -> Result<ExternalAdapterProcessOutcome, ExternalAdapterSupervisorError>;
 }
@@ -131,12 +132,14 @@ impl ExternalAdapterSupervisor for ExternalAdapterProcessSupervisor {
         &self,
         manifest: &ExternalAdapterManifest,
         invocation: &ExternalAdapterInvocation,
+        runtime_environment: &BTreeMap<String, String>,
         credential_delivery: &CredentialDelivery,
     ) -> Result<ExternalAdapterProcessOutcome, ExternalAdapterSupervisorError> {
-        ExternalAdapterProcessSupervisor::invoke_with_delivery(
+        ExternalAdapterProcessSupervisor::invoke_with_delivery_and_environment(
             self,
             manifest,
             invocation,
+            runtime_environment,
             credential_delivery,
         )
     }
@@ -189,6 +192,8 @@ pub enum ExternalAdapterSkillAdapterError {
         #[source]
         source: serde_json::Error,
     },
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
     #[error(transparent)]
     Supervisor(#[from] ExternalAdapterSupervisorError),
 }
@@ -283,13 +288,33 @@ impl ExternalAdapterProcessSupervisor {
         manifest: &ExternalAdapterManifest,
         invocation: &ExternalAdapterInvocation,
     ) -> Result<ExternalAdapterProcessOutcome, ExternalAdapterSupervisorError> {
-        self.invoke_with_delivery(manifest, invocation, &CredentialDelivery::none())
+        self.invoke_with_delivery_and_environment(
+            manifest,
+            invocation,
+            &BTreeMap::new(),
+            &CredentialDelivery::none(),
+        )
     }
 
     pub fn invoke_with_delivery(
         &self,
         manifest: &ExternalAdapterManifest,
         invocation: &ExternalAdapterInvocation,
+        credential_delivery: &CredentialDelivery,
+    ) -> Result<ExternalAdapterProcessOutcome, ExternalAdapterSupervisorError> {
+        self.invoke_with_delivery_and_environment(
+            manifest,
+            invocation,
+            &BTreeMap::new(),
+            credential_delivery,
+        )
+    }
+
+    pub fn invoke_with_delivery_and_environment(
+        &self,
+        manifest: &ExternalAdapterManifest,
+        invocation: &ExternalAdapterInvocation,
+        runtime_environment: &BTreeMap<String, String>,
         credential_delivery: &CredentialDelivery,
     ) -> Result<ExternalAdapterProcessOutcome, ExternalAdapterSupervisorError> {
         credential_delivery
@@ -304,7 +329,7 @@ impl ExternalAdapterProcessSupervisor {
             stderr,
             duration_ms,
             cleanup_errors: _cleanup_errors,
-        } = run_external_adapter_process(command, manifest, invocation)?;
+        } = run_external_adapter_process(command, manifest, invocation, runtime_environment)?;
         if timed_out {
             return Err(ExternalAdapterSupervisorError::TimedOut {
                 timeout_ms: manifest.timeouts.invocation_ms,
@@ -341,15 +366,19 @@ fn invoke_external_adapter_skill<R, S>(
     request: SkillInvocation,
     manifest_resolver: &R,
     supervisor: &S,
-) -> Result<SkillOutput, ExternalAdapterSkillAdapterError>
+) -> Result<InvocationOutput, ExternalAdapterSkillAdapterError>
 where
     R: ExternalAdapterManifestResolver,
     S: ExternalAdapterSupervisor,
 {
     let manifest = manifest_resolver.resolve_manifest(&request)?;
     let invocation = skill_invocation_contract(&request, &manifest)?;
-    let outcome =
-        supervisor.invoke_external_adapter(&manifest, &invocation, &request.credential_delivery)?;
+    let outcome = supervisor.invoke_external_adapter(
+        &manifest,
+        &invocation,
+        &request.env,
+        &request.credential_delivery,
+    )?;
     skill_output_from_outcome(outcome, &request.credential_delivery)
 }
 
@@ -393,6 +422,10 @@ fn skill_invocation_contract(
     request: &SkillInvocation,
     manifest: &ExternalAdapterManifest,
 ) -> Result<ExternalAdapterInvocation, ExternalAdapterSkillAdapterError> {
+    let environment = crate::execution_environment::resolve_declared_environment(
+        &request.requirements,
+        &request.env,
+    )?;
     let invocation_id = format!(
         "external_adapter.{}.invoke",
         identifier_segment(&request.skill_name)
@@ -420,7 +453,12 @@ fn skill_invocation_contract(
             .get(RUNX_RECEIPT_DIR_ENV)
             .cloned()
             .map(Into::into),
-        env: invocation_env(&request.env),
+        env: (!environment.is_empty()).then(|| {
+            environment
+                .into_iter()
+                .map(|(name, value)| (name, JsonValue::String(value)))
+                .collect()
+        }),
         credential_refs: external_adapter_credential_refs(&request.credential_delivery),
         metadata: None,
     })
@@ -472,29 +510,10 @@ fn invocation_cwd(request: &SkillInvocation) -> String {
         .into_owned()
 }
 
-fn invocation_env(env: &BTreeMap<String, String>) -> Option<JsonObject> {
-    let scoped_env = env
-        .iter()
-        .filter(|(key, _value)| is_external_adapter_control_env(key))
-        .map(|(key, value)| (key.clone(), JsonValue::String(value.clone())))
-        .collect::<JsonObject>();
-    (!scoped_env.is_empty()).then_some(scoped_env)
-}
-
-fn is_external_adapter_control_env(key: &str) -> bool {
-    if !key.starts_with("RUNX_") {
-        return false;
-    }
-    let upper = key.to_ascii_uppercase();
-    !["SECRET", "TOKEN", "KEY", "PASSWORD", "CREDENTIAL"]
-        .iter()
-        .any(|marker| upper.contains(marker))
-}
-
 fn skill_output_from_outcome(
     outcome: ExternalAdapterProcessOutcome,
     credential_delivery: &CredentialDelivery,
-) -> Result<SkillOutput, ExternalAdapterSkillAdapterError> {
+) -> Result<InvocationOutput, ExternalAdapterSkillAdapterError> {
     let response = outcome.response;
     let status = runtime_status(&response.status);
     let stdout = response_stdout(&response)?;
@@ -517,14 +536,8 @@ fn skill_output_from_outcome(
     }
     add_credential_delivery_metadata(&mut metadata, credential_delivery)?;
 
-    Ok(
-        AdapterProjection::from_duration_ms(outcome.duration_ms).output(
-            status,
-            AdapterCapture::new(stdout, stderr),
-            exit_code,
-            metadata,
-        ),
-    )
+    Ok(AdapterProjection::from_duration_ms(outcome.duration_ms)
+        .process_output(status, stdout, stderr, exit_code, metadata))
 }
 
 fn add_credential_delivery_metadata(
@@ -708,8 +721,10 @@ fn run_external_adapter_process(
     command: &str,
     manifest: &ExternalAdapterManifest,
     invocation: &ExternalAdapterInvocation,
+    runtime_environment: &BTreeMap<String, String>,
 ) -> Result<ProcessOutcome, ExternalAdapterSupervisorError> {
-    let sandbox = external_adapter_sandbox_plan(command, manifest, invocation)?;
+    let sandbox =
+        external_adapter_sandbox_plan(command, manifest, invocation, runtime_environment)?;
     let spec = ProcessSpec::new(
         "external adapter",
         sandbox.command.clone(),
@@ -732,13 +747,37 @@ fn external_adapter_sandbox_plan(
     command: &str,
     manifest: &ExternalAdapterManifest,
     invocation: &ExternalAdapterInvocation,
+    runtime_environment: &BTreeMap<String, String>,
 ) -> Result<SandboxPlan, ExternalAdapterSupervisorError> {
     validate_external_adapter_sandbox_intent(manifest)?;
     let skill_directory = external_adapter_skill_directory(manifest, invocation)?;
-    let base_env = process_env(invocation)?;
-    let source = external_adapter_sandbox_source(command, manifest, &base_env)?;
+    let mut base_env = runtime_environment.clone();
+    let mut declared_environment = Vec::new();
+    if let Some(environment) = invocation.env.as_ref() {
+        for (name, value) in environment {
+            let JsonValue::String(value) = value else {
+                return Err(ExternalAdapterSupervisorError::InvalidEnvValue { key: name.clone() });
+            };
+            declared_environment.push(name.clone());
+            base_env.insert(name.clone(), value.clone());
+        }
+    }
+    if let Some(receipt_dir) = invocation.receipt_dir.as_ref() {
+        base_env.insert(RUNX_RECEIPT_DIR_ENV.to_owned(), receipt_dir.to_string());
+    }
+    let source = external_adapter_sandbox_source(command, manifest)?;
+    let environment = runx_contracts::EnvironmentRequirements {
+        required: declared_environment,
+        optional: Vec::new(),
+    };
     SandboxServices
-        .process_plan(&source, &skill_directory, &JsonObject::new(), &base_env)
+        .process_plan(
+            &source,
+            &environment,
+            &skill_directory,
+            &JsonObject::new(),
+            &base_env,
+        )
         .map_err(|error| ExternalAdapterSupervisorError::SandboxDenied {
             message: error.to_string(),
         })
@@ -794,7 +833,6 @@ fn validate_external_adapter_sandbox_intent(
 fn external_adapter_sandbox_source(
     command: &str,
     manifest: &ExternalAdapterManifest,
-    base_env: &BTreeMap<String, String>,
 ) -> Result<SkillSource, ExternalAdapterSupervisorError> {
     Ok(SkillSource {
         act: None,
@@ -807,7 +845,7 @@ fn external_adapter_sandbox_source(
         cwd: None,
         timeout_seconds: None,
         input_mode: None,
-        sandbox: Some(external_adapter_skill_sandbox(manifest, base_env)?),
+        sandbox: Some(external_adapter_skill_sandbox(manifest)?),
         server: None,
         tool: None,
         arguments: None,
@@ -819,19 +857,18 @@ fn external_adapter_sandbox_source(
         graph: None,
         external_adapter: None,
         thread_outbox_provider: None,
+        environment: Default::default(),
         raw: JsonObject::new(),
     })
 }
 
 fn external_adapter_skill_sandbox(
     manifest: &ExternalAdapterManifest,
-    base_env: &BTreeMap<String, String>,
 ) -> Result<SkillSandbox, ExternalAdapterSupervisorError> {
     let intent = &manifest.sandbox_intent;
     Ok(SkillSandbox {
         profile: external_adapter_sandbox_profile(intent.profile.as_str())?,
         cwd_policy: Some(external_adapter_cwd_policy(intent.cwd_policy.as_str())?),
-        env_allowlist: Some(base_env.keys().cloned().collect()),
         network: Some(intent.network),
         writable_paths: intent
             .writable_paths
@@ -871,35 +908,6 @@ fn external_adapter_cwd_policy(
             message: format!("unsupported external adapter cwd policy '{cwd_policy}'"),
         }),
     }
-}
-
-fn process_env(
-    invocation: &ExternalAdapterInvocation,
-) -> Result<BTreeMap<String, String>, ExternalAdapterSupervisorError> {
-    let mut env = [
-        "PATH",
-        "SystemRoot",
-        "PATHEXT",
-        "HOME",
-        "TMPDIR",
-        "TMP",
-        "TEMP",
-    ]
-    .into_iter()
-    .filter_map(|key| crate::services::process_env_value(key).map(|value| (key.to_owned(), value)))
-    .collect::<BTreeMap<_, _>>();
-    if let Some(scoped_env) = invocation.env.as_ref() {
-        for (key, value) in scoped_env {
-            let JsonValue::String(value) = value else {
-                return Err(ExternalAdapterSupervisorError::InvalidEnvValue { key: key.clone() });
-            };
-            env.insert(key.clone(), value.clone());
-        }
-    }
-    if let Some(receipt_dir) = invocation.receipt_dir.as_ref() {
-        env.insert("RUNX_RECEIPT_DIR".to_owned(), receipt_dir.to_string());
-    }
-    Ok(env)
 }
 
 fn invocation_stdin(

@@ -22,6 +22,7 @@ runners:
         description: Provider-owned price and settlement-family policy.
     graph:
       name: charge-price
+      result_from: [price]
       steps:
         - id: price
           tool: payment.charge_price

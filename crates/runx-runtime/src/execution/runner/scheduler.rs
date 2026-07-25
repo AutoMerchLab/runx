@@ -1,32 +1,37 @@
 use std::collections::BTreeMap;
+use std::num::NonZeroUsize;
 
 use runx_parser::GraphStep;
 
 use super::RUNX_MAX_FANOUT_CONCURRENCY_ENV;
 use crate::effects::RuntimeEffectRegistry;
 
-const DEFAULT_MAX_FANOUT_CONCURRENCY: usize = 1;
 const HARD_MAX_FANOUT_CONCURRENCY: usize = 64;
 
 pub(super) struct FanoutScheduler {
     max_concurrency: usize,
 }
 
-pub(super) enum FanoutSchedule<'a> {
-    Serial(Vec<ScheduledFanoutStep<'a>>),
-    Parallel(ParallelFanoutSchedule<'a>),
+pub(super) enum FanoutSchedule<T> {
+    Serial(Vec<T>),
+    Parallel(ParallelFanoutSchedule<T>),
 }
 
-pub(super) struct ParallelFanoutSchedule<'a> {
-    pub(super) steps: Vec<ScheduledFanoutStep<'a>>,
+pub(super) struct ParallelFanoutSchedule<T> {
+    pub(super) steps: Vec<T>,
     pub(super) max_concurrency: usize,
 }
 
-#[derive(Clone, Copy)]
-pub(super) struct ScheduledFanoutStep<'a> {
-    pub(super) step_id: &'a str,
-    pub(super) attempt: u32,
-    pub(super) parallel_limit: Option<usize>,
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum ParallelWidth {
+    Bounded(NonZeroUsize),
+    Unbounded,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(super) enum Parallelism {
+    Serial,
+    Isolated(ParallelWidth),
 }
 
 impl FanoutScheduler {
@@ -36,31 +41,32 @@ impl FanoutScheduler {
         }
     }
 
-    pub(super) fn schedule<'a>(&self, steps: Vec<ScheduledFanoutStep<'a>>) -> FanoutSchedule<'a> {
+    pub(super) fn can_parallelize(&self, step_count: usize) -> bool {
+        self.max_concurrency > 1 && step_count > 1
+    }
+
+    pub(super) fn schedule<T>(
+        &self,
+        steps: Vec<T>,
+        parallelism: impl Fn(&T) -> Parallelism,
+    ) -> FanoutSchedule<T> {
         if self.max_concurrency <= 1 || steps.len() <= 1 {
             return FanoutSchedule::Serial(steps);
         }
-        let Some(step_limit) = steps.iter().try_fold(usize::MAX, |limit, step| {
-            step.parallel_limit.map(|step_limit| limit.min(step_limit))
-        }) else {
-            return FanoutSchedule::Serial(steps);
-        };
+        let mut schedule_limit = self.max_concurrency;
+        for step in &steps {
+            match parallelism(step) {
+                Parallelism::Serial => return FanoutSchedule::Serial(steps),
+                Parallelism::Isolated(ParallelWidth::Bounded(width)) => {
+                    schedule_limit = schedule_limit.min(width.get());
+                }
+                Parallelism::Isolated(ParallelWidth::Unbounded) => {}
+            }
+        }
         FanoutSchedule::Parallel(ParallelFanoutSchedule {
             steps,
-            max_concurrency: self.max_concurrency.min(step_limit),
+            max_concurrency: schedule_limit,
         })
-    }
-}
-
-pub(super) fn scheduled_step<'a>(
-    step_id: &'a str,
-    attempt: u32,
-    parallel_limit: Option<usize>,
-) -> ScheduledFanoutStep<'a> {
-    ScheduledFanoutStep {
-        step_id,
-        attempt,
-        parallel_limit,
     }
 }
 
@@ -75,8 +81,18 @@ pub(super) fn configured_max_concurrency(env: &BTreeMap<String, String>) -> usiz
     env.get(RUNX_MAX_FANOUT_CONCURRENCY_ENV)
         .and_then(|value| value.parse::<usize>().ok())
         .filter(|value| *value > 0)
-        .unwrap_or(DEFAULT_MAX_FANOUT_CONCURRENCY)
+        .unwrap_or_else(default_max_fanout_concurrency)
         .min(HARD_MAX_FANOUT_CONCURRENCY)
+}
+
+fn default_max_fanout_concurrency() -> usize {
+    std::thread::available_parallelism()
+        .map(NonZeroUsize::get)
+        .map_or(1, cap_platform_parallelism)
+}
+
+fn cap_platform_parallelism(available: usize) -> usize {
+    available.clamp(1, HARD_MAX_FANOUT_CONCURRENCY)
 }
 
 #[cfg(test)]
@@ -84,10 +100,15 @@ mod tests {
     use super::*;
 
     #[test]
-    fn defaults_to_serial_fanout() {
+    fn defaults_to_available_bounded_parallelism() {
         assert_eq!(
             configured_max_concurrency(&BTreeMap::new()),
-            DEFAULT_MAX_FANOUT_CONCURRENCY
+            default_max_fanout_concurrency()
+        );
+        assert_eq!(cap_platform_parallelism(8), 8);
+        assert_eq!(
+            cap_platform_parallelism(usize::MAX),
+            HARD_MAX_FANOUT_CONCURRENCY
         );
     }
 
@@ -110,19 +131,11 @@ mod tests {
             max_concurrency: HARD_MAX_FANOUT_CONCURRENCY,
         };
         let steps = vec![
-            ScheduledFanoutStep {
-                step_id: "a",
-                attempt: 1,
-                parallel_limit: Some(HARD_MAX_FANOUT_CONCURRENCY),
-            },
-            ScheduledFanoutStep {
-                step_id: "b",
-                attempt: 1,
-                parallel_limit: None,
-            },
+            Parallelism::Isolated(ParallelWidth::Unbounded),
+            Parallelism::Serial,
         ];
         assert!(matches!(
-            scheduler.schedule(steps),
+            scheduler.schedule(steps, |step| *step),
             FanoutSchedule::Serial(_)
         ));
     }
@@ -132,18 +145,15 @@ mod tests {
         let scheduler = FanoutScheduler {
             max_concurrency: HARD_MAX_FANOUT_CONCURRENCY,
         };
-        let schedule = scheduler.schedule(vec![
-            ScheduledFanoutStep {
-                step_id: "a",
-                attempt: 1,
-                parallel_limit: Some(4),
-            },
-            ScheduledFanoutStep {
-                step_id: "b",
-                attempt: 1,
-                parallel_limit: Some(8),
-            },
-        ]);
+        let four = NonZeroUsize::new(4).expect("non-zero fixture width");
+        let eight = NonZeroUsize::new(8).expect("non-zero fixture width");
+        let schedule = scheduler.schedule(
+            vec![
+                Parallelism::Isolated(ParallelWidth::Bounded(four)),
+                Parallelism::Isolated(ParallelWidth::Bounded(eight)),
+            ],
+            |step| *step,
+        );
         assert!(matches!(
             schedule,
             FanoutSchedule::Parallel(ParallelFanoutSchedule {

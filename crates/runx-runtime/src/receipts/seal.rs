@@ -4,12 +4,11 @@
 use std::collections::BTreeMap;
 
 use crate::adapter::{
-    CONTRACT_VERIFICATION_METADATA, CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA, SkillOutput,
+    CONTRACT_VERIFICATION_METADATA, CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA,
+    EXECUTION_LIMITS_METADATA, InvocationOutput,
 };
 use crate::effects::{RuntimeEffectRegistry, effect_verification_refs};
-use crate::execution::output_projection::{
-    StepOutputProjection, StepOutputRefs, project_step_output,
-};
+use crate::execution::output_projection::{StepOutputRefs, project_step_output};
 use crate::{RuntimeError, StepRun};
 use runx_contracts::fingerprint::sha256_hex;
 use runx_contracts::schema::NonEmptyString;
@@ -38,7 +37,7 @@ pub fn step_receipt(
     graph_name: &str,
     step_id: &str,
     attempt: u32,
-    output: &SkillOutput,
+    output: &InvocationOutput,
     created_at: &str,
 ) -> Result<Receipt, RuntimeError> {
     step_receipt_with_disposition_and_policy(
@@ -53,7 +52,7 @@ pub fn step_receipt_with_signature_policy(
     graph_name: &str,
     step_id: &str,
     attempt: u32,
-    output: &SkillOutput,
+    output: &InvocationOutput,
     created_at: &str,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
 ) -> Result<Receipt, RuntimeError> {
@@ -69,7 +68,7 @@ pub fn step_receipt_with_authority_grant_refs(
     graph_name: &str,
     step_id: &str,
     attempt: u32,
-    output: &SkillOutput,
+    output: &InvocationOutput,
     authority_grant_refs: Vec<Reference>,
     created_at: &str,
 ) -> Result<Receipt, RuntimeError> {
@@ -78,7 +77,9 @@ pub fn step_receipt_with_authority_grant_refs(
         StepReceiptWithDisposition::with_default_closure(
             graph_name, step_id, attempt, output, created_at,
         ),
-        &projection,
+        projection.refs,
+        &[],
+        &[],
         authority_grant_refs,
         Vec::new(),
         None,
@@ -90,7 +91,7 @@ pub(crate) struct StepReceiptWithDisposition<'a> {
     pub(crate) graph_name: &'a str,
     pub(crate) step_id: &'a str,
     pub(crate) attempt: u32,
-    pub(crate) output: &'a SkillOutput,
+    pub(crate) output: &'a InvocationOutput,
     pub(crate) created_at: &'a str,
     pub(crate) disposition: ClosureDisposition,
     pub(crate) reason_code: String,
@@ -106,7 +107,7 @@ impl<'a> StepReceiptWithDisposition<'a> {
         graph_name: &'a str,
         step_id: &'a str,
         attempt: u32,
-        output: &'a SkillOutput,
+        output: &'a InvocationOutput,
         created_at: &'a str,
     ) -> Self {
         let StepSealClosure {
@@ -134,7 +135,9 @@ pub(crate) fn step_receipt_with_disposition_and_policy(
     let projection = project_step_output(params.output);
     step_receipt_with_disposition_projection_authority_and_policy(
         params,
-        &projection,
+        projection.refs,
+        &[],
+        &[],
         Vec::new(),
         Vec::new(),
         None,
@@ -144,7 +147,9 @@ pub(crate) fn step_receipt_with_disposition_and_policy(
 
 fn step_receipt_with_disposition_projection_authority_and_policy(
     params: StepReceiptWithDisposition<'_>,
-    projection: &StepOutputProjection,
+    projection_refs: StepOutputRefs,
+    child_receipts: &[Receipt],
+    descendant_receipts: &[Receipt],
     authority_grant_refs: Vec<Reference>,
     authority_scope_refs: Vec<Reference>,
     receipt_metadata: Option<JsonObject>,
@@ -160,7 +165,7 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
         reason_code,
         summary,
     } = params;
-    let output_refs = output_refs(output, &projection.refs);
+    let output_refs = output_refs(output, projection_refs);
     let verification = contract_verification_criteria(&output.metadata)?;
     let act = RuntimeAct::observation(step_id)
         .with_verified_criteria(verification.criteria.clone(), verification.bindings.clone())
@@ -171,7 +176,7 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
             performed_at: created_at,
             refs: &output_refs,
         });
-    let seal_criterion = process_exit_criterion(output, &output_refs);
+    let seal_criterion = step_outcome_criterion(output, &output_refs);
     let mut seal_criteria = vec![seal_criterion];
     seal_criteria.extend(verification.bindings);
     let seal = seal(disposition, reason_code, summary, created_at, seal_criteria);
@@ -190,7 +195,7 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
         decisions,
         acts: vec![act],
         seal,
-        children: Vec::new(),
+        children: child_receipts.iter().map(child_receipt_reference).collect(),
         sync_points: Vec::new(),
         signals: output_refs.signal_refs,
         authority_grant_refs,
@@ -199,9 +204,33 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
         previous: None,
     });
     bind_step_output_identity(&mut receipt, output)?;
-    receipt.metadata = receipt_metadata;
+    receipt.metadata = receipt_metadata_with_execution_limits(receipt_metadata, output)?;
     seal_receipt_unvalidated(&mut receipt, signature_policy)?;
+    if !child_receipts.is_empty() {
+        validate_receipt_tree_with_policy(
+            &receipt,
+            child_receipts.iter().chain(descendant_receipts),
+            signature_policy,
+        )?;
+    }
     Ok(receipt)
+}
+
+fn receipt_metadata_with_execution_limits(
+    receipt_metadata: Option<JsonObject>,
+    output: &InvocationOutput,
+) -> Result<Option<JsonObject>, RuntimeError> {
+    let Some(limits) = output.metadata.get(EXECUTION_LIMITS_METADATA) else {
+        return Ok(receipt_metadata);
+    };
+    if !matches!(limits, JsonValue::Object(_)) {
+        return Err(RuntimeError::ReceiptInvalid {
+            message: "execution_limits metadata must be an object".to_owned(),
+        });
+    }
+    let mut metadata = receipt_metadata.unwrap_or_default();
+    metadata.insert(EXECUTION_LIMITS_METADATA.to_owned(), limits.clone());
+    Ok(Some(metadata))
 }
 
 /// The single step-receipt seal. Every runtime step (regular skill, tool,
@@ -214,12 +243,19 @@ pub(crate) struct StepSeal<'a> {
     pub(crate) graph_name: &'a str,
     pub(crate) step_id: &'a str,
     pub(crate) attempt: u32,
-    pub(crate) output: &'a SkillOutput,
-    pub(crate) projection: &'a StepOutputProjection,
+    pub(crate) output: &'a InvocationOutput,
+    pub(crate) projection_refs: StepOutputRefs,
     pub(crate) created_at: &'a str,
     pub(crate) authority_grant_refs: Vec<Reference>,
     pub(crate) authority_scope_refs: Vec<Reference>,
     pub(crate) operator_refs: Vec<Reference>,
+    /// Direct child receipts for a composed step such as a nested graph. The
+    /// step receipt commits their ids and digests; their descendants remain
+    /// reachable through the child receipt tree.
+    pub(crate) child_receipts: &'a [Receipt],
+    /// All receipts below `child_receipts`, supplied only to resolve and
+    /// validate the complete tree. They are not direct children of this step.
+    pub(crate) descendant_receipts: &'a [Receipt],
     pub(crate) closure: Option<StepSealClosure>,
     /// Runtime-authored, public receipt metadata. Adapter-owned `output.metadata`
     /// is deliberately not copied wholesale across this trust boundary.
@@ -238,10 +274,10 @@ impl StepSealClosure {
     /// The process-exit default closure derived from the output: `Closed`/`Failed`
     /// by exit status, the matching `process_*` reason code, and a generic
     /// completion summary. The single source of this derivation.
-    pub(crate) fn default_for(output: &SkillOutput, step_id: &str) -> Self {
+    pub(crate) fn default_for(output: &InvocationOutput, step_id: &str) -> Self {
         let disposition = disposition(output);
         Self {
-            reason_code: process_reason_code(&disposition),
+            reason_code: step_reason_code(&disposition),
             summary: format!("step {step_id} completed"),
             disposition,
         }
@@ -257,11 +293,13 @@ pub(crate) fn seal_step(
         step_id,
         attempt,
         output,
-        projection,
+        mut projection_refs,
         created_at,
         authority_grant_refs,
         authority_scope_refs,
         operator_refs,
+        child_receipts,
+        descendant_receipts,
         closure,
         receipt_metadata,
     } = params;
@@ -270,19 +308,14 @@ pub(crate) fn seal_step(
         reason_code,
         summary,
     } = closure.unwrap_or_else(|| StepSealClosure::default_for(output, step_id));
-    let mut projection = StepOutputProjection {
-        outputs: projection.outputs.clone(),
-        claim: projection.claim.clone(),
-        refs: projection.refs.clone(),
-    };
     for reference in operator_refs {
         if reference.reference_type == ReferenceType::Artifact {
-            projection.refs.artifact_refs.push(reference.clone());
+            projection_refs.artifact_refs.push(reference.clone());
         } else {
-            projection.refs.artifact_refs.push(reference.clone());
-            projection.refs.verification_refs.push(reference.clone());
+            projection_refs.artifact_refs.push(reference.clone());
+            projection_refs.verification_refs.push(reference.clone());
         }
-        projection.refs.evidence_refs.push(reference);
+        projection_refs.evidence_refs.push(reference);
     }
     step_receipt_with_disposition_projection_authority_and_policy(
         StepReceiptWithDisposition {
@@ -295,7 +328,9 @@ pub(crate) fn seal_step(
             reason_code,
             summary,
         },
-        &projection,
+        projection_refs,
+        child_receipts,
+        descendant_receipts,
         authority_grant_refs,
         authority_scope_refs,
         receipt_metadata,
@@ -303,11 +338,14 @@ pub(crate) fn seal_step(
     )
 }
 
-/// The single `process_exit` criterion binding a step receipt seals on, derived
-/// from the skill output and its reference set.
-fn process_exit_criterion(output: &SkillOutput, output_refs: &StepOutputRefs) -> CriterionBinding {
+/// The single runtime-outcome criterion a step receipt seals on, independent
+/// of whether the producer was a process, native value, approval, or graph.
+fn step_outcome_criterion(
+    output: &InvocationOutput,
+    output_refs: &StepOutputRefs,
+) -> CriterionBinding {
     CriterionBinding {
-        criterion_id: "process_exit".into(),
+        criterion_id: "step_outcome".into(),
         status: if output.succeeded() {
             CriterionStatus::Verified
         } else {
@@ -517,7 +555,7 @@ pub fn graph_receipt(
     graph_receipt_with_disposition(
         graph_name,
         steps,
-        sync_points,
+        &sync_points,
         created_at,
         ClosureDisposition::Closed,
         "graph_closed".to_owned(),
@@ -535,7 +573,7 @@ pub fn graph_receipt_with_signature_policy(
     graph_receipt_with_effects_and_signature_policy(
         graph_name,
         steps,
-        sync_points,
+        &sync_points,
         created_at,
         RuntimeEffectRegistry::default(),
         signature_policy,
@@ -545,7 +583,7 @@ pub fn graph_receipt_with_signature_policy(
 pub(crate) fn graph_receipt_with_effects_and_signature_policy(
     graph_name: &str,
     steps: &mut [StepRun],
-    sync_points: Vec<FanoutReceiptSyncPoint>,
+    sync_points: &[FanoutReceiptSyncPoint],
     created_at: &str,
     effects: RuntimeEffectRegistry,
     signature_policy: RuntimeReceiptSignaturePolicy<'_>,
@@ -568,7 +606,7 @@ pub(crate) fn graph_receipt_with_effects_and_signature_policy(
 pub(crate) fn graph_receipt_with_disposition(
     graph_name: &str,
     steps: &mut [StepRun],
-    sync_points: Vec<FanoutReceiptSyncPoint>,
+    sync_points: &[FanoutReceiptSyncPoint],
     created_at: &str,
     disposition: ClosureDisposition,
     reason_code: String,
@@ -598,7 +636,7 @@ pub(crate) struct GraphClosure {
 pub(crate) fn graph_receipt_with_disposition_and_policy(
     graph_name: &str,
     steps: &mut [StepRun],
-    sync_points: Vec<FanoutReceiptSyncPoint>,
+    sync_points: &[FanoutReceiptSyncPoint],
     created_at: &str,
     closure: GraphClosure,
     _effects: RuntimeEffectRegistry,
@@ -614,15 +652,18 @@ pub(crate) fn graph_receipt_with_disposition_and_policy(
     // id and signed-body digest. Children stay immutable and reusable instead
     // of acquiring one post-hoc parent link.
     let mut receipt =
-        build_graph_receipt(graph_name, child_refs, &sync_points, created_at, &closure);
+        build_graph_receipt(graph_name, child_refs, sync_points, created_at, &closure);
     bind_graph_operator_refs(&mut receipt, steps);
     seal_receipt_unvalidated(&mut receipt, signature_policy)?;
 
     validate_receipt_tree_with_policy(
         &receipt,
-        current_child_indexes
-            .iter()
-            .map(|index| &steps[*index].receipt),
+        current_child_indexes.iter().flat_map(|index| {
+            steps[*index]
+                .nested_receipts
+                .iter()
+                .chain(std::iter::once(&steps[*index].receipt))
+        }),
         signature_policy,
     )?;
     Ok(receipt)
@@ -712,24 +753,29 @@ fn build_graph_receipt(
 
 fn bind_step_output_identity(
     receipt: &mut Receipt,
-    output: &SkillOutput,
+    output: &InvocationOutput,
 ) -> Result<(), RuntimeError> {
-    let stdout = match serde_json::from_str::<JsonValue>(&output.stdout) {
-        Ok(value) => {
-            canonical_stable_json(&value).map_err(|error| RuntimeError::ReceiptInvalid {
-                message: error.to_string(),
-            })?
-        }
-        Err(_) => output.stdout.clone(),
-    };
-    let material = format!(
-        "exit_code={:?}\nstdout_bytes={}\n{}\nstderr_bytes={}\n{}",
-        output.exit_code,
-        stdout.len(),
-        stdout,
-        output.stderr.len(),
-        output.stderr,
-    );
+    let diagnostics = serde_json::to_value(&output.diagnostics)
+        .and_then(serde_json::from_value)
+        .map_err(|source| RuntimeError::json("serializing invocation diagnostics", source))?;
+    let material = canonical_stable_json(&JsonValue::Object(JsonObject::from([
+        (
+            "status".to_owned(),
+            JsonValue::String(
+                if output.succeeded() {
+                    "success"
+                } else {
+                    "failure"
+                }
+                .to_owned(),
+            ),
+        ),
+        ("value".to_owned(), output.value.clone()),
+        ("diagnostics".to_owned(), diagnostics),
+    ])))
+    .map_err(|error| RuntimeError::ReceiptInvalid {
+        message: error.to_string(),
+    })?;
     receipt.subject.reference.locator =
         Some(format!("sha256:{}", sha256_hex(material.as_bytes())).into());
     Ok(())
@@ -766,7 +812,7 @@ fn step_receipt_id(graph_name: &str, step_id: &str, attempt: u32) -> String {
     }
 }
 
-fn process_reason_code(disposition: &ClosureDisposition) -> String {
+fn step_reason_code(disposition: &ClosureDisposition) -> String {
     let suffix = match disposition {
         ClosureDisposition::Closed => "closed",
         ClosureDisposition::Deferred => "deferred",
@@ -777,7 +823,7 @@ fn process_reason_code(disposition: &ClosureDisposition) -> String {
         ClosureDisposition::Killed => "killed",
         ClosureDisposition::TimedOut => "timed_out",
     };
-    format!("process_{suffix}")
+    format!("step_{suffix}")
 }
 
 struct BuildReceipt<'a> {
@@ -1139,8 +1185,7 @@ fn idempotency(graph_name: &str, node_id: &str) -> ReceiptIdempotency {
     }
 }
 
-fn output_refs(output: &SkillOutput, projected_refs: &StepOutputRefs) -> StepOutputRefs {
-    let mut refs = projected_refs.clone();
+fn output_refs(output: &InvocationOutput, mut refs: StepOutputRefs) -> StepOutputRefs {
     if let Some(request_id) = json_string_field(&output.metadata, "agent_request_id") {
         let reference = Reference {
             uri: format!("runx:agent_act:{request_id}").into(),
@@ -1192,7 +1237,7 @@ fn collect_credential_delivery_refs(metadata: &JsonObject, refs: &mut StepOutput
     }
 }
 
-fn disposition(output: &SkillOutput) -> ClosureDisposition {
+fn disposition(output: &InvocationOutput) -> ClosureDisposition {
     if output.succeeded() {
         ClosureDisposition::Closed
     } else {
@@ -1200,17 +1245,17 @@ fn disposition(output: &SkillOutput) -> ClosureDisposition {
     }
 }
 
-fn output_summary(output: &SkillOutput) -> String {
+fn output_summary(output: &InvocationOutput) -> String {
     if output.succeeded() {
-        "cli-tool exited successfully".to_owned()
-    } else if !output.stderr.is_empty() {
-        output.stderr.clone()
+        "step completed successfully".to_owned()
     } else {
-        format!("cli-tool failed with exit code {:?}", output.exit_code)
+        output
+            .failure_message()
+            .unwrap_or_else(|| "step failed without diagnostic output".to_owned())
     }
 }
 
-fn child_receipt_reference(receipt: &Receipt) -> Reference {
+pub(crate) fn child_receipt_reference(receipt: &Receipt) -> Reference {
     Reference {
         locator: Some(receipt.digest.clone()),
         ..Reference::runx(ReferenceType::Receipt, &receipt.id)
@@ -1616,14 +1661,8 @@ mod tests {
             CONTRACT_VERIFICATION_METADATA.to_owned(),
             JsonValue::Object(verification),
         );
-        let output = SkillOutput {
-            status: InvocationStatus::Success,
-            stdout: "{}".to_owned(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 1,
-            metadata,
-        };
+        let output =
+            InvocationOutput::runtime_success(JsonValue::Object(JsonObject::new()), 1, metadata);
 
         let receipt = step_receipt(
             "agent_graph",
@@ -1660,14 +1699,8 @@ mod tests {
             CONTRACT_VERIFICATION_METADATA.to_owned(),
             JsonValue::String("untrusted".to_owned()),
         );
-        let output = SkillOutput {
-            status: InvocationStatus::Success,
-            stdout: "{}".to_owned(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 1,
-            metadata,
-        };
+        let output =
+            InvocationOutput::runtime_success(JsonValue::Object(JsonObject::new()), 1, metadata);
 
         assert!(
             step_receipt(
@@ -1679,6 +1712,48 @@ mod tests {
             )
             .is_err()
         );
+    }
+
+    #[test]
+    fn execution_limit_hit_is_copied_into_signed_receipt_metadata() -> Result<(), TestError> {
+        let limits = JsonObject::from([(
+            "hit".to_owned(),
+            JsonValue::Object(JsonObject::from([
+                (
+                    "id".to_owned(),
+                    JsonValue::String("javascript.wall_milliseconds".to_owned()),
+                ),
+                (
+                    "configured".to_owned(),
+                    JsonValue::Number(runx_contracts::JsonNumber::U64(7_000)),
+                ),
+            ])),
+        )]);
+        let output = InvocationOutput::runtime_failure(
+            JsonValue::Null,
+            "wall limit reached",
+            7_000,
+            JsonObject::from([(
+                EXECUTION_LIMITS_METADATA.to_owned(),
+                JsonValue::Object(limits.clone()),
+            )]),
+        );
+
+        let receipt = step_receipt(
+            "limit_graph",
+            "limit_step",
+            1,
+            &output,
+            "2026-05-28T00:00:00Z",
+        )?;
+        assert_eq!(
+            receipt
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get(EXECUTION_LIMITS_METADATA)),
+            Some(&JsonValue::Object(limits))
+        );
+        Ok(())
     }
 
     #[test]
@@ -1736,18 +1811,18 @@ mod tests {
         );
     }
 
-    fn successful_output(stdout: &str) -> SkillOutput {
-        SkillOutput {
-            status: InvocationStatus::Success,
-            stdout: stdout.to_owned(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 1,
-            metadata: JsonObject::new(),
-        }
+    fn successful_output(stdout: &str) -> InvocationOutput {
+        InvocationOutput::process(
+            InvocationStatus::Success,
+            stdout.to_owned(),
+            String::new(),
+            Some(0),
+            1,
+            JsonObject::new(),
+        )
     }
 
-    fn credential_output() -> Result<SkillOutput, TestError> {
+    fn credential_output() -> Result<InvocationOutput, TestError> {
         let observation = CredentialDeliveryObservation {
             schema: CredentialDeliveryObservationSchema::V1,
             observation_id: "credential_delivery_observation_1".into(),
@@ -1783,13 +1858,13 @@ mod tests {
             CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA.to_owned(),
             serde_json::from_str::<JsonValue>(&observation_json)?,
         );
-        Ok(SkillOutput {
-            status: InvocationStatus::Success,
-            stdout: "ok".to_owned(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 1,
+        Ok(InvocationOutput::process(
+            InvocationStatus::Success,
+            "ok".to_owned(),
+            String::new(),
+            Some(0),
+            1,
             metadata,
-        })
+        ))
     }
 }

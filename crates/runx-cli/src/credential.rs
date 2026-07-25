@@ -43,18 +43,6 @@ pub enum CredentialBindingTarget {
     Skill { skill: String, credential: String },
 }
 
-pub fn run_native_credential(plan: CredentialPlan) -> ExitCode {
-    let cwd = match std::env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(error) => return fail(&plan, &format!("failed to resolve cwd: {error}")),
-    };
-    let workspace = match WorkspaceEnv::load_process(cwd) {
-        Ok(workspace) => workspace,
-        Err(error) => return fail(&plan, &error.to_string()),
-    };
-    run_native_credential_with_workspace(plan, &workspace)
-}
-
 pub fn run_native_credential_with_workspace(
     plan: CredentialPlan,
     workspace: &WorkspaceEnv,

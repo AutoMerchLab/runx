@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::env;
 use std::path::{Component, Path, PathBuf};
 use std::process::ExitCode;
 
@@ -10,21 +9,6 @@ use serde::Serialize;
 
 use crate::router::{InitPlan, NewPlan};
 use crate::skill::{SkillAction, SkillPlan};
-
-pub fn run_native_new(plan: NewPlan) -> ExitCode {
-    let cwd = match env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(error) => {
-            let _ignored = write_stderr_line(&format!("runx: failed to resolve cwd: {error}"));
-            return ExitCode::from(1);
-        }
-    };
-    let workspace = match WorkspaceEnv::load_process(cwd) {
-        Ok(workspace) => workspace,
-        Err(error) => return write_new_failure(&error.to_string(), plan.json, "env_error"),
-    };
-    run_native_new_with_workspace(plan, &workspace)
-}
 
 pub fn run_native_new_with_workspace(plan: NewPlan, workspace: &WorkspaceEnv) -> ExitCode {
     let name = match normalize_skill_name(&plan.name) {
@@ -59,9 +43,11 @@ pub fn run_native_new_with_workspace(plan: NewPlan, workspace: &WorkspaceEnv) ->
             answers: None,
             registry: None,
             expected_digest: None,
+            expected_package_digest: None,
+            expected_execution_closure_digest: None,
             json: plan.json,
             non_interactive: plan.non_interactive,
-            skip_operator_context: true,
+            trusted_command_execution: true,
             full_operator_context: false,
             approve_operator_context: None,
             inputs,
@@ -73,24 +59,17 @@ pub fn run_native_new_with_workspace(plan: NewPlan, workspace: &WorkspaceEnv) ->
     )
 }
 
-pub fn run_native_init(plan: InitPlan) -> ExitCode {
-    let cwd = match env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(error) => {
-            let _ignored = write_stderr_line(&format!("runx: failed to resolve cwd: {error}"));
-            return ExitCode::from(1);
-        }
-    };
-    let env = crate::history::env_map();
-    let global_home_dir = resolve_global_home_dir(&env, &cwd);
-    let official_cache_dir = resolve_official_skills_dir(&env, &cwd, &global_home_dir);
+pub fn run_native_init(plan: InitPlan, workspace: &WorkspaceEnv) -> ExitCode {
+    let global_home_dir = resolve_global_home_dir(workspace.env(), workspace.cwd());
+    let official_cache_dir =
+        resolve_official_skills_dir(workspace.env(), workspace.cwd(), &global_home_dir);
     let options = RunxInitOptions {
         action: if plan.global {
             InitAction::Global
         } else {
             InitAction::Project
         },
-        project_dir: resolve_project_dir(&env, &cwd),
+        project_dir: resolve_project_dir(workspace.env(), workspace.cwd()),
         global_home_dir,
         official_cache_dir,
         prefetch_official: plan.prefetch_official,

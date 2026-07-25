@@ -39,6 +39,7 @@ runners:
         description: Optional preferred posture; evidence remains authoritative.
     graph:
       name: dispute-respond
+      result_from: [finalize, stop]
       steps:
         - id: admit
           inputs:
@@ -137,6 +138,7 @@ runners:
         description: Stable retry key for this exact dispute filing.
     graph:
       name: dispute-respond-file
+      result_from: [readback]
       steps:
         - id: validate
           tool: data.compare

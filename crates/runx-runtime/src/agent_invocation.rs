@@ -5,8 +5,8 @@ use crate::RuntimeError;
 use crate::SkillInvocation;
 use runx_contracts::schema::NonEmptyString;
 use runx_contracts::{
-    AgentActInvocation, AgentActSourceType, AgentContextEnvelope, ExecutionLocation, JsonObject,
-    JsonValue, Output, OutputField, ResolutionRequest,
+    AgentActInvocation, AgentActSourceType, AgentContextEnvelope, AgentExecutionRequirements,
+    ExecutionLocation, JsonObject, JsonValue, Output, OutputField, ResolutionRequest,
 };
 
 const TRUST_BOUNDARY: &str = "runtime-governed: caller-mediated resolution is the default; an in-process model loop runs only with explicit per-run managed-agent consent, and every resolution is receipt-bound";
@@ -82,6 +82,10 @@ fn envelope(
     request: &SkillInvocation,
     source_type: AgentActInvocationSourceType,
 ) -> Result<AgentContextEnvelope, RuntimeError> {
+    crate::execution_environment::resolve_declared_environment(
+        &request.requirements,
+        &request.env,
+    )?;
     let manual = load_skill_instructions(&request.skill_directory)?;
     let output = request
         .source
@@ -100,15 +104,22 @@ fn envelope(
             .get(crate::execution::runner::RUNX_RUN_ID_ENV)
             .and_then(|run_id| NonEmptyString::new(run_id.clone()))
             .unwrap_or_else(|| "rx_pending".into()),
-        step_id: None,
+        step_id: optional_non_empty(request.step_id.as_deref()),
         skill: skill_name(request, source_type).into(),
         instructions_sha256: manual.digest.into(),
         instructions: envelope_instructions(request, &manual.markdown)?.into(),
         inputs: request.inputs.clone(),
         allowed_tools: envelope_allowed_tools(request)?,
+        requirements: AgentExecutionRequirements {
+            declaration: request.requirements.clone(),
+            environment: crate::execution_environment::environment_requirement_statuses(
+                &request.requirements.environment,
+                &request.env,
+            ),
+        },
         current_context: request.current_context.clone(),
         historical_context: Vec::new(),
-        provenance: Vec::new(),
+        provenance: request.provenance.clone(),
         context: None,
         voice_profile: Some(profiles::resolve_voice_profile(request)?),
         execution_location: Some(execution_location(&request.skill_directory, &request.env)),

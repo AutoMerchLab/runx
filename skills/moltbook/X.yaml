@@ -149,6 +149,7 @@ runners:
         description: Maximum provider feed items, capped by the provider grant.
     graph:
       name: moltbook-scan-provider
+      result_from: [reject, finalize]
       steps:
         - id: read-feed
           tool: provider.read
@@ -271,6 +272,7 @@ runners:
         description: Maximum feed signal age.
     graph:
       name: moltbook-scan
+      result_from: [reject, finalize]
       steps:
         - id: admit
           inputs:
@@ -373,6 +375,7 @@ runners:
         description: Local content guidance, not publication approval.
     graph:
       name: moltbook-post
+      result_from: [finalize-post]
       steps:
         - id: admit-scan
           inputs:
@@ -445,6 +448,7 @@ runners:
         description: Stable retry key for this exact post payload.
     graph:
       name: moltbook-publish
+      result_from: [readback]
       steps:
         - id: validate
           tool: data.compare

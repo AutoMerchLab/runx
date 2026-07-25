@@ -34,8 +34,8 @@ Adapters receive that delivery separately from ambient configuration, inject
 only its declared secret environment bindings into the child boundary, and
 redact material from captured output before projection. The cli-tool front does
 this in `crates/runx-runtime/src/adapters/cli_tool.rs`; HTTP substitutes only
-`${secret:NAME}` header references. Sandbox `env_allowlist` is not a credential
-transport.
+`${secret:NAME}` header references. A runner's `environment` declaration is
+not a credential transport.
 
 ### 3. Sandbox (adapter contract)
 

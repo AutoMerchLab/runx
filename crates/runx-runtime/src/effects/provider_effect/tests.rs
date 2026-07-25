@@ -176,6 +176,29 @@ fn provider_effect_plan_stores_payload_digest_not_secret_material() {
     assert!(!summary.contains(secret));
 }
 
+#[test]
+fn provider_effect_preserves_opaque_capabilities_without_normalizing_them() {
+    let required_scopes = vec![
+        "vendor.operation:v3".to_owned(),
+        "https://provider.example/auth/custom.scope?mode=read,write".to_owned(),
+        "opaque capability with spaces".to_owned(),
+        "vendor.operation:v3".to_owned(),
+    ];
+    let intent = ProviderEffectIntent::new(ProviderEffectIntentInput {
+        class: ProviderEffectClass::Read,
+        provider: "future-provider",
+        operation: "future.read",
+        target: "future://account",
+        payload: &JsonObject::new(),
+        required_scopes: required_scopes.clone(),
+        amount: None,
+        request_key: None,
+    })
+    .expect("intent");
+
+    assert_eq!(intent.required_scopes(), required_scopes);
+}
+
 fn resolved(class: ProviderEffectClass, request_key: Option<&str>) -> ProviderEffectResolved {
     let payload = JsonObject::from([("text".to_owned(), JsonValue::String("hello".to_owned()))]);
     let intent = ProviderEffectIntent::new(ProviderEffectIntentInput {

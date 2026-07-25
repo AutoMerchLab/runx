@@ -1,5 +1,3 @@
-use std::collections::BTreeSet;
-
 use runx_contracts::{JsonNumber, JsonObject, JsonValue, sha256_prefixed};
 
 use super::{
@@ -196,14 +194,13 @@ fn resolved_digest_value(
 }
 
 fn normalize_scopes(scopes: Vec<String>) -> Result<Vec<String>, ProviderEffectError> {
-    let scopes = scopes
-        .into_iter()
-        .map(|scope| safe_value(scope, "scope"))
-        .collect::<Result<BTreeSet<_>, _>>()?;
     if scopes.is_empty() {
         return Err(ProviderEffectError::MissingScopes);
     }
-    Ok(scopes.into_iter().collect())
+    if scopes.iter().any(|scope| scope.trim().is_empty()) {
+        return Err(ProviderEffectError::InvalidField { field: "scope" });
+    }
+    Ok(scopes)
 }
 
 pub(super) fn safe_value(

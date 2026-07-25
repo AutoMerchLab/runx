@@ -26,6 +26,7 @@ runners:
         description: Optional product policy, topology, audience constraints, or provider state. Context only, not authority.
     graph:
       name: business-ops
+      result_from: [classify, docs, release, issue, send, spend, audit]
       steps:
         - id: classify
           skill: ./graph/ops-lane
@@ -103,6 +104,7 @@ runners:
         description: Optional product policy, topology, audience constraints, or provider state. Context only, not authority.
     graph:
       name: business-ops-route-and-append
+      result_from: [persist-route, readback]
       steps:
         - id: classify
           skill: ./graph/ops-lane

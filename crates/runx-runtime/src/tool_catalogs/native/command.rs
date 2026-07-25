@@ -30,8 +30,8 @@ const TOOL: &str = "command.execute";
 const MIN_TIMEOUT_MS: u64 = 1_000;
 const MAX_TIMEOUT_MS: u64 = 900_000;
 const OUTPUT_LIMIT_BYTES: usize = STANDARD_PROCESS_OUTPUT_BYTES;
-const MAX_ARGS: usize = 128;
-const MAX_ARG_BYTES: usize = 8 * 1024;
+const MAX_COMMAND_ARGS: usize = 128;
+const MAX_COMMAND_ARG_BYTES: usize = 8 * 1024;
 const MAX_ENV: usize = 64;
 const MAX_ENV_VALUE_BYTES: usize = 8 * 1024;
 
@@ -199,7 +199,8 @@ mod tests {
     }
 
     #[test]
-    fn rejects_credential_shaped_inline_environment() -> Result<(), Box<dyn std::error::Error>> {
+    fn preserves_syntactically_valid_environment_names_without_guessing_authority()
+    -> Result<(), Box<dyn std::error::Error>> {
         let workspace = tempfile::tempdir()?;
         let env = BTreeMap::from([(
             RUNX_CWD_ENV.to_owned(),
@@ -210,15 +211,15 @@ mod tests {
             (
                 "env".to_owned(),
                 JsonValue::Object(JsonObject::from([(
-                    "API_TOKEN".to_owned(),
-                    JsonValue::String("raw-secret".to_owned()),
+                    "AUTHOR_NAME".to_owned(),
+                    JsonValue::String("Ada".to_owned()),
                 )])),
             ),
         ]))?;
         let delivery = CredentialDelivery::none();
         #[cfg(feature = "catalog")]
         let effects = RuntimeEffectRegistry::default();
-        let error = execute(&NativeInvocation {
+        let output = json_output(plan(&NativeInvocation {
             inputs: &inputs,
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
@@ -228,9 +229,15 @@ mod tests {
             local_artifacts: crate::tool_catalogs::native::fixture_local_artifacts(),
             #[cfg(feature = "catalog")]
             effects: &effects,
-        })
-        .expect_err("credential-shaped env must be rejected");
-        assert!(error.to_string().contains("credential-shaped"));
+        })?)?;
+        let env_names = output
+            .as_object()
+            .and_then(|value| value.get("command_plan"))
+            .and_then(JsonValue::as_object)
+            .and_then(|value| value.get("env_names"))
+            .and_then(JsonValue::as_array)
+            .ok_or("missing env names")?;
+        assert_eq!(env_names, &[JsonValue::String("AUTHOR_NAME".to_owned())]);
         Ok(())
     }
 

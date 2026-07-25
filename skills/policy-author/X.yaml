@@ -32,6 +32,7 @@ runners:
         description: Operator intent that focuses the pass.
     graph:
       name: policy-author
+      result_from: [finalize-lint, finalize-stop]
       steps:
         - id: draft
           label: draft the narrowest operational policy

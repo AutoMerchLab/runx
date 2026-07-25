@@ -4,8 +4,8 @@ use std::path::{Path, PathBuf};
 use runx_contracts::{JsonNumber, JsonObject, JsonValue};
 
 use super::{
-    MAX_ARG_BYTES, MAX_ARGS, MAX_ENV, MAX_ENV_VALUE_BYTES, MAX_TIMEOUT_MS, MIN_TIMEOUT_MS,
-    OutputMode, PreparedCommand, TOOL, capability::CommandInput, invalid_input,
+    MAX_COMMAND_ARG_BYTES, MAX_COMMAND_ARGS, MAX_ENV, MAX_ENV_VALUE_BYTES, MAX_TIMEOUT_MS,
+    MIN_TIMEOUT_MS, OutputMode, PreparedCommand, TOOL, capability::CommandInput, invalid_input,
 };
 use crate::RuntimeError;
 use crate::tool_catalogs::native::{NativeInvocation, resolve_repo_root_for};
@@ -19,7 +19,7 @@ pub(super) fn prepare(
         invocation.env,
         invocation.skill_directory,
     )?;
-    let command = bounded_text(&invocation.inputs.command, "command", MAX_ARG_BYTES)?;
+    let command = bounded_text(&invocation.inputs.command, "command", MAX_COMMAND_ARG_BYTES)?;
     let args = arguments(&invocation.inputs.args)?;
     let cwd = working_directory(&invocation.inputs.cwd, &repo_root)?;
     let cwd_relative = relative_path(&repo_root, &cwd)?;
@@ -103,16 +103,16 @@ fn validate_expected_digest(
 }
 
 fn arguments(values: &[String]) -> Result<Vec<String>, RuntimeError> {
-    if values.len() > MAX_ARGS {
+    if values.len() > MAX_COMMAND_ARGS {
         return Err(invalid_input(
             TOOL,
-            format!("args must contain no more than {MAX_ARGS} entries"),
+            format!("args must contain no more than {MAX_COMMAND_ARGS} entries"),
         ));
     }
     values
         .iter()
         .enumerate()
-        .map(|(index, value)| bounded_text(value, &format!("args[{index}]"), MAX_ARG_BYTES))
+        .map(|(index, value)| bounded_text(value, &format!("args[{index}]"), MAX_COMMAND_ARG_BYTES))
         .collect()
 }
 
@@ -130,12 +130,6 @@ fn explicit_env(
         .map(|(name, value)| {
             if !valid_env_name(name) {
                 return Err(invalid_input(TOOL, format!("invalid env name {name:?}")));
-            }
-            if secret_shaped_name(name) {
-                return Err(invalid_input(
-                    TOOL,
-                    format!("env {name:?} is credential-shaped; use Runx credential delivery"),
-                ));
             }
             Ok((
                 name.clone(),
@@ -218,19 +212,6 @@ fn valid_env_name(value: &str) -> bool {
     let mut chars = value.chars();
     matches!(chars.next(), Some('_' | 'A'..='Z'))
         && chars.all(|character| matches!(character, '_' | 'A'..='Z' | '0'..='9'))
-}
-
-fn secret_shaped_name(value: &str) -> bool {
-    [
-        "TOKEN",
-        "SECRET",
-        "PASSWORD",
-        "CREDENTIAL",
-        "API_KEY",
-        "AUTH",
-    ]
-    .iter()
-    .any(|needle| value.contains(needle))
 }
 
 fn digest_json(value: &JsonValue) -> Result<String, RuntimeError> {

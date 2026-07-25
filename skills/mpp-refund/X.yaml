@@ -26,6 +26,7 @@ runners:
         description: Full typed parent refund AuthorityTerm.
     graph:
       name: mpp-refund
+      result_from: [refund]
       steps:
         - id: refund
           skill: ../refund

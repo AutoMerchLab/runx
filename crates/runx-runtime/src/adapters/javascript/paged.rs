@@ -5,7 +5,7 @@ use runx_contracts::{JsonNumber, JsonObject, JsonValue};
 
 use super::JavaScriptAdapter;
 use crate::RuntimeError;
-use crate::adapter::{InvocationStatus, SkillInvocation, SkillOutput};
+use crate::adapter::{InvocationOutput, InvocationStatus, SkillInvocation};
 use crate::services::{LocalArtifact, LocalArtifactService, resolve_scoped_root};
 
 const PAGE_CONTROL: &str = "runx_page";
@@ -16,7 +16,7 @@ pub(super) fn invoke(
     adapter: &JavaScriptAdapter,
     mut request: SkillInvocation,
     artifacts: &LocalArtifactService,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     let page_source = request
         .source
         .pages
@@ -63,18 +63,25 @@ pub(super) fn invoke(
 
         let inputs = page_inputs(&request.inputs, &page, page_index, state)?;
         let mut output = adapter.invoke_prepared(&prepared, &inputs)?;
-        total_duration_ms = total_duration_ms.saturating_add(output.duration_ms);
+        total_duration_ms = total_duration_ms.saturating_add(output.duration_ms());
         if output.status == InvocationStatus::Failure {
-            output.duration_ms = total_duration_ms;
-            output.stderr = format!(
+            let failure = format!(
                 "artifact page {page_index} at byte {offset} failed: {}",
-                output.stderr
+                output
+                    .failure_message()
+                    .unwrap_or_else(|| "worker returned no failure detail".to_owned())
             );
+            output.reject(failure);
+            output.set_duration_ms(total_duration_ms);
             attach_page_metadata(&mut output, &page, page_index + 1, false);
             return Ok(output);
         }
 
-        let mut result = parse_page_output(&output.stdout, page_index, offset)?;
+        let mut result = parse_page_output(
+            std::mem::replace(&mut output.value, JsonValue::Null),
+            page_index,
+            offset,
+        )?;
         let control = result
             .remove(PAGE_CONTROL)
             .and_then(|value| match value {
@@ -127,10 +134,8 @@ pub(super) fn invoke(
                 "final page output must contain the declared domain result",
             ));
         }
-        output.stdout = serde_json::to_string(&JsonValue::Object(result)).map_err(|source| {
-            RuntimeError::json("serializing final paged JavaScript output", source)
-        })?;
-        output.duration_ms = total_duration_ms;
+        output.value = JsonValue::Object(result);
+        output.set_duration_ms(total_duration_ms);
         attach_page_metadata(&mut output, &page, page_index + 1, true);
         return Ok(output);
     }
@@ -266,17 +271,10 @@ fn page_record_budget(
 }
 
 fn parse_page_output(
-    stdout: &str,
+    value: JsonValue,
     page_index: usize,
     offset: u64,
 ) -> Result<JsonObject, RuntimeError> {
-    let value: JsonValue = serde_json::from_str(stdout).map_err(|source| {
-        page_error_at(
-            page_index,
-            offset,
-            format!("module output is not valid JSON: {source}"),
-        )
-    })?;
     match value {
         JsonValue::Object(value) => Ok(value),
         _ => Err(page_error_at(
@@ -308,7 +306,7 @@ fn validate_state_size(
 }
 
 fn attach_page_metadata(
-    output: &mut SkillOutput,
+    output: &mut InvocationOutput,
     page: &crate::services::ArtifactRecordPage,
     page_count: usize,
     finished: bool,

@@ -4,14 +4,15 @@ use std::io::{Read, Write};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use thiserror::Error;
 
-pub const PROTOCOL_VERSION: u16 = 1;
+pub const PROTOCOL_VERSION: u16 = 3;
 pub const MAX_SOURCE_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_INPUT_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 pub const MAX_FRAME_BYTES: usize = 10 * 1024 * 1024;
 pub const MAX_STDERR_BYTES: usize = 64 * 1024;
 pub const MAX_QUEUED_JOBS: u32 = 4_096;
-pub const MAX_WALL_MILLISECONDS: u64 = 2_000;
+pub const DEFAULT_WALL_MILLISECONDS: u64 = 2_000;
+pub const MAX_WALL_MILLISECONDS: u64 = 30_000;
 /// Maximum number of isolated JavaScript worker processes retained by one
 /// runtime. Each process executes exactly one invocation at a time.
 pub const MAX_WORKER_POOL_SIZE: usize = 4;
@@ -46,7 +47,7 @@ impl Default for InvocationLimits {
             output_bytes: MAX_OUTPUT_BYTES,
             heap_bytes: JAVASCRIPT_HEAP_BYTES,
             stack_bytes: JAVASCRIPT_STACK_BYTES,
-            wall_milliseconds: MAX_WALL_MILLISECONDS,
+            wall_milliseconds: DEFAULT_WALL_MILLISECONDS,
             queued_jobs: MAX_QUEUED_JOBS,
         }
     }
@@ -65,7 +66,7 @@ impl InvocationLimits {
             || self.stack_bytes == 0
             || self.stack_bytes > maximum.stack_bytes
             || self.wall_milliseconds == 0
-            || self.wall_milliseconds > maximum.wall_milliseconds
+            || self.wall_milliseconds > MAX_WALL_MILLISECONDS
             || self.queued_jobs == 0
             || self.queued_jobs > maximum.queued_jobs
         {
@@ -88,6 +89,9 @@ pub enum WorkerRequest {
         export_name: String,
         modules: BTreeMap<String, String>,
         inputs: serde_json::Value,
+        /// Exact values selected by the manifest environment declaration. The
+        /// worker OS environment remains empty.
+        environment: BTreeMap<String, String>,
         limits: InvocationLimits,
     },
 }
@@ -107,9 +111,18 @@ pub enum WorkerResponse {
         protocol_version: u16,
         invocation_id: Option<String>,
         code: WorkerFailureCode,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        limit: Option<WorkerLimit>,
         message: String,
-        discard_worker: bool,
+        disposition: WorkerDisposition,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkerDisposition {
+    Reuse,
+    Discard,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -122,6 +135,32 @@ pub enum WorkerFailureCode {
     ExecutionFailed,
     OutputRejected,
     InternalFailure,
+}
+
+/// Exact worker ceiling responsible for a resource-limit failure. The
+/// supervisor adds `wall_milliseconds`; the worker reports only limits it can
+/// identify structurally.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WorkerLimit {
+    SourceBytes,
+    InputBytes,
+    OutputBytes,
+    WallMilliseconds,
+    QueuedJobs,
+}
+
+impl WorkerLimit {
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::SourceBytes => "source_bytes",
+            Self::InputBytes => "input_bytes",
+            Self::OutputBytes => "output_bytes",
+            Self::WallMilliseconds => "wall_milliseconds",
+            Self::QueuedJobs => "queued_jobs",
+        }
+    }
 }
 
 impl WorkerFailureCode {

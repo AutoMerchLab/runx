@@ -34,6 +34,7 @@ runners:
         description: Bounded deployment or exposure context.
     graph:
       name: vuln-triage-scan
+      result_from: [finalize, finalize-clean, stop]
       steps:
         - id: digest-evidence
           tool: data.digest
@@ -144,6 +145,7 @@ runners:
         description: Intended advisory audience.
     graph:
       name: vuln-triage-advisory
+      result_from: [finalize, stop]
       steps:
         - id: admit
           inputs:

@@ -3,6 +3,7 @@
 // cohesive unit; splitting it would scatter the source contract across files.
 use std::path::{Component, Path};
 
+use runx_contracts::javascript_worker::MAX_INPUT_BYTES;
 use runx_contracts::{JsonObject, JsonValue};
 
 use crate::ValidationError;
@@ -12,7 +13,7 @@ use crate::graph::MintScopeSource;
 
 use super::{
     ActDeclaration, FIELDS, InputMode, SkillExternalAdapterManifest, SkillMcpServer, SkillSource,
-    SourceKind, field_value, first_value, validate_sandbox,
+    SourceKind, field_value, first_value, validate_environment_requirements, validate_sandbox,
 };
 
 const SOURCE_FIELDS: &[&str] = &[
@@ -24,6 +25,7 @@ const SOURCE_FIELDS: &[&str] = &[
     "arguments",
     "command",
     "cwd",
+    "environment",
     "external_adapter",
     "export",
     "graph",
@@ -107,6 +109,7 @@ fn validate_source_with_context(
     let (module, javascript_export) = validate_javascript_source(source, &source_type)?;
     validate_agent_command_boundary(source, &source_type)?;
     let source_kind = parse_source_kind(&source_type, "source.type")?;
+    validate_source_timeout(&source_kind, timeout_seconds)?;
     let sandbox = validate_source_sandbox(source, runx, &source_kind)?;
 
     let external_adapter = validate_external_adapter_manifest(source, source_kind)?;
@@ -120,6 +123,7 @@ fn validate_source_with_context(
         cwd: FIELDS.optional_string(source.get("cwd"), "source.cwd")?,
         timeout_seconds,
         input_mode,
+        environment: validate_environment_requirements(source.get("environment"))?,
         sandbox,
         server: validate_mcp_server(source, &source_type)?,
         tool: validate_mcp_tool(source, &source_type)?,
@@ -192,10 +196,11 @@ fn validate_artifact_pages(
     let page_bytes = FIELDS
         .optional_u64(value.get("page_bytes"), "source.pages.page_bytes")?
         .unwrap_or(1024 * 1024);
-    if page_bytes == 0 || page_bytes > 1024 * 1024 {
-        return Err(
-            FIELDS.validation_error("source.pages.page_bytes must be between 1 and 1048576.")
-        );
+    let maximum_page_bytes = u64::try_from(MAX_INPUT_BYTES).unwrap_or(u64::MAX);
+    if page_bytes == 0 || page_bytes > maximum_page_bytes {
+        return Err(FIELDS.validation_error(format!(
+            "source.pages.page_bytes must be between 1 and {maximum_page_bytes}."
+        )));
     }
     Ok(Some(super::ArtifactPageSource {
         path_from,
@@ -442,7 +447,6 @@ fn validate_javascript_fields(source: &JsonObject) -> Result<(), ValidationError
         "method",
         "server",
         "task",
-        "timeout_seconds",
         "tool",
         "url",
     ];
@@ -458,6 +462,25 @@ fn validate_javascript_fields(source: &JsonObject) -> Result<(), ValidationError
         "javascript sources are pure domain modules and cannot declare effect or process fields: {}.",
         present.join(", ")
     )))
+}
+
+fn validate_source_timeout(
+    source_kind: &SourceKind,
+    timeout_seconds: Option<u64>,
+) -> Result<(), ValidationError> {
+    if *source_kind != SourceKind::JavaScript {
+        return Ok(());
+    }
+    let Some(timeout_seconds) = timeout_seconds else {
+        return Ok(());
+    };
+    let maximum = runx_contracts::javascript_worker::MAX_WALL_MILLISECONDS / 1_000;
+    if timeout_seconds == 0 || timeout_seconds > maximum {
+        return Err(FIELDS.validation_error(format!(
+            "source.timeout_seconds for javascript must be between 1 and {maximum}."
+        )));
+    }
+    Ok(())
 }
 
 /// Validate a declared `act:` block at load: deserialize it into the typed

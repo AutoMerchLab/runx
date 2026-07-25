@@ -35,6 +35,7 @@ runners:
         description: Embargo, coordination, remediation, or timing constraints.
     graph:
       name: vuln-disclosure
+      result_from: [finalize, stop]
       steps:
         - id: admit
           inputs:
@@ -129,6 +130,7 @@ runners:
         description: Stable retry key for this exact advisory publication.
     graph:
       name: vuln-disclosure-publish
+      result_from: [readback]
       steps:
         - id: validate
           tool: data.compare

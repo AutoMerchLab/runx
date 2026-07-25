@@ -175,10 +175,12 @@ fn append_node(
         ));
     }
     out.push_str(&format!(
-        "runner_name: {}\nrunner_type: {}\nrunner_selection: {}\nterminal: {}\n",
+        "runner_name: {}\nrunner_type: {}\nrunner_selection: {}\nrunner_mutating: {}\nrunner_scopes: {}\nterminal: {}\n",
         node.runner.name,
         node.runner.source_type,
         node.runner.selection,
+        node.runner.mutating,
+        list_or_none(&node.runner.scopes),
         terminal_label(&node.terminal),
     ));
     if let Some(requested) = &node.runner.requested_name {
@@ -245,16 +247,13 @@ fn append_context_skill(
     context: &SkillOperatorContextContextSkill,
 ) -> Result<(), String> {
     out.push_str(&format!(
-        "\ncontext_attachment: {step_path}\ncontext_ref: {}\ncontext_summary_sha256: {}\ncontext_summary_bytes: {}\n",
-        context.reference, context.summary_sha256, context.summary_bytes,
+        "\ncontext_attachment: {step_path}\ncontext_ref: {}\ncontext_artifact_sha256: {}\ncontext_artifact_bytes: {}\n",
+        context.reference, context.artifact_sha256, context.artifact_bytes,
     ));
     append_json_block(
         out,
-        &format!(
-            "context skill summary: {} at {step_path}",
-            context.reference
-        ),
-        &context.summary,
+        &format!("context skill: {} at {step_path}", context.reference),
+        &context.artifact,
     )
 }
 

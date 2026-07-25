@@ -14,15 +14,17 @@ use super::{SkillAction, SkillPlan};
 use crate::managed_agent::{managed_agent_policy, parse_boolean_flag, parse_managed_agent_rounds};
 
 pub fn parse_skill_plan(args: &[OsString]) -> Result<SkillPlan, String> {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let workspace = WorkspaceEnv::load_process(cwd).map_err(|error| error.to_string())?;
-    parse_skill_plan_with_workspace(args, &workspace)
+    parse_skill_plan_inner(args)
 }
 
 pub fn parse_skill_plan_with_workspace(
     args: &[OsString],
     _workspace: &WorkspaceEnv,
 ) -> Result<SkillPlan, String> {
+    parse_skill_plan_inner(args)
+}
+
+fn parse_skill_plan_inner(args: &[OsString]) -> Result<SkillPlan, String> {
     let mut state = SkillParseState::default();
     let mut index = 1;
 
@@ -48,6 +50,24 @@ pub fn parse_skill_plan_with_workspace(
     } else {
         SkillAction::Run
     };
+    if action == SkillAction::Inspect
+        && (state.expected_package_digest.is_some()
+            || state.expected_execution_closure_digest.is_some())
+    {
+        return Err(
+            "runx skill --package-digest and --execution-closure-digest bind execution and are not accepted by inspect"
+                .to_owned(),
+        );
+    }
+    if action == SkillAction::Run
+        && (state.expected_package_digest.is_some()
+            != state.expected_execution_closure_digest.is_some())
+    {
+        return Err(
+            "runx skill bound execution requires both --package-digest and --execution-closure-digest"
+                .to_owned(),
+        );
+    }
     let managed_agent =
         managed_agent_policy("skill", state.managed_agent, state.managed_agent_rounds)?;
 
@@ -60,9 +80,11 @@ pub fn parse_skill_plan_with_workspace(
         answers: state.answers,
         registry: state.registry,
         expected_digest: state.expected_digest,
+        expected_package_digest: state.expected_package_digest,
+        expected_execution_closure_digest: state.expected_execution_closure_digest,
         json: state.json,
         non_interactive: state.non_interactive,
-        skip_operator_context: state.skip_operator_context,
+        trusted_command_execution: false,
         full_operator_context: state.full_operator_context,
         approve_operator_context: state.approve_operator_context,
         inputs: state.inputs,
@@ -81,9 +103,10 @@ struct SkillParseState {
     answers: Option<PathBuf>,
     registry: Option<String>,
     expected_digest: Option<String>,
+    expected_package_digest: Option<String>,
+    expected_execution_closure_digest: Option<String>,
     json: bool,
     non_interactive: bool,
-    skip_operator_context: bool,
     full_operator_context: bool,
     approve_operator_context: Option<String>,
     inspect: bool,
@@ -99,13 +122,20 @@ fn reject_resolver_flags_for_skill_management_action(
     skill_path: &Path,
     state: &SkillParseState,
 ) -> Result<(), String> {
-    if state.registry.is_none() && state.expected_digest.is_none() {
+    if state.registry.is_none()
+        && state.expected_digest.is_none()
+        && state.expected_package_digest.is_none()
+        && state.expected_execution_closure_digest.is_none()
+    {
         return Ok(());
     }
     if !is_skill_management_action(skill_path) {
         return Ok(());
     }
-    Err("runx skill --registry and --digest are only supported when running a skill ref".to_owned())
+    Err(
+        "runx skill --registry, --digest, --package-digest, and --execution-closure-digest are only supported when running a skill ref"
+            .to_owned(),
+    )
 }
 
 fn is_skill_management_action(skill_path: &Path) -> bool {
@@ -200,6 +230,32 @@ fn parse_skill_arg(
             state.expected_digest =
                 Some(non_empty_flag_value("--digest", &string_arg(args, index)?)?);
         }
+        value if value.starts_with("--package-digest=") => {
+            state.expected_package_digest = Some(non_empty_flag_value(
+                "--package-digest",
+                value.trim_start_matches("--package-digest="),
+            )?);
+        }
+        "--package-digest" => {
+            index += 1;
+            state.expected_package_digest = Some(non_empty_flag_value(
+                "--package-digest",
+                &string_arg(args, index)?,
+            )?);
+        }
+        value if value.starts_with("--execution-closure-digest=") => {
+            state.expected_execution_closure_digest = Some(non_empty_flag_value(
+                "--execution-closure-digest",
+                value.trim_start_matches("--execution-closure-digest="),
+            )?);
+        }
+        "--execution-closure-digest" => {
+            index += 1;
+            state.expected_execution_closure_digest = Some(non_empty_flag_value(
+                "--execution-closure-digest",
+                &string_arg(args, index)?,
+            )?);
+        }
         value if value.starts_with("--input=") => {
             index = parse_input_arg(
                 args,
@@ -292,22 +348,16 @@ fn parse_skill_arg(
                 &string_arg(args, index)?,
             )?);
         }
-        value if value.starts_with("--skip-operator-context=") => {
-            state.skip_operator_context = parse_boolean_flag(
-                "skill",
-                "--skip-operator-context",
-                value.trim_start_matches("--skip-operator-context="),
-            )?;
-        }
-        value if value.starts_with("--no-operator-context=") => {
-            state.skip_operator_context = parse_boolean_flag(
-                "skill",
-                "--no-operator-context",
-                value.trim_start_matches("--no-operator-context="),
-            )?;
-        }
-        "--skip-operator-context" | "--no-operator-context" => {
-            state.skip_operator_context = true;
+        value
+            if value == "--skip-operator-context"
+                || value.starts_with("--skip-operator-context=")
+                || value == "--no-operator-context"
+                || value.starts_with("--no-operator-context=") =>
+        {
+            return Err(
+                "runx skill operator-context bypass is not supported; use exact bound execution or approve the prepared context digest"
+                    .to_owned(),
+            );
         }
         value if value.starts_with("--full-operator-context=") => {
             state.full_operator_context = parse_boolean_flag(
@@ -573,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn skip_operator_context_flag_is_not_a_skill_input() -> Result<(), String> {
+    fn unbound_operator_context_bypass_is_not_a_public_flag() {
         let args = [
             "skill",
             "skills/messageboard",
@@ -584,15 +634,38 @@ mod tests {
         .into_iter()
         .map(std::ffi::OsString::from)
         .collect::<Vec<_>>();
-        let plan = super::parse_skill_plan(&args)?;
+        let error = super::parse_skill_plan(&args)
+            .expect_err("public skill runs must not bypass prepared admission");
+        assert!(error.contains("operator-context bypass is not supported"));
+    }
 
-        assert!(plan.skip_operator_context);
-        assert_eq!(plan.inputs.len(), 1);
-        assert_eq!(
-            plan.inputs.get("title"),
-            Some(&runx_contracts::JsonValue::String("hello".to_owned()))
-        );
-        Ok(())
+    #[test]
+    fn bound_execution_requires_package_and_closure_digests() {
+        let package_only = [
+            "skill",
+            "skills/messageboard",
+            "--package-digest",
+            "sha256:package",
+        ]
+        .into_iter()
+        .map(std::ffi::OsString::from)
+        .collect::<Vec<_>>();
+        let error = super::parse_skill_plan(&package_only)
+            .expect_err("a package digest alone is not a complete execution binding");
+        assert!(error.contains("requires both --package-digest"));
+
+        let closure_only = [
+            "skill",
+            "skills/messageboard",
+            "--execution-closure-digest",
+            "sha256:closure",
+        ]
+        .into_iter()
+        .map(std::ffi::OsString::from)
+        .collect::<Vec<_>>();
+        let error = super::parse_skill_plan(&closure_only)
+            .expect_err("a closure digest alone is not a complete execution binding");
+        assert!(error.contains("requires both --package-digest"));
     }
 
     #[test]
@@ -647,7 +720,6 @@ mod tests {
             "skill",
             "skills/messageboard",
             "--full-operator-context=true",
-            "--skip-operator-context=false",
             "--input",
             "title=hello",
         ]
@@ -657,7 +729,6 @@ mod tests {
         let plan = super::parse_skill_plan(&args)?;
 
         assert!(plan.full_operator_context);
-        assert!(!plan.skip_operator_context);
         assert_eq!(plan.inputs.len(), 1);
         assert!(plan.inputs.contains_key("title"));
         Ok(())
@@ -673,6 +744,34 @@ mod tests {
 
         assert_eq!(plan.action, SkillAction::Run);
         assert_eq!(plan.runner.as_deref(), Some("refresh"));
+        Ok(())
+    }
+
+    #[test]
+    fn execution_bindings_are_runtime_metadata_not_skill_inputs() -> Result<(), String> {
+        let args = [
+            "skill",
+            "skills/nitrosend",
+            "status",
+            "--package-digest",
+            "sha256:package",
+            "--execution-closure-digest",
+            "sha256:closure",
+        ]
+        .into_iter()
+        .map(std::ffi::OsString::from)
+        .collect::<Vec<_>>();
+        let plan = super::parse_skill_plan(&args)?;
+
+        assert_eq!(
+            plan.expected_package_digest.as_deref(),
+            Some("sha256:package"),
+        );
+        assert_eq!(
+            plan.expected_execution_closure_digest.as_deref(),
+            Some("sha256:closure"),
+        );
+        assert!(plan.inputs.is_empty());
         Ok(())
     }
 

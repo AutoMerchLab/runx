@@ -6,7 +6,7 @@ use runx_parser::GraphStep;
 
 use crate::CapabilityContract;
 use crate::RuntimeError;
-use crate::adapter::SkillOutput;
+use crate::adapter::InvocationOutput;
 use crate::credentials::CredentialDelivery;
 
 use super::{EffectAdmission, EffectReplay, RuntimeEffectError};
@@ -179,7 +179,7 @@ pub struct EffectOutputRequest<'a> {
     pub step: &'a GraphStep,
     pub admission: &'a EffectAdmission,
     pub claim: &'a JsonObject,
-    pub output: &'a mut SkillOutput,
+    pub output: &'a mut InvocationOutput,
 }
 
 pub struct EffectReceiptRequest<'a> {
@@ -187,7 +187,7 @@ pub struct EffectReceiptRequest<'a> {
     pub graph_dir: &'a Path,
     pub admission: &'a EffectAdmission,
     pub claim: &'a JsonObject,
-    pub output: &'a mut SkillOutput,
+    pub output: &'a mut InvocationOutput,
     pub receipt: &'a Receipt,
     pub env: &'a BTreeMap<String, String>,
     pub signature_policy: crate::receipts::RuntimeReceiptSignaturePolicy<'a>,
@@ -196,13 +196,13 @@ pub struct EffectReceiptRequest<'a> {
 pub struct EffectReplayOutputRequest<'a> {
     pub step: &'a GraphStep,
     pub replay: &'a EffectReplay,
-    pub output: &'a mut SkillOutput,
+    pub output: &'a mut InvocationOutput,
 }
 
 pub struct EffectReplayReceiptRequest<'a> {
     pub step: &'a GraphStep,
     pub replay: &'a EffectReplay,
     pub receipt: &'a Receipt,
-    pub output: &'a SkillOutput,
+    pub output: &'a InvocationOutput,
     pub claim: &'a JsonObject,
 }

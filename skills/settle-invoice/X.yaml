@@ -56,6 +56,7 @@ runners:
         description: Bounded hosted admission and settlement identity.
     graph:
       name: settle-invoice
+      result_from: [prepare]
       steps:
         - id: prepare
           tool: payment.invoice_plan

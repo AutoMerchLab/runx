@@ -33,6 +33,7 @@ runners:
         description: NWS grid Y coordinate.
     graph:
       name: nws-weather-forecast
+      result_from: [forecast]
       steps:
         - id: forecast
           tool: http.read
@@ -64,6 +65,7 @@ runners:
         description: Longitude with no more than four decimal places.
     graph:
       name: nws-weather-locate
+      result_from: [points]
       steps:
         - id: points
           tool: http.read

@@ -40,21 +40,13 @@ caller:
         disposition: "closed"
         reason_code: "process_closed"
         summary: "Aster issue-triage bridge run sealed with a canonical receipt."
-      receipt:
-        id: "hrn_rcpt_aster_issue_triage_14"
-        schema: "runx.receipt.v1"
-        harness:
-          harness_id: "hrn_aster_issue_triage_14"
-          state: "sealed"
-        seal:
-          disposition: "closed"
-          reason_code: "process_closed"
-          summary: "Aster bridge skill run sealed."
+      result:
+        summary: "Aster issue-triage bridge completed."
 expect:
   status: "sealed"
   receipt:
     schema: "runx.receipt.v1"
-    receipt_id: "sha256:3080cb7a7c4cda63584c24f7727f95c1dbff51abf616c97a01355a4b807422ed"
+    receipt_id: "sha256:eb3da65235f62f6e0d46d64ba58f0104501d4ffab36e17484452e9e5aaae33e9"
     harness_id: "hrn_aster-rust-bridge-sealed-skill_aster-rust-bridge-sealed-skill"
     state: "sealed"
     disposition: "closed"

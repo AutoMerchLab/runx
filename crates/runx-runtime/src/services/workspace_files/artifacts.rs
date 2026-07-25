@@ -14,7 +14,8 @@ mod framing;
 use framing::frame_json_array_page;
 
 pub(crate) const MAX_ARTIFACT_BYTES: u64 = 512 * 1024 * 1024;
-pub(crate) const MAX_ARTIFACT_PAGE_BYTES: usize = 1024 * 1024;
+pub(crate) const DEFAULT_ARTIFACT_PAGE_BYTES: usize = 1024 * 1024;
+pub(crate) const MAX_ARTIFACT_PAGE_BYTES: usize = 4 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct LocalArtifact {

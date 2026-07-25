@@ -20,6 +20,7 @@ pub use provider_permission::{
     PROVIDER_MUTATE_TOOL, PROVIDER_PERMISSION_EFFECT_FAMILY, PROVIDER_PERMISSION_GRANT_ID_ENV,
     PROVIDER_PERMISSION_GRANTED_SCOPES_ENV, PROVIDER_PERMISSION_PRINCIPAL_REF_ENV,
     PROVIDER_READ_TOOL, ProviderPermissionAdmission, ProviderPermissionEffect,
+    ProviderScopeTransportError, decode_provider_scopes_env, encode_provider_scopes_env,
 };
 pub use registry::RuntimeEffectRegistry;
 pub use state::{EffectAdmission, EffectReplay};
@@ -34,13 +35,13 @@ mod tests {
     use std::collections::BTreeMap;
     use std::path::Path;
 
-    use runx_contracts::{AuthorityVerb, JsonObject, Reference};
+    use runx_contracts::{AuthorityVerb, JsonObject, JsonValue, Reference};
     use runx_core::state_machine::AuthorityAdmissionWitness;
     use runx_parser::GraphStep;
     use serde::{Deserialize, Serialize};
 
     use super::*;
-    use crate::adapter::{InvocationStatus, SkillOutput};
+    use crate::adapter::InvocationOutput;
 
     #[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
     #[serde(deny_unknown_fields)]
@@ -350,14 +351,7 @@ mod tests {
             (),
         );
         let claim = JsonObject::new();
-        let mut output = SkillOutput {
-            status: InvocationStatus::Success,
-            stdout: String::new(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 0,
-            metadata: JsonObject::new(),
-        };
+        let mut output = InvocationOutput::runtime_success(JsonValue::Null, 0, JsonObject::new());
 
         let result = registry.prepare_output(EffectOutputRequest {
             step: &step,

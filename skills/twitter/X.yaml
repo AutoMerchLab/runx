@@ -58,6 +58,7 @@ runners:
         description: user (OAuth 1.0a user context) or app (bearer token).
     graph:
       name: twitter-read
+      result_from: [finalize]
       steps:
         - id: prepare
           inputs:
@@ -135,6 +136,7 @@ runners:
         description: Maximum items returned from the archive.
     graph:
       name: twitter-read-archive
+      result_from: [finalize]
       steps:
         - id: prepare
           inputs:
@@ -265,6 +267,7 @@ runners:
         description: Cap on selected acts; a larger match set is flagged truncated.
     graph:
       name: twitter-select
+      result_from: [finalize-posts, finalize-users]
       steps:
         - id: prepare
           inputs:
@@ -418,6 +421,7 @@ runners:
         description: Canonical retry key twitter:<plan_digest>:v<expected_version+1>; mismatches fail before approval.
     graph:
       name: twitter-execute
+      result_from: [apply, apply_noop, persist]
       steps:
         - id: ledger
           skill: ../data-store

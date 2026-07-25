@@ -35,6 +35,7 @@ runners:
         description: Connector and workspace readiness supplied to send-as.
     graph:
       name: slack-notify-plan
+      result_from: [finalize, reject]
       steps:
         - id: prepare
           inputs:
@@ -138,6 +139,7 @@ runners:
         description: Stable UUID for this exact Slack delivery.
     graph:
       name: slack-notify-deliver
+      result_from: [readback]
       steps:
         - id: digest
           tool: data.digest

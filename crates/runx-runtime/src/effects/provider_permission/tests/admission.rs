@@ -58,6 +58,35 @@ fn admitted_verbs_bind_grant_and_scope_evidence() {
 }
 
 #[test]
+fn authority_term_identity_cannot_collide_across_opaque_scope_lists() {
+    let effect = ProviderPermissionEffect::default();
+    let inputs = JsonObject::new();
+    let scopes = ["a+b".to_owned(), "a".to_owned(), "b".to_owned()];
+    let env = BTreeMap::from([
+        (
+            PROVIDER_PERMISSION_GRANT_ID_ENV.to_owned(),
+            "github-mcp-read".to_owned(),
+        ),
+        (
+            PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
+            encode_provider_scopes_env(&scopes).expect("scope transport"),
+        ),
+    ]);
+    let admission = |required: &[&str]| {
+        let step = test_step("provider", required, "read");
+        effect
+            .admit(effect_request(&step, &inputs, &env))
+            .expect("admission")
+            .expect("owned provider effect")
+            .witness()
+            .child_term_id
+            .clone()
+    };
+
+    assert_ne!(admission(&["a+b"]), admission(&["a", "b"]));
+}
+
+#[test]
 fn admission_rejects_missing_scope_grant_and_self_attestation() {
     let effect = ProviderPermissionEffect::default();
     let inputs = JsonObject::new();
@@ -71,7 +100,7 @@ fn admission_rejects_missing_scope_grant_and_self_attestation() {
 
     let missing_grant = BTreeMap::from([(
         PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
-        "repo.read".to_owned(),
+        encode_provider_scopes_env(&["repo.read".to_owned()]).expect("scope transport"),
     )]);
     let read = test_step("read", &["repo.read"], "read");
     assert!(matches!(

@@ -687,7 +687,6 @@ runners:
         "digest",
         "--inputs",
         "input.json",
-        "--skip-operator-context",
         "--json",
       ],
       cwd: root,

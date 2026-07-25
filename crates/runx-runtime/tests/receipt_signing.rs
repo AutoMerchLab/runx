@@ -15,7 +15,7 @@ use runx_runtime::receipts::{
     RuntimeReceiptSigner, RuntimeReceiptSigningError, graph_receipt_with_signature_policy,
     step_receipt_with_signature_policy,
 };
-use runx_runtime::{InvocationStatus, SkillOutput, StepRun};
+use runx_runtime::{InvocationOutput, InvocationStatus, StepRun};
 
 const CREATED_AT: &str = "2026-05-22T00:00:00Z";
 const FIXTURE_KID: &str = "runx-runtime-prod-fixture-key";
@@ -295,9 +295,10 @@ fn production_step_run(
         skill: step_id.to_owned(),
         runner: None,
         fanout_group: None,
-        output,
-        outputs: JsonObject::new(),
+        contract: JsonObject::new(),
+        outcome: output.into(),
         receipt,
+        nested_receipts: Vec::new(),
         admission_witness: StepAdmissionWitness::local_runtime(step_id, "receipt"),
     })
 }
@@ -339,19 +340,12 @@ fn signing_env(issuer_type: Option<&str>) -> std::collections::BTreeMap<String, 
     env
 }
 
-fn skill_output(status: InvocationStatus) -> SkillOutput {
+fn skill_output(status: InvocationStatus) -> InvocationOutput {
     let (stdout, stderr, exit_code) = match status {
         InvocationStatus::Success => ("ok".to_owned(), String::new(), Some(0)),
         InvocationStatus::Failure => (String::new(), "failed".to_owned(), Some(1)),
     };
-    SkillOutput {
-        status,
-        stdout,
-        stderr,
-        exit_code,
-        duration_ms: 1,
-        metadata: JsonObject::new(),
-    }
+    InvocationOutput::process(status, stdout, stderr, exit_code, 1, JsonObject::new())
 }
 
 fn refresh_digest_and_signature(

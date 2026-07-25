@@ -146,6 +146,7 @@ runners:
         description: Allowed sources, sensitivity, excluded systems, and preferred owners.
     graph:
       name: knowledge-router
+      result_from: [validate]
       steps:
         - id: digest
           tool: data.digest

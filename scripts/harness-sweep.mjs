@@ -547,8 +547,9 @@ function resolveRunxBinary(options) {
         "crates/Cargo.toml",
         "-p",
         "runx-cli",
-        "--bin",
-        "runx",
+        "-p",
+        "runx-js-worker",
+        "--bins",
       ],
       {
         cwd: repoRoot,
@@ -557,7 +558,7 @@ function resolveRunxBinary(options) {
       },
     );
     if (result.status !== 0) {
-      throw new Error(`cargo build runx failed with exit ${result.status ?? "signal"}`);
+      throw new Error(`cargo build runx and runx-js-worker failed with exit ${result.status ?? "signal"}`);
     }
   }
   const targetRoot = process.env.CARGO_TARGET_DIR

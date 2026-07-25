@@ -85,7 +85,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         name: "resume",
         top_level_usage: &[],
         usage: &[
-            "runx resume <run-id> <answers.json> [-R dir] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]",
+            "runx resume <run-id> <answers.json> [-R dir] [--package-digest sha256] [--execution-closure-digest sha256] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]",
         ],
         notes: &[],
         options: &[
@@ -94,6 +94,9 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
             "--non-interactive  Accepted for automation; resume never prompts",
             "--managed-agent  Explicitly allow an in-process model loop for this continuation",
             "--managed-agent-rounds n  Bound each managed act to 1-32 rounds (default 4)",
+            "--package-digest sha256   Reassert the checkpointed package binding",
+            "--execution-closure-digest sha256",
+            "                          Reassert the checkpointed execution closure",
             "-j, --json",
         ],
     },
@@ -142,7 +145,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
     CommandSpec {
         name: "config",
         top_level_usage: &[
-            "runx config set|get|list [provider|model|api-key|public-token|auto-approve] [value] [-j|--json]",
+            "runx config set|get|list [provider|model|api-key|public-token] [value] [-j|--json]",
         ],
         usage: &[
             "runx config set <key> <value> [-j|--json]",
@@ -151,8 +154,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
             "runx config list [-j|--json]",
         ],
         notes: &[
-            "Short keys: provider, model, api-key, public-token, and auto-approve. Fully qualified config keys are also accepted. Secret values are accepted only on stdin.",
-            "development.auto_approve applies only to local-development receipt runs and is recorded in approval evidence.",
+            "Short keys: provider, model, api-key, and public-token. Fully qualified config keys are also accepted. Secret values are accepted only on stdin.",
         ],
         options: &["--from-stdin", "-j, --json"],
     },
@@ -284,7 +286,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         name: "skill",
         top_level_usage: &[],
         usage: &[
-            "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [-R dir]",
+            "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--approve-operator-context digest] [--full-operator-context] [--registry url|path] [--digest sha256] [--package-digest sha256 --execution-closure-digest sha256] [--flag value] [-R dir]",
             "runx skill inspect <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-j] [--registry url|path] [--digest sha256]",
         ],
         notes: &[],
@@ -300,12 +302,14 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
             "--non-interactive        Never prompt; return approval instructions instead",
             "--managed-agent          Explicitly allow an in-process model loop for this run",
             "--managed-agent-rounds n Bound each managed act to 1-32 rounds (default 4)",
-            "--skip-operator-context  Run without context preparation, approval, drift checks, or receipt binding",
             "-R, --receipts dir       Write receipts under dir",
             "--receipt-dir dir        Alias for --receipts",
             "-j, --json               Print machine-readable output",
             "--registry url|path",
             "--digest sha256",
+            "--package-digest sha256 Bind execution to the complete validated skill package; requires closure digest",
+            "--execution-closure-digest sha256",
+            "                          Bind execution to the complete native skill closure; requires package digest",
             "--flag value",
         ],
     },

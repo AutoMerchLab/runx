@@ -66,6 +66,7 @@ runners:
       idempotency_seed: { type: string, required: true, description: Stable caller-owned idempotency seed. }
     graph:
       name: pay-quote
+      result_from: [quote]
       steps:
         - id: quote
           tool: payment.quote

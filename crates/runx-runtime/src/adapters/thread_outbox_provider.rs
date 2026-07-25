@@ -15,7 +15,7 @@ use serde::de::DeserializeOwned;
 use thiserror::Error;
 
 use crate::RuntimeError;
-use crate::adapter::{SkillAdapter, SkillInvocation, SkillOutput};
+use crate::adapter::{InvocationOutput, SkillAdapter, SkillInvocation};
 use crate::outbox_provider::{
     ThreadOutboxProviderProcessSupervisor, ThreadOutboxProviderSupervisorError,
     ThreadOutboxProviderSupervisorOptions,
@@ -40,7 +40,7 @@ impl SkillAdapter for ThreadOutboxProviderSkillAdapter {
         THREAD_OUTBOX_PROVIDER
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         if request.source.source_type != runx_parser::SourceKind::ThreadOutboxProvider {
             return Err(RuntimeError::UnsupportedAdapter {
                 adapter_type: request.source.source_type.as_str().to_owned(),
@@ -103,12 +103,14 @@ pub enum ThreadOutboxProviderSkillAdapterError {
     },
     #[error(transparent)]
     Supervisor(#[from] ThreadOutboxProviderSupervisorError),
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
 }
 
 fn invoke_thread_outbox_provider_skill(
     request: SkillInvocation,
     supervisor_options: &ThreadOutboxProviderSupervisorOptions,
-) -> Result<SkillOutput, ThreadOutboxProviderSkillAdapterError> {
+) -> Result<InvocationOutput, ThreadOutboxProviderSkillAdapterError> {
     let config = request
         .source
         .thread_outbox_provider
@@ -119,12 +121,18 @@ fn invoke_thread_outbox_provider_skill(
         MANIFEST_PATH_FIELD,
         &config.manifest_path,
     )?;
+    let mut environment = crate::execution_environment::process_baseline_environment(&request.env);
+    environment.extend(crate::execution_environment::resolve_declared_environment(
+        &request.requirements,
+        &request.env,
+    )?);
     let supervisor =
         ThreadOutboxProviderProcessSupervisor::new(ThreadOutboxProviderSupervisorOptions {
             cwd: Some(canonical_skill_directory(
                 &request.skill_directory,
                 MANIFEST_PATH_FIELD,
             )?),
+            environment,
             ..supervisor_options.clone()
         });
     let outcome = match config.operation {

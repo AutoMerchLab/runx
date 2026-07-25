@@ -122,6 +122,7 @@ runners:
       target_act_id: { type: string, required: true, description: Exact downstream payment act id. }
     graph:
       name: pay-reserve
+      result_from: [reserve]
       steps:
         - id: reserve
           tool: payment.reserve

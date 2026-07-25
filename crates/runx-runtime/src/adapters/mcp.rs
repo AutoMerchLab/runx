@@ -7,14 +7,12 @@
 //! - `server`: `serve_mcp_json_rpc` and host-result projections.
 //! - `server_skill`: server-side skill and graph execution.
 //! - `templates`: argument templating and tool-result stringification.
-//! - `sandbox_metadata`: receipt-side sandbox metadata builders.
 
 mod adapter;
 mod framing;
 #[cfg(feature = "mcp-http-server")]
 mod http_server;
 mod rmcp_content_length;
-mod sandbox_metadata;
 mod server;
 mod server_skill;
 mod templates;

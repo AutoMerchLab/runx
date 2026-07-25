@@ -14,8 +14,14 @@ pub(super) use expectation::Expectation;
 const MAX_REDACTIONS: usize = 100;
 const MAX_STOP_CONDITIONS: usize = 20;
 
-pub(super) fn validate(expectation: &Expectation, stdout: &str) -> Result<(), RuntimeError> {
-    if stdout.len() > MAX_DATA_OPERATION_RESULT_BYTES {
+pub(super) fn validate(expectation: &Expectation, value: &JsonValue) -> Result<(), RuntimeError> {
+    let encoded = serde_json::to_vec(value).map_err(|source| {
+        invalid(
+            expectation,
+            format!("provider result could not be encoded: {source}"),
+        )
+    })?;
+    if encoded.len() > MAX_DATA_OPERATION_RESULT_BYTES {
         return Err(invalid(
             expectation,
             format!(
@@ -23,13 +29,7 @@ pub(super) fn validate(expectation: &Expectation, stdout: &str) -> Result<(), Ru
             ),
         ));
     }
-    let value: JsonValue = serde_json::from_str(stdout).map_err(|source| {
-        invalid(
-            expectation,
-            format!("provider returned invalid JSON: {source}"),
-        )
-    })?;
-    let result: OperationResult = value.deserialize_into().map_err(|source| {
+    let result: OperationResult = value.clone().deserialize_into().map_err(|source| {
         invalid(
             expectation,
             format!("provider returned an invalid operation result: {source}"),
@@ -168,24 +168,11 @@ fn reject_secret_fields(
     value: &JsonValue,
     path: &str,
 ) -> Result<(), RuntimeError> {
-    match value {
-        JsonValue::Object(object) => {
-            for (key, value) in object {
-                if secret_key(key) {
-                    return Err(invalid(
-                        expectation,
-                        format!("provider result contains secret-like field {path}.{key}"),
-                    ));
-                }
-                reject_secret_fields(expectation, value, &format!("{path}.{key}"))?;
-            }
-        }
-        JsonValue::Array(values) => {
-            for (index, value) in values.iter().enumerate() {
-                reject_secret_fields(expectation, value, &format!("{path}[{index}]"))?;
-            }
-        }
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => {}
+    if let Some(field) = crate::credentials::first_unregistered_secret_field(value) {
+        return Err(invalid(
+            expectation,
+            format!("provider result contains secret-like field {path}.{field}"),
+        ));
     }
     Ok(())
 }
@@ -196,26 +183,6 @@ pub(super) fn valid_digest(value: &str) -> bool {
         && value[7..]
             .chars()
             .all(|character| character.is_ascii_hexdigit() && !character.is_ascii_uppercase())
-}
-
-fn secret_key(key: &str) -> bool {
-    let normalized = key
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect::<String>();
-    matches!(
-        normalized.as_str(),
-        "apikey"
-            | "accesstoken"
-            | "refreshtoken"
-            | "clientsecret"
-            | "secretkey"
-            | "privatekey"
-            | "password"
-            | "bearertoken"
-            | "connectionstring"
-    )
 }
 
 pub(super) fn invalid(expectation: &Expectation, message: impl Into<String>) -> RuntimeError {
@@ -236,6 +203,7 @@ mod tests {
             aggregate_id: "stream-1",
         });
         let oversized = "x".repeat(MAX_DATA_OPERATION_RESULT_BYTES + 1);
+        let oversized = JsonValue::String(oversized);
 
         let error = validate(&expectation, &oversized)
             .err()

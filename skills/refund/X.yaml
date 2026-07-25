@@ -28,6 +28,7 @@ runners:
         description: Full typed parent refund AuthorityTerm; a reference alone is refused.
     graph:
       name: refund-mock-plan
+      result_from: [prepare]
       steps:
         - id: prepare
           tool: payment.refund_plan
@@ -54,6 +55,7 @@ runners:
         description: Full typed parent refund AuthorityTerm; a reference alone is refused.
     graph:
       name: refund-mpp-plan
+      result_from: [prepare]
       steps:
         - id: prepare
           tool: payment.refund_plan
@@ -80,6 +82,7 @@ runners:
         description: Full typed parent refund AuthorityTerm; a reference alone is refused.
     graph:
       name: refund-stripe-plan
+      result_from: [prepare]
       steps:
         - id: prepare
           tool: payment.refund_plan

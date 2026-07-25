@@ -33,63 +33,33 @@ expect:
   step_outputs:
     open:
       subset:
-        skill_claim:
-          graph: agency-open
-          graph_status: Succeeded
-          step_outputs:
-            open:
-              data_operation_result:
-                data:
-                  operation: append_event
-                  aggregate_id: case-journey-1
-                  after_version: 1
-                  provider_evidence:
-                    adapter: data.sqlite
-                    provider: sqlite-event-store
-                    storage_class: sqlite
+        data_operation_result:
+          data:
+            operation: append_event
+            aggregate_id: case-journey-1
+            after_version: 1
+            provider_evidence:
+              adapter: data.sqlite
+              provider: sqlite-event-store
+              storage_class: sqlite
     advance:
       subset:
-        skill_claim:
-          graph: agency-advance
-          graph_status: Succeeded
-          step_outputs:
-            decide:
-              dispatch_decision:
-                data:
-                  decision: dispatch
-                  dispatch:
-                    member: writer
-                    skill: ghostwrite
-                    consequence: draft
-            plan:
-              turn_plan:
-                data:
-                  expected_version: 1
-                  agency_turn:
-                    schema: runx.agency.turn.v1
-                    status: advanced
-                    case_id: case-journey-1
-                    turn: 1
-            append:
-              data_operation_result:
-                data:
-                  after_version: 2
+        data_operation_result:
+          data:
+            operation: append_event
+            aggregate_id: case-journey-1
+            after_version: 2
     status:
       subset:
-        skill_claim:
-          graph: agency-status
-          graph_status: Succeeded
-          step_outputs:
-            reduce:
-              reduction:
-                data:
-                  case_state:
-                    case_id: case-journey-1
-                    agency_ref: docs-agency
-                    status: working
-                    turn: 1
-                    last_action: Draft the doc update for the drifted API reference.
-                  expected_version: 2
+        reduction:
+          data:
+            case_state:
+              case_id: case-journey-1
+              agency_ref: docs-agency
+              status: working
+              turn: 1
+              last_action: Draft the doc update for the drifted API reference.
+            expected_version: 2
 metadata:
   public_skill: agency
   source_case: agency-open-advance-status-journey

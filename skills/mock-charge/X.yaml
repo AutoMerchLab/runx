@@ -73,6 +73,7 @@ runners:
         description: Stable caller-owned challenge seed.
     graph:
       name: mock-charge
+      result_from: [charge]
       steps:
         - id: charge
           skill: ../charge

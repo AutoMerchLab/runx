@@ -968,6 +968,97 @@ export const runxSchemaArtifacts = {
                             },
                             "type": "array"
                           },
+                          "requirements": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "declaration": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "auth": {},
+                                  "credential": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "audience": {
+                                        "type": "string"
+                                      },
+                                      "deliveries": {
+                                        "additionalProperties": {
+                                          "type": "string"
+                                        },
+                                        "type": "object"
+                                      },
+                                      "name": {
+                                        "type": "string"
+                                      },
+                                      "provider": {
+                                        "type": "string"
+                                      }
+                                    },
+                                    "required": [
+                                      "name",
+                                      "provider",
+                                      "deliveries"
+                                    ],
+                                    "type": "object"
+                                  },
+                                  "environment": {
+                                    "additionalProperties": false,
+                                    "properties": {
+                                      "optional": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      },
+                                      "required": {
+                                        "items": {
+                                          "type": "string"
+                                        },
+                                        "type": "array"
+                                      }
+                                    },
+                                    "type": "object"
+                                  },
+                                  "runtime": {},
+                                  "sandbox": {},
+                                  "scopes": {
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "environment": {
+                                "items": {
+                                  "additionalProperties": false,
+                                  "properties": {
+                                    "available": {
+                                      "type": "boolean"
+                                    },
+                                    "name": {
+                                      "type": "string"
+                                    },
+                                    "required": {
+                                      "type": "boolean"
+                                    }
+                                  },
+                                  "required": [
+                                    "name",
+                                    "required",
+                                    "available"
+                                  ],
+                                  "type": "object"
+                                },
+                                "type": "array"
+                              }
+                            },
+                            "required": [
+                              "declaration"
+                            ],
+                            "type": "object"
+                          },
                           "run_id": {
                             "minLength": 1,
                             "type": "string"
@@ -1019,6 +1110,7 @@ export const runxSchemaArtifacts = {
                           "instructions",
                           "inputs",
                           "allowed_tools",
+                          "requirements",
                           "current_context",
                           "historical_context",
                           "provenance",
@@ -6679,6 +6771,97 @@ export const runxSchemaArtifacts = {
             },
             "type": "array"
           },
+          "requirements": {
+            "additionalProperties": false,
+            "properties": {
+              "declaration": {
+                "additionalProperties": false,
+                "properties": {
+                  "auth": {},
+                  "credential": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "audience": {
+                        "type": "string"
+                      },
+                      "deliveries": {
+                        "additionalProperties": {
+                          "type": "string"
+                        },
+                        "type": "object"
+                      },
+                      "name": {
+                        "type": "string"
+                      },
+                      "provider": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "provider",
+                      "deliveries"
+                    ],
+                    "type": "object"
+                  },
+                  "environment": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "optional": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      },
+                      "required": {
+                        "items": {
+                          "type": "string"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "type": "object"
+                  },
+                  "runtime": {},
+                  "sandbox": {},
+                  "scopes": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              "environment": {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "available": {
+                      "type": "boolean"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "required": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "name",
+                    "required",
+                    "available"
+                  ],
+                  "type": "object"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "declaration"
+            ],
+            "type": "object"
+          },
           "run_id": {
             "minLength": 1,
             "type": "string"
@@ -6730,6 +6913,7 @@ export const runxSchemaArtifacts = {
           "instructions",
           "inputs",
           "allowed_tools",
+          "requirements",
           "current_context",
           "historical_context",
           "provenance",
@@ -7250,6 +7434,97 @@ export const runxSchemaArtifacts = {
         },
         "type": "array"
       },
+      "requirements": {
+        "additionalProperties": false,
+        "properties": {
+          "declaration": {
+            "additionalProperties": false,
+            "properties": {
+              "auth": {},
+              "credential": {
+                "additionalProperties": false,
+                "properties": {
+                  "audience": {
+                    "type": "string"
+                  },
+                  "deliveries": {
+                    "additionalProperties": {
+                      "type": "string"
+                    },
+                    "type": "object"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "provider": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "name",
+                  "provider",
+                  "deliveries"
+                ],
+                "type": "object"
+              },
+              "environment": {
+                "additionalProperties": false,
+                "properties": {
+                  "optional": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  },
+                  "required": {
+                    "items": {
+                      "type": "string"
+                    },
+                    "type": "array"
+                  }
+                },
+                "type": "object"
+              },
+              "runtime": {},
+              "sandbox": {},
+              "scopes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
+          "environment": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "available": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "required": {
+                  "type": "boolean"
+                }
+              },
+              "required": [
+                "name",
+                "required",
+                "available"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "declaration"
+        ],
+        "type": "object"
+      },
       "run_id": {
         "minLength": 1,
         "type": "string"
@@ -7301,6 +7576,7 @@ export const runxSchemaArtifacts = {
       "instructions",
       "inputs",
       "allowed_tools",
+      "requirements",
       "current_context",
       "historical_context",
       "provenance",
@@ -21935,6 +22211,97 @@ export const runxSchemaArtifacts = {
                         },
                         "type": "array"
                       },
+                      "requirements": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "declaration": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "auth": {},
+                              "credential": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "audience": {
+                                    "type": "string"
+                                  },
+                                  "deliveries": {
+                                    "additionalProperties": {
+                                      "type": "string"
+                                    },
+                                    "type": "object"
+                                  },
+                                  "name": {
+                                    "type": "string"
+                                  },
+                                  "provider": {
+                                    "type": "string"
+                                  }
+                                },
+                                "required": [
+                                  "name",
+                                  "provider",
+                                  "deliveries"
+                                ],
+                                "type": "object"
+                              },
+                              "environment": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "optional": {
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  },
+                                  "required": {
+                                    "items": {
+                                      "type": "string"
+                                    },
+                                    "type": "array"
+                                  }
+                                },
+                                "type": "object"
+                              },
+                              "runtime": {},
+                              "sandbox": {},
+                              "scopes": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "environment": {
+                            "items": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "available": {
+                                  "type": "boolean"
+                                },
+                                "name": {
+                                  "type": "string"
+                                },
+                                "required": {
+                                  "type": "boolean"
+                                }
+                              },
+                              "required": [
+                                "name",
+                                "required",
+                                "available"
+                              ],
+                              "type": "object"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "required": [
+                          "declaration"
+                        ],
+                        "type": "object"
+                      },
                       "run_id": {
                         "minLength": 1,
                         "type": "string"
@@ -21986,6 +22353,7 @@ export const runxSchemaArtifacts = {
                       "instructions",
                       "inputs",
                       "allowed_tools",
+                      "requirements",
                       "current_context",
                       "historical_context",
                       "provenance",
@@ -43196,6 +43564,97 @@ export const runxSchemaArtifacts = {
                     },
                     "type": "array"
                   },
+                  "requirements": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "declaration": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "auth": {},
+                          "credential": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "audience": {
+                                "type": "string"
+                              },
+                              "deliveries": {
+                                "additionalProperties": {
+                                  "type": "string"
+                                },
+                                "type": "object"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "provider": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [
+                              "name",
+                              "provider",
+                              "deliveries"
+                            ],
+                            "type": "object"
+                          },
+                          "environment": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "optional": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              },
+                              "required": {
+                                "items": {
+                                  "type": "string"
+                                },
+                                "type": "array"
+                              }
+                            },
+                            "type": "object"
+                          },
+                          "runtime": {},
+                          "sandbox": {},
+                          "scopes": {
+                            "items": {
+                              "type": "string"
+                            },
+                            "type": "array"
+                          }
+                        },
+                        "type": "object"
+                      },
+                      "environment": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "available": {
+                              "type": "boolean"
+                            },
+                            "name": {
+                              "type": "string"
+                            },
+                            "required": {
+                              "type": "boolean"
+                            }
+                          },
+                          "required": [
+                            "name",
+                            "required",
+                            "available"
+                          ],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "declaration"
+                    ],
+                    "type": "object"
+                  },
                   "run_id": {
                     "minLength": 1,
                     "type": "string"
@@ -43247,6 +43706,7 @@ export const runxSchemaArtifacts = {
                   "instructions",
                   "inputs",
                   "allowed_tools",
+                  "requirements",
                   "current_context",
                   "historical_context",
                   "provenance",

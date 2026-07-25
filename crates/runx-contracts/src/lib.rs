@@ -13,6 +13,7 @@ pub mod decision;
 pub mod dev;
 pub mod doctor;
 pub mod execution;
+pub mod execution_requirements;
 pub mod external_adapter;
 pub mod fingerprint;
 pub mod fixture;
@@ -94,6 +95,10 @@ pub use execution::{
     ArtifactContract, ExecutionSemantics, GovernedDisposition, IdempotencyPolicy,
     InputContextCapture, InputDefinition, OutcomeState, ReceiptOutcome, ReceiptSurfaceRef,
     RetryPolicy,
+};
+pub use execution_requirements::{
+    AgentExecutionRequirements, EnvironmentRequirementStatus, EnvironmentRequirements,
+    ExecutionCredentialRequirement, ExecutionRequirements,
 };
 pub use external_adapter::{
     EXTERNAL_ADAPTER_PROTOCOL_VERSION, ExternalAdapterArtifactObservation,

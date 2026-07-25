@@ -294,20 +294,26 @@ fn cli_tool_delivers_and_redacts_declared_credential() -> Result<(), Box<dyn std
     let delivery = allowed_delivery()?;
     let output = CliToolAdapter.invoke(SkillInvocation {
         skill_name: "credential.echo".to_owned(),
+        step_id: None,
         artifacts: None,
         allowed_tools: None,
         source: cli_source(),
         inputs: Default::default(),
         resolved_inputs: Default::default(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: std::env::current_dir()?,
         env: process_env(),
+        requirements: Default::default(),
         credential_delivery: delivery,
     })?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    assert_eq!(output.stdout.trim(), "[redacted-credential]");
-    assert!(!output.stdout.contains("ghs_secret_token"));
+    assert_eq!(
+        output.value,
+        runx_contracts::JsonValue::String("[redacted-credential]\n".to_owned())
+    );
+    assert!(!output.rendered_value().contains("ghs_secret_token"));
     Ok(())
 }
 
@@ -315,22 +321,29 @@ fn cli_tool_delivers_and_redacts_declared_credential() -> Result<(), Box<dyn std
 fn cli_tool_omits_truncated_output_before_redaction() -> Result<(), Box<dyn std::error::Error>> {
     let output = CliToolAdapter.invoke(SkillInvocation {
         skill_name: "credential.large-output".to_owned(),
+        step_id: None,
         artifacts: None,
         allowed_tools: None,
         source: large_output_cli_source(),
         inputs: Default::default(),
         resolved_inputs: Default::default(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: std::env::current_dir()?,
         env: process_env(),
+        requirements: Default::default(),
         credential_delivery: CredentialDelivery::none(),
     })?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert_eq!(output.stdout, "");
-    assert!(output.stderr.contains("stdout/stderr omitted"));
-    assert!(!output.stdout.contains("ghs_secret_token"));
-    assert!(!output.stderr.contains("ghs_secret_token"));
+    assert_eq!(
+        output.value,
+        runx_contracts::JsonValue::String(String::new())
+    );
+    let diagnostic = output.failure_message().unwrap_or_default();
+    assert!(diagnostic.contains("stdout/stderr omitted"));
+    assert!(!output.rendered_value().contains("ghs_secret_token"));
+    assert!(!diagnostic.contains("ghs_secret_token"));
     Ok(())
 }
 
@@ -347,6 +360,55 @@ fn credential_delivery_redacts_before_truncating() -> Result<(), Box<dyn std::er
 }
 
 #[test]
+fn credential_delivery_redacts_exact_encoded_values_without_destroying_endpoint_context()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::collections::BTreeSet;
+
+    use base64::Engine as _;
+
+    let secret = "token \u{ff}/with+reserved=value";
+    let delivery = CredentialDelivery::from_local_descriptor(
+        "fixture",
+        "api_key",
+        "FIXTURE_TOKEN",
+        "secret://fixture/encoded",
+        Vec::new(),
+        secret,
+    )?;
+    let percent_encoded =
+        url::form_urlencoded::byte_serialize(secret.as_bytes()).collect::<String>();
+    let form_encoded = url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("", secret)
+        .finish()
+        .strip_prefix('=')
+        .ok_or("missing form value")?
+        .to_owned();
+    let encoded = BTreeSet::from([
+        percent_encoded,
+        form_encoded,
+        base64::engine::general_purpose::STANDARD.encode(secret),
+        base64::engine::general_purpose::STANDARD_NO_PAD.encode(secret),
+        base64::engine::general_purpose::URL_SAFE.encode(secret),
+        base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret),
+    ]);
+    let redacted = delivery.redact_text(format!(
+        "request https://api.example.test/v1/messages?{}",
+        encoded.iter().cloned().collect::<Vec<_>>().join("&")
+    ));
+
+    assert!(redacted.contains("https://api.example.test/v1/messages?"));
+    assert!(!redacted.contains(secret));
+    for value in &encoded {
+        assert!(!redacted.contains(value));
+    }
+    assert_eq!(
+        redacted.matches("[redacted-credential]").count(),
+        encoded.len()
+    );
+    Ok(())
+}
+
+#[test]
 fn mcp_adapter_delivers_secret_env_and_redacts_tool_result()
 -> Result<(), Box<dyn std::error::Error>> {
     let mut inputs = runx_contracts::JsonObject::new();
@@ -356,20 +418,34 @@ fn mcp_adapter_delivers_secret_env_and_redacts_tool_result()
     );
     let output = McpAdapter::new(FixtureMcpTransport).invoke(SkillInvocation {
         skill_name: "credential.mcp".to_owned(),
+        step_id: None,
         artifacts: None,
         allowed_tools: None,
         source: mcp_source(),
         inputs,
         resolved_inputs: Default::default(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: std::env::current_dir()?,
         env: process_env(),
+        requirements: Default::default(),
         credential_delivery: allowed_delivery()?,
     })?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    assert_eq!(output.stdout.trim(), "[redacted-credential]");
-    assert!(!output.stdout.contains("ghs_secret_token"));
+    assert_eq!(
+        output
+            .value
+            .as_object()
+            .and_then(|value| value.get("content"))
+            .and_then(runx_contracts::JsonValue::as_array)
+            .and_then(|content| content.first())
+            .and_then(runx_contracts::JsonValue::as_object)
+            .and_then(|content| content.get("text"))
+            .and_then(runx_contracts::JsonValue::as_str),
+        Some("[redacted-credential]")
+    );
+    assert!(!output.rendered_value().contains("ghs_secret_token"));
     assert!(!serde_json::to_string(&output.metadata)?.contains("ghs_secret_token"));
     Ok(())
 }
@@ -384,22 +460,33 @@ fn mcp_process_transport_rejects_process_env_credential_delivery()
     );
     let output = McpAdapter::new(ProcessMcpTransport::default()).invoke(SkillInvocation {
         skill_name: "credential.mcp.process".to_owned(),
+        step_id: None,
         artifacts: None,
         allowed_tools: None,
         source: mcp_process_source()?,
         inputs,
         resolved_inputs: Default::default(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: repo_root()?,
         env: process_env(),
+        requirements: Default::default(),
         credential_delivery: allowed_delivery()?,
     })?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert_eq!(output.stdout, "");
-    assert_eq!(output.stderr, "MCP adapter failed.");
-    assert!(!output.stdout.contains("ghs_secret_token"));
-    assert!(!output.stderr.contains("ghs_secret_token"));
+    assert_eq!(output.value, runx_contracts::JsonValue::Null);
+    assert_eq!(
+        output.failure_message().as_deref(),
+        Some("MCP adapter failed.")
+    );
+    assert!(!output.rendered_value().contains("ghs_secret_token"));
+    assert!(
+        !output
+            .failure_message()
+            .unwrap_or_default()
+            .contains("ghs_secret_token")
+    );
     assert!(!serde_json::to_string(&output.metadata)?.contains("ghs_secret_token"));
     Ok(())
 }
@@ -500,6 +587,7 @@ fn cli_source() -> SkillSource {
         graph: None,
         external_adapter: None,
         thread_outbox_provider: None,
+        environment: Default::default(),
         raw: Default::default(),
     }
 }
@@ -547,7 +635,6 @@ fn readonly_sandbox() -> SkillSandbox {
     SkillSandbox {
         profile: runx_core::policy::SandboxProfile::Readonly,
         cwd_policy: None,
-        env_allowlist: Some(vec!["PATH".to_owned()]),
         network: None,
         writable_paths: Vec::new(),
         require_enforcement: None,

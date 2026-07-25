@@ -5,7 +5,7 @@ use runx_receipts::{
 };
 
 use crate::execution::harness::fixtures::{HarnessExpectedStatus, ReceiptExpectation};
-use crate::execution::harness::json_assertions::{assert_json_expectation, parse_json_maybe};
+use crate::execution::harness::json_assertions::assert_json_expectation;
 use crate::execution::harness::runner::{HarnessReplayError, HarnessReplayOutput};
 use crate::receipts::{RuntimeReceiptProofContextProvider, RuntimeReceiptSignaturePolicy};
 
@@ -57,9 +57,7 @@ pub(super) fn assert_expectations(
         let actual = output
             .skill_output
             .as_ref()
-            .map_or(JsonValue::Null, |skill_output| {
-                parse_json_maybe(&skill_output.stdout)
-            });
+            .map_or(JsonValue::Null, |skill_output| skill_output.value.clone());
         assert_json_expectation(expectation, &actual, "expect.output")?;
     }
     for (step_id, expectation) in &output.fixture.expect.step_outputs {
@@ -68,7 +66,7 @@ pub(super) fn assert_expectations(
             .iter()
             .find(|step| step.step_id == *step_id)
             .map_or(JsonValue::Null, |step| {
-                JsonValue::Object(step.outputs.clone())
+                JsonValue::Object(step.contract.clone())
             });
         assert_json_expectation(
             expectation,

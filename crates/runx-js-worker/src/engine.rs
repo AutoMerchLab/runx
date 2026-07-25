@@ -5,10 +5,11 @@ use std::rc::Rc;
 use boa_engine::builtins::promise::PromiseState;
 use boa_engine::context::time::FixedClock;
 use boa_engine::module::MapModuleLoader;
+use boa_engine::object::IntegrityLevel;
 use boa_engine::{Context, JsError, JsValue, Module, Source, js_string};
 use thiserror::Error;
 
-use crate::protocol::{InvocationLimits, WorkerFailureCode};
+use crate::protocol::{InvocationLimits, WorkerFailureCode, WorkerLimit};
 
 mod globals;
 mod jobs;
@@ -27,6 +28,7 @@ const ERROR_MESSAGE_BYTES: usize = 4_096;
 #[error("{message}")]
 pub(crate) struct EngineError {
     pub(crate) code: WorkerFailureCode,
+    pub(crate) limit: Option<WorkerLimit>,
     pub(crate) message: String,
 }
 
@@ -34,6 +36,15 @@ impl EngineError {
     pub(super) fn new(code: WorkerFailureCode, message: impl Into<String>) -> Self {
         Self {
             code,
+            limit: None,
+            message: bounded_message(message.into()),
+        }
+    }
+
+    pub(super) fn limit(limit: WorkerLimit, message: impl Into<String>) -> Self {
+        Self {
+            code: WorkerFailureCode::ResourceLimit,
+            limit: Some(limit),
             message: bounded_message(message.into()),
         }
     }
@@ -44,6 +55,7 @@ pub(crate) fn evaluate(
     export_name: &str,
     modules: &BTreeMap<String, String>,
     inputs: serde_json::Value,
+    environment: BTreeMap<String, String>,
     limits: InvocationLimits,
 ) -> Result<serde_json::Value, EngineError> {
     let limits = limits
@@ -82,8 +94,13 @@ pub(crate) fn evaluate(
     })?;
     let input = JsValue::from_json(&inputs, &mut context)
         .map_err(|error| engine_failure("materializing JavaScript input", error))?;
+    let execution_context = execution_context(environment, &mut context)?;
     let result = callable
-        .call(&JsValue::undefined(), &[input], &mut context)
+        .call(
+            &JsValue::undefined(),
+            &[input, execution_context],
+            &mut context,
+        )
         .map_err(|error| engine_failure("calling JavaScript export", error))?;
     let result = settle_result(result, &jobs, &mut context)?;
     let output = result
@@ -98,8 +115,8 @@ pub(crate) fn evaluate(
     let output_bytes = serde_json::to_vec(&output)
         .map_err(|error| EngineError::new(WorkerFailureCode::OutputRejected, error.to_string()))?;
     if output_bytes.len() > limits.output_bytes {
-        return Err(EngineError::new(
-            WorkerFailureCode::ResourceLimit,
+        return Err(EngineError::limit(
+            WorkerLimit::OutputBytes,
             format!(
                 "JavaScript output is {} bytes; limit is {} bytes",
                 output_bytes.len(),
@@ -108,6 +125,42 @@ pub(crate) fn evaluate(
         ));
     }
     Ok(output)
+}
+
+fn execution_context(
+    environment: BTreeMap<String, String>,
+    context: &mut Context,
+) -> Result<JsValue, EngineError> {
+    let value = JsValue::from_json(&serde_json::json!({ "environment": environment }), context)
+        .map_err(|error| engine_failure("materializing JavaScript execution context", error))?;
+    let object = value.as_object().ok_or_else(|| {
+        EngineError::new(
+            WorkerFailureCode::InternalFailure,
+            "JavaScript execution context is not an object",
+        )
+    })?;
+    let environment = object
+        .get(js_string!("environment"), context)
+        .map_err(|error| engine_failure("resolving JavaScript environment", error))?;
+    let environment = environment.as_object().ok_or_else(|| {
+        EngineError::new(
+            WorkerFailureCode::InternalFailure,
+            "JavaScript environment is not an object",
+        )
+    })?;
+    if !environment
+        .set_integrity_level(IntegrityLevel::Frozen, context)
+        .map_err(|error| engine_failure("freezing JavaScript environment", error))?
+        || !object
+            .set_integrity_level(IntegrityLevel::Frozen, context)
+            .map_err(|error| engine_failure("freezing JavaScript execution context", error))?
+    {
+        return Err(EngineError::new(
+            WorkerFailureCode::InternalFailure,
+            "failed to freeze JavaScript execution context",
+        ));
+    }
+    Ok(value)
 }
 
 fn configure_context(context: &mut Context, stack_bytes: usize) -> Result<(), EngineError> {

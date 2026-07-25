@@ -19,19 +19,15 @@ use super::run_loaded_inline_harness_with_effects;
 pub(crate) fn run_package_harness_with_effects(
     skill_path: &Path,
     receipt_dir: Option<&Path>,
-    env: Option<&BTreeMap<String, String>>,
+    env: &BTreeMap<String, String>,
     effects: &RuntimeEffectRegistry,
 ) -> Result<PackageHarnessReport, SkillRunError> {
     let loaded = crate::load_validated_skill_package(skill_path)?;
-    let base_env = env
-        .cloned()
-        .unwrap_or_else(crate::services::process_env_snapshot);
-    let cwd = std::env::current_dir()
-        .map_err(|source| RuntimeError::io("resolving cwd for package harness", source))?;
-    let operator_workspace = crate::config::resolve_runx_workspace_base(&base_env, &cwd);
+    let workspace = crate::WorkspaceEnv::from_admitted(env.clone()).map_err(RuntimeError::from)?;
+    let base_env = workspace.env().clone();
     let harness = PackageHarnessEnvironment::prepare(
         base_env,
-        &operator_workspace,
+        workspace.cwd(),
         &loaded.directory,
         receipt_dir,
     )?;
@@ -41,7 +37,7 @@ pub(crate) fn run_package_harness_with_effects(
         &loaded,
         Some(&inline_receipt_root),
         Some(&harness.receipt_dir),
-        Some(&harness.env),
+        &harness.env,
         effects,
     )?;
     replay_conventional_fixtures(&loaded.directory, &harness, effects, &mut report)?;

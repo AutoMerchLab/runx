@@ -1,7 +1,7 @@
 use super::{
     AdmissionDecision, LocalAdmissionOptions, LocalAdmissionSkill, SandboxAdmissionOptions,
     credential_grant::{credential_grant_requirement, find_matching_grant},
-    interpreter::detect_inline_interpreter,
+    interpreter::strict_cli_tool_inline_code_denial,
     sandbox::admit_sandbox,
 };
 
@@ -104,23 +104,13 @@ fn collect_local_source_reasons(
     }
 
     if skill.source.source_type == "cli-tool"
-        && options
-            .execution_policy
-            .as_ref()
-            .and_then(|policy| policy.strict_cli_tool_inline_code)
-            .unwrap_or(false)
+        && let Some(reason) = strict_cli_tool_inline_code_denial(
+            skill.source.command.as_deref(),
+            skill.source.args.as_deref().unwrap_or_default(),
+            options.execution_policy.as_ref(),
+        )
     {
-        collect_inline_code_reason(skill, reasons);
-    }
-}
-
-fn collect_inline_code_reason(skill: &LocalAdmissionSkill, reasons: &mut Vec<String>) {
-    let args = skill.source.args.as_deref().unwrap_or_default();
-    if let Some(interpreter) = detect_inline_interpreter(skill.source.command.as_deref(), args) {
-        reasons.push(format!(
-            "cli-tool source '{}' uses inline code via '{}', which is rejected by strict workspace policy; move the program into a checked-in script and invoke that file instead",
-            interpreter.command, interpreter.trigger
-        ));
+        reasons.push(reason);
     }
 }
 

@@ -1,6 +1,6 @@
 use super::{SkillRunError, invalid};
 #[cfg(feature = "cli-tool")]
-use super::{contract_json_value, identifier_segment, seal_skill_output, sealed_output};
+use super::{identifier_segment, seal_skill_output, sealed_output};
 
 use std::collections::BTreeMap;
 use std::path::Path;
@@ -12,7 +12,7 @@ use sha2::{Digest, Sha256};
 
 use crate::adapter::SkillInvocation;
 #[cfg(feature = "cli-tool")]
-use crate::adapter::{SkillAdapter, SkillOutput};
+use crate::adapter::{InvocationOutput, SkillAdapter};
 #[cfg(feature = "cli-tool")]
 use crate::adapters::cli_tool::CliToolAdapter;
 #[cfg(feature = "cli-tool")]
@@ -58,6 +58,7 @@ pub(crate) fn selected_runner<'a>(
 
 pub(super) fn runner_invocation(
     skill_dir: &Path,
+    manifest: &SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
     inputs: &BTreeMap<String, JsonValue>,
     env: &BTreeMap<String, String>,
@@ -75,12 +76,15 @@ pub(super) fn runner_invocation(
     let credential_delivery = credential_delivery_from_invocation(env, local_credential)?;
     Ok(SkillInvocation {
         skill_name: runner.name.clone(),
+        step_id: None,
         source: runner.source.clone(),
+        requirements: manifest.execution_requirements(runner),
         artifacts: runner.artifacts.clone(),
         allowed_tools: runner.allowed_tools.clone(),
         inputs: inputs.clone().into_iter().collect(),
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: skill_dir.to_path_buf(),
         env: env.clone(),
         credential_delivery,
@@ -162,18 +166,13 @@ pub(super) fn execute_process_skill_run(
     )?;
     write_skill_receipt(request, workspace, receipts, &receipt)?;
     Ok(JsonValue::Object(sealed_output(
-        manifest,
-        &run_id,
-        &output,
-        &payload,
-        &receipt,
-        contract_json_value(&receipt)?,
+        manifest, &run_id, &output, &payload, None, None, &receipt,
     )))
 }
 
 #[cfg(feature = "cli-tool")]
 struct ProcessAdapterOutput {
-    output: SkillOutput,
+    output: InvocationOutput,
     payload: JsonValue,
     source_type: runx_parser::SourceKind,
 }
@@ -199,7 +198,7 @@ fn invoke_process_adapter(
     if let Some(observation) = &credential_observation {
         output.record_credential_observation(observation)?;
     }
-    let payload = parse_output_payload(&output.stdout);
+    let payload = output.value.clone();
     if output.succeeded() {
         let metadata = verified_runner_metadata_with_artifacts(
             &runner.name,
@@ -262,13 +261,4 @@ fn hex_prefix(bytes: &[u8], chars: usize) -> String {
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
     full.chars().take(chars).collect()
-}
-
-#[cfg(feature = "cli-tool")]
-fn parse_output_payload(stdout: &str) -> JsonValue {
-    let trimmed = stdout.trim();
-    if trimmed.is_empty() {
-        return JsonValue::String(String::new());
-    }
-    serde_json::from_str(trimmed).unwrap_or_else(|_| JsonValue::String(trimmed.to_owned()))
 }

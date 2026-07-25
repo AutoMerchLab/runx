@@ -87,6 +87,7 @@ runners:
         description: Stable retry key for this exact unseal request.
     graph:
       name: vault-unseal-execute
+      result_from: [readback]
       steps:
         - id: plan
           inputs:

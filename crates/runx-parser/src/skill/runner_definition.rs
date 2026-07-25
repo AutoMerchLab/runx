@@ -25,6 +25,7 @@ const RUNNER_FIELDS: &[&str] = &[
     "context_skills",
     "cwd",
     "default",
+    "environment",
     "execution",
     "external_adapter",
     "export",
@@ -93,9 +94,12 @@ pub(crate) fn validate_runner_definition(
                 .optional_object(runner.get("inputs"), &format!("runners.{name}.inputs"))?
                 .unwrap_or_default(),
         )?,
-        scopes: FIELDS
-            .optional_string_array(runner.get("scopes"), &format!("runners.{name}.scopes"))?
-            .unwrap_or_default(),
+        scopes: validate_scopes(
+            FIELDS
+                .optional_string_array(runner.get("scopes"), &format!("runners.{name}.scopes"))?
+                .unwrap_or_default(),
+            &format!("runners.{name}.scopes"),
+        )?,
         credential: FIELDS.optional_non_empty_string(
             runner.get("credential"),
             &format!("runners.{name}.credential"),
@@ -130,12 +134,36 @@ fn validate_runner_lane_constraints(
             "runners.{name}.artifacts is ambiguous for a graph source; declare the packet on the graph's terminal output-producing step"
         )));
     }
+    if source.source_type == super::SourceKind::Graph && !source.environment.is_empty() {
+        return Err(FIELDS.validation_error(format!(
+            "runners.{name}.environment is ambiguous for a graph source; declare environment requirements on the executable run step"
+        )));
+    }
     if source.source_type == super::SourceKind::Graph && source.outputs.is_some() {
         return Err(FIELDS.validation_error(format!(
             "runners.{name}.outputs is ambiguous for a graph source; declare outputs on the graph's terminal output-producing step"
         )));
     }
+    if source.source_type == super::SourceKind::Graph
+        && source
+            .graph
+            .as_ref()
+            .is_none_or(|graph| graph.result_from.is_empty())
+    {
+        return Err(FIELDS.validation_error(format!(
+            "runners.{name}.graph.result_from must name at least one intentional public result producer"
+        )));
+    }
     Ok(())
+}
+
+fn validate_scopes(scopes: Vec<String>, field: &str) -> Result<Vec<String>, ValidationError> {
+    if scopes.iter().any(|scope| scope.trim().is_empty()) {
+        return Err(
+            FIELDS.validation_error(format!("{field} must contain only non-empty scope strings"))
+        );
+    }
+    Ok(scopes)
 }
 
 fn validate_runner_governance(

@@ -105,9 +105,11 @@ Each target has one meaning and one authority boundary:
 - **Native capability:** trusted, product-neutral Rust behavior registered from
   one typed definition that owns schema, defaults, dispatch, authority, effect,
   and catalog metadata.
-- **Deterministic module (`javascript`):** an isolated `(JSON) -> JSON`
-  computation. It has no ambient filesystem, network, process, environment,
-  credential, host clock, or host randomness authority.
+- **Deterministic module (`javascript`):** an isolated
+  `(JSON, { environment }) -> JSON` computation. It has no ambient filesystem,
+  network, process environment, credential, host clock, or host randomness
+  authority; only exact manifest-declared non-secret values cross its typed
+  worker protocol.
 - **CLI tool:** an intentional local executable with explicit command,
   arguments, filesystem, environment, network, timeout, and output policy,
   enforced by the runtime sandbox. Bundled tool manifests and their local
@@ -133,6 +135,11 @@ in-memory module bundle, entrypoint, JSON input, and fixed limits. It never send
 a workspace path, skill path, environment map, credential, provider grant, or
 ambient input source.
 
+The CLI and worker are one protocol-coupled runtime distribution. Release and
+operator build paths build them together, and the runtime rejects a mismatched
+worker version before decoding or executing an invocation. It never guesses
+across worker response shapes.
+
 There is no Node or shell fallback. Each invocation receives a fresh
 engine context. Imports resolve only through normalized relative `.js`/`.mjs`
 paths in the validated bundle. Bare specifiers, `node:` modules, URLs, absolute
@@ -150,11 +157,13 @@ not parse a bootstrap script for every invocation; package source is the only
 JavaScript parsed on the execution hot path.
 
 Runtime-owned ceilings are 4 MiB source, 4 MiB input, 4 MiB output, 64 MiB
-JavaScript heap, 4 MiB JavaScript stack, two seconds wall time, and 4,096 queued
-jobs. Packages may narrow but never widen them. The worker starts with a cleared
-environment, a non-workspace current directory, no inherited handles, process
-memory supervision, and no host APIs. A timeout, memory fault, protocol error,
-crash, or polluted stdout fails the invocation and discards the worker.
+JavaScript heap, 4 MiB JavaScript stack, 30 seconds wall time, and 4,096 queued
+jobs. Wall time defaults to two seconds and a runner may select 1 through 30
+seconds; other package limits may narrow but never widen the runtime ceiling.
+The worker starts with a cleared environment, a non-workspace current
+directory, no inherited handles, process memory supervision, and no host APIs.
+A timeout, memory fault, protocol error, crash, or polluted stdout fails the
+invocation and discards the worker.
 
 The same hostile-module contract is required on `darwin-arm64`, `darwin-x64`,
 `linux-arm64`, `linux-x64`, and `win32-x64`. A supported release target cannot
@@ -229,6 +238,16 @@ and receipt chain unless the user explicitly chooses a hosted operator service.
 
 If a native operator surface is missing, add the reusable capability to OSS.
 Never extend a Cloud dogfood script as a substitute.
+
+Skill-declared provider scopes are opaque capability identifiers to the parser,
+CLI, Connect grant transport, grant resolver, and receipt path. Those layers
+preserve the exact ordered strings without delimiter parsing, a
+provider-specific allowlist, an alias table, or translation. String-only host
+boundaries carry the list as JSON, so punctuation, whitespace, order, and
+duplicates cannot change its meaning. A concrete provider driver may map a
+capability it actually implements to the provider's OAuth scopes and bounded
+API operation; an unknown operation remains unsupported rather than being
+silently broadened or rewritten.
 
 ## Performance contract
 

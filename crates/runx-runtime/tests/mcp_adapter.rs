@@ -77,8 +77,16 @@ fn mcp_adapter_clamps_min_timeout_and_sanitizes_tool_error() -> Result<(), Runti
     let output = adapter.invoke(invocation("fail", Some(0), inputs))?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert_eq!(output.stderr, "MCP tool returned error -32000.");
-    assert!(!output.stderr.contains("sk-live-do-not-leak"));
+    assert_eq!(
+        output.failure_message().as_deref(),
+        Some("MCP tool returned error -32000.")
+    );
+    assert!(
+        !output
+            .failure_message()
+            .unwrap_or_default()
+            .contains("sk-live-do-not-leak")
+    );
     let seen_timeout = seen
         .lock()
         .map_err(|_| runtime_test_error("timeout probe poisoned"))?;
@@ -107,10 +115,18 @@ fn mcp_adapter_malformed_json_response_is_sanitized() -> Result<(), RuntimeError
     let output = adapter.invoke(request)?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert_eq!(output.stderr, "MCP adapter failed.");
-    assert!(!output.stderr.contains("malformed-json-secret"));
-    assert!(output.stdout.is_empty());
-    assert_eq!(output.exit_code, None);
+    assert_eq!(
+        output.failure_message().as_deref(),
+        Some("MCP adapter failed.")
+    );
+    assert!(
+        !output
+            .failure_message()
+            .unwrap_or_default()
+            .contains("malformed-json-secret")
+    );
+    assert_eq!(output.value, JsonValue::Null);
+    assert_eq!(output.exit_code(), None);
     Ok(())
 }
 
@@ -162,9 +178,11 @@ fn mcp_process_transport_calls_fixture_echo_over_stdio() -> Result<(), RuntimeEr
     let output = adapter.invoke(fixture_invocation("echo", Some(5), inputs)?)?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    assert_eq!(output.stdout, "hello from rust mcp");
-    assert_eq!(output.stderr, "");
-    assert_eq!(output.exit_code, Some(0));
+    assert_eq!(
+        output.value,
+        JsonValue::String("hello from rust mcp".to_owned())
+    );
+    assert_eq!(output.exit_code(), None);
     assert_eq!(
         output.metadata.get("mcp").and_then(|value| match value {
             JsonValue::Object(mcp) => mcp.get("tool"),
@@ -194,9 +212,9 @@ fn mcp_process_transport_reuses_session_for_matching_scope() -> Result<(), Runti
         "second",
     )?)?;
     assert_eq!(first.status, InvocationStatus::Success);
-    assert_eq!(first.stdout, "first");
+    assert_eq!(first.value, JsonValue::String("first".to_owned()));
     assert_eq!(second.status, InvocationStatus::Success);
-    assert_eq!(second.stdout, "second");
+    assert_eq!(second.value, JsonValue::String("second".to_owned()));
     assert_eq!(transport.spawned_process_count(), 1);
 
     reset_transport_session_pool(&transport)?;
@@ -249,8 +267,16 @@ fn mcp_session_isolation_rejects_process_env_secret_delivery() -> Result<(), Run
     let output = McpAdapter::new(transport.clone()).invoke(request)?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert_eq!(output.stderr, "MCP adapter failed.");
-    assert!(!output.stderr.contains("mcp-secret-value"));
+    assert_eq!(
+        output.failure_message().as_deref(),
+        Some("MCP adapter failed.")
+    );
+    assert!(
+        !output
+            .failure_message()
+            .unwrap_or_default()
+            .contains("mcp-secret-value")
+    );
     assert_eq!(transport.spawned_process_count(), 0);
     Ok(())
 }
@@ -271,9 +297,12 @@ fn mcp_process_transport_times_out_and_terminates_child() -> Result<(), RuntimeE
     )?)?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert_eq!(output.stdout, "");
-    assert_eq!(output.stderr, "MCP call timed out after 1000ms.");
-    assert_eq!(output.exit_code, None);
+    assert_eq!(output.value, JsonValue::Null);
+    assert_eq!(
+        output.failure_message().as_deref(),
+        Some("MCP call timed out after 1000ms.")
+    );
+    assert_eq!(output.exit_code(), None);
 
     let line_count_after_timeout =
         wait_for_lifecycle_lines(&marker_path, 2, Duration::from_secs(1))?;
@@ -453,19 +482,19 @@ fn lifecycle_pid(path: &Path) -> Result<i32, RuntimeError> {
 }
 
 #[test]
-fn mcp_adapter_applies_sandbox_env_allowlist_to_process_server() -> Result<(), RuntimeError> {
+fn mcp_adapter_passes_only_declared_environment_to_process_server() -> Result<(), RuntimeError> {
     let adapter = McpAdapter::new(ProcessMcpTransport::default());
 
     let blocked = adapter.invoke(sandbox_env_invocation("RUNX_SECRET_VALUE")?)?;
     assert_eq!(blocked.status, InvocationStatus::Success);
-    assert_eq!(blocked.stdout, "");
-    assert_sandbox_allowlist_metadata(&blocked.metadata);
+    assert_eq!(blocked.value, JsonValue::String(String::new()));
+    assert_declared_environment_metadata(&blocked.metadata);
     assert!(!metadata_json(&blocked.metadata)?.contains("secret"));
 
     let allowed = adapter.invoke(sandbox_env_invocation("ALLOWED_VALUE")?)?;
     assert_eq!(allowed.status, InvocationStatus::Success);
-    assert_eq!(allowed.stdout, "allowed");
-    assert_sandbox_allowlist_metadata(&allowed.metadata);
+    assert_eq!(allowed.value, JsonValue::String("allowed".to_owned()));
+    assert_declared_environment_metadata(&allowed.metadata);
     assert!(!metadata_json(&allowed.metadata)?.contains("secret"));
     Ok(())
 }
@@ -480,8 +509,8 @@ fn mcp_adapter_reports_missing_tool_metadata() -> Result<(), RuntimeError> {
 
     assert_eq!(output.status, InvocationStatus::Failure);
     assert_eq!(
-        output.stderr,
-        "MCP source requires server and tool metadata."
+        output.failure_message().as_deref(),
+        Some("MCP source requires server and tool metadata.")
     );
     assert!(output.metadata.is_empty());
     Ok(())
@@ -505,15 +534,11 @@ fn mcp_adapter_matches_fixture_oracle_status_stdout_and_stderr()
             oracle_text(case_name, "status")?.trim_end(),
             "{case_name} status"
         );
+        assert_eq!(output.value, oracle_value(case_name)?, "{case_name} value");
         assert_eq!(
-            output.stdout,
-            oracle_text(case_name, "stdout")?,
-            "{case_name} stdout"
-        );
-        assert_eq!(
-            output.stderr,
-            oracle_text(case_name, "stderr")?,
-            "{case_name} stderr"
+            output.failure_message(),
+            oracle_failure(case_name)?,
+            "{case_name} diagnostic"
         );
         assert_eq!(
             normalized_output_metadata(&output.metadata)?,
@@ -561,6 +586,7 @@ struct RuntimeMcpAdapterRequest {
 fn invocation(tool: &str, timeout_seconds: Option<u64>, inputs: JsonObject) -> SkillInvocation {
     SkillInvocation {
         skill_name: "fixture.mcp".to_owned(),
+        step_id: None,
         artifacts: None,
         allowed_tools: None,
         source: SkillSource {
@@ -590,13 +616,16 @@ fn invocation(tool: &str, timeout_seconds: Option<u64>, inputs: JsonObject) -> S
             graph: None,
             external_adapter: None,
             thread_outbox_provider: None,
+            environment: Default::default(),
             raw: JsonObject::new(),
         },
         inputs,
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: PathBuf::from("."),
         env: BTreeMap::new(),
+        requirements: Default::default(),
         credential_delivery: runx_runtime::CredentialDelivery::none(),
     }
 }
@@ -608,14 +637,17 @@ fn fixture_case(case_name: &str) -> Result<SkillInvocation, Box<dyn std::error::
         )))?)?;
     Ok(SkillInvocation {
         skill_name: fixture.skill_name,
+        step_id: None,
         artifacts: None,
         allowed_tools: None,
         source: fixture.source,
         inputs: fixture.inputs,
         resolved_inputs: fixture.resolved_inputs,
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: repo_root()?,
         env: oracle_env()?,
+        requirements: Default::default(),
         credential_delivery: runx_runtime::CredentialDelivery::none(),
     })
 }
@@ -643,13 +675,13 @@ fn sandbox_env_invocation(name: &str) -> Result<SkillInvocation, RuntimeError> {
     request.source.sandbox = Some(SkillSandbox {
         profile: runx_core::policy::SandboxProfile::Readonly,
         cwd_policy: Some(runx_core::policy::CwdPolicy::Workspace),
-        env_allowlist: Some(vec!["PATH".to_owned(), "ALLOWED_VALUE".to_owned()]),
         network: None,
         writable_paths: Vec::new(),
         require_enforcement: None,
         approved_escalation: None,
         raw: JsonObject::new(),
     });
+    request.requirements.environment.optional = vec!["ALLOWED_VALUE".to_owned()];
     request
         .env
         .insert("ALLOWED_VALUE".to_owned(), "allowed".to_owned());
@@ -677,24 +709,13 @@ fn session_marker_invocation(
     request.source.sandbox = Some(SkillSandbox {
         profile: runx_core::policy::SandboxProfile::UnrestrictedLocalDev,
         cwd_policy: Some(runx_core::policy::CwdPolicy::SkillDirectory),
-        env_allowlist: Some(vec![
-            "PATH".to_owned(),
-            "HOME".to_owned(),
-            "TMPDIR".to_owned(),
-            "TMP".to_owned(),
-            "TEMP".to_owned(),
-            "SystemRoot".to_owned(),
-            "WINDIR".to_owned(),
-            "COMSPEC".to_owned(),
-            "PATHEXT".to_owned(),
-            "RUNX_MCP_SCOPE".to_owned(),
-        ]),
         network: None,
         writable_paths: Vec::new(),
         require_enforcement: None,
         approved_escalation: Some(true),
         raw: JsonObject::new(),
     });
+    request.requirements.environment.required = vec!["RUNX_MCP_SCOPE".to_owned()];
     Ok(request)
 }
 
@@ -725,7 +746,7 @@ fn fixture_sandbox_plan() -> Result<SandboxPlan, RuntimeError> {
     })
 }
 
-fn assert_sandbox_allowlist_metadata(metadata: &JsonObject) {
+fn assert_declared_environment_metadata(metadata: &JsonObject) {
     let Some(JsonValue::Object(sandbox)) = metadata.get("sandbox") else {
         assert!(
             metadata.contains_key("sandbox"),
@@ -746,14 +767,13 @@ fn assert_sandbox_allowlist_metadata(metadata: &JsonObject) {
     };
     assert_eq!(
         env.get("mode"),
-        Some(&JsonValue::String("allowlist".to_owned()))
+        Some(&JsonValue::String("declared".to_owned()))
     );
     assert_eq!(
-        env.get("allowlist"),
-        Some(&JsonValue::Array(vec![
-            JsonValue::String("PATH".to_owned()),
-            JsonValue::String("ALLOWED_VALUE".to_owned()),
-        ]))
+        env.get("optional"),
+        Some(&JsonValue::Array(vec![JsonValue::String(
+            "ALLOWED_VALUE".to_owned()
+        )]))
     );
 }
 
@@ -841,6 +861,20 @@ fn oracle_text(case_name: &str, extension: &str) -> Result<String, Box<dyn std::
     Ok(fs::read_to_string(repo_root()?.join(format!(
         "fixtures/runtime/adapters/mcp/oracles/{case_name}.{extension}"
     )))?)
+}
+
+fn oracle_value(case_name: &str) -> Result<JsonValue, Box<dyn std::error::Error>> {
+    let value = oracle_text(case_name, "stdout")?;
+    Ok(if value.is_empty() {
+        JsonValue::Null
+    } else {
+        JsonValue::String(value)
+    })
+}
+
+fn oracle_failure(case_name: &str) -> Result<Option<String>, Box<dyn std::error::Error>> {
+    let diagnostic = oracle_text(case_name, "stderr")?;
+    Ok((!diagnostic.is_empty()).then_some(diagnostic))
 }
 
 fn oracle_metadata(case_name: &str) -> Result<Option<JsonValue>, Box<dyn std::error::Error>> {

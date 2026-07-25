@@ -16,8 +16,8 @@ use runx_receipts::{
 };
 use runx_runtime::harness::{HarnessFixtureCase, list_cases};
 use runx_runtime::{
-    HarnessReplayOutput, InvocationStatus, RuntimeOptions, SkillAdapter, SkillInvocation,
-    SkillOutput, run_harness_fixture_with_adapter,
+    HarnessReplayOutput, InvocationOutput, RuntimeOptions, SkillAdapter, SkillInvocation,
+    run_harness_fixture_with_adapter,
 };
 
 fn main() -> ExitCode {
@@ -350,7 +350,7 @@ impl Error for MessageError {}
 fn fixture_runtime_options() -> RuntimeOptions {
     RuntimeOptions {
         created_at: "2026-05-18T00:00:00Z".to_owned(),
-        ..RuntimeOptions::local_development()
+        ..RuntimeOptions::local_development(std::env::vars().collect())
     }
 }
 
@@ -361,7 +361,10 @@ impl SkillAdapter for FixtureOracleAdapter {
         "cli-tool"
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, runx_runtime::RuntimeError> {
+    fn invoke(
+        &self,
+        request: SkillInvocation,
+    ) -> Result<InvocationOutput, runx_runtime::RuntimeError> {
         let message = request
             .inputs
             .get("message")
@@ -376,14 +379,10 @@ impl SkillAdapter for FixtureOracleAdapter {
         // by downstream context edges under the contract-only addressing model.
         let mut claim = JsonObject::default();
         claim.insert("message".to_owned(), JsonValue::String(message));
-        let stdout = serde_json::to_string(&JsonValue::Object(claim)).unwrap_or_default();
-        Ok(SkillOutput {
-            status: InvocationStatus::Success,
-            stdout,
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 0,
-            metadata: JsonObject::default(),
-        })
+        Ok(InvocationOutput::runtime_success(
+            JsonValue::Object(claim),
+            0,
+            JsonObject::default(),
+        ))
     }
 }

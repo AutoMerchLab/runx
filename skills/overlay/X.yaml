@@ -46,6 +46,7 @@ runners:
         description: Current publication state; this skill never advances it.
     graph:
       name: overlay-native-binding
+      result_from: [reject-input, reject-source, reject-profile, reject-validation, finalize]
       steps:
         - id: plan-source
           label: normalize the pinned source request

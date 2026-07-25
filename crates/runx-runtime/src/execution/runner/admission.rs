@@ -1,3 +1,5 @@
+// Admission owns authority, effect replay, approval, and provider-effect
+// preconditions before a step may dispatch.
 use std::collections::BTreeMap;
 use std::path::Path;
 
@@ -5,7 +7,7 @@ use runx_contracts::{AuthorityVerb, JsonObject, Receipt};
 use runx_parser::GraphStep;
 
 use crate::RuntimeError;
-use crate::adapter::SkillOutput;
+use crate::adapter::InvocationOutput;
 use crate::effects::{
     EffectAdmission, EffectOutputRequest, EffectReceiptRequest, EffectReplay,
     EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest, ResolvedEffectTarget,
@@ -90,7 +92,7 @@ pub(super) fn prepare_effect_output_before_gate(
     step: &GraphStep,
     authority: Option<&StepAuthorityContext>,
     claim: &JsonObject,
-    output: &mut SkillOutput,
+    output: &mut InvocationOutput,
     effects: &RuntimeEffectRegistry,
 ) -> Result<(), RuntimeError> {
     let Some(authority) = authority else {
@@ -135,7 +137,7 @@ pub(super) fn persist_effect_state_for_step(
 pub(super) fn prepare_replay_output(
     step: &GraphStep,
     replay: &EffectReplay,
-    output: &mut SkillOutput,
+    output: &mut InvocationOutput,
     effects: &RuntimeEffectRegistry,
 ) -> Result<(), RuntimeError> {
     effects
@@ -151,7 +153,7 @@ pub(super) fn validate_replayed_effect(
     step: &GraphStep,
     replay: &EffectReplay,
     receipt: &runx_contracts::Receipt,
-    output: &SkillOutput,
+    output: &InvocationOutput,
     claim: &JsonObject,
     effects: &RuntimeEffectRegistry,
 ) -> Result<(), RuntimeError> {
@@ -183,7 +185,7 @@ pub(super) struct EffectReceiptContext<'a> {
     pub(super) graph_dir: &'a Path,
     pub(super) authority: Option<&'a StepAuthorityContext>,
     pub(super) claim: &'a JsonObject,
-    pub(super) output: &'a mut SkillOutput,
+    pub(super) output: &'a mut InvocationOutput,
     pub(super) receipt: &'a Receipt,
     pub(super) env: &'a BTreeMap<String, String>,
     pub(super) signature_policy: crate::receipts::RuntimeReceiptSignaturePolicy<'a>,

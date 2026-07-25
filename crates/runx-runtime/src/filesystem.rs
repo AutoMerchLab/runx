@@ -12,7 +12,7 @@ use admission::{admit_file_target, admit_text_bundle, missing_parent_directories
 use apply::{apply_admitted_bundle, bundle_report, rollback_paths};
 
 const MAX_BUNDLE_OPERATIONS: usize = 500;
-const MAX_BUNDLE_BYTES: usize = 20 * 1024 * 1024;
+const MAX_FILESYSTEM_MUTATION_BUNDLE_BYTES: usize = 20 * 1024 * 1024;
 
 #[derive(Clone, Debug)]
 pub(crate) struct DirectoryEntry {

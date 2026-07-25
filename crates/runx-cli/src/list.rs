@@ -1,3 +1,4 @@
+use std::collections::BTreeMap;
 use std::fmt;
 use std::path::Path;
 
@@ -55,12 +56,16 @@ impl From<serde_json::Error> for ListCliError {
     }
 }
 
-pub fn run_list_command(plan: &ListPlan, cwd: &Path) -> Result<String, ListCliError> {
+pub fn run_list_command(
+    plan: &ListPlan,
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+) -> Result<String, ListCliError> {
     let options = RunxListOptions {
         root: cwd.to_path_buf(),
         requested_kind: requested_kind(plan.kind),
     };
-    let effects = crate::runtime::payment_effect_registry()?;
+    let effects = crate::runtime::payment_effect_registry(env)?;
     let mut report = list_authoring_primitives_with_effects(&options, &effects)?;
     report
         .items
@@ -172,6 +177,7 @@ mod tests {
                 filter: FilterMode::OkOnly,
                 json: true,
             },
+            &std::collections::BTreeMap::new(),
             &root,
         )?;
 
@@ -196,6 +202,7 @@ mod tests {
                 filter: FilterMode::All,
                 json: false,
             },
+            &std::collections::BTreeMap::new(),
             &root,
         )?;
 
@@ -217,6 +224,7 @@ mod tests {
                 filter: FilterMode::OkOnly,
                 json: true,
             },
+            &std::collections::BTreeMap::new(),
             &root,
         )?;
 

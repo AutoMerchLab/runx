@@ -8,7 +8,7 @@ use runx_contracts::{JsonNumber, JsonObject, JsonValue, MAX_PORTABLE_INTEGER, sh
 use tempfile::tempdir;
 
 use super::{ToolDispatchRequest, dispatch_tool};
-use crate::adapter::{InvocationStatus, SkillOutput};
+use crate::adapter::{InvocationOutput, InvocationStatus};
 use crate::{CredentialDelivery, RuntimeEffectRegistry, RuntimeError};
 
 mod data_store;
@@ -61,7 +61,14 @@ esac
     )?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    assert_eq!(output.stdout.trim(), r#"{"ok":true}"#);
+    assert_eq!(
+        output
+            .value
+            .as_object()
+            .and_then(|value| value.get("ok"))
+            .and_then(JsonValue::as_bool),
+        Some(true)
+    );
     Ok(())
 }
 
@@ -133,9 +140,9 @@ fn dispatch_materializes_one_declared_tool_input_map() -> Result<(), Box<dyn std
         output.status,
         InvocationStatus::Success,
         "{}",
-        output.stderr
+        diagnostic(&output)
     );
-    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    let payload = output.value;
     let object = payload.as_object().ok_or("tool output must be an object")?;
     assert_eq!(
         object.get("message").and_then(JsonValue::as_str),
@@ -186,7 +193,7 @@ fn dispatch_rejects_missing_and_type_invalid_inputs_before_tool_execution()
         tool_root_env(temp.path()),
     )?;
     assert_eq!(missing.status, InvocationStatus::Failure);
-    assert!(missing.stderr.contains("input 'message' is required"));
+    assert!(diagnostic(&missing).contains("input 'message' is required"));
 
     let invalid = invoke_in_directory(
         "test.typed",
@@ -195,7 +202,7 @@ fn dispatch_rejects_missing_and_type_invalid_inputs_before_tool_execution()
         tool_root_env(temp.path()),
     )?;
     assert_eq!(invalid.status, InvocationStatus::Failure);
-    assert!(invalid.stderr.contains("must be string, received integer"));
+    assert!(diagnostic(&invalid).contains("must be string, received integer"));
     Ok(())
 }
 
@@ -230,7 +237,7 @@ fn dispatch_wraps_local_tool_outputs_for_graph_context_paths()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    let payload = output.value;
     // The tool already emits a self-described `{ schema, data }` packet, so `wrap_as`
     // exposes it as-is at a SINGLE `.data` depth rather than re-wrapping into `.data.data`.
     assert_eq!(
@@ -275,7 +282,7 @@ fn dispatch_does_not_confuse_a_domain_data_field_with_an_artifact_envelope()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    let payload = output.value;
     assert_eq!(
         json_path(&payload, &["page_packet", "data", "data"]),
         Some("page bytes")
@@ -326,7 +333,7 @@ fn dispatch_wraps_local_named_emits_for_graph_context_paths()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    let payload = output.value;
     assert_eq!(
         json_path(&payload, &["draft_pull_request", "data", "title"]),
         Some("hello")
@@ -372,7 +379,7 @@ fn dispatch_wraps_same_key_once_for_wrap_as_and_named_emits()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    let payload = output.value;
     assert_eq!(
         json_path(&payload, &["data_operation_result", "data", "events"]),
         Some("present"),
@@ -415,7 +422,7 @@ fn dispatch_resolves_unbound_local_data_source_to_durable_sqlite_adapter()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    let payload = output.value;
     assert_eq!(
         json_path(
             &payload,
@@ -505,7 +512,7 @@ esac
     )?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    let payload = output.value;
     assert_eq!(
         json_path(
             &payload,
@@ -624,9 +631,9 @@ esac
         output.status,
         InvocationStatus::Success,
         "{}",
-        output.stderr
+        diagnostic(&output)
     );
-    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    let payload = output.value;
     assert_eq!(
         json_path(&payload, &["data_operation_result", "data", "status"]),
         Some("committed")
@@ -696,9 +703,9 @@ fn external_data_results_use_the_core_budget_not_the_generic_cli_limit()
         output.status,
         InvocationStatus::Success,
         "{}",
-        output.stderr
+        diagnostic(&output)
     );
-    assert!(output.stdout.len() > 1024 * 1024);
+    assert!(serde_json::to_vec(&output.value)?.len() > 1024 * 1024);
     Ok(())
 }
 
@@ -743,11 +750,7 @@ fn data_operation_versions_are_limited_by_the_portable_json_contract()
         env.clone(),
     )?;
     assert_eq!(append_output.status, InvocationStatus::Failure);
-    assert!(
-        append_output
-            .stderr
-            .contains("expected_version must be less")
-    );
+    assert!(diagnostic(&append_output).contains("expected_version must be less"));
 
     let read = JsonObject::from([
         (
@@ -771,7 +774,7 @@ fn data_operation_versions_are_limited_by_the_portable_json_contract()
     let read_output =
         invoke_in_directory("data.read_events", read, temp.path().to_path_buf(), env)?;
     assert_eq!(read_output.status, InvocationStatus::Failure);
-    assert!(read_output.stderr.contains("after_version must not exceed"));
+    assert!(diagnostic(&read_output).contains("after_version must not exceed"));
     Ok(())
 }
 
@@ -817,10 +820,10 @@ fn dispatch_rejects_external_data_results_that_violate_the_native_contract()
 
     assert_eq!(output.status, InvocationStatus::Failure);
     assert!(
-        output.stdout.is_empty(),
+        output.value == JsonValue::Null,
         "invalid provider claims must not escape"
     );
-    assert!(output.stderr.contains("provider changed data_source_ref"));
+    assert!(diagnostic(&output).contains("provider changed data_source_ref"));
     Ok(())
 }
 
@@ -885,7 +888,7 @@ esac
     )?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    let payload = output.value;
     assert_eq!(
         json_path(
             &payload,
@@ -966,7 +969,7 @@ esac
     )?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
+    let payload = output.value;
     assert_eq!(
         json_path(
             &payload,
@@ -998,7 +1001,7 @@ fn dispatch_fails_closed_for_invalid_data_sources_env_json()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(output.stderr.contains("not valid JSON"));
+    assert!(diagnostic(&output).contains("not valid JSON"));
     Ok(())
 }
 
@@ -1025,8 +1028,9 @@ fn dispatch_fails_closed_for_missing_required_data_sources_file()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(output.stderr.contains("Failed to read data source config"));
-    assert!(output.stderr.contains("missing/data-sources.json"));
+    let message = diagnostic(&output);
+    assert!(message.contains("Failed to read data source config"));
+    assert!(message.contains("missing/data-sources.json"));
     Ok(())
 }
 
@@ -1044,8 +1048,9 @@ fn dispatch_fails_closed_for_unbound_non_local_data_source()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(output.stderr.contains("tenant://missing/board"));
-    assert!(output.stderr.contains(".runx/data-sources.json"));
+    let message = diagnostic(&output);
+    assert!(message.contains("tenant://missing/board"));
+    assert!(message.contains(".runx/data-sources.json"));
     Ok(())
 }
 
@@ -1058,7 +1063,7 @@ fn dispatch_fails_closed_for_data_source_binding_without_adapter()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(output.stderr.contains("missing adapter"));
+    assert!(diagnostic(&output).contains("missing adapter"));
     Ok(())
 }
 
@@ -1071,11 +1076,7 @@ fn dispatch_fails_closed_for_recursive_data_source_adapter()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(
-        output
-            .stderr
-            .contains("cannot bind to operation capability")
-    );
+    assert!(diagnostic(&output).contains("cannot bind to operation capability"));
     Ok(())
 }
 
@@ -1088,7 +1089,7 @@ fn dispatch_fails_closed_for_non_namespaced_data_source_adapter()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(output.stderr.contains("must be a namespaced tool ref"));
+    assert!(diagnostic(&output).contains("must be a namespaced tool ref"));
     Ok(())
 }
 
@@ -1124,15 +1125,16 @@ fn dispatch_rejects_secret_material_in_data_source_binding()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(output.stderr.contains("api_key"));
-    assert!(output.stderr.contains("credential profile"));
+    let message = diagnostic(&output);
+    assert!(message.contains("api_key"));
+    assert!(message.contains("credential profile"));
     Ok(())
 }
 
 fn invoke_data_source_with_inline_binding(
     data_source_ref: &str,
     config: &str,
-) -> Result<SkillOutput, Box<dyn std::error::Error>> {
+) -> Result<InvocationOutput, Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let inputs = read_projection_inputs(data_source_ref);
     let mut env = tool_root_env(temp.path());
@@ -1146,12 +1148,16 @@ fn invoke_data_source_with_inline_binding(
     )?)
 }
 
+fn diagnostic(output: &InvocationOutput) -> String {
+    output.failure_message().unwrap_or_default()
+}
+
 fn invoke_in_directory(
     tool_ref: &str,
     inputs: JsonObject,
     skill_directory: PathBuf,
     env: BTreeMap<String, String>,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     invoke_with_resolved_in_directory(tool_ref, inputs, JsonObject::new(), skill_directory, env)
 }
 
@@ -1161,7 +1167,7 @@ fn invoke_with_resolved_in_directory(
     resolved_inputs: JsonObject,
     skill_directory: PathBuf,
     env: BTreeMap<String, String>,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     let credential_delivery = CredentialDelivery::none();
     let effects = RuntimeEffectRegistry::default();
     let javascript = crate::adapters::javascript::JavaScriptAdapter::default();

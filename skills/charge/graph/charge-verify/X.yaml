@@ -42,6 +42,7 @@ runners:
         description: Challenge idempotency binding.
     graph:
       name: charge-verify
+      result_from: [verify]
       steps:
         - id: verify
           tool: payment.charge_verification_request

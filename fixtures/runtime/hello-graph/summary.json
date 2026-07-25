@@ -5,9 +5,17 @@
     "first",
     "second"
   ],
-  "stdout": [
-    "{\"message\":\"hello from graph\"}\n",
-    "{\"message\":\"hello from graph\"}\n"
+  "contracts": [
+    {
+      "message": {
+        "data": "hello from graph"
+      }
+    },
+    {
+      "message": {
+        "data": "hello from graph"
+      }
+    }
   ],
   "createdAt": "2026-05-18T00:00:00Z",
   "graphSealDigest": "sha256:8fadda4666c9507e440445c9c05399af70f52a319251748dd9288f20df5eee28",

@@ -45,7 +45,6 @@ mod receipt_tree;
 mod registry;
 mod registry_client;
 mod registry_install;
-mod sensitive_text_redaction;
 mod skill_author_runtime_fixtures;
 mod skill_issue_intake;
 mod skill_issue_to_pr;

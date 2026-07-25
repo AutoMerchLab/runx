@@ -10,12 +10,13 @@ use runx_contracts::{
 use runx_parser::GraphStep;
 use runx_runtime::effects::ResolvedEffectTarget;
 use runx_runtime::{
-    EffectApprovalRequirement, EffectOutputRequest, EffectStepRequest, Host, InvocationStatus,
+    EffectApprovalRequirement, EffectOutputRequest, EffectStepRequest, Host, InvocationOutput,
     LocalReceiptStore, PROVIDER_MUTATE_TOOL, PROVIDER_PERMISSION_EFFECT_FAMILY,
     PROVIDER_PERMISSION_GRANT_ID_ENV, PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
     PROVIDER_PERMISSION_PRINCIPAL_REF_ENV, PROVIDER_READ_TOOL, ProviderApprovalEvidence,
     ProviderEffectAuthority, ProviderEffectClass, ProviderEffectIntent, ProviderEffectIntentInput,
-    ProviderEffectResolved, ProviderPermissionEffect, RuntimeEffect, RuntimeError, SkillOutput,
+    ProviderEffectResolved, ProviderPermissionEffect, RuntimeEffect, RuntimeError,
+    encode_provider_scopes_env,
 };
 
 const PROVIDER: &str = "slack";
@@ -306,7 +307,7 @@ mod production_recovery {
         let mut options = RuntimeOptions {
             created_at: CREATED_AT.to_owned(),
             effects,
-            ..RuntimeOptions::local_development()
+            ..RuntimeOptions::local_development(std::env::vars().collect())
         };
         options.env.extend(provider_env());
         options.env.insert(
@@ -379,7 +380,7 @@ mod production_recovery {
         );
         let step = recovered.steps.first().expect("recovered provider step");
         let operation = step
-            .outputs
+            .contract
             .get("provider_operation")
             .and_then(JsonValue::as_object)
             .and_then(|packet| packet.get("data"))
@@ -606,6 +607,10 @@ impl Host for RecordingHost {
             payload: JsonValue::Bool(true),
         }))
     }
+
+    fn log(&mut self, _message: String) -> Result<(), RuntimeError> {
+        Ok(())
+    }
 }
 
 fn effect_request<'a>(
@@ -690,7 +695,7 @@ fn provider_env() -> BTreeMap<String, String> {
         ),
         (
             PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
-            SCOPE.to_owned(),
+            encode_provider_scopes_env(&[SCOPE.to_owned()]).expect("scope transport"),
         ),
         (
             PROVIDER_PERMISSION_PRINCIPAL_REF_ENV.to_owned(),
@@ -759,18 +764,11 @@ fn provider_claim(
     )])
 }
 
-fn successful_output(claim: &JsonObject) -> SkillOutput {
-    SkillOutput {
-        status: InvocationStatus::Success,
-        stdout: serde_json::to_string(&JsonValue::Object(claim.clone())).expect("claim JSON"),
-        stderr: String::new(),
-        exit_code: Some(0),
-        duration_ms: 1,
-        metadata: JsonObject::new(),
-    }
+fn successful_output(claim: &JsonObject) -> InvocationOutput {
+    InvocationOutput::runtime_success(JsonValue::Object(claim.clone()), 1, JsonObject::new())
 }
 
-fn metadata_verification_refs(output: &SkillOutput) -> Vec<runx_contracts::Reference> {
+fn metadata_verification_refs(output: &InvocationOutput) -> Vec<runx_contracts::Reference> {
     output
         .metadata
         .get(runx_runtime::effects::EFFECT_VERIFICATION_REFS_METADATA)

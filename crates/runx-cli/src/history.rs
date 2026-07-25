@@ -191,10 +191,6 @@ fn non_empty_env<'a>(env: &'a BTreeMap<String, String>, key: &str) -> Option<&'a
         .filter(|value| !value.is_empty())
 }
 
-pub fn env_map() -> BTreeMap<String, String> {
-    crate::cli_io::env_map()
-}
-
 // Function rationale: this mirrors the public history CLI
 // flag grammar in one parser during the hard cutover.
 fn parse_history_args(args: &[OsString]) -> Result<ParsedHistoryArgs, HistoryCliError> {
@@ -381,12 +377,10 @@ fn push_pending_run_lines(
         step,
         short_id(&pending.id)
     ));
-    if let Some(resume_skill_ref) = pending.resume_skill_ref.as_deref() {
+    if pending.resume_skill_ref.is_some() {
         let resume_command =
             crate::resume::render_skill_resume_command(crate::resume::SkillResumeCommand {
-                skill_ref: Some(resume_skill_ref),
                 run_id: &pending.id,
-                selected_runner: pending.selected_runner.as_deref(),
                 receipt_dir,
                 answers_path: None,
             });
@@ -467,7 +461,7 @@ mod tests {
     use super::*;
     use runx_contracts::ReceiptIssuerType;
     use runx_runtime::receipts::step_receipt_with_signature_policy;
-    use runx_runtime::{Ed25519ReceiptSigner, InvocationStatus, RuntimeError, SkillOutput};
+    use runx_runtime::{Ed25519ReceiptSigner, InvocationOutput, RuntimeError};
 
     #[test]
     fn parses_history_args_without_comparing_against_runtime_constants() -> Result<(), io::Error> {
@@ -892,16 +886,23 @@ mod tests {
         signer: &Ed25519ReceiptSigner,
     ) -> Result<runx_contracts::Receipt, RuntimeError> {
         let verifier = Ed25519ReceiptVerifier::new([signer.production_key()]);
-        let output = SkillOutput {
-            status: InvocationStatus::Success,
-            stdout:
-                r#"{"artifact":{"artifact_id":"artifact_cli_history","artifact_type":"artifact"}}"#
-                    .to_owned(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 10,
-            metadata: BTreeMap::new(),
-        };
+        let output = InvocationOutput::runtime_success(
+            runx_contracts::JsonValue::Object(BTreeMap::from([(
+                "artifact".to_owned(),
+                runx_contracts::JsonValue::Object(BTreeMap::from([
+                    (
+                        "artifact_id".to_owned(),
+                        runx_contracts::JsonValue::String("artifact_cli_history".to_owned()),
+                    ),
+                    (
+                        "artifact_type".to_owned(),
+                        runx_contracts::JsonValue::String("artifact".to_owned()),
+                    ),
+                ])),
+            )])),
+            10,
+            BTreeMap::new(),
+        );
         step_receipt_with_signature_policy(
             "cli-history",
             "production-verified",

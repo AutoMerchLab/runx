@@ -14,7 +14,7 @@ harness:
     - name: governed-outbound-approved-plan
       env:
         RUNX_PROVIDER_PERMISSION_GRANT_ID: provider-read-demo
-        RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: runx:net:allowlist
+        RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: '["runx:net:allowlist"]'
       inputs:
         url: https://example.com/
         allowlist:
@@ -92,7 +92,7 @@ harness:
     - name: governed-outbound-redaction-hold
       env:
         RUNX_PROVIDER_PERMISSION_GRANT_ID: provider-read-hold-demo
-        RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: runx:net:allowlist
+        RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: '["runx:net:allowlist"]'
       inputs:
         url: https://example.com/
         allowlist:
@@ -148,6 +148,7 @@ runners:
         description: Boundary, audience, or compliance context for the plan.
     graph:
       name: governed-outbound
+      result_from: [finalize]
       steps:
         - id: fetch-source
           label: gather the source

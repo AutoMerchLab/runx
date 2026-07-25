@@ -18,8 +18,8 @@ use capability::CaptureHelpInput;
 const TOOL: &str = "cli.capture_help";
 const OUTPUT_LIMIT_BYTES: usize = 256 * 1024;
 const TIMEOUT: Duration = Duration::from_secs(15);
-const MAX_ARGS: usize = 32;
-const MAX_ARG_BYTES: usize = 4 * 1024;
+const MAX_CLI_RUN_ARGS: usize = 32;
+const MAX_CLI_RUN_ARG_BYTES: usize = 4 * 1024;
 
 #[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
 #[serde(deny_unknown_fields)]
@@ -120,10 +120,10 @@ fn help_output(
 }
 
 fn arguments(values: &[String]) -> Result<Vec<String>, RuntimeError> {
-    if values.len() > MAX_ARGS {
+    if values.len() > MAX_CLI_RUN_ARGS {
         return Err(invalid_input(
             TOOL,
-            format!("args must contain no more than {MAX_ARGS} entries"),
+            format!("args must contain no more than {MAX_CLI_RUN_ARGS} entries"),
         ));
     }
     values
@@ -158,10 +158,10 @@ fn working_directory(requested: &str, root: &Path) -> Result<std::path::PathBuf,
 }
 
 fn bounded_text(value: &str, field: &str) -> Result<String, RuntimeError> {
-    if value.is_empty() || value.len() > MAX_ARG_BYTES || value.contains('\0') {
+    if value.is_empty() || value.len() > MAX_CLI_RUN_ARG_BYTES || value.contains('\0') {
         return Err(invalid_input(
             TOOL,
-            format!("{field} must contain 1-{MAX_ARG_BYTES} non-NUL bytes"),
+            format!("{field} must contain 1-{MAX_CLI_RUN_ARG_BYTES} non-NUL bytes"),
         ));
     }
     Ok(value.to_owned())

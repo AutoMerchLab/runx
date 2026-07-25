@@ -131,6 +131,7 @@ runners:
         description: Explicit catalog rows paired with history_receipts for deterministic replay.
     graph:
       name: run-history
+      result_from: [finalize-live, finalize-replay]
       steps:
         - id: prepare
           label: normalize the bounded report request

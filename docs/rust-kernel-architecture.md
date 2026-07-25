@@ -279,9 +279,10 @@ runtime uses three transports with different ownership:
   contained `--inputs` file or stdin up to 64 MiB, but the selected runner and
   worker retain their normal type and resource limits;
 - immutable local content is admitted once by the runtime as a digest-bound
-  artifact of at most 512 MiB and consumed through exact pages of at most 1
-  MiB; a deterministic module receives records and continuation metadata, not
-  a workspace path or ambient filesystem access;
+  artifact of at most 512 MiB and consumed through exact pages that default to
+  1 MiB and may be configured up to 4 MiB; a deterministic module receives
+  records and continuation metadata, not a workspace path or ambient
+  filesystem access;
 - durable histories stay in the data plane and move through bounded
   `after_version`/keyset cursors or projections, never through an accumulating
   graph-context array.

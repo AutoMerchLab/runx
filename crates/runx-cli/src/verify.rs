@@ -1263,9 +1263,7 @@ mod tests {
     use ring::signature::KeyPair;
     use runx_contracts::ReceiptIssuerType;
     use runx_runtime::receipts::step_receipt_with_signature_policy;
-    use runx_runtime::{
-        Ed25519ReceiptSigner, InvocationStatus, LocalReceiptStore, RuntimeError, SkillOutput,
-    };
+    use runx_runtime::{Ed25519ReceiptSigner, InvocationOutput, LocalReceiptStore, RuntimeError};
     use serde::Deserialize;
     use serde_json as test_json;
 
@@ -2002,16 +2000,23 @@ mod tests {
 
     fn production_signed_receipt(signer: &Ed25519ReceiptSigner) -> Result<Receipt, RuntimeError> {
         let verifier = Ed25519ReceiptVerifier::new([signer.production_key()]);
-        let output = SkillOutput {
-            status: InvocationStatus::Success,
-            stdout:
-                r#"{"artifact":{"artifact_id":"artifact_cli_verify","artifact_type":"artifact"}}"#
-                    .to_owned(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 10,
-            metadata: BTreeMap::new(),
-        };
+        let output = InvocationOutput::runtime_success(
+            runx_contracts::JsonValue::Object(BTreeMap::from([(
+                "artifact".to_owned(),
+                runx_contracts::JsonValue::Object(BTreeMap::from([
+                    (
+                        "artifact_id".to_owned(),
+                        runx_contracts::JsonValue::String("artifact_cli_verify".to_owned()),
+                    ),
+                    (
+                        "artifact_type".to_owned(),
+                        runx_contracts::JsonValue::String("artifact".to_owned()),
+                    ),
+                ])),
+            )])),
+            10,
+            BTreeMap::new(),
+        );
         step_receipt_with_signature_policy(
             "cli-verify",
             "production-verified",

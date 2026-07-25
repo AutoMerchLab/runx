@@ -292,6 +292,11 @@ pub struct ExecutionGraph {
     pub name: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub owner: Option<String>,
+    /// Steps whose complete declared output contracts form the graph's public
+    /// result. Multiple entries support mutually exclusive terminal branches
+    /// and workflows that intentionally return both an act result and its
+    /// durable readback. Diagnostic/base fields are never exported.
+    pub result_from: Vec<String>,
     /// The input key carrying the parent charter authority term that steps with a
     /// `mint_authority` directive attenuate from. Declared once at the graph (or
     /// runner) level, replacing per-skill re-threading of the parent authority. A

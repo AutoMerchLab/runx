@@ -92,6 +92,16 @@ impl ReceiptServices {
             .list_with_policy(self.signature_config.signature_policy())
     }
 
+    #[cfg(feature = "cli-tool")]
+    pub(crate) fn read_local_receipt(
+        &self,
+        receipt_id: &str,
+        receipt_dir: &Path,
+    ) -> Result<Receipt, ReceiptStoreError> {
+        LocalReceiptStore::new(receipt_dir)
+            .read_exact_with_policy(receipt_id, self.signature_config.signature_policy())
+    }
+
     #[cfg(feature = "mcp")]
     pub(crate) fn write_local_receipt_dir(
         &self,

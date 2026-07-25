@@ -1,4 +1,9 @@
-use super::{connect_start_command, inspect_explicit_provider_grant, less_ready_status};
+use std::collections::BTreeMap;
+
+use super::{
+    connect_start_command, inspect_explicit_provider_grant, less_ready_status,
+    provider_readiness_sources,
+};
 
 #[test]
 fn explicit_provider_grant_readiness_is_scope_bound() {
@@ -38,4 +43,63 @@ fn connect_setup_command_preserves_exact_provider_scopes() {
         ),
         "runx connect start google-search-console --scope sites.read --scope url.inspect"
     );
+    assert_eq!(
+        connect_start_command(
+            "future-provider",
+            &[
+                "urn:vendor:scope?mode=read&format=full".to_owned(),
+                "custom.operation:v3".to_owned(),
+            ],
+        ),
+        "runx connect start future-provider --scope 'urn:vendor:scope?mode=read&format=full' --scope custom.operation:v3"
+    );
+}
+
+#[test]
+fn explicit_provider_scope_transport_preserves_opaque_values() {
+    let scopes = vec![
+        "https://provider.example/auth/custom.scope?mode=read,write".to_owned(),
+        "opaque capability with spaces".to_owned(),
+    ];
+    let env = BTreeMap::from([
+        (
+            runx_runtime::PROVIDER_PERMISSION_GRANT_ID_ENV.to_owned(),
+            "grant_future".to_owned(),
+        ),
+        (
+            runx_runtime::PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
+            runx_runtime::encode_provider_scopes_env(&scopes).expect("scope transport"),
+        ),
+        (
+            runx_runtime::PROVIDER_PERMISSION_PRINCIPAL_REF_ENV.to_owned(),
+            "runx:principal:operator:test".to_owned(),
+        ),
+    ]);
+
+    let sources = provider_readiness_sources(&env, std::path::Path::new("."));
+
+    assert_eq!(sources.explicit_scopes, Some(scopes));
+    assert!(sources.explicit_principal);
+    assert!(sources.hosted_grants.is_none());
+}
+
+#[test]
+fn incomplete_explicit_provider_evidence_never_reports_locally_ready() {
+    let scopes = vec!["future.scope,with delimiter".to_owned()];
+    let env = BTreeMap::from([
+        (
+            runx_runtime::PROVIDER_PERMISSION_GRANT_ID_ENV.to_owned(),
+            "grant_future".to_owned(),
+        ),
+        (
+            runx_runtime::PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
+            runx_runtime::encode_provider_scopes_env(&scopes).expect("scope transport"),
+        ),
+    ]);
+
+    let sources = provider_readiness_sources(&env, std::path::Path::new("."));
+
+    assert_eq!(sources.explicit_scopes, Some(scopes));
+    assert!(!sources.explicit_principal);
+    assert!(sources.hosted_grants.is_some());
 }

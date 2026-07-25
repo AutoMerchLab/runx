@@ -28,6 +28,7 @@ pub use authority_proof::{
     validate_credential_binding,
 };
 pub use graph_scope::admit_graph_step_scopes;
+pub use interpreter::strict_cli_tool_inline_code_denial;
 pub use local::admit_local_skill;
 pub use maturity::compute_maturity;
 pub use public_work::{

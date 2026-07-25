@@ -3,10 +3,8 @@ use std::time::Duration;
 use runx_contracts::JsonValue;
 
 use crate::RuntimeError;
-use crate::adapter::{
-    FanoutExecutionMode, InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput,
-};
-use crate::adapter_pipeline::{AdapterCapture, AdapterProjection};
+use crate::adapter::{InvocationOutput, InvocationStatus, SkillAdapter, SkillInvocation};
+use crate::adapter_pipeline::AdapterProjection;
 use crate::credentials::CredentialDelivery;
 use crate::process::{
     CapturedOutput, ProcessOutcome, ProcessSpec, ProcessStdin, STANDARD_PROCESS_OUTPUT_BYTES,
@@ -27,14 +25,25 @@ impl CliToolAdapter {
         &self,
         request: SkillInvocation,
         output_limit_bytes: usize,
-    ) -> Result<SkillOutput, RuntimeError> {
+    ) -> Result<InvocationOutput, RuntimeError> {
+        crate::execution_environment::enforce_cli_tool_execution_policy(
+            request.source.command.as_deref(),
+            &request.source.args,
+            &request.env,
+        )?;
         let credential_delivery = request.credential_delivery.clone();
         let mut sandbox = SandboxServices.process_plan(
             &request.source,
+            &request.requirements.environment,
             &request.skill_directory,
             &request.inputs,
             &request.env,
         )?;
+        credential_delivery
+            .ensure_environment_disjoint(&sandbox.env)
+            .map_err(|error| RuntimeError::SandboxViolation {
+                message: error.to_string(),
+            })?;
         for (name, value) in credential_delivery.secret_env().iter() {
             sandbox.env.insert(name.to_owned(), value.to_owned());
         }
@@ -76,20 +85,16 @@ impl SkillAdapter for CliToolAdapter {
         "cli-tool"
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         self.invoke_with_output_limit(request, STANDARD_PROCESS_OUTPUT_BYTES)
     }
 
-    fn fanout_execution_mode(&self, source: &runx_parser::SkillSource) -> FanoutExecutionMode {
-        if source.source_type == runx_parser::SourceKind::CliTool {
-            FanoutExecutionMode::IsolatedParallel
-        } else {
-            FanoutExecutionMode::Serial
-        }
-    }
-
-    fn clone_for_fanout(&self) -> Option<Box<dyn SkillAdapter + Send + Sync>> {
-        Some(Box::new(*self))
+    fn isolated_fanout_adapter(
+        &self,
+        source: &runx_parser::SkillSource,
+    ) -> Option<Box<dyn SkillAdapter + Send + Sync>> {
+        (source.source_type == runx_parser::SourceKind::CliTool)
+            .then(|| Box::new(*self) as Box<dyn SkillAdapter + Send + Sync>)
     }
 }
 
@@ -139,7 +144,7 @@ fn cli_tool_output(
     credential_delivery: &CredentialDelivery,
     metadata: runx_contracts::JsonObject,
     output_limit_bytes: usize,
-) -> SkillOutput {
+) -> InvocationOutput {
     let stdout = redacted_capture(outcome.stdout, credential_delivery, output_limit_bytes);
     let stderr = redacted_capture(outcome.stderr, credential_delivery, output_limit_bytes);
     let output_truncated = stdout.truncated || stderr.truncated;
@@ -154,13 +159,14 @@ fn cli_tool_output(
     } else {
         (stdout.text, stderr.text)
     };
-    AdapterProjection::from_duration_ms(outcome.duration_ms).output(
+    AdapterProjection::from_duration_ms(outcome.duration_ms).process_output(
         if success {
             InvocationStatus::Success
         } else {
             InvocationStatus::Failure
         },
-        AdapterCapture::new(stdout, stderr),
+        stdout,
+        stderr,
         outcome.status.code(),
         metadata,
     )
@@ -169,30 +175,6 @@ fn cli_tool_output(
 struct CapturedText {
     text: String,
     truncated: bool,
-}
-
-pub fn output_object(output: &SkillOutput) -> runx_contracts::JsonObject {
-    let mut object = runx_contracts::JsonObject::new();
-    if let Ok(parsed) = serde_json::from_str::<JsonValue>(&output.stdout) {
-        object.insert("skill_claim".to_owned(), parsed);
-    }
-    object.insert(
-        "stdout".to_owned(),
-        JsonValue::String(output.stdout.clone()),
-    );
-    object.insert(
-        "stderr".to_owned(),
-        JsonValue::String(output.stderr.clone()),
-    );
-    object.insert(
-        "status".to_owned(),
-        JsonValue::String(if output.succeeded() {
-            "success".to_owned()
-        } else {
-            "failure".to_owned()
-        }),
-    );
-    object
 }
 
 #[cfg(test)]
@@ -211,8 +193,10 @@ mod tests {
         DEFAULT_TIMEOUT_OVERRIDE_SECONDS.store(1, std::sync::atomic::Ordering::SeqCst);
         let output = CliToolAdapter.invoke(SkillInvocation {
             skill_name: "default-timeout".to_owned(),
+            step_id: None,
             artifacts: None,
             allowed_tools: None,
+            requirements: Default::default(),
             source: runx_parser::SkillSource {
                 act: None,
                 source_type: runx_parser::SourceKind::CliTool,
@@ -224,10 +208,10 @@ mod tests {
                 cwd: None,
                 timeout_seconds: None,
                 input_mode: None,
+                environment: Default::default(),
                 sandbox: Some(runx_parser::SkillSandbox {
                     profile: runx_core::policy::SandboxProfile::UnrestrictedLocalDev,
                     cwd_policy: Some(runx_core::policy::CwdPolicy::Workspace),
-                    env_allowlist: None,
                     network: None,
                     writable_paths: Vec::new(),
                     require_enforcement: None,
@@ -250,6 +234,7 @@ mod tests {
             inputs: JsonObject::new(),
             resolved_inputs: JsonObject::new(),
             current_context: Vec::new(),
+            provenance: Vec::new(),
             skill_directory: std::env::current_dir()
                 .map_err(|source| RuntimeError::io("reading current dir", source))?,
             env: BTreeMap::new(),

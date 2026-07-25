@@ -113,6 +113,7 @@ runners:
         description: Time, environment, or safety constraints on evaluation.
     graph:
       name: review-skill
+      result_from: [assess]
       steps:
         - id: collect-evidence
           label: inspect target and run safe native harness

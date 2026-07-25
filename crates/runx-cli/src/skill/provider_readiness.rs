@@ -24,6 +24,7 @@ pub(super) fn inspect(
 struct ProviderReadinessSources<'a> {
     explicit_grant: Option<&'a str>,
     explicit_scopes: Option<Vec<String>>,
+    explicit_principal: bool,
     hosted_grants: Option<Result<Vec<runx_runtime::HostedProviderGrant>, String>>,
 }
 
@@ -35,25 +36,25 @@ fn provider_readiness_sources<'a>(
         .get(runx_runtime::PROVIDER_PERMISSION_GRANT_ID_ENV)
         .map(|value| value.trim())
         .filter(|value| !value.is_empty());
-    let explicit_scopes = env
+    let decoded_scopes = env
         .get(runx_runtime::PROVIDER_PERMISSION_GRANTED_SCOPES_ENV)
-        .map(|value| {
-            value
-                .split(',')
-                .map(str::trim)
-                .filter(|scope| !scope.is_empty())
-                .map(str::to_owned)
-                .collect::<Vec<_>>()
-        })
-        .filter(|scopes| !scopes.is_empty());
-    let hosted_grants = if explicit_grant.is_some() && explicit_scopes.is_some() {
-        None
-    } else {
-        Some(load_hosted_provider_grants(env, cwd))
+        .map(|value| runx_runtime::decode_provider_scopes_env(value));
+    let explicit_scopes = decoded_scopes
+        .as_ref()
+        .and_then(|result| result.as_ref().ok())
+        .cloned();
+    let explicit_principal = env
+        .get(runx_runtime::PROVIDER_PERMISSION_PRINCIPAL_REF_ENV)
+        .is_some_and(|value| !value.trim().is_empty());
+    let hosted_grants = match decoded_scopes {
+        Some(Err(error)) => Some(Err(error.to_string())),
+        _ if explicit_grant.is_some() && explicit_scopes.is_some() && explicit_principal => None,
+        _ => Some(load_hosted_provider_grants(env, cwd)),
     };
     ProviderReadinessSources {
         explicit_grant,
         explicit_scopes,
+        explicit_principal,
         hosted_grants,
     }
 }
@@ -71,8 +72,12 @@ fn inspect_provider_requirements(
         };
         let provider = object_string(requirement, "provider").unwrap_or("unknown");
         let scopes = string_array(requirement, "scopes");
-        let resolution = match (sources.explicit_grant, sources.explicit_scopes.as_ref()) {
-            (Some(grant_id), Some(granted_scopes)) => {
+        let resolution = match (
+            sources.explicit_grant,
+            sources.explicit_scopes.as_ref(),
+            sources.explicit_principal,
+        ) {
+            (Some(grant_id), Some(granted_scopes), true) => {
                 inspect_explicit_provider_grant(grant_id, granted_scopes, &scopes)
             }
             _ => inspect_hosted_result(
@@ -159,11 +164,17 @@ pub(super) fn append_text(output: &mut String, inspection: &JsonObject) {
 }
 
 fn connect_start_command(provider: &str, scopes: &[String]) -> String {
-    let mut command = format!("runx connect start {provider}");
+    let mut parts = vec![
+        "runx".to_owned(),
+        "connect".to_owned(),
+        "start".to_owned(),
+        crate::resume::shell_token(provider),
+    ];
     for scope in scopes {
-        command.push_str(&format!(" --scope {scope}"));
+        parts.push("--scope".to_owned());
+        parts.push(crate::resume::shell_token(scope));
     }
-    command
+    parts.join(" ")
 }
 
 #[derive(Debug)]

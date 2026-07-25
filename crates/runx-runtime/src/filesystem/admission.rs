@@ -2,7 +2,9 @@ use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
 
-use super::{MAX_BUNDLE_BYTES, MAX_BUNDLE_OPERATIONS, TextBundle, invalid_bundle};
+use super::{
+    MAX_BUNDLE_OPERATIONS, MAX_FILESYSTEM_MUTATION_BUNDLE_BYTES, TextBundle, invalid_bundle,
+};
 use crate::RuntimeError;
 
 pub(super) struct AdmittedWrite {
@@ -69,10 +71,10 @@ fn admit_writes(
         total_bytes = total_bytes
             .checked_add(write.contents.len())
             .ok_or_else(|| invalid_bundle(operation, "bundle byte count overflow"))?;
-        if total_bytes > MAX_BUNDLE_BYTES {
+        if total_bytes > MAX_FILESYSTEM_MUTATION_BUNDLE_BYTES {
             return Err(invalid_bundle(
                 operation,
-                format!("bundle writes exceed {MAX_BUNDLE_BYTES} bytes"),
+                format!("bundle writes exceed {MAX_FILESYSTEM_MUTATION_BUNDLE_BYTES} bytes"),
             ));
         }
         reject_directory_target(operation, &absolute, &relative)?;
@@ -220,10 +222,12 @@ pub(super) fn snapshot_paths(
                 bytes = bytes.checked_add(contents.len()).ok_or_else(|| {
                     invalid_bundle(&bundle.operation, "rollback snapshot byte count overflow")
                 })?;
-                if bytes > MAX_BUNDLE_BYTES {
+                if bytes > MAX_FILESYSTEM_MUTATION_BUNDLE_BYTES {
                     return Err(invalid_bundle(
                         &bundle.operation,
-                        format!("bundle rollback snapshot exceeds {MAX_BUNDLE_BYTES} bytes"),
+                        format!(
+                            "bundle rollback snapshot exceeds {MAX_FILESYSTEM_MUTATION_BUNDLE_BYTES} bytes"
+                        ),
                     ));
                 }
                 let permissions = fs::metadata(path)

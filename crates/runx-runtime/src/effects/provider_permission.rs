@@ -27,6 +27,11 @@ mod policy;
 #[cfg(feature = "catalog")]
 mod readback;
 mod recovery;
+mod scope_transport;
+
+pub use scope_transport::{
+    ProviderScopeTransportError, decode_provider_scopes_env, encode_provider_scopes_env,
+};
 
 use approval::{
     prepare_provider_effect_output, resolve_provider_approval, resolved_provider_effect,
@@ -155,32 +160,13 @@ impl RuntimeEffect for ProviderPermissionEffect {
         if let Some(access) = native_access {
             validate_native_provider_policy(&request, policy, access)?;
         }
-        let explicit_plan = if native_access.is_some() && has_explicit_provider_grant(&request) {
-            provider_permission_plan(&request, policy)?
-        } else {
-            None
-        };
-        if let Some(plan) = explicit_plan.as_ref()
-            && !plan.missing_scopes.is_empty()
-        {
-            return Err(provider_permission_denial(&request, plan));
-        }
         let resolved_provider = native_access
-            .map(|_| self.native_provider_env(&request, policy))
+            .map(|_| self.native_provider_resolution(&request, policy))
             .transpose()?;
-        let request = resolved_provider
+        let evidence = resolved_provider
             .as_ref()
-            .map_or(request, |resolved| EffectStepRequest {
-                step: request.step,
-                target: request.target,
-                inputs: request.inputs,
-                env: &resolved.env,
-                graph_dir: request.graph_dir,
-            });
-        let plan = match explicit_plan {
-            Some(plan) => Some(plan),
-            None => provider_permission_plan(&request, policy)?,
-        };
+            .map(identity::NativeProviderResolution::grant_evidence);
+        let plan = provider_permission_plan(&request, policy, evidence)?;
         let Some(plan) = plan else {
             if native_access.is_some() {
                 return Err(provider_permission_policy_error(
@@ -266,20 +252,6 @@ impl RuntimeEffect for ProviderPermissionEffect {
         let access = native_provider_access(Some(request.tool_ref))?;
         Some(execution::invoke_provider_tool(self, request, access))
     }
-}
-
-fn has_explicit_provider_grant(request: &EffectStepRequest<'_>) -> bool {
-    [
-        PROVIDER_PERMISSION_GRANT_ID_ENV,
-        PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
-    ]
-    .iter()
-    .all(|name| {
-        request
-            .env
-            .get(*name)
-            .is_some_and(|value| !value.trim().is_empty())
-    })
 }
 
 fn build_provider_admission(

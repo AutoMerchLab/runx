@@ -29,7 +29,12 @@ use crate::doctor::{default_doctor_options, run_doctor};
 use crate::path_util::lexical_normalize;
 
 pub fn run_dev_once(options: &DevLoopOptions) -> Result<DevReport, DevError> {
-    run_dev_once_with_executor(options, &LocalDevFixtureExecutor)
+    run_dev_once_with_executor(
+        options,
+        &LocalDevFixtureExecutor {
+            env: options.env.clone(),
+        },
+    )
 }
 
 pub fn run_dev_once_with_executor(
@@ -105,9 +110,9 @@ impl DevFixtureExecutor for LocalDevFixtureExecutor {
         fixture: &LoadedDevFixture,
     ) -> Result<DevFixtureResult, DevError> {
         match fixture.target().kind {
-            DevFixtureTargetKind::Tool => run_tool_fixture(root, fixture),
+            DevFixtureTargetKind::Tool => run_tool_fixture(root, fixture, &self.env),
             DevFixtureTargetKind::Skill | DevFixtureTargetKind::Graph => {
-                run_skill_or_graph_fixture(root, fixture)
+                run_skill_or_graph_fixture(root, fixture, &self.env)
             }
         }
     }

@@ -203,7 +203,6 @@ fn normalize_config_key(key: &str) -> &str {
         "provider" => "agent.provider",
         "model" => "agent.model",
         "api-key" | "agent-key" => "agent.api_key",
-        "auto-approve" => "development.auto_approve",
         "public-token" => "public.api_token",
         _ => key,
     }
@@ -305,14 +304,6 @@ fn flatten_config(config: &RunxConfigFile) -> Vec<(&'static str, &str)> {
             rows.push(("agent.api_key", api_key_ref));
         }
     }
-    if let Some(development) = config.development.as_ref()
-        && let Some(auto_approve) = development.auto_approve
-    {
-        rows.push((
-            "development.auto_approve",
-            if auto_approve { "true" } else { "false" },
-        ));
-    }
     if let Some(public) = config.public.as_ref()
         && let Some(api_token_ref) = public.api_token_ref.as_deref()
     {
@@ -372,21 +363,6 @@ mod tests {
                 value: Some("gpt test".to_owned()),
                 value_from_stdin: false,
                 json: true,
-            })
-        );
-        assert_eq!(
-            parse_config_plan(&[
-                "config".into(),
-                "set".into(),
-                "auto-approve".into(),
-                "true".into(),
-            ]),
-            Ok(ConfigPlan {
-                action: ConfigAction::Set,
-                key: Some("development.auto_approve".to_owned()),
-                value: Some("true".to_owned()),
-                value_from_stdin: false,
-                json: false,
             })
         );
     }
@@ -451,22 +427,13 @@ mod tests {
             value_from_stdin: true,
             json: true,
         };
-        let set_auto_approve = ConfigPlan {
-            action: ConfigAction::Set,
-            key: Some("development.auto_approve".to_owned()),
-            value: Some("true".to_owned()),
-            value_from_stdin: false,
-            json: true,
-        };
         run_config_command(&set_provider, &env, &temp)?;
         let key_output = run_config_command(&set_key, &env, &temp)?;
         let public_output = run_config_command(&set_public_token, &env, &temp)?;
-        let auto_approve_output = run_config_command(&set_auto_approve, &env, &temp)?;
         assert!(key_output.contains("\"value\": \"[encrypted]\""));
         assert!(public_output.contains("\"value\": \"[encrypted]\""));
         assert!(!key_output.contains("sk-secret-test"));
         assert!(!public_output.contains("rxk-secret-test"));
-        assert!(auto_approve_output.contains("\"value\": \"true\""));
 
         let get_output = run_config_command(
             &ConfigPlan {
@@ -498,8 +465,6 @@ mod tests {
         assert!(list_output.contains("openai"));
         assert!(list_output.contains("agent.api_key"));
         assert!(list_output.contains("public.api_token"));
-        assert!(list_output.contains("development.auto_approve"));
-        assert!(list_output.contains("true"));
         assert!(list_output.contains("[encrypted]"));
         assert!(!list_output.contains("sk-secret-test"));
         assert!(!list_output.contains("rxk-secret-test"));

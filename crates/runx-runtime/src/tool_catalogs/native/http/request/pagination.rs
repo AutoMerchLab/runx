@@ -1,7 +1,7 @@
 use runx_contracts::{JsonNumber, JsonObject, JsonValue};
 
 use super::super::resolution::{Pagination, estimated_size, json_u64, value_at_path};
-use super::super::{MAX_OUTPUT_BYTES, invalid};
+use super::super::{MAX_HTTP_OUTPUT_BYTES, invalid};
 use super::{PreparedRequest, RequestRuntime};
 use crate::RuntimeError;
 use crate::http::{HttpMethod, RuntimeHttpTransport};
@@ -47,9 +47,9 @@ impl PaginationRun {
 
     fn record(&mut self, page: JsonObject, pagination: &Pagination) -> Result<bool, RuntimeError> {
         self.output_bytes = self.output_bytes.saturating_add(estimated_size(&page)?);
-        if self.output_bytes > MAX_OUTPUT_BYTES {
+        if self.output_bytes > MAX_HTTP_OUTPUT_BYTES {
             return Err(invalid(format!(
-                "paginated HTTP output exceeded {MAX_OUTPUT_BYTES} bytes"
+                "paginated HTTP output exceeded {MAX_HTTP_OUTPUT_BYTES} bytes"
             )));
         }
         let ok = page.get("ok").and_then(JsonValue::as_bool).unwrap_or(false);

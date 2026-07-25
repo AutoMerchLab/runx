@@ -10,7 +10,7 @@ use runx_parser::SkillArtifactContract;
 
 use super::{ToolDispatchRequest, catalog_error, configured_tool_roots, failure, workspace_root};
 use crate::RuntimeError;
-use crate::adapter::{SkillAdapter, SkillInvocation, SkillOutput};
+use crate::adapter::{InvocationOutput, SkillAdapter, SkillInvocation};
 use crate::adapters::cli_tool::CliToolAdapter;
 #[cfg(feature = "agent")]
 use crate::effects::RuntimeEffectRegistry;
@@ -51,7 +51,7 @@ pub(super) fn resolve_artifacts(
 }
 
 pub(super) struct LocalInvocationOutput {
-    pub(super) output: SkillOutput,
+    pub(super) output: InvocationOutput,
     pub(super) artifacts: Option<SkillArtifactContract>,
 }
 
@@ -80,6 +80,7 @@ pub(super) fn invoke(
     let artifacts = resolution.tool.artifacts.clone();
     let declared_inputs = resolution.tool.inputs.clone();
     let source_type = resolution.tool.source.source_type;
+    let requirements = resolution.tool.execution_requirements();
     let tool_directory = manifest_directory(&resolution.manifest_path, request.skill_directory);
     let (inputs, resolved_inputs) = match contract {
         InvocationContract::DeclaredTool => {
@@ -102,12 +103,15 @@ pub(super) fn invoke(
     };
     let invocation = SkillInvocation {
         skill_name: resolution.tool.name,
+        step_id: None,
         source: resolution.tool.source,
+        requirements,
         artifacts: artifacts.clone(),
         allowed_tools: None,
         inputs,
         resolved_inputs,
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: tool_directory,
         env: request.env.clone(),
         credential_delivery: request.credential_delivery.clone(),

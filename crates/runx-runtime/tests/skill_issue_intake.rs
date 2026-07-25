@@ -112,7 +112,7 @@ fn skill_payload(output: &HarnessReplayOutput) -> Result<JsonValue, Box<dyn std:
         .skill_output
         .as_ref()
         .ok_or("agent-task fixture did not produce skill output")?;
-    Ok(serde_json::from_str(&skill_output.stdout)?)
+    Ok(skill_output.value.clone())
 }
 
 fn assert_object_field(

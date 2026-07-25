@@ -26,11 +26,18 @@ impl SandboxServices {
     pub(crate) fn process_plan(
         self,
         source: &SkillSource,
+        environment: &runx_contracts::EnvironmentRequirements,
         skill_directory: &Path,
         inputs: &runx_contracts::JsonObject,
         base_env: &BTreeMap<String, String>,
     ) -> Result<SandboxPlan, RuntimeError> {
-        crate::sandbox::prepare_process_sandbox(source, skill_directory, inputs, base_env)
+        crate::sandbox::prepare_process_sandbox(
+            source,
+            environment,
+            skill_directory,
+            inputs,
+            base_env,
+        )
     }
 
     #[cfg(feature = "cli-tool")]
@@ -57,10 +64,11 @@ impl SandboxServices {
     pub(crate) fn mcp_process_plan(
         self,
         source: &SkillSource,
+        environment: &runx_contracts::EnvironmentRequirements,
         server: &SkillMcpServer,
         skill_directory: &Path,
         base_env: &BTreeMap<String, String>,
     ) -> Result<SandboxPlan, RuntimeError> {
-        prepare_mcp_process_sandbox(source, server, skill_directory, base_env)
+        prepare_mcp_process_sandbox(source, environment, server, skill_directory, base_env)
     }
 }

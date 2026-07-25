@@ -21,9 +21,9 @@ const READ_TOOL: &str = "fs.read";
 const READ_BUNDLE_TOOL: &str = "fs.read_bundle";
 const WRITE_TOOL: &str = "fs.write";
 const APPLY_BUNDLE_TOOL: &str = "fs.apply_bundle";
-const MAX_BYTES: usize = 8 * 1024 * 1024;
+const MAX_FILE_READ_BYTES: usize = 8 * 1024 * 1024;
 const MAX_BUNDLE_FILES: usize = 16;
-const MAX_BUNDLE_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_FILE_BUNDLE_BYTES: u64 = 32 * 1024 * 1024;
 
 fn read(invocation: &NativeInvocation<'_, FileReadInput>) -> Result<FileReadOutput, RuntimeError> {
     let root = root(
@@ -117,10 +117,10 @@ fn read_bundle_files(
         total_bytes = total_bytes
             .checked_add(bytes)
             .ok_or_else(|| invalid_input(READ_BUNDLE_TOOL, "bundle byte count overflow"))?;
-        if total_bytes > MAX_BUNDLE_BYTES {
+        if total_bytes > MAX_FILE_BUNDLE_BYTES {
             return Err(invalid_input(
                 READ_BUNDLE_TOOL,
-                format!("bundle exceeds {MAX_BUNDLE_BYTES} bytes"),
+                format!("bundle exceeds {MAX_FILE_BUNDLE_BYTES} bytes"),
             ));
         }
         files.push(file);
@@ -252,10 +252,10 @@ pub(super) fn root<I: ?Sized>(
 fn max_bytes(tool: &str, value: u64) -> Result<usize, RuntimeError> {
     let value =
         usize::try_from(value).map_err(|_| invalid_input(tool, "max_bytes is too large"))?;
-    if value == 0 || value > MAX_BYTES {
+    if value == 0 || value > MAX_FILE_READ_BYTES {
         return Err(invalid_input(
             tool,
-            format!("max_bytes must be 1-{MAX_BYTES}"),
+            format!("max_bytes must be 1-{MAX_FILE_READ_BYTES}"),
         ));
     }
     Ok(value)

@@ -1,9 +1,11 @@
 // Module rationale: graph skill-front execution keeps nested skill
 // resolution, graph state projection, and receipt handoff together until the
 // graph runner/front boundary is split.
+#[cfg(test)]
+use super::contract_json_value;
 use super::{
     GRAPH_SKILL_STATE_SCHEMA, SkillRunError, SkillRunOverrides, build_domain_act_frame,
-    contract_json_value, identifier_segment, invalid, needs_agent_output, sealed_output,
+    identifier_segment, invalid, needs_agent_output, sealed_output,
 };
 
 use std::collections::BTreeMap;
@@ -18,7 +20,7 @@ use runx_parser::{ExecutionGraph, SkillRunnerDefinition, SkillRunnerManifest, So
 use serde::{Deserialize, Serialize};
 
 use crate::RuntimeError;
-use crate::adapter::{SkillAdapter, SkillInvocation, SkillOutput};
+use crate::adapter::{InvocationOutput, SkillAdapter, SkillInvocation};
 #[cfg(feature = "cli-tool")]
 use crate::adapters::cli_tool::CliToolAdapter;
 use crate::credentials::CredentialDelivery;
@@ -26,15 +28,17 @@ use crate::effects::RuntimeEffectRegistry;
 use crate::execution::graph::materialize_graph_parameter_inputs;
 use crate::execution::orchestrator::SkillRunRequest;
 use crate::execution::runner::{
-    GraphCheckpoint, GraphRun, RUNX_RUN_ID_ENV, Runtime, RuntimeOptions, graph_run_payload,
-    graph_run_skill_output,
+    GraphCheckpoint, GraphRun, RUNX_RUN_ID_ENV, Runtime, RuntimeOptions, graph_run_context,
+    graph_run_result, graph_run_skill_output, graph_run_trace,
 };
 use crate::host::Host;
 use crate::journal::{PausedRunCheckpoint, append_paused_run_checkpoint};
 use crate::receipts::{DomainActReceiptRequest, RuntimeReceiptSignatureConfig, domain_act_receipt};
 use crate::services::{ReceiptServices, WorkspaceEnv};
 
-use super::graph_state::{read_answers, read_graph_state, write_graph_state};
+use super::graph_state::{
+    GraphResolutionAnswers, read_answers, read_graph_state, write_graph_state,
+};
 use super::runner_manifest::{credential_delivery_from_invocation, write_skill_receipt};
 
 // Function rationale: graph-backed skill execution keeps
@@ -47,6 +51,8 @@ pub(super) fn execute_graph_skill_run(
     receipts: &ReceiptServices,
     manifest: &SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
+    package_digest: &str,
+    execution_closure_digest: Option<&str>,
 ) -> Result<JsonValue, SkillRunError> {
     let graph = runner
         .source
@@ -78,13 +84,6 @@ pub(super) fn execute_graph_skill_run(
         observed_at: created_at.clone(),
         policy: request.managed_agent.clone(),
     };
-    let development_auto_approve = receipts
-        .signature_config()
-        .signature_policy()
-        .allows_local_pseudo_signatures()
-        && env
-            .get(crate::config::RUNX_DEVELOPMENT_AUTO_APPROVE_ENV)
-            .is_some_and(|value| matches!(value.trim(), "true" | "1"));
     let runtime = Runtime::new(
         SkillRunGraphAdapter::with_runtime(effects.clone(), created_at.clone()),
         RuntimeOptions {
@@ -102,10 +101,10 @@ pub(super) fn execute_graph_skill_run(
     let seeded = overrides.seeded_answers.clone();
     let resume = request.answers_path.is_some() && seeded.is_none();
     let answers = match &seeded {
-        Some(seeded) => seeded.clone(),
+        Some(seeded) => GraphResolutionAnswers::agent(seeded.clone()),
         None => match &request.answers_path {
             Some(path) => read_answers(path)?,
-            None => JsonObject::new(),
+            None => GraphResolutionAnswers::default(),
         },
     };
     let mut resumed_state = if resume {
@@ -137,8 +136,7 @@ pub(super) fn execute_graph_skill_run(
         )));
     }
     let graph = materialize_graph_parameter_inputs(graph, &graph_inputs);
-    let mut host =
-        SkillRunGraphHost::with_inline(answers, inline_resolver, development_auto_approve);
+    let mut host = SkillRunGraphHost::with_inline(answers, inline_resolver);
     let mut checkpoint = if let Some(state) = resumed_state.take() {
         state.checkpoint
     } else {
@@ -153,14 +151,16 @@ pub(super) fn execute_graph_skill_run(
             Ok(next_checkpoint) => {
                 if next_checkpoint.state.status == GraphStatus::Succeeded {
                     let completed_checkpoint = next_checkpoint.clone();
-                    let mut final_host = SkillRunGraphHost::new(JsonObject::new());
+                    let mut final_host = SkillRunGraphHost::new(GraphResolutionAnswers::default());
                     let run = runtime.seal_completed_graph_checkpoint_with_host(
                         graph.clone(),
                         next_checkpoint,
                         &mut final_host,
                     )?;
                     write_graph_receipts(request, workspace, receipts, &run)?;
-                    let payload = graph_run_payload(&run, false);
+                    let result = graph_run_result(&run)?;
+                    let public_context = graph_run_context(&run);
+                    let trace = graph_run_trace(&run);
                     // A graph that declares an `act:` block seals a clean domain-act
                     // receipt as its primary receipt; the step receipts above remain
                     // as its execution trace.
@@ -189,14 +189,15 @@ pub(super) fn execute_graph_skill_run(
                         },
                     )?;
                     let receipt = domain.as_ref().unwrap_or(&run.receipt);
-                    let output = graph_run_skill_output(&payload, &run)?;
+                    let output = graph_run_skill_output(&result, &run)?;
                     return Ok(JsonValue::Object(sealed_output(
                         manifest,
                         &run_id,
                         &output,
-                        &payload,
+                        &result,
+                        Some(public_context),
+                        Some(trace),
                         receipt,
-                        contract_json_value(receipt)?,
                     )));
                 }
                 write_graph_state(
@@ -238,6 +239,8 @@ pub(super) fn execute_graph_skill_run(
                     manifest,
                     runner,
                     graph: &graph,
+                    package_digest,
+                    execution_closure_digest,
                     run_id: &run_id,
                     request_id,
                 })?;
@@ -330,6 +333,8 @@ struct PausedGraphCheckpoint<'a> {
     manifest: &'a SkillRunnerManifest,
     runner: &'a SkillRunnerDefinition,
     graph: &'a ExecutionGraph,
+    package_digest: &'a str,
+    execution_closure_digest: Option<&'a str>,
     run_id: &'a str,
     request_id: &'a str,
 }
@@ -355,6 +360,8 @@ fn write_paused_graph_checkpoint(input: PausedGraphCheckpoint<'_>) -> Result<(),
             .local_credential
             .as_ref()
             .and_then(|credential| credential.profile.clone()),
+        package_digest: Some(input.package_digest.to_owned()),
+        execution_closure_digest: input.execution_closure_digest.map(str::to_owned),
         step_ids: vec![input.request_id.to_owned()],
         step_labels: vec![input.request_id.to_owned()],
     };
@@ -438,7 +445,7 @@ struct TerminalGraphSkillRun<'a> {
 fn seal_terminal_graph_skill_run(
     context: TerminalGraphSkillRun<'_>,
 ) -> Result<JsonValue, SkillRunError> {
-    let mut final_host = SkillRunGraphHost::new(JsonObject::new());
+    let mut final_host = SkillRunGraphHost::new(GraphResolutionAnswers::default());
     let run = match context.cause {
         GraphTerminalCause::Blocked => context.runtime.seal_blocked_graph_checkpoint_with_host(
             context.graph,
@@ -465,15 +472,18 @@ fn seal_terminal_graph_skill_run(
         }
     };
     write_graph_receipts(context.request, context.workspace, context.receipts, &run)?;
-    let payload = graph_run_payload(&run, false);
-    let output = graph_run_skill_output(&payload, &run)?;
+    let result = graph_run_result(&run)?;
+    let public_context = graph_run_context(&run);
+    let trace = graph_run_trace(&run);
+    let output = graph_run_skill_output(&result, &run)?;
     Ok(JsonValue::Object(sealed_output(
         context.manifest,
         context.run_id,
         &output,
-        &payload,
+        &result,
+        Some(public_context),
+        Some(trace),
         &run.receipt,
-        contract_json_value(&run.receipt)?,
     )))
 }
 
@@ -522,7 +532,7 @@ impl SkillAdapter for SkillRunGraphAdapter {
         "skill-run-graph"
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         let source_type = request.source.source_type;
         match source_type {
             #[cfg(feature = "cli-tool")]
@@ -552,7 +562,7 @@ fn invoke_graph_cli_tool(
     _effects: &RuntimeEffectRegistry,
     _observed_at: &str,
     request: SkillInvocation,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     let credential_observation = request.credential_delivery.public_observation().cloned();
     let mut output = CliToolAdapter.invoke(request)?;
     if let Some(observation) = &credential_observation {
@@ -566,7 +576,7 @@ fn invoke_graph_javascript(
     _effects: &RuntimeEffectRegistry,
     _observed_at: &str,
     request: SkillInvocation,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     javascript.invoke(request)
 }
 
@@ -575,7 +585,7 @@ fn invoke_graph_external_adapter(
     _effects: &RuntimeEffectRegistry,
     _observed_at: &str,
     request: SkillInvocation,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     crate::adapters::external_adapter::ExternalAdapterSkillAdapter::default().invoke(request)
 }
 
@@ -584,7 +594,7 @@ fn invoke_graph_mcp(
     _effects: &RuntimeEffectRegistry,
     _observed_at: &str,
     request: SkillInvocation,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     crate::adapter::SkillAdapter::invoke(&crate::adapters::mcp::McpAdapter::default(), request)
 }
 
@@ -593,7 +603,7 @@ fn invoke_graph_thread_outbox_provider(
     _effects: &RuntimeEffectRegistry,
     _observed_at: &str,
     request: SkillInvocation,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     crate::adapters::thread_outbox_provider::ThreadOutboxProviderSkillAdapter::default()
         .invoke(request)
 }
@@ -681,32 +691,25 @@ impl InlineResolver {
 }
 
 struct SkillRunGraphHost {
-    answers: JsonObject,
+    answers: GraphResolutionAnswers,
     pending: Vec<(String, JsonValue)>,
     inline: Option<InlineResolver>,
-    development_auto_approve: bool,
 }
 
 impl SkillRunGraphHost {
-    fn new(answers: JsonObject) -> Self {
+    fn new(answers: GraphResolutionAnswers) -> Self {
         Self {
             answers,
             pending: Vec::new(),
             inline: None,
-            development_auto_approve: false,
         }
     }
 
-    fn with_inline(
-        answers: JsonObject,
-        inline: InlineResolver,
-        development_auto_approve: bool,
-    ) -> Self {
+    fn with_inline(answers: GraphResolutionAnswers, inline: InlineResolver) -> Self {
         Self {
             answers,
             pending: Vec::new(),
             inline: Some(inline),
-            development_auto_approve,
         }
     }
 
@@ -729,20 +732,12 @@ impl Host for SkillRunGraphHost {
         let request_id = resolution_request_id(&request).to_owned();
         if let Some(answer) = self.answers.get(&request_id) {
             return Ok(Some(ResolutionResponse {
-                actor: ResolutionResponseActor::Agent,
+                actor: if self.answers.is_human_approval(&request_id) {
+                    ResolutionResponseActor::Human
+                } else {
+                    ResolutionResponseActor::Agent
+                },
                 payload: answer.clone(),
-            }));
-        }
-        if self.development_auto_approve && matches!(&request, ResolutionRequest::Approval { .. }) {
-            return Ok(Some(ResolutionResponse {
-                actor: ResolutionResponseActor::Human,
-                payload: JsonValue::Object(JsonObject::from([
-                    ("approved".to_owned(), JsonValue::Bool(true)),
-                    (
-                        "reason".to_owned(),
-                        JsonValue::String("development_auto_approve".to_owned()),
-                    ),
-                ])),
             }));
         }
         // An agent step with no seeded answer runs the configured provider inline
@@ -763,6 +758,10 @@ impl Host for SkillRunGraphHost {
             .map_err(|source| RuntimeError::json("serializing graph resolution request", source))?;
         self.pending.push((request_id, request_value));
         Ok(None)
+    }
+
+    fn log(&mut self, _message: String) -> Result<(), RuntimeError> {
+        Ok(())
     }
 }
 
@@ -805,6 +804,9 @@ fn write_graph_receipts(
     run: &GraphRun,
 ) -> Result<(), SkillRunError> {
     for step in &run.steps {
+        for receipt in &step.nested_receipts {
+            write_skill_receipt(request, workspace, receipts, receipt)?;
+        }
         write_skill_receipt(request, workspace, receipts, &step.receipt)?;
     }
     write_skill_receipt(request, workspace, receipts, &run.receipt)
@@ -836,12 +838,13 @@ pub(crate) fn graph_domain_act_receipt(
     };
     // Reason: the agent voice step's structured output (e.g. {line: "..."}).
     let reason_source = step_output(act.reason_step.as_deref())
-        .map(|step| JsonValue::Object(step.outputs.clone()))
+        .map(|step| JsonValue::Object(step.contract.clone()))
         .unwrap_or(JsonValue::Null);
-    // Effect: the action step's real /v1 response body.
+    // Effect: the action step's declared contract. Adapter transport is not a
+    // second semantic surface and is discarded after receipt sealing.
     let governed_effect = step_output(act.effect_step.as_deref())
-        .filter(|step| step.output.succeeded())
-        .and_then(|step| serde_json::from_str::<JsonValue>(step.output.stdout.trim()).ok());
+        .filter(|step| step.outcome.succeeded())
+        .map(|step| JsonValue::Object(step.contract.clone()));
     let authority_grant_refs = graph_credential_grant_refs(run);
     let Some(mut frame) = build_domain_act_frame(
         act,
@@ -887,7 +890,7 @@ pub(crate) fn graph_domain_act_receipt(
     }
     let graph_name = identifier_segment(run_id);
     let verification_metadata = step_output(act.reason_step.as_deref())
-        .map(|step| step.output.metadata.clone())
+        .map(|step| step.outcome.metadata.clone())
         .unwrap_or_default();
     let receipt = domain_act_receipt(DomainActReceiptRequest {
         graph_name: &graph_name,
@@ -1118,8 +1121,10 @@ mod tests {
         raw.insert("type".to_owned(), JsonValue::String("a2a".to_owned()));
         let invocation = SkillInvocation {
             skill_name: "fixture-a2a".to_owned(),
+            step_id: None,
             artifacts: None,
             allowed_tools: None,
+            requirements: Default::default(),
             source: SkillSource {
                 act: None,
                 source_type: SourceKind::A2a,
@@ -1131,6 +1136,7 @@ mod tests {
                 cwd: None,
                 timeout_seconds: None,
                 input_mode: None,
+                environment: Default::default(),
                 sandbox: None,
                 server: None,
                 tool: None,
@@ -1148,6 +1154,7 @@ mod tests {
             inputs: JsonObject::new(),
             resolved_inputs: JsonObject::new(),
             current_context: Vec::new(),
+            provenance: Vec::new(),
             skill_directory: PathBuf::from("."),
             env: BTreeMap::new(),
             credential_delivery: crate::credentials::CredentialDelivery::none(),
@@ -1197,7 +1204,7 @@ steps:
         };
         let runtime = Runtime::new(
             SkillRunGraphAdapter::default(),
-            RuntimeOptions::local_development(),
+            RuntimeOptions::local_development(std::env::vars().collect()),
         );
         let error = AgentResolverError::bounded_failure(
             "round_budget_exhausted",
@@ -1264,7 +1271,7 @@ steps:
             managed_agent: Default::default(),
             local_credential: None,
         };
-        let workspace = WorkspaceEnv::new(Default::default(), temp.path().to_path_buf());
+        let workspace = WorkspaceEnv::new(Default::default(), temp.path().to_path_buf())?;
         let receipts = ReceiptServices::from_env_or_local_development(workspace.env())?;
         write_graph_receipts(&request, &workspace, &receipts, &run)?;
         let history = list_local_history(
@@ -1307,8 +1314,10 @@ steps:
         ])))?;
         let invocation = SkillInvocation {
             skill_name: "credential-observation".to_owned(),
+            step_id: None,
             artifacts: None,
             allowed_tools: None,
+            requirements: Default::default(),
             source: SkillSource {
                 act: None,
                 source_type: SourceKind::CliTool,
@@ -1325,6 +1334,7 @@ steps:
                 cwd: None,
                 timeout_seconds: Some(5),
                 input_mode: None,
+                environment: Default::default(),
                 sandbox: None,
                 server: None,
                 tool: None,
@@ -1342,6 +1352,7 @@ steps:
             inputs: JsonObject::new(),
             resolved_inputs: JsonObject::new(),
             current_context: Vec::new(),
+            provenance: Vec::new(),
             skill_directory: std::env::current_dir()?,
             env: std::env::vars().collect(),
             credential_delivery: delivery,
@@ -1354,12 +1365,12 @@ steps:
         )?;
 
         assert!(output.succeeded());
-        assert!(!output.stdout.contains(MARKER));
+        assert!(!serde_json::to_string(&output.value)?.contains(MARKER));
         let projection = crate::execution::output_projection::project_step_output(&output);
-        let projected = serde_json::to_string(&projection.outputs)?;
-        assert!(projected.contains("[redacted-credential]"));
-        assert!(!projected.contains(MARKER));
-        assert!(!serde_json::to_string(&projection.claim)?.contains(MARKER));
+        let value = serde_json::to_string(&output.value)?;
+        assert!(projection.outputs.is_empty());
+        assert!(value.contains("[redacted-credential]"));
+        assert!(!value.contains(MARKER));
         assert!(!format!("{output:?}").contains(MARKER));
         let metadata = serde_json::to_string(&output.metadata)?;
         assert!(metadata.contains("credential_delivery_observations"));
@@ -1465,8 +1476,10 @@ steps:
         )?;
         let invocation = SkillInvocation {
             skill_name: "mcp-structured-redaction".to_owned(),
+            step_id: None,
             artifacts: None,
             allowed_tools: None,
+            requirements: Default::default(),
             source: SkillSource {
                 act: None,
                 source_type: SourceKind::Mcp,
@@ -1478,6 +1491,7 @@ steps:
                 cwd: None,
                 timeout_seconds: Some(5),
                 input_mode: None,
+                environment: Default::default(),
                 sandbox: None,
                 server: Some(runx_parser::SkillMcpServer {
                     command: std::env::current_exe()?.to_string_lossy().into_owned(),
@@ -1499,6 +1513,7 @@ steps:
             inputs: JsonObject::new(),
             resolved_inputs: JsonObject::new(),
             current_context: Vec::new(),
+            provenance: Vec::new(),
             skill_directory: std::env::current_dir()?,
             env: std::env::vars().collect(),
             credential_delivery: delivery,
@@ -1506,14 +1521,18 @@ steps:
 
         let output = McpAdapter::new(transport).invoke(invocation)?;
         assert!(output.succeeded());
-        let decoded_stdout = serde_json::from_str::<JsonValue>(&output.stdout)?;
-        assert!(!format!("{decoded_stdout:?}").contains(MCP_MARKER));
+        assert!(!format!("{:?}", output.value).contains(MCP_MARKER));
         let projection = crate::execution::output_projection::project_step_output(&output);
-        let projected = serde_json::to_string(&projection.outputs)?;
-        assert!(projected.contains("[redacted-credential]"));
-        assert!(!projection.claim.is_empty());
-        assert!(!projected.contains(MCP_MARKER));
-        assert!(!serde_json::to_string(&projection.claim)?.contains(MCP_MARKER));
+        let value = serde_json::to_string(&output.value)?;
+        assert!(projection.outputs.is_empty());
+        assert!(value.contains("[redacted-credential]"));
+        assert!(
+            output
+                .value
+                .as_object()
+                .is_some_and(|value| !value.is_empty())
+        );
+        assert!(!value.contains(MCP_MARKER));
         assert!(!format!("{output:?}").contains(MCP_MARKER));
 
         let receipt = crate::receipts::step_receipt(
@@ -1537,8 +1556,10 @@ steps:
         );
         let invocation = SkillInvocation {
             skill_name: "fixture-external".to_owned(),
+            step_id: None,
             artifacts: None,
             allowed_tools: None,
+            requirements: Default::default(),
             source: SkillSource {
                 act: None,
                 source_type: SourceKind::ExternalAdapter,
@@ -1550,6 +1571,7 @@ steps:
                 cwd: None,
                 timeout_seconds: None,
                 input_mode: None,
+                environment: Default::default(),
                 sandbox: None,
                 server: None,
                 tool: None,
@@ -1567,6 +1589,7 @@ steps:
             inputs: JsonObject::new(),
             resolved_inputs: JsonObject::new(),
             current_context: Vec::new(),
+            provenance: Vec::new(),
             skill_directory: PathBuf::from("."),
             env: BTreeMap::new(),
             credential_delivery: crate::credentials::CredentialDelivery::none(),
@@ -1590,8 +1613,10 @@ steps:
         );
         let invocation = SkillInvocation {
             skill_name: "fixture-thread-outbox-provider".to_owned(),
+            step_id: None,
             artifacts: None,
             allowed_tools: None,
+            requirements: Default::default(),
             source: SkillSource {
                 act: None,
                 source_type: SourceKind::ThreadOutboxProvider,
@@ -1603,6 +1628,7 @@ steps:
                 cwd: None,
                 timeout_seconds: None,
                 input_mode: None,
+                environment: Default::default(),
                 sandbox: None,
                 server: None,
                 tool: None,
@@ -1620,6 +1646,7 @@ steps:
             inputs: JsonObject::new(),
             resolved_inputs: JsonObject::new(),
             current_context: Vec::new(),
+            provenance: Vec::new(),
             skill_directory: PathBuf::from("."),
             env: BTreeMap::new(),
             credential_delivery: crate::credentials::CredentialDelivery::none(),

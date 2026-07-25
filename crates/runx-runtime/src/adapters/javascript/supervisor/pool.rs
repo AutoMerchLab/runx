@@ -4,7 +4,7 @@ use std::sync::{Arc, Condvar, Mutex};
 use crate::RuntimeError;
 
 use super::session::{WorkerLaunchPlan, WorkerSession};
-use super::{lock, worker_error};
+use super::{WorkerDisposition, lock, worker_error};
 
 pub(super) struct WorkerPool {
     state: Mutex<PoolState>,
@@ -35,7 +35,11 @@ impl WorkerPool {
         }
     }
 
-    pub(super) fn acquire(&self) -> Result<WorkerLease<'_>, RuntimeError> {
+    pub(super) fn acquire(
+        &self,
+        worker_path_override: Option<&str>,
+    ) -> Result<WorkerLease<'_>, RuntimeError> {
+        let launch_plan = self.launch_plan(worker_path_override)?;
         loop {
             let mut state = lock(&self.state, "locking JavaScript worker pool")?;
             if let Some(session) = state.idle.pop() {
@@ -45,9 +49,7 @@ impl WorkerPool {
             if state.total.saturating_add(state.starting) < self.maximum {
                 state.starting = state.starting.saturating_add(1);
                 drop(state);
-                let started = self
-                    .launch_plan()
-                    .and_then(|plan| WorkerSession::start(&plan));
+                let started = WorkerSession::start(&launch_plan);
                 let mut state = lock(&self.state, "recording JavaScript worker startup")?;
                 state.starting = state.starting.saturating_sub(1);
                 match started {
@@ -71,12 +73,20 @@ impl WorkerPool {
         }
     }
 
-    fn launch_plan(&self) -> Result<Arc<WorkerLaunchPlan>, RuntimeError> {
+    fn launch_plan(
+        &self,
+        worker_path_override: Option<&str>,
+    ) -> Result<Arc<WorkerLaunchPlan>, RuntimeError> {
         let mut cached = lock(&self.launch_plan, "locking JavaScript worker launch plan")?;
         if let Some(plan) = cached.as_ref() {
+            if plan.worker_path_override.as_deref() != worker_path_override {
+                return Err(worker_error(
+                    "one JavaScript worker pool cannot mix runtime worker paths",
+                ));
+            }
             return Ok(plan.clone());
         }
-        let plan = Arc::new(WorkerLaunchPlan::prepare()?);
+        let plan = Arc::new(WorkerLaunchPlan::prepare(worker_path_override)?);
         *cached = Some(plan.clone());
         Ok(plan)
     }
@@ -111,12 +121,6 @@ impl WorkerPool {
     pub(super) fn peak_in_flight(&self) -> usize {
         self.peak_in_flight.load(Ordering::Relaxed)
     }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum WorkerDisposition {
-    Reuse,
-    Discard,
 }
 
 pub(super) struct WorkerLease<'a> {

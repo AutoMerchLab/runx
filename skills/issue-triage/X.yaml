@@ -34,6 +34,7 @@ runners:
         description: Repository norms, tone, and release posture.
     graph:
       name: issue-triage-provider-respond
+      result_from: [finalize]
       steps:
         - id: read-issue
           tool: provider.read
@@ -128,6 +129,7 @@ runners:
         description: Repository norms and response constraints.
     graph:
       name: issue-triage-discover
+      result_from: [finalize]
       steps:
         - id: digest-snapshots
           tool: data.digest
@@ -201,6 +203,7 @@ runners:
         description: Repository norms, tone, and release posture.
     graph:
       name: issue-triage-respond
+      result_from: [finalize]
       steps:
         - id: digest-snapshot
           tool: data.digest
@@ -272,6 +275,7 @@ runners:
         description: Issue number to inspect through the deterministic MCP fixture.
     graph:
       name: issue-triage-mcp-read
+      result_from: [read_issue]
       steps:
         - id: read_issue
           skill: ../../examples/github-mcp-hero/read-issue

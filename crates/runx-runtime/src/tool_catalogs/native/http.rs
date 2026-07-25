@@ -34,9 +34,9 @@ use std::collections::BTreeMap;
 
 const TOOL: &str = "http";
 const MAX_REQUESTS: usize = 50;
-const MAX_OUTPUT_BYTES: usize = STANDARD_HTTP_RESPONSE_BYTES;
+const MAX_HTTP_OUTPUT_BYTES: usize = STANDARD_HTTP_RESPONSE_BYTES;
 const DEFAULT_RESPONSE_BYTES: usize = STANDARD_HTTP_RESPONSE_BYTES;
-const MAX_RESPONSE_BYTES: usize = MAX_OUTPUT_BYTES;
+const MAX_RESPONSE_BYTES: usize = MAX_HTTP_OUTPUT_BYTES;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum BatchMode {

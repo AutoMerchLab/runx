@@ -2,6 +2,7 @@
 use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use runx_contracts::{JsonObject, JsonValue, sha256_prefixed};
 use runx_core::state_machine::{RetryPolicy, SequentialGraphStepDefinition};
@@ -23,9 +24,10 @@ use super::graph_index::PriorRunIndex;
 pub(crate) struct LoadedStepSkill {
     pub(crate) skill_name: String,
     pub(crate) runner: SkillRunnerDefinition,
+    pub(crate) requirements: runx_contracts::ExecutionRequirements,
     pub(crate) directory: PathBuf,
     pub(crate) manual_path: PathBuf,
-    pub(crate) manual_markdown: String,
+    pub(crate) manual_markdown: Arc<str>,
     pub(crate) manual_digest: String,
     pub(crate) registry: Option<LoadedStepSkillRegistryProvenance>,
 }
@@ -179,14 +181,16 @@ pub(crate) fn load_step_skill(
         .clone()
         .unwrap_or_else(|| package.package.skill.name.clone());
     let runner = select_step_runner(manifest, step.runner.as_deref())?.clone();
+    let requirements = manifest.execution_requirements(&runner);
     let directory = package.directory.clone();
     let manual_path = package.package_root.join("SKILL.md");
     let loaded = LoadedStepSkill {
         skill_name,
         runner,
+        requirements,
         directory,
         manual_path: manual_path.clone(),
-        manual_markdown: package.package.manual_markdown,
+        manual_markdown: package.package.manual_markdown.into(),
         manual_digest: package.package.manual_digest,
         registry: resolved.registry,
     };
@@ -455,6 +459,26 @@ pub(crate) fn materialize_step_invocation_inputs_with_index(
         }
     }
     Ok(inputs)
+}
+
+pub(crate) fn materialize_step_invocation_provenance(
+    step: &GraphStep,
+    prior_runs: &[StepRun],
+) -> Result<Vec<runx_contracts::ProvenanceEntry>, RuntimeError> {
+    let prior_run_index = PriorRunIndex::new(prior_runs);
+    materialize_step_invocation_provenance_with_index(step, &prior_run_index)
+}
+
+pub(crate) fn materialize_step_invocation_provenance_with_index(
+    step: &GraphStep,
+    prior_run_index: &PriorRunIndex<'_>,
+) -> Result<Vec<runx_contracts::ProvenanceEntry>, RuntimeError> {
+    step.context_edges
+        .iter()
+        .map(|edge| {
+            prior_run_index.provenance(&step.id, &edge.input, &edge.from_step, &edge.output)
+        })
+        .collect()
 }
 
 fn context_from(step: &GraphStep) -> Option<Vec<String>> {

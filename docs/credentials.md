@@ -27,10 +27,10 @@ runners:
     credential: nitrosend
 ```
 
-The delivery name is part of the skill contract, not operator setup. Tool
-`env_allowlist` is for ordinary ambient configuration and must not repeat a
-declared credential name. The runtime carries credential delivery separately
-and injects it only at the adapter boundary.
+The delivery name is part of the skill contract, not operator setup. A runner's
+`environment.required` and `environment.optional` lists are for ordinary,
+non-secret runtime configuration. The runtime carries credential delivery
+separately and injects it only at the adapter boundary.
 
 A provider may expose more than one auth mode:
 
@@ -121,10 +121,11 @@ extracts hosted provider tokens.
 
 ## Workspace environment
 
-`runx skill`, `runx resume`, and `runx mcp serve` discover the workspace root
-and parse its exact `.env` file as data. Runx does not source
-a shell. Exported process values win; `.env` fills only missing names. One
-immutable snapshot is used for the whole command or MCP server session.
+Every executing Runx CLI command discovers the workspace root and parses its
+exact `.env` file as data; help and version rendering do not depend on
+workspace state. Runx does not source a shell. Exported process values win;
+`.env` fills only missing names. One immutable snapshot is used for the whole
+command or MCP server session.
 
 This makes an ignored project `.env` a useful zero-setup development path:
 

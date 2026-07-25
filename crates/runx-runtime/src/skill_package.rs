@@ -10,6 +10,7 @@ use crate::filesystem::{DirectoryEntry, find_files_named, read_dir_sorted};
 
 mod inspection;
 
+pub(crate) use inspection::inspect_loaded_execution_closure_binding;
 pub use inspection::inspect_skill_package;
 
 pub(crate) const MAX_PACKAGE_FILES: usize = 500;
@@ -32,6 +33,37 @@ impl LoadedSkillPackage {
             .as_deref()
             .and_then(|path| self.package.manifest_at(path))
     }
+}
+
+pub(crate) fn verify_loaded_execution_binding(
+    loaded: LoadedSkillPackage,
+    runner: &str,
+    expected_package_digest: Option<&str>,
+    expected_execution_closure_digest: Option<&str>,
+) -> Result<Option<String>, String> {
+    if let Some(expected) = expected_package_digest
+        && expected != loaded.package.package_digest
+    {
+        return Err(format!(
+            "skill package digest mismatch: expected {expected}, received {}",
+            loaded.package.package_digest
+        ));
+    }
+    let closure = inspect_loaded_execution_closure_binding(loaded, runner)?;
+    if let Some(expected) = expected_execution_closure_digest {
+        if !closure.fully_bound {
+            return Err(format!(
+                "native execution closure for runner {runner} is not fully bound"
+            ));
+        }
+        if closure.digest != expected {
+            return Err(format!(
+                "skill execution closure digest mismatch: expected {expected}, received {}",
+                closure.digest
+            ));
+        }
+    }
+    Ok(closure.fully_bound.then_some(closure.digest))
 }
 
 pub fn load_validated_skill_package(path: &Path) -> Result<LoadedSkillPackage, RuntimeError> {

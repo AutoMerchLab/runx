@@ -8,8 +8,8 @@ use std::time::{Duration, Instant};
 use runx_contracts::{JsonObject, JsonValue, sha256_hex};
 
 use crate::RuntimeError;
-use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
-use crate::adapter_pipeline::{AdapterCapture, AdapterProjection};
+use crate::adapter::{InvocationOutput, InvocationStatus, SkillAdapter, SkillInvocation};
+use crate::adapter_pipeline::AdapterProjection;
 
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(10);
 const MIN_TIMEOUT: Duration = Duration::from_millis(50);
@@ -142,8 +142,12 @@ where
 
     // Function rationale: the send, poll, timeout-cancel,
     // and receipt-metadata path is the governed A2A adapter boundary.
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         let started = Instant::now();
+        crate::execution_environment::resolve_declared_environment(
+            &request.requirements,
+            &request.env,
+        )?;
         let source = request.source;
         if source.source_type != runx_parser::SourceKind::A2a {
             return Err(RuntimeError::UnsupportedAdapter {
@@ -228,14 +232,13 @@ where
             ));
         }
 
-        Ok(AdapterProjection::from_started(started).output(
+        let metadata = metadata_for(&source, Some(&completed), Some(&message), None)?;
+        let value = completed.output.unwrap_or(JsonValue::Null);
+        Ok(AdapterProjection::from_started(started).runtime_output(
             InvocationStatus::Success,
-            AdapterCapture::new(
-                stringify_a2a_output(completed.output.as_ref())?,
-                String::new(),
-            ),
-            Some(0),
-            metadata_for(&source, Some(&completed), Some(&message), None)?,
+            value,
+            None,
+            metadata,
         ))
     }
 }
@@ -443,15 +446,6 @@ fn stringify_input(value: Option<&JsonValue>) -> Result<String, RuntimeError> {
     }
 }
 
-fn stringify_a2a_output(output: Option<&JsonValue>) -> Result<String, RuntimeError> {
-    match output {
-        Some(JsonValue::String(value)) => Ok(value.clone()),
-        None | Some(JsonValue::Null) => Ok(String::new()),
-        Some(value) => serde_json::to_string(value)
-            .map_err(|source| RuntimeError::json("serializing A2A output", source)),
-    }
-}
-
 // Function rationale: A2A metadata construction keeps
 // every hash committed field adjacent to the exact source it summarizes.
 fn metadata_for(
@@ -532,6 +526,6 @@ fn sha256_json(value: &JsonValue) -> Result<String, RuntimeError> {
     Ok(sha256_hex(json.as_bytes()))
 }
 
-fn failure(message: impl Into<String>, started: Instant, metadata: JsonObject) -> SkillOutput {
+fn failure(message: impl Into<String>, started: Instant, metadata: JsonObject) -> InvocationOutput {
     AdapterProjection::from_started(started).failure(message.into(), metadata)
 }

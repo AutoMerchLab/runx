@@ -191,6 +191,7 @@ runners:
         description: Zero-based row offset.
     graph:
       name: google-analytics-report
+      result_from: [finalize]
       steps:
         - id: read
           tool: provider.read
@@ -266,6 +267,7 @@ runners:
         description: Expected report identity and ordered headers.
     graph:
       name: google-analytics-normalize-report
+      result_from: [finalize]
       steps:
         - id: normalize
           inputs:
@@ -329,6 +331,7 @@ runners:
         description: Bounded realtime row limit.
     graph:
       name: google-analytics-realtime
+      result_from: [finalize]
       steps:
         - id: read
           tool: provider.read
@@ -390,6 +393,7 @@ runners:
     inputs: {}
     graph:
       name: google-analytics-properties
+      result_from: [read]
       steps:
         - id: read
           tool: provider.read
@@ -412,6 +416,7 @@ runners:
         description: Exact GA4 property resource.
     graph:
       name: google-analytics-metadata
+      result_from: [read]
       steps:
         - id: read
           tool: provider.read

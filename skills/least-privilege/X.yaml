@@ -44,6 +44,7 @@ runners:
         description: Explicit native redacted receipt-detail projections for deterministic replay only.
     graph:
       name: least-privilege
+      result_from: [analyze]
       steps:
         - id: evidence
           label: resolve receipt evidence

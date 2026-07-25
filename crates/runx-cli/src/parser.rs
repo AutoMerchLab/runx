@@ -1,11 +1,11 @@
 use std::collections::BTreeMap;
-use std::env;
 use std::fmt;
 use std::io;
 use std::path::Path;
 use std::process::ExitCode;
 
 use runx_parser::{ParserEvalError, ParserEvalOutput, evaluate_parser_document_str};
+use runx_runtime::WorkspaceEnv;
 use serde::Serialize;
 
 use crate::document_input::{DocumentInputError, read_document_input};
@@ -18,16 +18,8 @@ pub struct ParserPlan {
     pub json: bool,
 }
 
-pub fn run_native_parser(plan: ParserPlan) -> ExitCode {
-    let cwd = match env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(error) => {
-            let error = ParserCliError::CurrentDirectory(error);
-            return write_error(&error, plan.json);
-        }
-    };
-
-    match run_parser_command(&plan, &crate::cli_io::env_map(), &cwd) {
+pub fn run_native_parser(plan: ParserPlan, workspace: &WorkspaceEnv) -> ExitCode {
+    match run_parser_command(&plan, workspace.env(), workspace.cwd()) {
         Ok(output) => crate::cli_io::write_stdout_code(&output.stdout, output.exit_code),
         Err(error) => write_error(&error, plan.json),
     }

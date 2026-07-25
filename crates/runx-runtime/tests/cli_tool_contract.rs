@@ -36,6 +36,7 @@ fn process_sandbox_always_exposes_runx_cwd_to_skill_authors()
             None,
             Some(sandbox(CwdPolicy::SkillDirectory, SandboxProfile::Readonly)),
         ),
+        &Default::default(),
         &skill_dir,
         &JsonObject::new(),
         &env_with_local_sandbox_fallback_and([(
@@ -53,22 +54,23 @@ fn process_sandbox_always_exposes_runx_cwd_to_skill_authors()
 }
 
 #[test]
-fn process_sandbox_rejects_reserved_env_allowlist_even_when_base_env_has_value()
+fn process_sandbox_rejects_reserved_environment_even_when_base_env_has_value()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     let skill_dir = temp.path().join("skill");
     fs::create_dir_all(&skill_dir)?;
-    let mut sandbox = sandbox(
+    let sandbox = sandbox(
         CwdPolicy::SkillDirectory,
         SandboxProfile::UnrestrictedLocalDev,
     );
-    sandbox.env_allowlist = Some(vec![
-        "PATH".to_owned(),
-        RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV.to_owned(),
-    ]);
+    let environment = runx_contracts::EnvironmentRequirements {
+        required: vec![RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV.to_owned()],
+        optional: Vec::new(),
+    };
 
     let Err(error) = prepare_process_sandbox(
         &source(None, Some(sandbox)),
+        &environment,
         &skill_dir,
         &JsonObject::new(),
         &[(
@@ -78,13 +80,13 @@ fn process_sandbox_rejects_reserved_env_allowlist_even_when_base_env_has_value()
         .into_iter()
         .collect(),
     ) else {
-        return Err("reserved env allowlist must fail closed".into());
+        return Err("reserved environment must fail closed".into());
     };
 
     assert!(matches!(
         error,
         RuntimeError::SandboxViolation { message }
-            if message.contains("reserved runx environment variable")
+            if message.contains("runtime-reserved variable")
                 && message.contains(RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV)
     ));
     Ok(())
@@ -102,6 +104,7 @@ fn skill_directory_cwd_policy_denies_escaped_source_cwd() -> Result<(), Box<dyn 
             Some("../outside"),
             Some(sandbox(CwdPolicy::SkillDirectory, SandboxProfile::Readonly)),
         ),
+        &Default::default(),
         &skill_dir,
         &JsonObject::new(),
         &BTreeMap::new(),
@@ -130,6 +133,7 @@ fn workspace_cwd_policy_denies_paths_outside_workspace() -> Result<(), Box<dyn s
             Some("../outside"),
             Some(sandbox(CwdPolicy::Workspace, SandboxProfile::Readonly)),
         ),
+        &Default::default(),
         &skill_dir,
         &JsonObject::new(),
         &[(RUNX_CWD_ENV.to_owned(), path_string(&workspace_dir)?)]
@@ -162,6 +166,7 @@ fn workspace_cwd_policy_resolves_relative_source_cwd_from_skill_directory()
             Some("../../fixtures"),
             Some(sandbox(CwdPolicy::Workspace, SandboxProfile::Readonly)),
         ),
+        &Default::default(),
         &skill_dir,
         &JsonObject::new(),
         &env_with_local_sandbox_fallback_and([(
@@ -170,52 +175,90 @@ fn workspace_cwd_policy_resolves_relative_source_cwd_from_skill_directory()
         )]),
     )?;
 
-    assert_eq!(plan.cwd, sibling_dir);
+    assert_eq!(plan.cwd, fs::canonicalize(sibling_dir)?);
     Ok(())
 }
 
 #[test]
-fn workspace_cwd_policy_defaults_to_current_dir_when_runx_cwd_is_absent()
+fn workspace_cwd_policy_requires_explicit_workspace_identity()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     let skill_dir = temp.path().join("skill");
     fs::create_dir_all(&skill_dir)?;
-    let current_dir = std::env::current_dir()?;
 
-    let plan = prepare_process_sandbox(
+    let Err(error) = prepare_process_sandbox(
         &source(
-            Some(path_string(&current_dir)?.as_str()),
+            None,
             Some(sandbox(CwdPolicy::Workspace, SandboxProfile::Readonly)),
         ),
+        &Default::default(),
         &skill_dir,
         &JsonObject::new(),
         &env_with_local_sandbox_fallback(),
-    )?;
+    ) else {
+        return Err("workspace policy must require explicit workspace identity".into());
+    };
 
-    assert_eq!(plan.cwd, current_dir);
-    assert_eq!(
-        plan.env.get(RUNX_CWD_ENV).map(String::as_str),
-        Some(path_string(&current_dir)?.as_str())
-    );
+    assert!(matches!(
+        error,
+        RuntimeError::SandboxViolation { message }
+            if message.contains("requires RUNX_CWD or INIT_CWD")
+    ));
     Ok(())
 }
 
 #[test]
-fn relative_skill_directory_preserves_leading_parent_segments()
+fn relative_skill_directory_resolves_from_explicit_workspace()
 -> Result<(), Box<dyn std::error::Error>> {
-    let skill_dir = Path::new("../../fixtures/skills/json-output");
+    let temp = tempfile::tempdir()?;
+    let workspace = temp.path().join("workspace");
+    let skill_dir = Path::new("skills/json-output");
+    let resolved_skill_dir = workspace.join(skill_dir);
+    fs::create_dir_all(&resolved_skill_dir)?;
 
     let plan = prepare_process_sandbox(
         &source(
             None,
             Some(sandbox(CwdPolicy::SkillDirectory, SandboxProfile::Readonly)),
         ),
+        &Default::default(),
+        skill_dir,
+        &JsonObject::new(),
+        &env_with_local_sandbox_fallback_and([(RUNX_CWD_ENV.to_owned(), path_string(&workspace)?)]),
+    )?;
+
+    assert_eq!(plan.cwd, fs::canonicalize(resolved_skill_dir)?);
+    assert_eq!(
+        plan.env.get(RUNX_CWD_ENV).map(String::as_str),
+        Some(path_string(&workspace)?.as_str())
+    );
+    Ok(())
+}
+
+#[test]
+fn relative_skill_directory_requires_explicit_workspace() -> Result<(), Box<dyn std::error::Error>>
+{
+    let skill_dir = Path::new("../../fixtures/skills/json-output");
+
+    let Err(error) = prepare_process_sandbox(
+        &source(
+            None,
+            Some(sandbox(CwdPolicy::SkillDirectory, SandboxProfile::Readonly)),
+        ),
+        &Default::default(),
         skill_dir,
         &JsonObject::new(),
         &env_with_local_sandbox_fallback(),
-    )?;
+    ) else {
+        return Err("relative skill directory must require explicit workspace identity".into());
+    };
 
-    assert_eq!(plan.cwd, skill_dir);
+    assert!(matches!(
+        error,
+        RuntimeError::SandboxViolation { message }
+            if message.contains("relative skill directory")
+                && message.contains("requires RUNX_CWD or INIT_CWD")
+    ));
     Ok(())
 }
 
@@ -233,6 +276,7 @@ fn oversized_inputs_spill_to_path_and_omit_inline_json() -> Result<(), Box<dyn s
             None,
             Some(sandbox(CwdPolicy::SkillDirectory, SandboxProfile::Readonly)),
         ),
+        &Default::default(),
         &skill_dir,
         &[("message".to_owned(), JsonValue::String(large.clone()))]
             .into_iter()
@@ -281,6 +325,7 @@ fn oversized_per_input_env_value_is_omitted() -> Result<(), Box<dyn std::error::
             None,
             Some(sandbox(CwdPolicy::SkillDirectory, SandboxProfile::Readonly)),
         ),
+        &Default::default(),
         &skill_dir,
         &[
             ("large".to_owned(), JsonValue::String(oversized)),
@@ -316,6 +361,7 @@ fn unrestricted_local_dev_allows_custom_cwd_escape_after_approval()
                 SandboxProfile::UnrestrictedLocalDev,
             )),
         ),
+        &Default::default(),
         &skill_dir,
         &JsonObject::new(),
         &BTreeMap::new(),
@@ -337,6 +383,7 @@ fn input_env_names_match_author_visible_typescript_normalization()
             None,
             Some(sandbox(CwdPolicy::SkillDirectory, SandboxProfile::Readonly)),
         ),
+        &Default::default(),
         &skill_dir,
         &[
             (
@@ -378,6 +425,7 @@ fn input_env_name_collisions_fail_closed() -> Result<(), Box<dyn std::error::Err
             None,
             Some(sandbox(CwdPolicy::SkillDirectory, SandboxProfile::Readonly)),
         ),
+        &Default::default(),
         &skill_dir,
         &[
             ("foo-bar".to_owned(), JsonValue::String("one".to_owned())),
@@ -411,8 +459,12 @@ fn cli_tool_drains_large_stdout_and_omits_truncated_output()
     )?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(output.stdout.is_empty());
-    assert!(output.stderr.contains("stdout/stderr omitted"));
+    assert_eq!(output.value, JsonValue::String(String::new()));
+    assert!(
+        output
+            .process_stderr()
+            .is_some_and(|stderr| stderr.contains("stdout/stderr omitted"))
+    );
     Ok(())
 }
 
@@ -428,8 +480,8 @@ fn cli_tool_preserves_stderr_on_failed_process() -> Result<(), Box<dyn std::erro
     )?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert_eq!(output.exit_code, Some(7));
-    assert_eq!(output.stderr, "useful failure");
+    assert_eq!(output.exit_code(), Some(7));
+    assert_eq!(output.process_stderr(), Some("useful failure"));
     Ok(())
 }
 
@@ -441,10 +493,12 @@ fn cli_tool_spawn_failure_is_runtime_io() -> Result<(), Box<dyn std::error::Erro
     fs::create_dir_all(&skill_dir)?;
     let missing_command = temp.path().join("missing-command");
     let missing_command = path_string(&missing_command)?;
-    let expected_cwd = skill_dir.display().to_string();
+    let expected_cwd = fs::canonicalize(&skill_dir)?.display().to_string();
 
     let result = CliToolAdapter.invoke(SkillInvocation {
         skill_name: "spawn-failure".to_owned(),
+        step_id: None,
+        requirements: Default::default(),
         artifacts: None,
         allowed_tools: None,
         source: SkillSource {
@@ -458,6 +512,7 @@ fn cli_tool_spawn_failure_is_runtime_io() -> Result<(), Box<dyn std::error::Erro
             cwd: None,
             timeout_seconds: Some(5),
             input_mode: None,
+            environment: Default::default(),
             sandbox: None,
             server: None,
             tool: None,
@@ -475,6 +530,7 @@ fn cli_tool_spawn_failure_is_runtime_io() -> Result<(), Box<dyn std::error::Erro
         inputs: JsonObject::new(),
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: skill_dir,
         env: std::env::vars().collect(),
         credential_delivery: CredentialDelivery::none(),
@@ -534,6 +590,8 @@ fn cli_tool_timeout_kills_descendant_processes() -> Result<(), Box<dyn std::erro
     let started = Instant::now();
     let output = CliToolAdapter.invoke(SkillInvocation {
         skill_name: "contract-test".to_owned(),
+        step_id: None,
+        requirements: Default::default(),
         artifacts: None,
         allowed_tools: None,
         source: source_with_args(
@@ -545,6 +603,7 @@ fn cli_tool_timeout_kills_descendant_processes() -> Result<(), Box<dyn std::erro
         inputs: JsonObject::new(),
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: skill_dir,
         env: env_with_local_sandbox_fallback_and([(
             "RUNX_CWD".to_owned(),
@@ -584,6 +643,8 @@ fn enforced_readonly_sandbox_denies_workspace_write_when_backend_available()
 
     let _output = CliToolAdapter.invoke(SkillInvocation {
         skill_name: "enforced-readonly".to_owned(),
+        step_id: None,
+        requirements: Default::default(),
         artifacts: None,
         allowed_tools: None,
         source: SkillSource {
@@ -597,6 +658,7 @@ fn enforced_readonly_sandbox_denies_workspace_write_when_backend_available()
             cwd: None,
             timeout_seconds: Some(5),
             input_mode: None,
+            environment: Default::default(),
             sandbox: Some(sandbox),
             server: None,
             tool: None,
@@ -614,6 +676,7 @@ fn enforced_readonly_sandbox_denies_workspace_write_when_backend_available()
         inputs: JsonObject::new(),
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: skill_dir,
         env: std::env::vars().collect(),
         credential_delivery: CredentialDelivery::none(),
@@ -648,6 +711,7 @@ fn source_with_args(
         cwd: cwd.map(str::to_owned),
         timeout_seconds,
         input_mode: None,
+        environment: Default::default(),
         sandbox,
         server: None,
         tool: None,
@@ -668,13 +732,15 @@ fn source_with_args(
 fn invoke_node(
     args: Vec<String>,
     timeout_seconds: Option<u64>,
-) -> Result<runx_runtime::adapter::SkillOutput, Box<dyn std::error::Error>> {
+) -> Result<runx_runtime::adapter::InvocationOutput, Box<dyn std::error::Error>> {
     let temp = tempfile::tempdir()?;
     let skill_dir = temp.path().join("skill");
     fs::create_dir_all(&skill_dir)?;
     let adapter = CliToolAdapter;
     Ok(adapter.invoke(SkillInvocation {
         skill_name: "contract-test".to_owned(),
+        step_id: None,
+        requirements: Default::default(),
         artifacts: None,
         allowed_tools: None,
         source: source_with_args(
@@ -686,6 +752,7 @@ fn invoke_node(
         inputs: JsonObject::new(),
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: skill_dir,
         env: env_with_local_sandbox_fallback(),
         credential_delivery: CredentialDelivery::none(),
@@ -716,7 +783,6 @@ fn sandbox(cwd_policy: CwdPolicy, profile: SandboxProfile) -> SkillSandbox {
     SkillSandbox {
         profile,
         cwd_policy: Some(cwd_policy),
-        env_allowlist: None,
         network: None,
         writable_paths: Vec::new(),
         require_enforcement: None,

@@ -4,8 +4,9 @@ This document defines the lower-level author-visible v1 subprocess ABI for
 `cli-tool` skills. Use it only when a capability genuinely needs an executable
 or protocol that cannot use Runx's JavaScript module boundary. Ordinary package
 domain logic should declare `type: javascript`, export a function from a local
-module, accept the resolved input object, and return a JSON-compatible value;
-Runx then owns every process detail described below.
+module, accept the resolved input object plus its frozen execution context, and
+return a JSON-compatible value; Runx then owns every process detail described
+below.
 
 The subprocess ABI is shared by the TypeScript adapter while it survives and
 the Rust runtime cutover. Internal receipt IDs, artifact IDs, sandbox metadata
@@ -33,10 +34,23 @@ export function assessRisk(inputs) {
 
 Omit `export` to select the default export. Module paths are portable relative
 `.mjs` or `.js` paths contained by the owning skill. The selected export may be
-sync or async. Runx owns the dedicated no-host worker, fixed limits, input and
-output framing, timeout, and failure semantics. The module receives neither a
-CLI-tool environment nor credentials, and those mechanics are not
-package-owned API.
+sync or async. Runx owns the dedicated no-host worker, input and output framing,
+wall enforcement, and failure semantics. The second export argument is a
+frozen `{ environment }` object containing only names declared by the selected
+runner:
+
+```yaml
+  environment:
+    required: [REGION]
+    optional: [TRACE_LABEL]
+  timeout_seconds: 10
+```
+
+Required values fail before the worker starts when unavailable; absent optional
+values are omitted. The worker OS environment remains empty. Use this channel
+only for non-secret runtime configuration; credentials remain unavailable and
+must flow through native credential or provider capabilities. The wall defaults
+to two seconds and may be declared from 1 through 30 seconds.
 
 ## Volume and artifact pages
 
@@ -70,14 +84,16 @@ contain only `{ runx_page: { state, done? } }`; the final call also returns the
 declared domain output. A failed page reports its index and byte offset and
 cannot be mistaken for an empty page.
 
-Artifact admission is capped at 512 MiB, a page at 1 MiB, continuation state at
-2 MiB, and one execution at 4,096 pages. The normal 4 MiB deterministic-worker
-input/output ceilings still apply to each call, so framing also rejects a
-single record that cannot fit safely. These are runtime ceilings, not manifest
-profiles. Package code must keep continuation proportional to the bounded
-result it is building; durable progress belongs in `data.append_event` and is
-resumed through `after_version` or a projection rather than an ever-growing
-array.
+Artifact admission is capped at 512 MiB. Pages default to 1 MiB and may be
+configured up to 4 MiB; continuation state is capped at 2 MiB and one execution
+at 4,096 pages. The normal 4 MiB deterministic-worker input/output ceilings
+still apply to each call, so the runtime may frame fewer source bytes when JSON
+encoding and page metadata would otherwise exceed the worker input boundary. A
+single record that cannot fit safely is rejected. These are runtime ceilings,
+not manifest profiles. Package code must keep continuation proportional to the
+bounded result it is building; durable progress belongs in
+`data.append_event` and is resumed through `after_version` or a projection
+rather than an ever-growing array.
 
 Use `artifact.admit`/`artifact.read` directly when a graph or tool needs exact
 byte pages instead of a domain transform. Use `fs.read` and `fs.read_bundle`
@@ -121,22 +137,27 @@ contracts fail closed when their retained body is truncated.
 
 ## Environment
 
-The child environment is deny-by-default. The sandbox allowlist admits only
-declared host variables plus runtime-authored `RUNX_*` variables.
+The child environment is deny-by-default. The selected runner's
+`environment.required` and `environment.optional` declaration admits exact
+non-secret host variables. A small runtime-owned host-interoperability baseline
+preserves locale, proxy, CA-bundle, timezone, and platform process behavior.
+Receipt-signing material and other runtime-owned secret variables are never
+admissible.
 
 Guaranteed variables:
 
 - `RUNX_CWD`: the workspace root, resolved as `RUNX_CWD ?? INIT_CWD ?? current_dir`.
-- `RUNX_INPUTS_JSON`: serialized inputs when the full input payload is at most 48 KiB.
-- `RUNX_INPUTS_PATH`: path to a UTF-8 JSON file when the full input payload is larger than 48 KiB.
-- `RUNX_INPUT_<NAME>`: per-input scalar/stringified value when the serialized value is at most 8 KiB.
+- `RUNX_INPUTS_PATH`: path to the complete UTF-8 JSON input object on every invocation.
+- `RUNX_INPUTS_JSON`: convenience mirror when the full payload is at most 48 KiB.
+- `RUNX_INPUT_<NAME>_PATH`: path to each complete serialized input value on every invocation.
+- `RUNX_INPUT_<NAME>`: convenience mirror when that value is at most 8 KiB.
 
 Input env names are normalized by replacing non-alphanumeric runs with `_`,
 trimming separators, and uppercasing. For example, `thread.title` becomes
 `RUNX_INPUT_THREAD_TITLE`.
 
-Large per-input values are omitted from `RUNX_INPUT_*`; authors must read
-`RUNX_INPUTS_JSON` or `RUNX_INPUTS_PATH` for the full payload.
+The path variables are the stable ABI. Inline variables are optional
+conveniences only; payload size never removes the complete path transport.
 
 ## Stdin
 

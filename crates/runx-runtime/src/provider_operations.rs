@@ -95,8 +95,7 @@ fn parse_provider_grant(value: &JsonValue) -> Result<HostedProviderGrant, Provid
         .map(|scope| {
             scope
                 .as_str()
-                .map(str::trim)
-                .filter(|scope| !scope.is_empty())
+                .filter(|scope| !scope.trim().is_empty())
                 .map(str::to_owned)
                 .ok_or_else(|| {
                     ProviderOperationError::InvalidResponse(

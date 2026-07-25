@@ -164,6 +164,7 @@ runners:
         description: Workspace root used for native catalog and bounded file inspection.
     graph:
       name: prior-art
+      result_from: [validate]
       steps:
         - id: plan
           label: derive the bounded source set

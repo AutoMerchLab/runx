@@ -32,6 +32,8 @@ pub enum RuntimeError {
     ValidateGraph(#[from] runx_parser::ValidationError),
     #[error("skill package validation failed: {0}")]
     SkillPackage(#[from] runx_parser::SkillPackageError),
+    #[error("workspace environment failed: {0}")]
+    WorkspaceEnvironment(#[from] crate::WorkspaceEnvError),
     #[error("JSON serialization failed while {context}: {source}")]
     Json {
         context: String,
@@ -50,14 +52,6 @@ pub enum RuntimeError {
     GraphBlocked { step_id: String, reason: String },
     #[error(transparent)]
     ContextEdgeUnresolved(Box<ContextEdgeUnresolvedError>),
-    #[error(
-        "context edge from step '{from_step}' binds base/diagnostic field '{base_field}' (path '{output_path}'); base fields (raw/skill_claim/stdout/stderr/status) are not addressable, bind the step contract (a declared output or artifact packet) instead"
-    )]
-    ContextEdgeBaseKey {
-        from_step: String,
-        output_path: String,
-        base_field: String,
-    },
     #[error("authority {verb:?} denied graph step '{step_id}': {reason}")]
     AuthorityDenied {
         verb: AuthorityVerb,
@@ -93,6 +87,17 @@ pub enum RuntimeError {
     },
     #[error("unsupported adapter '{adapter_type}'")]
     UnsupportedAdapter { adapter_type: String },
+    #[error("runtime engine failed while {context}: {source}")]
+    EngineFailure {
+        context: &'static str,
+        #[source]
+        source: Box<RuntimeError>,
+    },
+    #[error("runtime engine invariant failed while {context}: {message}")]
+    EngineInvariant {
+        context: &'static str,
+        message: String,
+    },
     #[error("parallel fanout attempted unsupported host operation '{operation}'")]
     ParallelHostInteraction { operation: &'static str },
     #[error("unsupported source kind '{source_kind}'")]
@@ -103,6 +108,11 @@ pub enum RuntimeError {
     MissingCommand,
     #[error("sandbox violation: {message}")]
     SandboxViolation { message: String },
+    #[error(
+        "required environment variable(s) are unavailable: {}",
+        .names.join(", ")
+    )]
+    MissingEnvironment { names: Vec<String> },
     #[error("deterministic JavaScript worker failed: {message}")]
     JavaScriptWorker { message: String },
     #[error("credential delivery failed: {0}")]
@@ -142,6 +152,55 @@ impl RuntimeError {
         Self::EffectState {
             context: context.into(),
             message: source.to_string(),
+        }
+    }
+
+    pub(crate) fn engine(context: &'static str, source: RuntimeError) -> Self {
+        Self::EngineFailure {
+            context,
+            source: Box::new(source),
+        }
+    }
+
+    /// Classify the execution boundary exhaustively. Adding a new runtime
+    /// error must make an explicit decision here before it can be sealed as a
+    /// skill outcome or escape as an engine fault.
+    pub(crate) fn is_fatal_step_fault(&self) -> bool {
+        match self {
+            Self::StepMissing { .. }
+            | Self::GraphPlanningFailed { .. }
+            | Self::CheckpointGraphMismatch { .. }
+            | Self::EngineFailure { .. }
+            | Self::EngineInvariant { .. }
+            | Self::ParallelHostInteraction { .. }
+            | Self::EffectState { .. }
+            | Self::ProviderEffectUnknown { .. }
+            | Self::ReceiptInvalid { .. } => true,
+            Self::Io { .. }
+            | Self::ParseGraph(_)
+            | Self::ValidateGraph(_)
+            | Self::SkillPackage(_)
+            | Self::WorkspaceEnvironment(_)
+            | Self::Json { .. }
+            | Self::StepMissingSkill { .. }
+            | Self::InvalidRunStep { .. }
+            | Self::UnsupportedRunStep { .. }
+            | Self::GraphBlocked { .. }
+            | Self::ContextEdgeUnresolved(_)
+            | Self::AuthorityDenied { .. }
+            | Self::GraphPaused { .. }
+            | Self::GraphEscalated { .. }
+            | Self::UnsupportedAdapter { .. }
+            | Self::UnsupportedSource { .. }
+            | Self::UnsupportedRunnerSelection { .. }
+            | Self::MissingCommand
+            | Self::SandboxViolation { .. }
+            | Self::MissingEnvironment { .. }
+            | Self::JavaScriptWorker { .. }
+            | Self::CredentialDelivery(_)
+            | Self::SkillFailed { .. } => false,
+            #[cfg(feature = "agent")]
+            Self::ManagedAgentResolution { .. } => false,
         }
     }
 

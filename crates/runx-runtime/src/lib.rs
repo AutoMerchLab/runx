@@ -14,6 +14,7 @@ mod adapter_pipeline;
 mod agent_contract;
 mod agent_invocation;
 pub mod approval;
+mod bytes;
 mod capability;
 pub mod config;
 pub mod credential_resolver;
@@ -23,6 +24,7 @@ pub mod doctor;
 pub mod effects;
 pub mod error;
 pub mod execution;
+mod execution_environment;
 pub mod export;
 mod filesystem;
 pub mod host;
@@ -47,7 +49,6 @@ mod process;
 #[cfg(feature = "async-http")]
 mod provider_operations;
 pub mod receipts;
-pub mod redaction;
 pub mod registry;
 pub mod sandbox;
 mod services;
@@ -59,6 +60,7 @@ pub use execution::harness;
 pub use execution::orchestrator;
 pub use execution::runner;
 pub use execution::skill_front;
+pub use execution_environment::environment_requirement_statuses;
 pub use tool_catalogs::native::{
     EventStoreMigrationProof, EventStoreMigrationRequest, EventStoreMigrationStatus,
     migrate_event_store,
@@ -67,7 +69,7 @@ pub use tool_catalogs::native::{
 pub mod adapters;
 
 pub use adapter::{
-    FanoutExecutionMode, InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput,
+    InvocationDiagnostics, InvocationOutput, InvocationStatus, SkillAdapter, SkillInvocation,
 };
 pub use approval::{ApprovalError, LocalApprovalGateResolver, request_approval};
 pub use capability::{
@@ -76,9 +78,8 @@ pub use capability::{
     TypedCapability,
 };
 pub use config::{
-    ConfigError, ConfigKey, ManagedAgentConfig, RUNX_DEVELOPMENT_AUTO_APPROVE_ENV, RunxAgentConfig,
-    RunxConfigFile, RunxCredentialProfile, RunxCredentialsConfig, RunxDevelopmentConfig,
-    RunxPublicConfig, development_auto_approve_requested, load_local_agent_api_key,
+    ConfigError, ConfigKey, ManagedAgentConfig, RunxAgentConfig, RunxConfigFile,
+    RunxCredentialProfile, RunxCredentialsConfig, RunxPublicConfig, load_local_agent_api_key,
     load_local_credential_secret, load_local_public_api_token, load_managed_agent_config,
     load_runx_config_file, lookup_runx_config_value, managed_agent_provider, mask_runx_config_file,
     parse_config_key, remove_local_credential_secret, resolve_path_from_user_input,
@@ -114,14 +115,15 @@ pub use effects::{
     ProviderEffectAttempt, ProviderEffectAuthority, ProviderEffectClass, ProviderEffectError,
     ProviderEffectFinality, ProviderEffectIntent, ProviderEffectIntentInput,
     ProviderEffectReadback, ProviderEffectReadbackEvidence, ProviderEffectResolved,
-    ProviderEffectUnknown, ProviderPermissionAdmission, ProviderPermissionEffect, RuntimeEffect,
-    RuntimeEffectError, RuntimeEffectRegistry, insert_effect_verification_ref,
+    ProviderEffectUnknown, ProviderPermissionAdmission, ProviderPermissionEffect,
+    ProviderScopeTransportError, RuntimeEffect, RuntimeEffectError, RuntimeEffectRegistry,
+    decode_provider_scopes_env, encode_provider_scopes_env, insert_effect_verification_ref,
 };
 pub use error::RuntimeError;
 pub use harness::{
     HarnessExpectedStatus, HarnessFixtureError, HarnessFixtureKind, HarnessReplayError,
     HarnessReplayOutput, load_harness_fixture, run_harness_fixture,
-    run_harness_fixture_with_adapter, run_harness_fixture_with_env,
+    run_harness_fixture_with_adapter,
 };
 pub use host::{Host, NoopHost};
 #[cfg(feature = "async-http")]
@@ -156,7 +158,6 @@ pub use orchestrator::{
 pub use outbox_provider::{
     ThreadOutboxProviderProcessOutcome, ThreadOutboxProviderProcessSupervisor,
     ThreadOutboxProviderSupervisorError, ThreadOutboxProviderSupervisorOptions,
-    thread_outbox_provider_forbidden_secret_fields,
 };
 #[cfg(feature = "async-http")]
 pub use provider_operations::{
@@ -184,13 +185,10 @@ pub use receipts::{
     RUNX_RECEIPT_VERIFY_KID_ENV, RuntimeReceiptSignatureConfig, RuntimeReceiptSignaturePolicy,
     RuntimeReceiptSigner, RuntimeReceiptSigningError,
 };
-pub use redaction::redact_sensitive_text;
 pub use registry::{RegistryInstallMetadataInput, registry_install_receipt_metadata};
-#[cfg(feature = "cli-tool")]
-pub use runner::run_graph_file;
 pub use runner::{
     GraphCheckpoint, GraphRun, RUNX_MAX_FANOUT_CONCURRENCY_ENV, RUNX_RUN_ID_ENV, Runtime,
-    RuntimeOptions, StepRun,
+    RuntimeOptions, StepOutcome, StepRun,
 };
 pub use runx_core::kernel_eval;
 pub use runx_parser::{
@@ -210,3 +208,9 @@ pub use tool_catalogs::{
 };
 
 pub const PACKAGE_NAME: &str = env!("CARGO_PKG_NAME");
+/// Immutable released CLI identity included in every native execution closure.
+///
+/// Published Runx binaries are immutable for one CLI version. Binding this
+/// value prevents a queued or resumed run from silently crossing a runtime
+/// upgrade while retaining the same closure digest.
+pub const EXECUTION_RUNTIME_RELEASE: &str = "0.8.0";

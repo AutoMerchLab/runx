@@ -1,15 +1,14 @@
 use runx_contracts::operational_policy_source_provider;
 use runx_contracts::{JsonObject, JsonValue, Reference, ReferenceType};
 
-use crate::adapter::SkillOutput;
+use crate::adapter::InvocationOutput;
 
 pub(crate) struct StepOutputProjection {
     pub(crate) outputs: JsonObject,
-    pub(crate) claim: JsonObject,
     pub(crate) refs: StepOutputRefs,
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Debug, Default)]
 pub(crate) struct StepOutputRefs {
     pub(crate) signal_refs: Vec<Reference>,
     pub(crate) source_refs: Vec<Reference>,
@@ -19,44 +18,20 @@ pub(crate) struct StepOutputRefs {
     pub(crate) verification_refs: Vec<Reference>,
 }
 
-/// The diagnostic/base fields `project_step_output` injects into a step's `outputs`
-/// map. Re-exported from `runx_contracts::output` so the runtime projection/resolver
-/// and the parser's parse-time context-edge validation share one source of truth and
-/// the addressable surface cannot drift between layers.
-pub(crate) use runx_contracts::output::BASE_OUTPUT_FIELDS;
-
 #[must_use]
-pub(crate) fn project_step_output(output: &SkillOutput) -> StepOutputProjection {
-    let mut outputs = JsonObject::new();
-    let parsed_stdout = serde_json::from_slice::<JsonValue>(output.stdout.as_bytes()).ok();
-    let refs = stdout_refs(parsed_stdout.as_ref());
-    let stdout = JsonValue::String(output.stdout.clone());
-    if let Some(parsed) = parsed_stdout.as_ref() {
-        outputs.insert("raw".to_owned(), stdout.clone());
-        outputs.insert("skill_claim".to_owned(), parsed.clone());
-    }
-    outputs.insert("stdout".to_owned(), stdout);
-    outputs.insert(
-        "stderr".to_owned(),
-        JsonValue::String(output.stderr.clone()),
-    );
-    outputs.insert(
-        "status".to_owned(),
-        JsonValue::String(if output.succeeded() {
-            "success".to_owned()
-        } else {
-            "failure".to_owned()
-        }),
-    );
-    let claim = match parsed_stdout {
-        Some(JsonValue::Object(object)) => object,
-        _ => JsonObject::new(),
-    };
+pub(crate) fn project_step_output(output: &InvocationOutput) -> StepOutputProjection {
+    let refs = output_refs(Some(&output.value));
     StepOutputProjection {
-        outputs,
-        claim,
+        outputs: JsonObject::new(),
         refs,
     }
+}
+
+/// Resolve one declared output from the producer's exact top-level claim.
+/// Transport-envelope probing is intentionally forbidden: producers emit the
+/// declared contract directly.
+pub(crate) fn declared_claim_value(claim: &JsonObject, name: &str) -> Option<JsonValue> {
+    claim.get(name).cloned()
 }
 
 /// Wrap a value in the canonical `{ "data": ... }` artifact envelope, idempotently.
@@ -87,18 +62,18 @@ fn is_data_envelope(object: &JsonObject) -> bool {
                 .is_some_and(|schema| !schema.trim().is_empty()))
 }
 
-fn stdout_refs(value: Option<&JsonValue>) -> StepOutputRefs {
+fn output_refs(value: Option<&JsonValue>) -> StepOutputRefs {
     let mut refs = StepOutputRefs::default();
     let Some(value) = value else {
         return refs;
     };
-    collect_stdout_artifact_refs(value, &mut refs);
-    collect_stdout_signal_refs(value, &mut refs);
-    collect_stdout_change_set_refs(value, &mut refs);
+    collect_output_artifact_refs(value, &mut refs);
+    collect_output_signal_refs(value, &mut refs);
+    collect_output_change_set_refs(value, &mut refs);
     refs
 }
 
-fn collect_stdout_artifact_refs(value: &JsonValue, refs: &mut StepOutputRefs) {
+fn collect_output_artifact_refs(value: &JsonValue, refs: &mut StepOutputRefs) {
     let Some(object) = value.as_object() else {
         return;
     };
@@ -142,7 +117,7 @@ fn collect_artifact_reference(value: &JsonValue, refs: &mut StepOutputRefs) {
     }
 }
 
-fn collect_stdout_signal_refs(value: &JsonValue, refs: &mut StepOutputRefs) {
+fn collect_output_signal_refs(value: &JsonValue, refs: &mut StepOutputRefs) {
     let Some(object) = value.as_object() else {
         return;
     };
@@ -154,7 +129,7 @@ fn collect_stdout_signal_refs(value: &JsonValue, refs: &mut StepOutputRefs) {
     }
 }
 
-fn collect_stdout_change_set_refs(value: &JsonValue, refs: &mut StepOutputRefs) {
+fn collect_output_change_set_refs(value: &JsonValue, refs: &mut StepOutputRefs) {
     let Some(object) = value.as_object() else {
         return;
     };

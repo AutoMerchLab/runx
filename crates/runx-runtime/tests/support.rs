@@ -58,7 +58,7 @@ pub(crate) fn test_signature_config()
 
 #[cfg(feature = "cli-tool")]
 pub(crate) fn signed_runtime_options() -> Result<RuntimeOptions, runx_runtime::RuntimeError> {
-    let mut env = RuntimeOptions::local_development().env;
+    let mut env = std::env::vars().collect();
     insert_test_signing_env(&mut env);
     RuntimeOptions::from_env(env)
 }
@@ -67,7 +67,7 @@ pub(crate) fn signed_runtime_options() -> Result<RuntimeOptions, runx_runtime::R
 pub(crate) fn local_harness_runtime_options() -> RuntimeOptions {
     RuntimeOptions {
         created_at: TEST_CREATED_AT.to_owned(),
-        ..RuntimeOptions::local_development()
+        ..RuntimeOptions::local_development(std::env::vars().collect())
     }
 }
 

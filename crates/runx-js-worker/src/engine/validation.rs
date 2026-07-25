@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::protocol::{InvocationLimits, WorkerFailureCode};
+use crate::protocol::{InvocationLimits, WorkerFailureCode, WorkerLimit};
 
 use super::EngineError;
 
@@ -13,8 +13,8 @@ pub(super) fn validate_input(
     if bytes.len() <= maximum {
         return Ok(());
     }
-    Err(EngineError::new(
-        WorkerFailureCode::ResourceLimit,
+    Err(EngineError::limit(
+        WorkerLimit::InputBytes,
         format!(
             "JavaScript input is {} bytes; limit is {maximum} bytes",
             bytes.len()
@@ -39,8 +39,8 @@ pub(super) fn validate_bundle(
     let input_bytes = serde_json::to_vec(modules)
         .map_err(|error| EngineError::new(WorkerFailureCode::InvalidRequest, error.to_string()))?;
     if input_bytes.len() > limits.source_bytes {
-        return Err(EngineError::new(
-            WorkerFailureCode::ResourceLimit,
+        return Err(EngineError::limit(
+            WorkerLimit::SourceBytes,
             format!(
                 "JavaScript module bundle is {} bytes; limit is {} bytes",
                 input_bytes.len(),

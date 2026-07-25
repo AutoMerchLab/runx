@@ -25,8 +25,8 @@ use runx_pay::{
 use runx_receipts::ReceiptTreeConfig;
 use runx_runtime::effects::RuntimeEffectRegistry;
 use runx_runtime::{
-    Host, InvocationStatus, RUNX_RUN_ID_ENV, Runtime, RuntimeError, RuntimeOptions, SkillAdapter,
-    SkillInvocation, SkillOutput, validate_runtime_receipt_tree,
+    Host, InvocationOutput, RUNX_RUN_ID_ENV, Runtime, RuntimeError, RuntimeOptions, SkillAdapter,
+    SkillInvocation, validate_runtime_receipt_tree,
 };
 use serde_json::{Value, json};
 use tempfile::TempDir;
@@ -63,7 +63,7 @@ fn approved_payment_approval_emits_approval_output_and_runs_fulfill()
     );
     assert!(
         approval_step
-            .outputs
+            .contract
             .get("payment_approval")
             .is_some_and(|value| matches!(value, JsonValue::Object(_)))
     );
@@ -443,8 +443,8 @@ fn x402_paid_echo_returns_echo_only_after_sealed_payment_proof()
     );
 
     let echo = step_run(&run.steps, "echo")?;
-    let skill_claim = object_field(&echo.outputs, "skill_claim")?;
-    let paid_echo_result = object_field(skill_claim, "paid_echo_result")?;
+    let paid_echo_packet = object_field(&echo.contract, "paid_echo_result")?;
+    let paid_echo_result = object_field(paid_echo_packet, "data")?;
     assert_eq!(
         paid_echo_result.get("message"),
         Some(&JsonValue::String("hello from paid echo".to_owned()))
@@ -475,7 +475,7 @@ fn x402_paid_echo_returns_echo_only_after_sealed_payment_proof()
         ))
     );
 
-    let echo_text = serde_json::to_string(&echo.outputs)?;
+    let echo_text = serde_json::to_string(&echo.contract)?;
     assert!(!echo_text.contains("credential_envelope"));
     assert!(!echo_text.contains("rail_session_material_ref"));
     assert!(!echo_text.contains(PAID_ECHO_RAIL_SESSION_MATERIAL_REF));
@@ -511,14 +511,14 @@ fn x402_paid_echo_replays_sealed_idempotency_without_second_rail()
             effects: runtime_effects(vec![paid_echo_supervisor_evidence(
                 PAID_ECHO_IDEMPOTENCY_KEY,
             )]),
-            ..RuntimeOptions::local_development()
+            ..RuntimeOptions::local_development(std::env::vars().collect())
         },
     );
 
     let mut first_host = ApprovalHost::approved(true);
     let first = runtime.run_graph_file_with_host(fixture.graph_path(), &mut first_host)?;
     assert_eq!(first.state.status, GraphStatus::Succeeded);
-    let first_fulfill = serde_json::to_string(&step_run(&first.steps, "fulfill")?.outputs)?;
+    let first_fulfill = serde_json::to_string(&step_run(&first.steps, "fulfill")?.contract)?;
     assert!(
         !first_fulfill.contains(PAID_ECHO_RAIL_SESSION_MATERIAL_REF),
         "transient rail session material must be removed before output projection and sealing"
@@ -539,8 +539,11 @@ fn x402_paid_echo_replays_sealed_idempotency_without_second_rail()
     );
     assert_eq!(
         object_field(
-            object_field(&step_run(&second.steps, "echo")?.outputs, "skill_claim")?,
-            "paid_echo_result"
+            object_field(
+                &step_run(&second.steps, "echo")?.contract,
+                "paid_echo_result"
+            )?,
+            "data"
         )?
         .get("payment_proof_ref"),
         Some(&JsonValue::String(
@@ -602,7 +605,7 @@ fn x402_paid_echo_replay_with_mismatched_amount_denies_before_second_rail()
             effects: runtime_effects(vec![paid_echo_supervisor_evidence(
                 PAID_ECHO_IDEMPOTENCY_KEY,
             )]),
-            ..RuntimeOptions::local_development()
+            ..RuntimeOptions::local_development(std::env::vars().collect())
         },
     );
 
@@ -676,7 +679,7 @@ fn x402_paid_echo_reused_spend_capability_with_new_idempotency_denied_from_persi
             effects: runtime_effects(vec![paid_echo_supervisor_evidence(
                 PAID_ECHO_IDEMPOTENCY_KEY,
             )]),
-            ..RuntimeOptions::local_development()
+            ..RuntimeOptions::local_development(std::env::vars().collect())
         },
     );
 
@@ -756,7 +759,7 @@ fn x402_paid_echo_run_cap_exhaustion_is_governed_denial_before_second_rail()
             effects: runtime_effects(vec![paid_echo_supervisor_evidence(
                 PAID_ECHO_IDEMPOTENCY_KEY,
             )]),
-            ..RuntimeOptions::local_development()
+            ..RuntimeOptions::local_development(std::env::vars().collect())
         },
     );
 
@@ -830,7 +833,7 @@ fn x402_paid_echo_partial_mutation_escalates_without_second_rail()
         RuntimeOptions {
             env,
             effects: runtime_effects(Vec::new()),
-            ..RuntimeOptions::local_development()
+            ..RuntimeOptions::local_development(std::env::vars().collect())
         },
     );
 
@@ -1056,7 +1059,7 @@ fn runtime_options_with_effects(
     RuntimeOptions {
         env,
         effects: runtime_effects(evidence),
-        ..RuntimeOptions::local_development()
+        ..RuntimeOptions::local_development(std::env::vars().collect())
     }
 }
 
@@ -1281,12 +1284,12 @@ fn payment_supervisor_evidence(
 
 struct RecordingAdapter {
     invocations: Rc<RefCell<Vec<String>>>,
-    stdout: String,
+    value: JsonValue,
 }
 
 impl Default for RecordingAdapter {
     fn default() -> Self {
-        Self::with_stdout(
+        Self::with_output_json(
             r#"{"effect_evidence_packet":{"data":{"rail_result":{"status":"fulfilled","rail":"mock","amount_minor":125,"currency":"USD"},"rail_proof":{"proof_ref":"receipt-proof:mock:x402-pay-approval-001","idempotency_key":"payment:x402-pay-approval-001"},"credential_envelope":{"form":"paid_tool_credential","credential_ref":"credential:mock:x402-pay-approval-001"}}}}"#,
         )
     }
@@ -1294,15 +1297,16 @@ impl Default for RecordingAdapter {
 
 impl RecordingAdapter {
     fn without_rail_proof() -> Self {
-        Self::with_stdout(
+        Self::with_output_json(
             r#"{"effect_evidence_packet":{"data":{"rail_result":{"status":"fulfilled","rail":"mock","amount_minor":125,"currency":"USD"},"credential_envelope":{"form":"paid_tool_credential","credential_ref":"credential:mock:x402-pay-approval-001"}}}}"#,
         )
     }
 
-    fn with_stdout(stdout: &str) -> Self {
+    fn with_output_json(output_json: &str) -> Self {
         Self {
             invocations: Rc::new(RefCell::new(Vec::new())),
-            stdout: stdout.to_owned(),
+            value: serde_json::from_str(output_json)
+                .expect("test output fixture must be valid JSON"),
         }
     }
 
@@ -1316,16 +1320,13 @@ impl SkillAdapter for RecordingAdapter {
         "x402-pay-approval-test"
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         self.invocations.borrow_mut().push(request.skill_name);
-        Ok(SkillOutput {
-            status: InvocationStatus::Success,
-            stdout: self.stdout.clone(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 1,
-            metadata: JsonObject::new(),
-        })
+        Ok(InvocationOutput::runtime_success(
+            self.value.clone(),
+            1,
+            JsonObject::new(),
+        ))
     }
 }
 
@@ -1455,7 +1456,7 @@ impl SkillAdapter for PaidEchoAdapter {
         "paid-echo-test"
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         self.invocations.borrow_mut().push(PaidEchoInvocation {
             skill_name: request.skill_name.clone(),
             inputs: request.inputs.clone(),
@@ -1508,7 +1509,7 @@ impl SkillAdapter for PaidEchoAdapter {
             "pay-fulfill-rail" if matches!(self.rail_proof, PaidEchoRailProof::Partial) => {
                 let idempotency_key = self.current_idempotency_key.borrow().clone();
                 let amount_minor = *self.current_amount_minor.borrow();
-                skill_failure_with_stdout(
+                skill_failure_with_value(
                     paid_echo_partial_rail_packet(&idempotency_key, amount_minor),
                     "partial rail mutation recorded before terminal proof",
                 )
@@ -1552,49 +1553,20 @@ impl SkillAdapter for PaidEchoAdapter {
     }
 }
 
-fn skill_success(value: Value) -> SkillOutput {
-    let stdout = match serde_json::to_string(&value) {
-        Ok(stdout) => stdout,
-        Err(error) => return skill_failure(&format!("test JSON serialization failed: {error}")),
-    };
-    SkillOutput {
-        status: InvocationStatus::Success,
-        stdout,
-        stderr: String::new(),
-        exit_code: Some(0),
-        duration_ms: 1,
-        metadata: JsonObject::new(),
-    }
+fn skill_success(value: Value) -> InvocationOutput {
+    InvocationOutput::runtime_success(runtime_value(value), 1, JsonObject::new())
 }
 
-fn skill_failure(message: &str) -> SkillOutput {
-    SkillOutput {
-        status: InvocationStatus::Failure,
-        stdout: String::new(),
-        stderr: message.to_owned(),
-        exit_code: Some(1),
-        duration_ms: 1,
-        metadata: JsonObject::new(),
-    }
+fn skill_failure(message: &str) -> InvocationOutput {
+    InvocationOutput::runtime_failure(JsonValue::Null, message, 1, JsonObject::new())
 }
 
-fn skill_failure_with_stdout(value: Value, message: &str) -> SkillOutput {
-    let stdout = match serde_json::to_string(&value) {
-        Ok(stdout) => stdout,
-        Err(error) => {
-            return skill_failure(&format!(
-                "{message}; test JSON serialization failed: {error}"
-            ));
-        }
-    };
-    SkillOutput {
-        status: InvocationStatus::Failure,
-        stdout,
-        stderr: message.to_owned(),
-        exit_code: Some(1),
-        duration_ms: 1,
-        metadata: JsonObject::new(),
-    }
+fn skill_failure_with_value(value: Value, message: &str) -> InvocationOutput {
+    InvocationOutput::runtime_failure(runtime_value(value), message, 1, JsonObject::new())
+}
+
+fn runtime_value(value: Value) -> JsonValue {
+    serde_json::from_value(value).expect("test output fixture must match the Runx JSON contract")
 }
 
 fn paid_echo_rail_packet(
@@ -1678,6 +1650,10 @@ impl Host for ApprovalHost {
     ) -> Result<Option<ResolutionResponse>, RuntimeError> {
         self.requests.borrow_mut().push(request);
         Ok(self.responses.borrow_mut().pop_front().flatten())
+    }
+
+    fn log(&mut self, _message: String) -> Result<(), RuntimeError> {
+        Ok(())
     }
 }
 
@@ -1779,7 +1755,7 @@ impl PaidEchoFixture {
                 ("payment_credential_ref", "string"),
                 ("payment_proof_ref", "string"),
             ],
-            None,
+            Some("paid_echo_result"),
         )?;
         let graph_path = temp.path().join("graph.yaml");
         fs::write(&graph_path, paid_echo_graph_yaml()?)?;
@@ -2228,7 +2204,7 @@ fn step_run<'a>(
 }
 
 fn approval_value(step: &runx_runtime::StepRun, field: &str) -> Result<JsonValue, std::io::Error> {
-    let payment_approval = object_field(&step.outputs, "payment_approval")?;
+    let payment_approval = object_field(&step.contract, "payment_approval")?;
     let data = object_field(payment_approval, "data")?;
     data.get(field)
         .cloned()

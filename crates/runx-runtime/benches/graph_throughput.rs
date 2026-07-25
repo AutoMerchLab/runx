@@ -13,7 +13,7 @@ use runx_core::state_machine::{
     start_sequential_graph_step_indexed, succeed_sequential_graph_step_indexed,
 };
 use runx_runtime::{
-    InvocationStatus, RuntimeOptions, SkillOutput, StepRun,
+    InvocationOutput, InvocationStatus, RuntimeOptions, StepRun,
     receipts::{graph_receipt_with_signature_policy, step_receipt_with_signature_policy},
 };
 use tempfile::TempDir;
@@ -60,7 +60,7 @@ fn bench_graph_throughput(c: &mut Criterion) {
     c.bench_function("graph_receipt_sealing", |b| {
         let options = RuntimeOptions {
             created_at: CREATED_AT.to_owned(),
-            ..RuntimeOptions::local_development()
+            ..RuntimeOptions::local_development(std::env::vars().collect())
         };
         let template = synthetic_step_runs(&options, 32);
         b.iter(|| {
@@ -140,7 +140,7 @@ fn register_receipt_store_append(c: &mut Criterion, name: &str, count: usize) {
     c.bench_function(name, |b| {
         let options = RuntimeOptions {
             created_at: CREATED_AT.to_owned(),
-            ..RuntimeOptions::local_development()
+            ..RuntimeOptions::local_development(std::env::vars().collect())
         };
         let mut receipts = synthetic_receipts(&options, count.saturating_add(1));
         let pending = receipts.pop();
@@ -180,7 +180,7 @@ fn register_receipt_store_index(c: &mut Criterion, name: &str, count: usize) {
     c.bench_function(name, |b| {
         let options = RuntimeOptions {
             created_at: CREATED_AT.to_owned(),
-            ..RuntimeOptions::local_development()
+            ..RuntimeOptions::local_development(std::env::vars().collect())
         };
         let receipts = synthetic_receipts(&options, count);
         let temp_dir = TempDir::new().map_err(|source| source.to_string());
@@ -386,8 +386,8 @@ fn synthetic_receipts(options: &RuntimeOptions, count: usize) -> Vec<runx_contra
         .collect()
 }
 
-fn skill_output(stdout: &str) -> SkillOutput {
-    SkillOutput {
+fn skill_output(stdout: &str) -> InvocationOutput {
+    InvocationOutput {
         status: InvocationStatus::Success,
         stdout: stdout.to_owned(),
         stderr: String::new(),

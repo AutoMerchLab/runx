@@ -7,14 +7,10 @@ pub trait Host {
 
     fn resolve(
         &mut self,
-        _request: ResolutionRequest,
-    ) -> Result<Option<ResolutionResponse>, RuntimeError> {
-        Ok(None)
-    }
+        request: ResolutionRequest,
+    ) -> Result<Option<ResolutionResponse>, RuntimeError>;
 
-    fn log(&mut self, _message: String) -> Result<(), RuntimeError> {
-        Ok(())
-    }
+    fn log(&mut self, message: String) -> Result<(), RuntimeError>;
 }
 
 #[derive(Default)]
@@ -22,6 +18,17 @@ pub struct NoopHost;
 
 impl Host for NoopHost {
     fn report(&mut self, _event: ExecutionEvent) -> Result<(), RuntimeError> {
+        Ok(())
+    }
+
+    fn resolve(
+        &mut self,
+        _request: ResolutionRequest,
+    ) -> Result<Option<ResolutionResponse>, RuntimeError> {
+        Ok(None)
+    }
+
+    fn log(&mut self, _message: String) -> Result<(), RuntimeError> {
         Ok(())
     }
 }

@@ -22,7 +22,8 @@ describe("@runxhq/langchain", () => {
         signal: null,
         stdout: JSON.stringify({
           status: "sealed",
-          execution: { stdout: "from-cli", stderr: "", exit_code: 0 },
+          schema: "runx.skill_run.v1",
+          result: "from-cli",
         }),
         stderr: "",
       };
@@ -45,11 +46,8 @@ describe("@runxhq/langchain", () => {
 
     expect(result).toEqual({
       status: "sealed",
-      execution: {
-        stdout: "from-cli",
-        stderr: "",
-        exit_code: 0,
-      },
+      schema: "runx.skill_run.v1",
+      result: "from-cli",
     });
     expect(calls).toHaveLength(1);
     expect(calls[0]?.command).toBe("fake-runx");
@@ -117,10 +115,6 @@ function successResult(stdout: string): RunxSkillCliResult {
   return {
     status: "sealed",
     schema: "runx.skill_run.v1",
-    execution: {
-      stdout,
-      stderr: "",
-      exit_code: 0,
-    },
+    result: stdout,
   };
 }

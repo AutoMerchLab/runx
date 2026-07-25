@@ -12,15 +12,6 @@ export type JsonValue =
   | readonly JsonValue[]
   | { readonly [key: string]: JsonValue | undefined };
 
-export interface RunxSkillExecutionResult {
-  readonly stdout?: string;
-  readonly stderr?: string;
-  readonly exit_code?: number | null;
-  readonly error_message?: string;
-  readonly structured_output?: JsonValue;
-  readonly [key: string]: JsonValue | undefined;
-}
-
 export type RunxSkillCliResult =
   | {
       readonly status: "needs_agent";
@@ -38,8 +29,8 @@ export type RunxSkillCliResult =
   | {
       readonly status: "failure";
       readonly schema?: string;
-      readonly execution?: RunxSkillExecutionResult;
-      readonly [key: string]: JsonValue | RunxSkillExecutionResult | undefined;
+      readonly error?: JsonValue;
+      readonly [key: string]: JsonValue | undefined;
     }
   | {
       readonly status: "sealed";
@@ -47,10 +38,10 @@ export type RunxSkillCliResult =
       readonly skill_name?: string;
       readonly run_id?: string;
       readonly receipt_id?: string;
-      readonly execution?: RunxSkillExecutionResult;
-      readonly payload?: JsonValue;
-      readonly receipt?: JsonValue;
-      readonly [key: string]: JsonValue | RunxSkillExecutionResult | undefined;
+      readonly result?: JsonValue;
+      readonly trace?: JsonValue;
+      readonly error?: JsonValue;
+      readonly [key: string]: JsonValue | undefined;
     };
 
 export interface RunxCliBoundaryOptions {
@@ -151,7 +142,7 @@ export function createRunxLangChainTool(
       }
 
       const formatted = options.formatOutput?.(result);
-      return formatted ?? stringField(result.execution, "stdout") ?? stringifyJson(result);
+      return formatted ?? stringifyJson(result.result ?? result);
     },
     {
       name: options.name,
@@ -272,9 +263,7 @@ function runxExitMessage(exitCode: number | null, stderr: string, fallback: stri
 }
 
 function skillFailureMessage(name: string, result: Extract<RunxSkillCliResult, { readonly status: "failure" }>): string {
-  return stringField(result.execution, "error_message")
-    ?? stringField(result.execution, "stderr")
-    ?? stringField(result.execution, "stdout")
+  return stringField(result.error, "message")
     ?? `runx workflow '${name}' failed.`;
 }
 
@@ -287,6 +276,9 @@ function stringField(value: unknown, key: string): string | undefined {
 }
 
 function stringifyJson(value: unknown): string {
+  if (typeof value === "string") {
+    return value;
+  }
   return JSON.stringify(value) ?? "";
 }
 

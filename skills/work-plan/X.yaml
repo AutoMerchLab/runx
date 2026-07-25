@@ -324,6 +324,7 @@ runners:
         description: Workspace root used for native skill-catalog inspection.
     graph:
       name: work-plan
+      result_from: [validate]
       steps:
         - id: inspect
           label: inspect the local skill catalog

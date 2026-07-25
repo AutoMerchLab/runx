@@ -5,8 +5,8 @@ use std::path::{Path, PathBuf};
 use runx_contracts::{ClosureDisposition, JsonObject, JsonValue, ReceiptSchema};
 use runx_receipts::canonical_receipt_json;
 use runx_runtime::{
-    HarnessExpectedStatus, HarnessFixtureKind, InvocationStatus, RuntimeOptions, SkillAdapter,
-    SkillInvocation, SkillOutput, load_harness_fixture, run_harness_fixture_with_adapter,
+    HarnessExpectedStatus, HarnessFixtureKind, InvocationOutput, RuntimeOptions, SkillAdapter,
+    SkillInvocation, load_harness_fixture, run_harness_fixture_with_adapter,
 };
 
 const FIXTURE_CREATED_AT: &str = "2026-05-18T00:00:00Z";
@@ -94,7 +94,13 @@ fn replays_active_harness_skill_fixture() -> Result<(), Box<dyn std::error::Erro
     );
     assert_eq!(output.receipt.seal.disposition, ClosureDisposition::Closed);
     let skill_output = output.skill_output.ok_or("missing skill_output")?;
-    assert_eq!(skill_output.stdout, "{\"message\":\"hello from harness\"}");
+    assert_eq!(
+        skill_output.value,
+        JsonValue::Object(JsonObject::from([(
+            "message".to_owned(),
+            JsonValue::String("hello from harness".to_owned()),
+        )]))
+    );
     Ok(())
 }
 
@@ -142,8 +148,10 @@ fn replay_receipts_match_checked_in_canonical_oracles() -> Result<(), Box<dyn st
 #[test]
 #[cfg(not(feature = "cli-tool"))]
 fn default_harness_runner_reports_disabled_cli_tool_feature() {
-    let result =
-        runx_runtime::run_harness_fixture(fixture_path("fixtures/harness/echo-skill.yaml"));
+    let result = runx_runtime::run_harness_fixture(
+        fixture_path("fixtures/harness/echo-skill.yaml"),
+        std::collections::BTreeMap::new(),
+    );
 
     assert!(matches!(
         result,
@@ -164,7 +172,7 @@ fn run_fixture_with_test_adapter(
 fn fixture_runtime_options() -> RuntimeOptions {
     RuntimeOptions {
         created_at: FIXTURE_CREATED_AT.to_owned(),
-        ..RuntimeOptions::local_development()
+        ..RuntimeOptions::local_development(std::env::vars().collect())
     }
 }
 
@@ -175,7 +183,10 @@ impl SkillAdapter for TestAdapter {
         "cli-tool"
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, runx_runtime::RuntimeError> {
+    fn invoke(
+        &self,
+        request: SkillInvocation,
+    ) -> Result<InvocationOutput, runx_runtime::RuntimeError> {
         let message = request
             .inputs
             .get("message")
@@ -190,16 +201,11 @@ impl SkillAdapter for TestAdapter {
         // is addressable by downstream context edges under the contract model.
         let mut claim = JsonObject::default();
         claim.insert("message".to_owned(), JsonValue::String(message));
-        let stdout = serde_json::to_string(&JsonValue::Object(claim))
-            .expect("serialize harness test adapter claim");
-        Ok(SkillOutput {
-            status: InvocationStatus::Success,
-            stdout,
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 0,
-            metadata: JsonObject::default(),
-        })
+        Ok(InvocationOutput::runtime_success(
+            JsonValue::Object(claim),
+            0,
+            JsonObject::default(),
+        ))
     }
 }
 

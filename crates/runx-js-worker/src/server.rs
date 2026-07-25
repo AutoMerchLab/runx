@@ -5,8 +5,8 @@ use thiserror::Error;
 
 use crate::engine::{EngineError, evaluate};
 use crate::protocol::{
-    JAVASCRIPT_STACK_BYTES, MAX_FRAME_BYTES, PROTOCOL_VERSION, ProtocolError, WorkerFailureCode,
-    WorkerRequest, WorkerResponse, read_frame, write_frame,
+    JAVASCRIPT_STACK_BYTES, MAX_FRAME_BYTES, PROTOCOL_VERSION, ProtocolError, WorkerDisposition,
+    WorkerFailureCode, WorkerRequest, WorkerResponse, read_frame, write_frame,
 };
 
 #[derive(Debug, Error)]
@@ -48,8 +48,9 @@ pub fn serve() -> Result<(), WorkerServerError> {
                     protocol_version: PROTOCOL_VERSION,
                     invocation_id: None,
                     code: WorkerFailureCode::InvalidProtocol,
+                    limit: None,
                     message: "worker protocol handshake mismatch".to_owned(),
-                    discard_worker: true,
+                    disposition: WorkerDisposition::Discard,
                 },
                 MAX_FRAME_BYTES,
             )?;
@@ -64,6 +65,7 @@ pub fn serve() -> Result<(), WorkerServerError> {
             export_name,
             modules,
             inputs,
+            environment,
             limits,
         } = request
         else {
@@ -72,7 +74,7 @@ pub fn serve() -> Result<(), WorkerServerError> {
                 None,
                 WorkerFailureCode::InvalidProtocol,
                 "worker handshake may occur only once",
-                true,
+                WorkerDisposition::Discard,
             )?;
             break;
         };
@@ -82,7 +84,7 @@ pub fn serve() -> Result<(), WorkerServerError> {
                 Some(invocation_id),
                 WorkerFailureCode::InvalidProtocol,
                 "worker invocation protocol mismatch",
-                true,
+                WorkerDisposition::Discard,
             )?;
             break;
         }
@@ -93,16 +95,23 @@ pub fn serve() -> Result<(), WorkerServerError> {
         let evaluation = thread::Builder::new()
             .name("runx-js-invocation".to_owned())
             .stack_size(JAVASCRIPT_STACK_BYTES)
-            .spawn(
-                move || match evaluate(&entry_module, &export_name, &modules, inputs, limits) {
+            .spawn(move || {
+                match evaluate(
+                    &entry_module,
+                    &export_name,
+                    &modules,
+                    inputs,
+                    environment,
+                    limits,
+                ) {
                     Ok(output) => WorkerResponse::Result {
                         protocol_version: PROTOCOL_VERSION,
                         invocation_id,
                         output,
                     },
                     Err(error) => engine_failure(invocation_id, &error),
-                },
-            )
+                }
+            })
             .map_err(WorkerServerError::Thread)?;
         let response = evaluation
             .join()
@@ -118,12 +127,13 @@ fn engine_failure(invocation_id: String, error: &EngineError) -> WorkerResponse 
         protocol_version: PROTOCOL_VERSION,
         invocation_id: Some(invocation_id),
         code: error.code,
+        limit: error.limit,
         message: error.message.clone(),
         // Each invocation receives a fresh Boa context and module loader. A
         // typed module/execution failure therefore invalidates only this
         // invocation; process retirement is reserved for protocol or process
         // containment failures.
-        discard_worker: false,
+        disposition: WorkerDisposition::Reuse,
     }
 }
 
@@ -132,7 +142,7 @@ fn send_failure(
     invocation_id: Option<String>,
     code: WorkerFailureCode,
     message: &str,
-    discard_worker: bool,
+    disposition: WorkerDisposition,
 ) -> Result<(), WorkerServerError> {
     write_frame(
         writer,
@@ -140,8 +150,9 @@ fn send_failure(
             protocol_version: PROTOCOL_VERSION,
             invocation_id,
             code,
+            limit: None,
             message: message.to_owned(),
-            discard_worker,
+            disposition,
         },
         MAX_FRAME_BYTES,
     )?;

@@ -172,12 +172,17 @@ export {
   contextDocumentSchema,
   contextSchema,
   executionLocationSchema,
+  environmentRequirementsSchema,
+  executionCredentialRequirementSchema,
+  executionRequirementsSchema,
+  agentExecutionRequirementsSchema,
   agentContextEnvelopeSchema,
   validateAgentContextEnvelopeContract,
   type AgentContextProvenanceContract,
   type ContextDocumentContract,
   type ContextContract,
   type ExecutionLocationContract,
+  type AgentExecutionRequirementsContract,
   type AgentContextEnvelopeContract,
 } from "./schemas/context.js";
 

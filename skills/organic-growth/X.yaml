@@ -263,6 +263,7 @@ runners:
         description: Time, risk, brand, legal, technical, and resource constraints.
     graph:
       name: organic-growth
+      result_from: [reject, finalize]
       steps:
         - id: admit
           inputs:

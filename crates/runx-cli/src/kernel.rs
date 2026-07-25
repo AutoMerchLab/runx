@@ -1,10 +1,10 @@
 use std::collections::BTreeMap;
-use std::env;
 use std::fmt;
 use std::io;
 use std::path::Path;
 use std::process::ExitCode;
 
+use runx_runtime::WorkspaceEnv;
 use runx_runtime::kernel_eval::{KernelEvalError, KernelEvalOutput, evaluate_kernel_document_str};
 use serde::Serialize;
 
@@ -18,16 +18,8 @@ pub struct KernelPlan {
     pub json: bool,
 }
 
-pub fn run_native_kernel(plan: KernelPlan) -> ExitCode {
-    let cwd = match env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(error) => {
-            let error = KernelCliError::CurrentDirectory(error);
-            return write_error(&error, plan.json);
-        }
-    };
-
-    match run_kernel_command(&plan, &crate::cli_io::env_map(), &cwd) {
+pub fn run_native_kernel(plan: KernelPlan, workspace: &WorkspaceEnv) -> ExitCode {
+    match run_kernel_command(&plan, workspace.env(), workspace.cwd()) {
         Ok(output) => crate::cli_io::write_stdout_code(&output.stdout, output.exit_code),
         Err(error) => write_error(&error, plan.json),
     }

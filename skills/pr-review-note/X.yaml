@@ -16,7 +16,7 @@ harness:
       runner: comment
       env:
         RUNX_PROVIDER_PERMISSION_GRANT_ID: github-mcp-pr-comment
-        RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: pr.comment
+        RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: '["pr.comment"]'
       inputs:
         repository: runxhq/runx
         pr_number: "42"
@@ -37,15 +37,14 @@ harness:
         step_outputs:
           review_note:
             subset:
-              skill_claim:
-                repository: runxhq/runx
-                number: "42"
-                review_note_id: pr-review-note-fixture-001
+              repository: runxhq/runx
+              number: "42"
+              review_note_id: pr-review-note-fixture-001
     - name: pr-review-note-merge-refused
       runner: merge-refused
       env:
         RUNX_PROVIDER_PERMISSION_GRANT_ID: github-mcp-pr-comment
-        RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: pr.comment
+        RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: '["pr.comment"]'
       inputs:
         repository: runxhq/runx
         pr_number: "42"
@@ -81,6 +80,7 @@ runners:
         description: Stable retry key for this exact PR comment.
     graph:
       name: pr-review-note-comment
+      result_from: [review_note]
       steps:
         - id: approve
           run:
@@ -137,6 +137,7 @@ runners:
         description: Stable retry key for this exact PR comment.
     graph:
       name: pr-review-note-connect-comment
+      result_from: [readback]
       steps:
         - id: digest-body
           tool: data.digest
@@ -204,6 +205,7 @@ runners:
         description: Pull request number.
     graph:
       name: pr-review-note-merge-refused
+      result_from: [merge_pr]
       steps:
         - id: merge_pr
           skill: ../../examples/github-mcp-hero/merge-pr

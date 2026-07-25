@@ -3,10 +3,7 @@
 // graph and managed-agent calls.
 #[cfg(feature = "catalog")]
 use std::borrow::Cow;
-#[cfg(feature = "catalog")]
 use std::collections::BTreeMap;
-#[cfg(feature = "catalog")]
-use std::env;
 #[cfg(feature = "catalog")]
 use std::fs;
 use std::path::Path;
@@ -37,10 +34,11 @@ use super::types::{
 pub(super) fn run_tool_fixture(
     root: &Path,
     fixture: &LoadedDevFixture,
+    base_env: &BTreeMap<String, String>,
 ) -> Result<DevFixtureResult, DevError> {
     #[cfg(not(feature = "catalog"))]
     {
-        let _ = (root, fixture);
+        let _ = (root, fixture, base_env);
         return Err(crate::RuntimeError::SkillFailed {
             skill_name: "runx-dev".to_owned(),
             message: "tool fixtures require the runx-runtime catalog feature".to_owned(),
@@ -50,7 +48,7 @@ pub(super) fn run_tool_fixture(
 
     #[cfg(feature = "catalog")]
     {
-        run_tool_fixture_with_catalog(root, fixture)
+        run_tool_fixture_with_catalog(root, fixture, base_env)
     }
 }
 
@@ -58,6 +56,7 @@ pub(super) fn run_tool_fixture(
 fn run_tool_fixture_with_catalog(
     root: &Path,
     fixture: &LoadedDevFixture,
+    base_env: &BTreeMap<String, String>,
 ) -> Result<DevFixtureResult, DevError> {
     let started = Instant::now();
     let reference = fixture.target().reference.as_str();
@@ -66,7 +65,7 @@ fn run_tool_fixture_with_catalog(
     };
     let workspace =
         prepare_fixture_workspace(root, &fixture.path, fixture.definition.workspace.as_ref())?;
-    let result = run_tool_fixture_inner(root, fixture, &tool_dir, &workspace, started);
+    let result = run_tool_fixture_inner(root, fixture, &tool_dir, &workspace, base_env, started);
     if let Some(workspace_root) = &workspace.root {
         let _ = fs::remove_dir_all(workspace_root);
     }
@@ -79,6 +78,7 @@ fn run_tool_fixture_inner(
     fixture: &LoadedDevFixture,
     tool_dir: &Path,
     workspace: &PreparedDevFixtureWorkspace,
+    base_env: &BTreeMap<String, String>,
     started: Instant,
 ) -> Result<DevFixtureResult, DevError> {
     let Some(execution_roots) =
@@ -86,7 +86,7 @@ fn run_tool_fixture_inner(
     else {
         return Ok(missing_execution_roots(fixture, started));
     };
-    let env = tool_fixture_env(root, fixture, workspace, &execution_roots);
+    let env = tool_fixture_env(root, fixture, workspace, &execution_roots, base_env);
     let inputs = materialize_fixture_value(
         JsonValue::Object(fixture.definition.inputs.clone()),
         &workspace.tokens,
@@ -124,8 +124,9 @@ fn tool_fixture_env(
     fixture: &LoadedDevFixture,
     workspace: &PreparedDevFixtureWorkspace,
     roots: &DevFixtureExecutionRoots,
+    base_env: &BTreeMap<String, String>,
 ) -> BTreeMap<String, String> {
-    let mut env = env::vars().collect::<BTreeMap<_, _>>();
+    let mut env = base_env.clone();
     env.extend(materialize_fixture_env(
         &fixture.definition.env,
         &workspace.tokens,
@@ -155,14 +156,14 @@ fn tool_fixture_env(
 fn tool_result_from_execution(
     fixture: &LoadedDevFixture,
     started: Instant,
-    execution: crate::adapter::SkillOutput,
+    execution: crate::adapter::InvocationOutput,
 ) -> DevFixtureResult {
-    let output = parse_json_maybe(&execution.stdout);
-    let assertions = assert_fixture_expectation(
-        &fixture.definition.expect,
-        execution.exit_code.unwrap_or(1),
-        output.as_ref(),
-    );
+    let exit_code = execution
+        .exit_code()
+        .unwrap_or(if execution.succeeded() { 0 } else { 1 });
+    let output = Some(execution.value);
+    let assertions =
+        assert_fixture_expectation(&fixture.definition.expect, exit_code, output.as_ref());
     DevFixtureResult {
         name: fixture.name().to_owned(),
         lane: fixture.lane().as_str().to_owned(),
@@ -254,17 +255,6 @@ fn materialize_env_entry(
             materialize_fixture_string(&json_display(other), tokens),
         )),
     }
-}
-
-#[cfg(feature = "catalog")]
-fn parse_json_maybe(value: &str) -> Option<JsonValue> {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return Some(JsonValue::String(String::new()));
-    }
-    serde_json::from_str(trimmed)
-        .ok()
-        .or_else(|| Some(JsonValue::String(trimmed.to_owned())))
 }
 
 #[cfg(feature = "catalog")]

@@ -4,7 +4,8 @@ use runx_contracts::JsonObject;
 
 use super::fanout::{validate_fanout_groups, validate_fanout_step_bindings};
 use super::helpers::{
-    optional_string, required_array, required_object, required_string, validation_error,
+    optional_string, optional_string_array, required_array, required_object, required_string,
+    validation_error,
 };
 use super::policy::validate_graph_policy;
 use super::step::validate_step;
@@ -33,6 +34,8 @@ pub fn validate_graph_document(
 
     let name = required_string(document.get("name"), "name")?;
     let owner = optional_string(document.get("owner"), "owner")?;
+    let result_from =
+        optional_string_array(document.get("result_from"), "result_from")?.unwrap_or_default();
     let charter_from = optional_string(document.get("charter_from"), "charter_from")?;
     let raw_steps = required_array(document.get("steps"), "steps")?;
     let fanout_groups = validate_fanout_groups(document.get("fanout"), "fanout")?;
@@ -49,16 +52,43 @@ pub fn validate_graph_document(
     }
 
     validate_fanout_step_bindings(&steps, &fanout_groups)?;
+    validate_result_producers(&result_from, &seen_step_ids)?;
 
     Ok(ExecutionGraph {
         name,
         owner,
+        result_from,
         charter_from,
         steps,
         fanout_groups,
         policy,
         raw: raw.unwrap_or(RawGraphIr { document }),
     })
+}
+
+fn validate_result_producers(
+    result_from: &[String],
+    step_ids: &BTreeSet<String>,
+) -> Result<(), ValidationError> {
+    let mut seen = BTreeSet::new();
+    for (index, step_id) in result_from.iter().enumerate() {
+        if step_id.trim().is_empty() {
+            return Err(validation_error(format!(
+                "result_from.{index} must not be empty."
+            )));
+        }
+        if !step_ids.contains(step_id) {
+            return Err(validation_error(format!(
+                "result_from.{index} references unknown step '{step_id}'."
+            )));
+        }
+        if !seen.insert(step_id) {
+            return Err(validation_error(format!(
+                "result_from contains duplicate step '{step_id}'."
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn reject_unsupported_top_level(document: &JsonObject) -> Result<(), ValidationError> {
@@ -138,6 +168,41 @@ steps:
         assert!(error.contains("steps.0.inputs.claim"));
         assert!(error.contains("retired graph input binding"));
         assert!(error.contains("$input.claim"));
+        Ok(())
+    }
+
+    #[test]
+    fn result_from_rejects_unknown_steps() -> Result<(), String> {
+        let error = validate_err(
+            r#"
+name: unknown-result
+result_from:
+  - missing
+steps:
+  - id: present
+    run:
+      type: agent-task
+"#,
+        )?;
+        assert!(error.contains("result_from.0 references unknown step 'missing'"));
+        Ok(())
+    }
+
+    #[test]
+    fn result_from_rejects_duplicate_steps() -> Result<(), String> {
+        let error = validate_err(
+            r#"
+name: duplicate-result
+result_from:
+  - result
+  - result
+steps:
+  - id: result
+    run:
+      type: agent-task
+"#,
+        )?;
+        assert!(error.contains("result_from contains duplicate step 'result'"));
         Ok(())
     }
 

@@ -36,6 +36,7 @@ runners:
         description: Stable caller-owned idempotency material.
     graph:
       name: spend-plan
+      result_from: [quote]
       steps:
         - id: quote
           skill: graph/pay-quote
@@ -81,6 +82,7 @@ runners:
         description: Stable caller-owned idempotency material.
     graph:
       name: spend
+      result_from: [fulfill]
       steps:
         - id: quote
           skill: graph/pay-quote
@@ -177,6 +179,7 @@ runners:
         description: Stable caller-owned idempotency material.
     graph:
       name: spend
+      result_from: [fulfill]
       steps:
         - id: quote
           skill: graph/pay-quote
@@ -273,6 +276,7 @@ runners:
         description: Stable caller-owned idempotency material.
     graph:
       name: spend
+      result_from: [fulfill]
       steps:
         - id: quote
           skill: graph/pay-quote

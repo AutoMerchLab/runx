@@ -11,6 +11,7 @@ fn evaluates_default_export_with_fixed_time() -> Result<(), EngineError> {
         "default",
         &modules("export default ({ value }) => ({ value, now: Date.now() });"),
         serde_json::json!({"value": "runx"}),
+        BTreeMap::new(),
         InvocationLimits::default(),
     )?;
     assert_eq!(output, serde_json::json!({"value": "runx", "now": 0}));
@@ -34,6 +35,7 @@ fn resolves_relative_modules_from_memory() -> Result<(), EngineError> {
         "default",
         &bundle,
         serde_json::json!({}),
+        BTreeMap::new(),
         InvocationLimits::default(),
     )?;
     assert_eq!(output, serde_json::json!({"value": 42}));
@@ -47,6 +49,7 @@ fn rejects_host_randomness() {
         "default",
         &modules("export default () => Math.random();"),
         serde_json::json!({}),
+        BTreeMap::new(),
         InvocationLimits::default(),
     )
     .err()
@@ -70,6 +73,7 @@ fn exposes_one_frozen_deterministic_url_parser() -> Result<(), EngineError> {
             "#,
         ),
         serde_json::json!({}),
+        BTreeMap::new(),
         InvocationLimits::default(),
     )?;
     assert_eq!(
@@ -96,9 +100,42 @@ fn rejects_invalid_urls_at_the_worker_boundary() {
         "default",
         &modules("export default () => Runx.parseUrl('not an absolute URL');"),
         serde_json::json!({}),
+        BTreeMap::new(),
         InvocationLimits::default(),
     )
     .err()
     .map(|error| error.to_string());
     assert!(error.is_some_and(|message| message.contains("requires an absolute URL")));
+}
+
+#[test]
+fn passes_exact_declared_environment_as_frozen_context() -> Result<(), EngineError> {
+    let output = evaluate(
+        "main.mjs",
+        "default",
+        &modules(
+            "export default (_inputs, context) => ({ environment: context.environment, contextFrozen: Object.isFrozen(context), environmentFrozen: Object.isFrozen(context.environment) });",
+        ),
+        serde_json::json!({}),
+        BTreeMap::from([
+            (
+                "mixed_Case".to_owned(),
+                " value,with punctuation ".to_owned(),
+            ),
+            ("UNICODE".to_owned(), "München".to_owned()),
+        ]),
+        InvocationLimits::default(),
+    )?;
+    assert_eq!(
+        output,
+        serde_json::json!({
+            "environment": {
+                "mixed_Case": " value,with punctuation ",
+                "UNICODE": "München"
+            },
+            "contextFrozen": true,
+            "environmentFrozen": true
+        })
+    );
+    Ok(())
 }

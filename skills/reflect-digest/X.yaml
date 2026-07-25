@@ -167,6 +167,7 @@ runners:
         description: Minimum per-projection confidence admitted into grouping.
     graph:
       name: reflect-digest
+      result_from: [build-handoffs]
       steps:
         - id: read-reflect-projections
           label: read durable reflect state

@@ -151,6 +151,7 @@ runners:
         description: Consent, suppression, region, and allowed-channel constraints.
     graph:
       name: lead-enrichment
+      result_from: [reject, finalize]
       steps:
         - id: admit
           inputs:

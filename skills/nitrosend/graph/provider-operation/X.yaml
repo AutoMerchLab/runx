@@ -46,6 +46,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-provider-read
+      result_from: [normalize, blocked]
       steps:
         - id: prepare
           inputs:
@@ -119,6 +120,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-provider-act
+      result_from: [normalize, blocked]
       steps:
         - id: prepare
           inputs:

@@ -2,7 +2,6 @@
 // search/read/resolve/install/publish command wiring together so the command
 // matrix and output envelope stay auditable during the hosted-registry cutover.
 use std::collections::BTreeMap;
-use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -15,7 +14,7 @@ use runx_runtime::registry::{
     install_local_skill, prepare_registry_publish_package, publish_skill_markdown,
     read_registry_skill, resolve_registry_skill, search_registry_with_options,
 };
-use runx_runtime::{InitGeneratedValues, ensure_runx_install_state};
+use runx_runtime::{InitGeneratedValues, WorkspaceEnv, ensure_runx_install_state};
 
 mod output;
 mod remote_publish;
@@ -52,9 +51,9 @@ pub struct RegistryPlan {
     pub json: bool,
 }
 
-pub fn run_native_registry(plan: RegistryPlan) -> ExitCode {
+pub fn run_native_registry(plan: RegistryPlan, workspace: &WorkspaceEnv) -> ExitCode {
     let json = plan.json;
-    match run_registry(plan) {
+    match run_registry(plan, workspace.env(), workspace.cwd()) {
         Ok(output) => crate::cli_io::write_stdout_code(&output.stdout, output.exit_code),
         Err(error) => {
             if json {
@@ -74,16 +73,18 @@ struct RegistryCliOutput {
     exit_code: u8,
 }
 
-fn run_registry(plan: RegistryPlan) -> Result<RegistryCliOutput, RegistryCliError> {
-    let env = env_map();
-    let cwd = env::current_dir().map_err(|error| internal_error(error.to_string()))?;
-    let target = resolve_registry_target(&plan, &env, &cwd);
+fn run_registry(
+    plan: RegistryPlan,
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+) -> Result<RegistryCliOutput, RegistryCliError> {
+    let target = resolve_registry_target(&plan, env, cwd);
     match plan.action {
         RegistryAction::Search => run_search(plan, target),
         RegistryAction::Read => run_read(plan, target),
         RegistryAction::Resolve => run_resolve(plan, target),
-        RegistryAction::Install => run_install(plan, target, &env, &cwd),
-        RegistryAction::Publish => run_publish(plan, target, &env, &cwd),
+        RegistryAction::Install => run_install(plan, target, env, cwd),
+        RegistryAction::Publish => run_publish(plan, target, env, cwd),
     }
 }
 
@@ -270,11 +271,11 @@ fn run_publish(
         cwd,
     })
     .map_err(|error| internal_error(error.to_string()))?;
-    let orchestrator = crate::runtime::local_orchestrator().map_err(|error| {
+    let orchestrator = crate::runtime::local_orchestrator(env).map_err(|error| {
         internal_error(format!("failed to initialize runtime effects: {error}"))
     })?;
     let harness = package
-        .run_harness(&orchestrator)
+        .run_harness(&orchestrator, env)
         .map_err(|error| internal_error(error.to_string()))?;
     match target {
         RegistryTarget::Remote { registry_url } => {
@@ -496,10 +497,6 @@ fn trust_env_error(
             usage_error(error.to_string())
         }
     }
-}
-
-pub(crate) fn env_map() -> BTreeMap<String, String> {
-    crate::cli_io::env_map()
 }
 
 pub(crate) struct RegistryCliError {

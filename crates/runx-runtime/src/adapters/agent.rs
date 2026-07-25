@@ -9,8 +9,8 @@ use runx_contracts::{
 };
 
 use crate::RuntimeError;
-use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
-use crate::adapter_pipeline::{AdapterCapture, AdapterProjection};
+use crate::adapter::{InvocationOutput, InvocationStatus, SkillAdapter, SkillInvocation};
+use crate::adapter_pipeline::AdapterProjection;
 use crate::agent_contract::verified_agent_metadata_with_artifacts;
 use crate::agent_invocation::{
     AgentActInvocationSourceType, agent_act_resolution_request, agent_profile_metadata,
@@ -276,7 +276,7 @@ where
         self.source_type.as_str()
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         let started = Instant::now();
         if request.source.source_type.as_str() != self.source_type.as_str() {
             return Err(RuntimeError::UnsupportedAdapter {
@@ -320,7 +320,7 @@ impl<T> AgentAdapter<T> {
         resolution: AgentResolution,
         started: Instant,
         profile_metadata: &JsonObject,
-    ) -> Result<SkillOutput, RuntimeError> {
+    ) -> Result<InvocationOutput, RuntimeError> {
         let verified_metadata = verified_agent_metadata_with_artifacts(
             resolution_request,
             &resolution.response.payload,
@@ -377,28 +377,17 @@ fn success_output(
     resolution: AgentResolution,
     started: Instant,
     metadata: JsonObject,
-) -> Result<SkillOutput, RuntimeError> {
-    Ok(AdapterProjection::from_started(started).output(
+) -> Result<InvocationOutput, RuntimeError> {
+    Ok(AdapterProjection::from_started(started).runtime_output(
         InvocationStatus::Success,
-        AdapterCapture::new(
-            stringify_payload(&resolution.response.payload)?,
-            String::new(),
-        ),
-        Some(0),
+        resolution.response.payload,
+        None,
         metadata,
     ))
 }
 
-fn failure_output(message: &str, started: Instant, metadata: JsonObject) -> SkillOutput {
+fn failure_output(message: &str, started: Instant, metadata: JsonObject) -> InvocationOutput {
     AdapterProjection::from_started(started).failure(message.to_owned(), metadata)
-}
-
-fn stringify_payload(payload: &JsonValue) -> Result<String, RuntimeError> {
-    match payload {
-        JsonValue::String(value) => Ok(value.clone()),
-        value => serde_json::to_string(value)
-            .map_err(|source| RuntimeError::json("serializing agent response payload", source)),
-    }
 }
 
 fn native_agent_metadata(

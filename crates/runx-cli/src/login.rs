@@ -11,7 +11,7 @@ use std::time::{Duration, Instant};
 
 use runx_runtime::{
     HostedApiOperationError, HostedLoginCompleteResponse, HostedLoginStartResponse,
-    RuntimeHttpError, RuntimeHttpTransport as Transport,
+    RuntimeHttpError, RuntimeHttpTransport as Transport, WorkspaceEnv,
 };
 
 use crate::cli_args::{flag_value, os_arg, split_flag};
@@ -185,17 +185,8 @@ pub fn parse_login_plan(args: &[OsString]) -> Result<LoginPlan, String> {
     })
 }
 
-pub fn run_native_login(plan: LoginPlan) -> ExitCode {
-    let cwd = match std::env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(error) => {
-            let _ignored = crate::cli_io::write_stderr(&format!(
-                "runx login: failed to resolve cwd: {error}\n"
-            ));
-            return ExitCode::from(1);
-        }
-    };
-    match run_login_command(&plan, &crate::history::env_map(), &cwd) {
+pub fn run_native_login(plan: LoginPlan, workspace: &WorkspaceEnv) -> ExitCode {
+    match run_login_command(&plan, workspace.env(), workspace.cwd()) {
         Ok(output) => crate::cli_io::write_stdout_code(&output, 0),
         Err(error) => {
             if plan.json {

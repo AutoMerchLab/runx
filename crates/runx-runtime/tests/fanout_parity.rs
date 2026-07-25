@@ -13,8 +13,8 @@ use runx_core::state_machine::{GraphStatus, GraphStepStatus};
 use runx_parser::SkillSource;
 use runx_receipts::validate_receipt_tree;
 use runx_runtime::{
-    FanoutExecutionMode, InvocationStatus, RUNX_MAX_FANOUT_CONCURRENCY_ENV, Runtime, RuntimeError,
-    RuntimeOptions, SkillAdapter, SkillInvocation, SkillOutput,
+    InvocationOutput, RUNX_CWD_ENV, RUNX_MAX_FANOUT_CONCURRENCY_ENV, Runtime, RuntimeError,
+    RuntimeOptions, SkillAdapter, SkillInvocation,
 };
 use serde::Deserialize;
 
@@ -54,9 +54,8 @@ struct ExpectedStep {
     attempt: Option<u32>,
     fanout_group: Option<String>,
     #[serde(default)]
-    stdout: String,
-    #[serde(default)]
-    stderr: String,
+    contract: JsonObject,
+    failure: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -291,14 +290,14 @@ fn fanout_runtime_error_branch_records_failure_and_continues()
         .iter()
         .find(|step| step.step_id == "missing")
         .ok_or("missing fanout branch result")?;
+    let failure = missing_step
+        .outcome
+        .failure_message()
+        .ok_or("missing fanout branch failure diagnostic")?;
     assert!(
-        missing_step
-            .output
-            .stderr
-            .contains("runtime I/O failed while reading")
-            && missing_step.output.stderr.contains("skills/not-found"),
-        "unexpected missing-branch error: {}",
-        missing_step.output.stderr
+        failure.contains("runtime I/O failed while reading")
+            && failure.contains("skills/not-found"),
+        "unexpected missing-branch error: {failure}"
     );
     assert_eq!(run.sync_points.len(), 1);
     assert_eq!(run.sync_points[0].decision, FanoutReceiptDecision::Proceed);
@@ -327,12 +326,12 @@ fn fanout_successful_retry_feeds_downstream_with_latest_outputs()
             .collect::<Vec<_>>(),
         vec![(1, "failure"), (2, "success")]
     );
-    assert!(
-        run.steps
-            .iter()
-            .find(|step| step.step_id == "downstream")
-            .is_some_and(|step| step.output.stdout == "fresh")
-    );
+    assert_output(
+        &run,
+        "downstream",
+        "message.data",
+        JsonValue::String("fresh".to_owned()),
+    )?;
     assert_terminal_receipt_child(&run, "flaky", 2)?;
     assert_receipt_tree(&run);
     Ok(())
@@ -357,12 +356,12 @@ fn sequential_successful_retry_feeds_downstream_with_latest_outputs()
             .collect::<Vec<_>>(),
         vec![(1, "failure"), (2, "success")]
     );
-    assert!(
-        run.steps
-            .iter()
-            .find(|step| step.step_id == "downstream")
-            .is_some_and(|step| step.output.stdout == "fresh")
-    );
+    assert_output(
+        &run,
+        "downstream",
+        "message.data",
+        JsonValue::String("fresh".to_owned()),
+    )?;
     assert_terminal_receipt_child(&run, "flaky", 2)?;
     Ok(())
 }
@@ -383,7 +382,7 @@ impl SkillAdapter for SaturationAdapter {
         "fanout-saturation-test"
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         let branch = request
             .inputs
             .get("branch")
@@ -420,21 +419,17 @@ impl SkillAdapter for SaturationAdapter {
             self.state.opened_at.store(*count, Ordering::Release);
         }
         drop(count);
-        Ok(SkillOutput {
-            status: InvocationStatus::Success,
-            stdout: "{}".to_owned(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 0,
-            metadata: JsonObject::new(),
-        })
+        Ok(InvocationOutput::runtime_success(
+            JsonValue::Object(JsonObject::new()),
+            0,
+            JsonObject::new(),
+        ))
     }
 
-    fn fanout_execution_mode(&self, _source: &SkillSource) -> FanoutExecutionMode {
-        FanoutExecutionMode::IsolatedParallel
-    }
-
-    fn clone_for_fanout(&self) -> Option<Box<dyn SkillAdapter + Send + Sync>> {
+    fn isolated_fanout_adapter(
+        &self,
+        _source: &SkillSource,
+    ) -> Option<Box<dyn SkillAdapter + Send + Sync>> {
         Some(Box::new(self.clone()))
     }
 }
@@ -482,9 +477,14 @@ fn run_fixture_graph_file(
 }
 
 fn fixture_runtime_options() -> RuntimeOptions {
+    let mut env = std::env::vars().collect::<std::collections::BTreeMap<_, _>>();
+    env.insert(
+        RUNX_CWD_ENV.to_owned(),
+        env!("CARGO_MANIFEST_DIR").to_owned(),
+    );
     RuntimeOptions {
         created_at: FIXTURE_CREATED_AT.to_owned(),
-        ..RuntimeOptions::local_development()
+        ..RuntimeOptions::local_development(env)
     }
 }
 
@@ -557,12 +557,15 @@ runners:
       message:
         type: string
         required: true
+    artifacts:
+      named_emits:
+        message: message
 "#,
     )?;
     fs::write(
         echo_dir.join("run.sh"),
         r#"#!/bin/sh
-printf '%s' "${RUNX_INPUT_MESSAGE:-}"
+printf '{"message":"%s"}' "${RUNX_INPUT_MESSAGE:-}"
 "#,
     )?;
 
@@ -627,8 +630,11 @@ fn assert_steps(run: &runx_runtime::GraphRun, expected: &[ExpectedStep]) {
             assert_eq!(actual.fanout_group.as_deref(), Some(fanout_group.as_str()));
         }
         assert_eq!(output_status(actual), expected.status);
-        assert_eq!(actual.output.stdout, expected.stdout);
-        assert_eq!(actual.output.stderr, expected.stderr);
+        assert_eq!(actual.contract, expected.contract);
+        assert_eq!(
+            actual.outcome.failure_message().as_deref(),
+            expected.failure.as_deref()
+        );
     }
 }
 
@@ -643,8 +649,11 @@ fn assert_steps_in_checkpoint(run: &runx_runtime::GraphCheckpoint, expected: &[E
             assert_eq!(actual.fanout_group.as_deref(), Some(fanout_group.as_str()));
         }
         assert_eq!(output_status(actual), expected.status);
-        assert_eq!(actual.output.stdout, expected.stdout);
-        assert_eq!(actual.output.stderr, expected.stderr);
+        assert_eq!(actual.contract, expected.contract);
+        assert_eq!(
+            actual.outcome.failure_message().as_deref(),
+            expected.failure.as_deref()
+        );
     }
 }
 
@@ -677,7 +686,7 @@ fn assert_output(
     // Walk the contract path (for example `result.data.budget`) into the step's
     // addressable outputs.
     let mut value = step
-        .outputs
+        .contract
         .get(key.split('.').next().unwrap_or(key))
         .ok_or_else(|| format!("missing output {key} on step {step_id}"))?;
     for segment in key.split('.').skip(1) {
@@ -785,7 +794,7 @@ fn assert_sync_points(run: &runx_runtime::GraphRun, expected: &[FanoutReceiptSyn
 }
 
 fn output_status(step: &runx_runtime::StepRun) -> &'static str {
-    if step.output.succeeded() {
+    if step.outcome.succeeded() {
         "success"
     } else {
         "failure"

@@ -1109,7 +1109,7 @@ function collectReceiptRefs(nativeOutput) {
     }
   };
   push(nativeOutput?.receipt_id);
-  const steps = Array.isArray(nativeOutput?.payload?.steps) ? nativeOutput.payload.steps : [];
+  const steps = Array.isArray(nativeOutput?.trace?.steps) ? nativeOutput.trace.steps : [];
   for (const step of steps) {
     push(step?.receipt_id);
   }

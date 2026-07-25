@@ -185,7 +185,6 @@ fn unauthenticated_environment_does_not_load_stored_credentials()
         &temp.join("config.json"),
         &runx_runtime::RunxConfigFile {
             agent: None,
-            development: None,
             public: Some(runx_runtime::RunxPublicConfig {
                 api_base_url: Some("https://stored.runx.test".to_owned()),
                 api_token_ref: Some("missing-encrypted-token".to_owned()),

@@ -208,6 +208,7 @@ runners:
         description: Optional exact data-store read runner and bounded resource inputs for a governed downstream read.
     graph:
       name: sql-analyst
+      result_from: [reject, finalize]
       steps:
         - id: prepare
           inputs:

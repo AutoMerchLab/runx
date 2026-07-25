@@ -32,6 +32,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-status
+      result_from: [status]
       steps:
         - id: status
           skill: graph/provider-operation
@@ -58,6 +59,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-review-delivery
+      result_from: [review]
       steps:
         - id: review
           skill: graph/provider-operation
@@ -82,6 +84,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-import-status
+      result_from: [status]
       steps:
         - id: status
           skill: graph/provider-operation
@@ -111,6 +114,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-approve-delivery
+      result_from: [apply]
       steps:
         - id: review
           skill: graph/provider-operation
@@ -179,6 +183,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-send-campaign
+      result_from: [deliver]
       steps:
         - id: review
           skill: graph/provider-operation
@@ -236,6 +241,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-activate-flow
+      result_from: [activate]
       steps:
         - id: review
           skill: graph/provider-operation
@@ -294,6 +300,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-apply-draft
+      result_from: [apply]
       steps:
         - id: approve-draft
           run:
@@ -450,6 +457,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-send-transactional
+      result_from: [send]
       steps:
         - id: approve-send
           run:
@@ -509,6 +517,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-compose-email
+      result_from: [validate]
       steps:
         - id: intent
           skill: graph/provider-operation
@@ -592,6 +601,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-analytics
+      result_from: [insights]
       steps:
         - id: insights
           skill: graph/provider-operation
@@ -670,6 +680,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-import-contacts
+      result_from: [import]
       steps:
         - id: approve-import
           run:
@@ -739,6 +750,7 @@ runners:
         description: Optional public Nitrosend brand SID.
     graph:
       name: nitrosend-import-contacts-csv
+      result_from: [import]
       steps:
         - id: approve-import
           run:

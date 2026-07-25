@@ -15,7 +15,7 @@ use serde::Serialize;
 use thiserror::Error;
 
 use crate::RuntimeError;
-use crate::adapter::{InvocationStatus, SkillInvocation, SkillOutput};
+use crate::adapter::{InvocationOutput, SkillInvocation};
 use crate::agent_invocation::{AgentActInvocationSourceType, agent_act_resolution_request};
 use crate::effects::RuntimeEffectRegistry;
 use crate::execution::disposition::agent_answer_disposition_or_closed;
@@ -61,9 +61,9 @@ pub use super::prepared_skill::{
     prepare_skill_run,
 };
 
-// The run-result envelope schema. The string keeps the `skill_run` name, a stable
-// wire contract consumed by the CLI/SDK/cloud, even though the module is now
-// `skill_front`; renaming the wire schema is a separate, versioned change.
+// The canonical public boundary is a bounded result envelope. Full receipts
+// and graph checkpoints remain durable in their owning stores instead of being
+// copied into every CLI/SDK response.
 const SKILL_RUN_SCHEMA: &str = "runx.skill_run.v1";
 const GRAPH_SKILL_STATE_SCHEMA: &str = "runx.graph_skill_state.v1";
 
@@ -116,7 +116,52 @@ pub(crate) fn execute_skill_run_with_overrides(
         ))
     })?;
     let runner = selected_runner(manifest, overrides.runner.as_deref())?;
-    execute_skill_run_with_resolved(request, overrides, effects, skill_dir, manifest, runner)
+    execute_skill_run_with_resolved(
+        request,
+        overrides,
+        effects,
+        skill_dir,
+        manifest,
+        runner,
+        &loaded.package.package_digest,
+    )
+}
+
+pub(crate) fn execute_bound_skill_run_with_overrides(
+    request: &SkillRunRequest,
+    overrides: &SkillRunOverrides,
+    effects: &RuntimeEffectRegistry,
+    expected_package_digest: Option<&str>,
+    expected_execution_closure_digest: Option<&str>,
+) -> Result<JsonValue, SkillRunError> {
+    let loaded = crate::load_validated_skill_package(&request.skill_path)?;
+    let skill_dir = loaded.directory.clone();
+    let manifest = loaded.manifest().cloned().ok_or_else(|| {
+        invalid(format!(
+            "skill package {} does not declare X.yaml runners",
+            skill_dir.display(),
+        ))
+    })?;
+    let runner = selected_runner(&manifest, overrides.runner.as_deref())?.clone();
+    let package_digest = loaded.package.package_digest.clone();
+    let execution_closure_digest = crate::skill_package::verify_loaded_execution_binding(
+        loaded,
+        &runner.name,
+        expected_package_digest,
+        expected_execution_closure_digest,
+    )
+    .map_err(invalid)?;
+    execute_skill_run_with_resolved_trust(
+        request,
+        overrides,
+        effects,
+        &skill_dir,
+        &manifest,
+        &runner,
+        &package_digest,
+        execution_closure_digest.as_deref(),
+        false,
+    )
 }
 
 pub(crate) fn execute_skill_run_with_resolved(
@@ -126,9 +171,18 @@ pub(crate) fn execute_skill_run_with_resolved(
     skill_dir: &Path,
     manifest: &SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
+    package_digest: &str,
 ) -> Result<JsonValue, SkillRunError> {
     execute_skill_run_with_resolved_trust(
-        request, overrides, effects, skill_dir, manifest, runner, false,
+        request,
+        overrides,
+        effects,
+        skill_dir,
+        manifest,
+        runner,
+        package_digest,
+        None,
+        false,
     )
 }
 
@@ -139,9 +193,19 @@ pub(crate) fn execute_prepared_skill_run_with_resolved(
     skill_dir: &Path,
     manifest: &SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
+    package_digest: &str,
+    execution_closure_digest: Option<&str>,
 ) -> Result<JsonValue, SkillRunError> {
     execute_skill_run_with_resolved_trust(
-        request, overrides, effects, skill_dir, manifest, runner, true,
+        request,
+        overrides,
+        effects,
+        skill_dir,
+        manifest,
+        runner,
+        package_digest,
+        execution_closure_digest,
+        true,
     )
 }
 
@@ -152,6 +216,8 @@ fn execute_skill_run_with_resolved_trust(
     skill_dir: &Path,
     manifest: &SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
+    package_digest: &str,
+    execution_closure_digest: Option<&str>,
     trusted_prepared: bool,
 ) -> Result<JsonValue, SkillRunError> {
     let (request, workspace, receipts) =
@@ -166,10 +232,15 @@ fn execute_skill_run_with_resolved_trust(
     )?;
     let invocation = runner_invocation(
         skill_dir,
+        manifest,
         runner,
         &request.inputs,
         &skill_env,
         request.local_credential.as_ref(),
+    )?;
+    crate::execution_environment::resolve_declared_environment(
+        &invocation.requirements,
+        &invocation.env,
     )?;
     if matches!(
         runner.source.source_type,
@@ -181,7 +252,15 @@ fn execute_skill_run_with_resolved_trust(
     }
     if runner.source.source_type == runx_parser::SourceKind::Graph {
         return execute_graph_skill_run(
-            request, overrides, effects, &workspace, &receipts, manifest, runner,
+            request,
+            overrides,
+            effects,
+            &workspace,
+            &receipts,
+            manifest,
+            runner,
+            package_digest,
+            execution_closure_digest,
         );
     }
 
@@ -194,6 +273,8 @@ fn execute_skill_run_with_resolved_trust(
             receipts: &receipts,
             manifest,
             runner,
+            package_digest,
+            execution_closure_digest,
         },
         invocation,
     )
@@ -206,7 +287,8 @@ fn prepare_skill_execution(
 ) -> Result<(SkillRunRequest, WorkspaceEnv, ReceiptServices), SkillRunError> {
     let mut request = request.clone();
     crate::input_contract::apply_defaults(&runner.inputs, &mut request.inputs);
-    let raw_workspace = WorkspaceEnv::new(request.env.clone(), request.cwd.clone());
+    let raw_workspace =
+        WorkspaceEnv::new(request.env.clone(), request.cwd.clone()).map_err(RuntimeError::from)?;
     let receipts = ReceiptServices::from_env_or_local_development(raw_workspace.env())
         .map_err(|error| SkillRunError::Invalid(error.to_string()))?;
     let mut runtime_env = request.env.clone();
@@ -220,7 +302,8 @@ fn prepare_skill_execution(
     if !trusted_prepared {
         super::prepared_skill::strip_untrusted_prepared_env(&mut runtime_env);
     }
-    let workspace = WorkspaceEnv::new(runtime_env, request.cwd.clone());
+    let workspace =
+        WorkspaceEnv::new(runtime_env, request.cwd.clone()).map_err(RuntimeError::from)?;
     Ok((request, workspace, receipts))
 }
 
@@ -393,7 +476,7 @@ fn read_answer(path: &Path, request_id: &str) -> Result<JsonValue, SkillRunError
 fn seal_skill_answer(
     run_id: &str,
     runner: &SkillRunnerDefinition,
-    stdout: &str,
+    answer: &JsonValue,
     disposition: ClosureDisposition,
     signature_config: &RuntimeReceiptSignatureConfig,
     env: &std::collections::BTreeMap<String, String>,
@@ -401,22 +484,15 @@ fn seal_skill_answer(
 ) -> Result<runx_contracts::Receipt, SkillRunError> {
     let disposition_label = disposition.label();
     let succeeded = disposition == ClosureDisposition::Closed;
-    let status = if succeeded {
-        InvocationStatus::Success
+    let skill_output = if succeeded {
+        InvocationOutput::runtime_success(answer.clone(), 0, metadata)
     } else {
-        InvocationStatus::Failure
-    };
-    let skill_output = SkillOutput {
-        status,
-        stdout: stdout.to_owned(),
-        stderr: if succeeded {
-            String::new()
-        } else {
-            format!("agent act closed with {disposition_label}")
-        },
-        exit_code: succeeded.then_some(0),
-        duration_ms: 0,
-        metadata,
+        InvocationOutput::runtime_failure(
+            answer.clone(),
+            format!("agent act closed with {disposition_label}"),
+            0,
+            metadata,
+        )
     };
     seal_skill_output(
         run_id,
@@ -653,7 +729,7 @@ fn map_decision_choice(value: &str) -> Option<runx_contracts::DecisionChoice> {
 fn seal_skill_output(
     run_id: &str,
     runner: &SkillRunnerDefinition,
-    output: &SkillOutput,
+    output: &InvocationOutput,
     closure: StepSealClosure,
     receipt_metadata: Option<JsonObject>,
     signature_config: &RuntimeReceiptSignatureConfig,
@@ -661,18 +737,20 @@ fn seal_skill_output(
 ) -> Result<runx_contracts::Receipt, SkillRunError> {
     let graph_name = identifier_segment(run_id);
     let step_id = identifier_segment(&runner.name);
-    let projection = project_step_output(output);
+    let mut projection = project_step_output(output);
     Ok(seal_step(
         StepSeal {
             graph_name: &graph_name,
             step_id: &step_id,
             attempt: 1,
             output,
-            projection: &projection,
+            projection_refs: std::mem::take(&mut projection.refs),
             created_at: &crate::time::now_iso8601(),
             authority_grant_refs: Vec::new(),
             authority_scope_refs: Vec::new(),
             operator_refs: super::prepared_skill::prepared_receipt_references(env),
+            child_receipts: &[],
+            descendant_receipts: &[],
             closure: Some(closure),
             receipt_metadata,
         },
@@ -687,38 +765,12 @@ fn answer_disposition(answer: &JsonValue) -> Result<ClosureDisposition, SkillRun
 fn sealed_output(
     manifest: &SkillRunnerManifest,
     run_id: &str,
-    skill_output: &SkillOutput,
-    payload: &JsonValue,
+    skill_output: &InvocationOutput,
+    result: &JsonValue,
+    context: Option<JsonValue>,
+    trace: Option<JsonValue>,
     receipt: &runx_contracts::Receipt,
-    receipt_value: JsonValue,
 ) -> JsonObject {
-    let mut execution = JsonObject::new();
-    execution.insert(
-        "stdout".to_owned(),
-        JsonValue::String(skill_output.stdout.clone()),
-    );
-    execution.insert(
-        "stderr".to_owned(),
-        JsonValue::String(skill_output.stderr.clone()),
-    );
-    execution.insert(
-        "exit_code".to_owned(),
-        skill_output.exit_code.map_or(JsonValue::Null, |exit_code| {
-            JsonValue::Number(JsonNumber::I64(i64::from(exit_code)))
-        }),
-    );
-    execution.insert("structured_output".to_owned(), payload.clone());
-    execution.insert("skill_claim".to_owned(), payload.clone());
-    if let Some(observations) = skill_output
-        .metadata
-        .get(crate::adapter::CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA)
-    {
-        execution.insert(
-            crate::adapter::CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA.to_owned(),
-            observations.clone(),
-        );
-    }
-
     let mut output = JsonObject::new();
     output.insert(
         "schema".to_owned(),
@@ -738,9 +790,41 @@ fn sealed_output(
         "closure".to_owned(),
         JsonValue::Object(closure_output(&receipt.seal)),
     );
-    output.insert("receipt".to_owned(), receipt_value);
-    output.insert("execution".to_owned(), JsonValue::Object(execution));
-    output.insert("payload".to_owned(), payload.clone());
+    output.insert("result".to_owned(), result.clone());
+    if let Some(context) = context {
+        output.insert("context".to_owned(), context);
+    }
+    if let Some(trace) = trace {
+        output.insert("trace".to_owned(), trace);
+    }
+    if let Some(observations) = skill_output
+        .metadata
+        .get(crate::adapter::CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA)
+    {
+        output.insert(
+            crate::adapter::CREDENTIAL_DELIVERY_OBSERVATIONS_METADATA.to_owned(),
+            observations.clone(),
+        );
+    }
+    if matches!(
+        receipt.seal.disposition,
+        ClosureDisposition::Failed | ClosureDisposition::Killed | ClosureDisposition::TimedOut
+    ) && (skill_output.exit_code().is_some() || skill_output.failure_message().is_some())
+    {
+        let mut error = JsonObject::new();
+        error.insert(
+            "exit_code".to_owned(),
+            skill_output
+                .exit_code()
+                .map_or(JsonValue::Null, |exit_code| {
+                    JsonValue::Number(JsonNumber::I64(i64::from(exit_code)))
+                }),
+        );
+        if let Some(message) = skill_output.failure_message() {
+            error.insert("message".to_owned(), JsonValue::String(message));
+        }
+        output.insert("error".to_owned(), JsonValue::Object(error));
+    }
     output
 }
 

@@ -1,3 +1,4 @@
+// Typed input extraction shared by concrete step handlers.
 use runx_contracts::{JsonObject, JsonValue};
 use runx_parser::GraphStep;
 

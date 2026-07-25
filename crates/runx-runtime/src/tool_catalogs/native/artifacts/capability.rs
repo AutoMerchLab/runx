@@ -1,6 +1,7 @@
 use runx_contracts::{JsonNumber, JsonObject, JsonValue};
 use serde::{Deserialize, Serialize};
 
+use crate::services::DEFAULT_ARTIFACT_PAGE_BYTES;
 use crate::{
     CapabilityAdmission, CapabilityApproval, CapabilityArtifacts, CapabilityDefinition,
     CapabilityEffect, CapabilityField, CapabilityInput, CapabilityOutput,
@@ -48,7 +49,7 @@ impl CapabilityInput for ArtifactReadInput {
             ("offset".to_owned(), JsonValue::Number(JsonNumber::U64(0))),
             (
                 "max_bytes".to_owned(),
-                JsonValue::Number(JsonNumber::U64(1024 * 1024)),
+                JsonValue::Number(JsonNumber::U64(DEFAULT_ARTIFACT_PAGE_BYTES as u64)),
             ),
             (
                 "encoding".to_owned(),
@@ -119,7 +120,7 @@ const READ_FIELDS: &[CapabilityField] = &[
     },
     CapabilityField {
         name: "max_bytes",
-        description: "Positive page size up to one MiB; this cannot widen the runtime ceiling.",
+        description: "Positive page size; defaults to one MiB and cannot exceed the four MiB runtime ceiling.",
     },
     CapabilityField {
         name: "encoding",

@@ -43,7 +43,7 @@ fn top_level_help_and_version_are_native() {
     );
     assert_help_line(
         &help,
-        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [-R dir]",
+        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--approve-operator-context digest] [--full-operator-context] [--registry url|path] [--digest sha256] [--package-digest sha256 --execution-closure-digest sha256] [--flag value] [-R dir]",
     );
     assert_help_line(
         &help,
@@ -55,7 +55,7 @@ fn top_level_help_and_version_are_native() {
     );
     assert_help_line(
         &help,
-        "runx resume <run-id> <answers.json> [-R dir] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]",
+        "runx resume <run-id> <answers.json> [-R dir] [--package-digest sha256] [--execution-closure-digest sha256] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]",
     );
     assert_help_line(
         &help,
@@ -146,7 +146,7 @@ fn nested_skill_history_verify_and_publish_help_are_native() {
 
     assert_help_line(
         &skill_help_text(),
-        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--approve-operator-context digest] [--full-operator-context] [--skip-operator-context] [--registry url|path] [--digest sha256] [--flag value] [-R dir]",
+        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--approve-operator-context digest] [--full-operator-context] [--registry url|path] [--digest sha256] [--package-digest sha256 --execution-closure-digest sha256] [--flag value] [-R dir]",
     );
     assert_help_line(
         &skill_help_text(),
@@ -226,6 +226,8 @@ fn filesystem_paths_do_not_require_utf8() {
             run_id: "gx_test".to_owned(),
             answers_path: path_buf.clone(),
             receipt_dir: None,
+            expected_package_digest: None,
+            expected_execution_closure_digest: None,
             json: false,
             managed_agent: Default::default(),
         })
@@ -510,9 +512,11 @@ fn routes_canonical_skill_run_to_native_plan() {
             answers: None,
             registry: None,
             expected_digest: None,
+            expected_package_digest: None,
+            expected_execution_closure_digest: None,
             json: true,
             non_interactive: true,
-            skip_operator_context: false,
+            trusted_command_execution: false,
             full_operator_context: false,
             approve_operator_context: None,
             inputs: [
@@ -570,7 +574,7 @@ fn skill_rejects_resolver_flags_for_management_actions() {
         assert_eq!(
             plan(&["skill", action, "--registry", "fixtures/registry"]),
             RouterAction::Error(
-                "runx skill --registry and --digest are only supported when running a skill ref"
+                "runx skill --registry, --digest, --package-digest, and --execution-closure-digest are only supported when running a skill ref"
                     .to_owned()
             ),
             "{action}"
@@ -578,7 +582,7 @@ fn skill_rejects_resolver_flags_for_management_actions() {
         assert_eq!(
             plan(&["skill", action, "--digest", "sha256:abc"]),
             RouterAction::Error(
-                "runx skill --registry and --digest are only supported when running a skill ref"
+                "runx skill --registry, --digest, --package-digest, and --execution-closure-digest are only supported when running a skill ref"
                     .to_owned()
             ),
             "{action}"
@@ -753,6 +757,8 @@ fn routes_doctor_history_list_new_and_init_to_native_plans() {
             run_id: "run_123".to_owned(),
             answers_path: PathBuf::from("answers.json"),
             receipt_dir: Some(PathBuf::from("receipts")),
+            expected_package_digest: None,
+            expected_execution_closure_digest: None,
             json: true,
             managed_agent: Default::default(),
         })

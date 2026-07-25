@@ -46,6 +46,7 @@ runners:
         description: Validated runx.context.taste_profile.v1 packet.
     graph:
       name: ghostwrite-draft
+      result_from: [reject, finalize]
       steps:
         - id: digest-evidence
           tool: data.digest
@@ -253,6 +254,7 @@ runners:
         description: Optional packaging constraints.
     graph:
       name: ghostwrite-package
+      result_from: [bind]
       steps:
         - id: prepare
           inputs:

@@ -69,7 +69,7 @@ fn skill_author_journey_discovers_harnesses_runs_verifies_and_reads_history() ->
         .args(["--input", "note=hello"])
         .arg("--receipt-dir")
         .arg(&receipt_dir)
-        .args(["--json", "--skip-operator-context"])
+        .args(["--json"])
         .output()?;
     let run = assert_json(&run, 0)?;
     assert_eq!(run["status"], "sealed");
@@ -92,12 +92,7 @@ fn agent_handoff_journey_pauses_recovers_resumes_verifies_and_clears_history() -
         .arg(&skill_dir)
         .arg("--receipt-dir")
         .arg(&receipt_dir)
-        .args([
-            "--thread-title",
-            "Docs bug",
-            "--non-interactive",
-            "--skip-operator-context",
-        ])
+        .args(["--thread-title", "Docs bug", "--non-interactive"])
         .output()?;
     assert_exit(&pause, 2)?;
     let pause_text = String::from_utf8(pause.stdout)?;
@@ -168,9 +163,11 @@ fn agent_handoff_journey_pauses_recovers_resumes_verifies_and_clears_history() -
         .output()?;
     let resume = assert_json(&resume, 0)?;
     assert_eq!(resume["status"], "sealed");
+    assert_eq!(resume["schema"], "runx.skill_run.v1");
     assert_eq!(resume["run_id"], run_id);
     assert_eq!(resume["closure"]["disposition"], "closed");
-    assert_eq!(resume["receipt"]["schema"], "runx.receipt.v1");
+    assert!(resume.get("receipt").is_none());
+    assert!(resume.get("execution").is_none());
     let receipt_id = json_string(&resume, "receipt_id")?;
 
     assert_receipt_verifies(&root, &receipt_dir, receipt_id)?;
@@ -198,7 +195,7 @@ fn declined_and_superseded_agent_runs_preserve_receipts_and_exit_nonzero() -> Te
             .arg(&skill_dir)
             .arg("--receipt-dir")
             .arg(&receipt_dir)
-            .args(["--json", "--non-interactive", "--skip-operator-context"])
+            .args(["--json", "--non-interactive"])
             .output()?;
         let pause = assert_json(&pause, 2)?;
         let run_id = json_string(&pause, "run_id")?;
@@ -236,7 +233,7 @@ fn declined_and_superseded_agent_runs_preserve_receipts_and_exit_nonzero() -> Te
         let resume = assert_json(&resume, 1)?;
         assert_eq!(resume["status"], "sealed");
         assert_eq!(resume["closure"]["disposition"], disposition);
-        assert_eq!(resume["receipt"]["schema"], "runx.receipt.v1");
+        assert!(resume.get("receipt").is_none());
         let receipt_id = json_string(&resume, "receipt_id")?;
         assert_receipt_verifies(&case_root, &receipt_dir, receipt_id)?;
         assert_history_contains_local_receipt(&case_root, &receipt_dir, receipt_id)?;
@@ -263,26 +260,17 @@ fn composite_business_ops_journey_runs_verifies_and_reads_receipt_tree() -> Test
         ])
         .arg("--receipt-dir")
         .arg(&receipt_dir)
-        .args(["--json", "--skip-operator-context"])
+        .args(["--json"])
         .output()?;
     let run = assert_json(&run, 0)?;
 
     assert_eq!(run["status"], "sealed");
     assert_eq!(run["closure"]["disposition"], "closed");
-    assert_eq!(run["execution"]["skill_claim"]["graph"], "business-ops");
-    assert_eq!(run["execution"]["skill_claim"]["graph_status"], "Succeeded");
-    assert_eq!(
-        run["execution"]["skill_claim"]["steps"]
-            .as_array()
-            .map(Vec::len),
-        Some(7)
-    );
-    assert_eq!(
-        run["receipt"]["lineage"]["children"]
-            .as_array()
-            .map(Vec::len),
-        Some(7)
-    );
+    assert_eq!(run["trace"]["graph"], "business-ops");
+    assert_eq!(run["trace"]["status"], "succeeded");
+    assert_eq!(run["trace"]["steps"].as_array().map(Vec::len), Some(7));
+    assert!(run.get("receipt").is_none());
+    assert!(run.get("execution").is_none());
     let receipt_id = json_string(&run, "receipt_id")?;
 
     assert_receipt_verifies(&root, &receipt_dir, receipt_id)?;
@@ -298,11 +286,30 @@ fn provider_skill_journey_reports_readiness_and_seals_missing_authority() -> Tes
     let receipt_dir = root.join(".runx/receipts");
     fs::create_dir_all(&root)?;
 
+    let incomplete = command(&root)
+        .env("RUNX_PROVIDER_PERMISSION_GRANT_ID", "grant_google_read")
+        .env(
+            "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES",
+            r#"["properties.read","reports.read"]"#,
+        )
+        .arg("skill")
+        .arg("inspect")
+        .arg(&skill_dir)
+        .arg("properties")
+        .arg("--json")
+        .output()?;
+    let incomplete = assert_json(&incomplete, 0)?;
+    assert_ne!(incomplete["provider"]["status"], "ready");
+
     let inspect = command(&root)
         .env("RUNX_PROVIDER_PERMISSION_GRANT_ID", "grant_google_read")
         .env(
             "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES",
-            "properties.read,reports.read",
+            r#"["properties.read","reports.read"]"#,
+        )
+        .env(
+            "RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF",
+            "runx:principal:operator:test",
         )
         .arg("skill")
         .arg("inspect")
@@ -331,23 +338,26 @@ fn provider_skill_journey_reports_readiness_and_seals_missing_authority() -> Tes
             "RUNX_PROVIDER_PERMISSION_GRANT_ID",
             "grant_google_wrong_scope",
         )
-        .env("RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES", "reports.read")
+        .env(
+            "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES",
+            r#"["reports.read"]"#,
+        )
+        .env(
+            "RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF",
+            "runx:principal:operator:test",
+        )
         .arg("skill")
         .arg(&skill_dir)
         .arg("properties")
         .arg("--receipt-dir")
         .arg(&receipt_dir)
-        .args(["--json", "--skip-operator-context"])
+        .args(["--json"])
         .output()?;
     let denied = assert_json(&denied, 1)?;
     assert_eq!(denied["status"], "sealed");
     assert_eq!(denied["closure"]["disposition"], "blocked");
     assert_eq!(denied["closure"]["reason_code"], "authority_denied");
-    assert_eq!(denied["payload"]["graph_status"], "Blocked");
-    assert_eq!(
-        denied["execution"]["skill_claim"]["graph_status"],
-        "Blocked"
-    );
+    assert_eq!(denied["trace"]["status"], "blocked");
     let receipt_id = json_string(&denied, "receipt_id")?;
     assert_receipt_verifies(&root, &receipt_dir, receipt_id)?;
     assert_history_contains_local_receipt(&root, &receipt_dir, receipt_id)?;

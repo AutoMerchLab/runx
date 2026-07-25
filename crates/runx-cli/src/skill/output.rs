@@ -8,7 +8,7 @@ pub(super) fn write_skill_output(
     value: &JsonValue,
     json: bool,
     exit_code: ExitCode,
-    resume: SkillOutputResume<'_>,
+    resume: ResumeHint<'_>,
 ) -> ExitCode {
     if !json {
         return write_text_with_exit(value, exit_code, resume);
@@ -17,9 +17,7 @@ pub(super) fn write_skill_output(
 }
 
 #[derive(Clone, Copy)]
-pub(super) struct SkillOutputResume<'a> {
-    pub(super) skill_ref: Option<&'a str>,
-    pub(super) selected_runner: Option<&'a str>,
+pub(super) struct ResumeHint<'a> {
     pub(super) receipt_dir: Option<&'a Path>,
     pub(super) answers_path: Option<&'a Path>,
 }
@@ -84,7 +82,7 @@ fn write_json_with_exit(value: &JsonValue, exit_code: ExitCode) -> ExitCode {
 fn write_text_with_exit(
     value: &JsonValue,
     exit_code: ExitCode,
-    resume: SkillOutputResume<'_>,
+    resume: ResumeHint<'_>,
 ) -> ExitCode {
     let mut stdout = io::stdout().lock();
     let result = write_skill_text(&mut stdout, value, resume);
@@ -97,7 +95,7 @@ fn write_text_with_exit(
 fn write_skill_text(
     writer: &mut dyn Write,
     value: &JsonValue,
-    resume: SkillOutputResume<'_>,
+    resume: ResumeHint<'_>,
 ) -> io::Result<()> {
     let Some(object) = value.as_object() else {
         let text = serde_json::to_string(value).unwrap_or_else(|_| "null".to_owned());
@@ -124,7 +122,7 @@ fn write_skill_text(
         writeln!(writer, "registry:")?;
         write_registry_provenance(writer, provenance)?;
     }
-    if let Some(summary) = summary_from_payload(object).or_else(|| closure_summary(object)) {
+    if let Some(summary) = summary_from_result(object).or_else(|| closure_summary(object)) {
         writeln!(writer, "summary: {summary}")?;
     }
     if let Some(requests) = object.get("requests").and_then(JsonValue::as_array) {
@@ -137,7 +135,7 @@ fn write_pending_requests(
     writer: &mut dyn Write,
     object: &JsonObject,
     requests: &[JsonValue],
-    resume: SkillOutputResume<'_>,
+    resume: ResumeHint<'_>,
 ) -> io::Result<()> {
     writeln!(writer, "pending_requests: {}", requests.len())?;
     for request in requests {
@@ -154,11 +152,7 @@ fn write_pending_requests(
     if let Some(run_id) = object_string(object, "run_id") {
         let command =
             crate::resume::render_skill_resume_command(crate::resume::SkillResumeCommand {
-                skill_ref: resume
-                    .skill_ref
-                    .or_else(|| object_string(object, "skill_name")),
                 run_id,
-                selected_runner: resume.selected_runner,
                 receipt_dir: resume.receipt_dir,
                 answers_path: resume.answers_path,
             });
@@ -223,19 +217,11 @@ fn write_registry_provenance(writer: &mut dyn Write, object: &JsonObject) -> io:
     Ok(())
 }
 
-fn summary_from_payload(object: &JsonObject) -> Option<&str> {
+fn summary_from_result(object: &JsonObject) -> Option<&str> {
     object
-        .get("payload")
+        .get("result")
         .and_then(JsonValue::as_object)
         .and_then(summary_from_object)
-        .or_else(|| {
-            object
-                .get("execution")
-                .and_then(JsonValue::as_object)
-                .and_then(|execution| execution.get("structured_output"))
-                .and_then(JsonValue::as_object)
-                .and_then(summary_from_object)
-        })
 }
 
 fn closure_summary(object: &JsonObject) -> Option<&str> {
@@ -266,7 +252,7 @@ mod tests {
     use runx_contracts::{JsonObject, JsonValue};
 
     use super::{
-        SkillOutputResume, closure_disposition_exit_code, skill_result_exit_code, write_skill_text,
+        ResumeHint, closure_disposition_exit_code, skill_result_exit_code, write_skill_text,
     };
 
     #[test]
@@ -360,9 +346,9 @@ mod tests {
     }
 
     #[test]
-    fn text_output_prefers_operator_payload_summary_over_receipt_closure() {
-        let mut payload = JsonObject::new();
-        payload.insert(
+    fn text_output_prefers_result_summary_over_receipt_closure() {
+        let mut result = JsonObject::new();
+        result.insert(
             "summary".to_owned(),
             JsonValue::String("Forecast: wet morning, dry commute home.".to_owned()),
         );
@@ -372,7 +358,7 @@ mod tests {
             JsonValue::String("agent act closed with closed".to_owned()),
         );
         let mut value = base_result();
-        value.insert("payload".to_owned(), JsonValue::Object(payload));
+        value.insert("result".to_owned(), JsonValue::Object(result));
         value.insert("closure".to_owned(), JsonValue::Object(closure));
 
         let output = render(value);
@@ -382,7 +368,7 @@ mod tests {
     }
 
     #[test]
-    fn text_output_uses_closure_summary_when_payload_has_no_summary() {
+    fn text_output_uses_closure_summary_when_result_has_no_summary() {
         let mut closure = JsonObject::new();
         closure.insert(
             "summary".to_owned(),
@@ -413,9 +399,7 @@ mod tests {
 
         let output = render_with_resume(
             value,
-            SkillOutputResume {
-                skill_ref: Some("registry/weather"),
-                selected_runner: Some("operator runner"),
+            ResumeHint {
                 receipt_dir: Some(Path::new("custom receipts")),
                 answers_path: Some(Path::new("operator answers.json")),
             },
@@ -474,16 +458,14 @@ mod tests {
     fn render(value: JsonObject) -> String {
         render_with_resume(
             value,
-            SkillOutputResume {
-                skill_ref: None,
-                selected_runner: None,
+            ResumeHint {
                 receipt_dir: None,
                 answers_path: None,
             },
         )
     }
 
-    fn render_with_resume(value: JsonObject, resume: SkillOutputResume<'_>) -> String {
+    fn render_with_resume(value: JsonObject, resume: ResumeHint<'_>) -> String {
         let mut output = Vec::new();
         let write_result = write_skill_text(&mut output, &JsonValue::Object(value), resume);
         assert!(write_result.is_ok(), "text output renders");

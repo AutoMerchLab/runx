@@ -141,7 +141,6 @@ pub struct GraphRunRequest {
 pub struct HarnessRunRequest {
     pub fixture_path: PathBuf,
     pub receipt_dir: Option<PathBuf>,
-    pub env: Option<BTreeMap<String, String>>,
 }
 
 /// Request to run every harness case owned by a skill package. `skill_path` is
@@ -151,7 +150,6 @@ pub struct HarnessRunRequest {
 pub struct PackageHarnessRequest {
     pub skill_path: PathBuf,
     pub receipt_dir: Option<PathBuf>,
-    pub env: Option<BTreeMap<String, String>>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
@@ -204,12 +202,35 @@ pub enum OrchestratorError {
 #[derive(Clone, Debug, Default)]
 pub struct LocalOrchestrator {
     effects: RuntimeEffectRegistry,
+    environment: BTreeMap<String, String>,
 }
 
 impl LocalOrchestrator {
     #[must_use]
     pub fn with_effects(effects: RuntimeEffectRegistry) -> Self {
-        Self { effects }
+        Self {
+            effects,
+            environment: BTreeMap::new(),
+        }
+    }
+
+    #[must_use]
+    pub fn with_effects_and_environment(
+        effects: RuntimeEffectRegistry,
+        environment: BTreeMap<String, String>,
+    ) -> Self {
+        Self {
+            effects,
+            environment,
+        }
+    }
+
+    #[must_use]
+    pub fn with_environment(&self, environment: BTreeMap<String, String>) -> Self {
+        Self {
+            effects: self.effects.clone(),
+            environment,
+        }
     }
 
     pub fn run(&self, request: RunRequest) -> Result<RunResult, OrchestratorError> {
@@ -238,6 +259,27 @@ impl LocalOrchestrator {
             request,
             &overrides,
             &self.effects,
+        )?;
+        Ok(skill_result(output))
+    }
+
+    pub fn run_skill_with_binding(
+        &self,
+        request: &SkillRunRequest,
+        runner: Option<&str>,
+        expected_package_digest: Option<&str>,
+        expected_execution_closure_digest: Option<&str>,
+    ) -> Result<RunResult, OrchestratorError> {
+        let overrides = super::skill_front::SkillRunOverrides {
+            runner: runner.map(str::to_owned),
+            seeded_answers: None,
+        };
+        let output = super::skill_front::execute_bound_skill_run_with_overrides(
+            request,
+            &overrides,
+            &self.effects,
+            expected_package_digest,
+            expected_execution_closure_digest,
         )?;
         Ok(skill_result(output))
     }
@@ -289,6 +331,8 @@ impl LocalOrchestrator {
             &prepared.report().request.skill_path,
             prepared.manifest(),
             prepared.runner(),
+            prepared.package_digest(),
+            prepared.execution_closure_digest(),
         )?;
         Ok(skill_result(output))
     }
@@ -296,7 +340,7 @@ impl LocalOrchestrator {
     pub fn run_graph(&self, request: &GraphRunRequest) -> Result<RunResult, OrchestratorError> {
         #[cfg(feature = "cli-tool")]
         {
-            let mut options = super::runner::RuntimeOptions::from_process_env()?;
+            let mut options = super::runner::RuntimeOptions::from_env(self.environment.clone())?;
             options.effects = self.effects.clone();
             let runtime =
                 super::runner::Runtime::new(crate::adapters::cli_tool::CliToolAdapter, options);
@@ -304,7 +348,7 @@ impl LocalOrchestrator {
         }
         #[cfg(not(feature = "cli-tool"))]
         {
-            let _ = request;
+            let _ = (&self.environment, request);
             Err(OrchestratorError::CliToolFeatureDisabled)
         }
     }
@@ -321,7 +365,7 @@ impl LocalOrchestrator {
         Ok(super::skill_front::run_package_harness_with_effects(
             &request.skill_path,
             request.receipt_dir.as_deref(),
-            request.env.as_ref(),
+            &self.environment,
             &self.effects,
         )?)
     }
@@ -331,7 +375,7 @@ impl LocalOrchestrator {
         &self,
         request: &HarnessRunRequest,
     ) -> Result<HarnessReplayOutput, OrchestratorError> {
-        let (mut options, receipt_dir) = standalone_harness_options(request)?;
+        let (mut options, receipt_dir) = standalone_harness_options(request, &self.environment)?;
         options.created_at = crate::time::DEFAULT_CREATED_AT.to_owned();
         options.effects = self.effects.clone();
         let output = super::harness::run_harness_fixture_with_adapter(
@@ -360,25 +404,22 @@ impl LocalOrchestrator {
 #[cfg(feature = "cli-tool")]
 fn standalone_harness_options(
     request: &HarnessRunRequest,
+    environment: &BTreeMap<String, String>,
 ) -> Result<(super::runner::RuntimeOptions, PathBuf), OrchestratorError> {
     use crate::receipts::paths::RUNX_RECEIPT_DIR_ENV;
 
-    let mut env = request
-        .env
-        .clone()
-        .unwrap_or_else(crate::services::process_env_snapshot);
-    let cwd = std::env::current_dir()
-        .map_err(|source| crate::RuntimeError::io("resolving standalone harness cwd", source))?;
-    let workspace = crate::config::resolve_runx_workspace_base(&env, &cwd);
+    let workspace = crate::WorkspaceEnv::from_admitted(environment.clone())
+        .map_err(crate::RuntimeError::from)?;
+    let mut env = workspace.env().clone();
     let configured = request
         .receipt_dir
         .clone()
         .or_else(|| env.get(RUNX_RECEIPT_DIR_ENV).map(PathBuf::from))
-        .unwrap_or_else(|| workspace.join(".runx").join("receipts"));
+        .unwrap_or_else(|| workspace.cwd().join(".runx").join("receipts"));
     let receipt_dir = if configured.is_absolute() {
         configured
     } else {
-        workspace.join(configured)
+        workspace.cwd().join(configured)
     };
     env.insert(
         RUNX_RECEIPT_DIR_ENV.to_owned(),
@@ -396,8 +437,13 @@ fn persist_harness_receipts(
 ) -> Result<(), OrchestratorError> {
     options.receipt_services().write_local_receipts(
         output
-            .step_receipts
+            .steps
             .iter()
+            .flat_map(|step| {
+                step.nested_receipts
+                    .iter()
+                    .chain(std::iter::once(&step.receipt))
+            })
             .chain(std::iter::once(&output.receipt)),
         receipt_dir,
     )?;

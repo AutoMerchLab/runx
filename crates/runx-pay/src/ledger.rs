@@ -6,7 +6,7 @@ use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
-use runx_contracts::{ClosureDisposition, JsonValue, Receipt, Reference, sha256_prefixed};
+use runx_contracts::{ClosureDisposition, Receipt, Reference, sha256_prefixed};
 use serde::{Deserialize, Serialize};
 use serde_json::{self, Value as JsonWireValue, json};
 use thiserror::Error;
@@ -751,7 +751,7 @@ fn settlement_evidence(
                 })?,
             proof_ref: proof.proof_ref,
             idempotency_key: proof.idempotency_key,
-            supervisor_proof: payment_supervisor_proof_from_metadata(&step.output.metadata)
+            supervisor_proof: payment_supervisor_proof_from_metadata(&step.outcome.metadata)
                 .map_err(
                     |source| PaymentLedgerProjectionError::SupervisorProofMismatch {
                         message: source.to_string(),
@@ -794,14 +794,7 @@ fn with_step_outputs<T>(
     step: &StepRun,
     extract: impl Fn(&runx_contracts::JsonObject) -> Result<Option<T>, PaymentLedgerProjectionError>,
 ) -> Result<Option<T>, PaymentLedgerProjectionError> {
-    if let Some(value) = extract(&step.outputs)? {
-        return Ok(Some(value));
-    }
-    let Ok(JsonValue::Object(parsed)) = serde_json::from_str::<JsonValue>(&step.output.stdout)
-    else {
-        return Ok(None);
-    };
-    extract(&parsed)
+    extract(&step.contract)
 }
 
 fn validate_run_ledger_id(run_id: &str) -> Result<(), PaymentLedgerProjectionError> {

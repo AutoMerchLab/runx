@@ -15,7 +15,7 @@ use runx_core::policy::admit_agent_tool_ref;
 
 use super::agent_loop::ToolExecutor;
 use crate::RuntimeError;
-use crate::adapter::SkillOutput;
+use crate::adapter::InvocationOutput;
 use crate::credentials::CredentialDelivery;
 use crate::effects::RuntimeEffectRegistry;
 use crate::tool_catalogs::dispatch::{ToolDispatchRequest, dispatch_tool};
@@ -70,7 +70,7 @@ impl ToolExecutor for RuntimeToolExecutor {
             .then(|| tool.to_owned())
     }
 
-    fn execute(&self, tool: &str, input: &JsonValue) -> Result<SkillOutput, RuntimeError> {
+    fn execute(&self, tool: &str, input: &JsonValue) -> Result<InvocationOutput, RuntimeError> {
         let admission = admit_agent_tool_ref(tool);
         if !admission.allowed {
             return Err(RuntimeError::SkillFailed {
@@ -139,8 +139,9 @@ mod tests {
         let output = executor.execute("git.status", &JsonValue::Object(Default::default()))?;
 
         assert_eq!(output.status, InvocationStatus::Success);
-        assert!(output.stdout.contains("\"git_status\""));
-        assert!(output.stdout.contains("\"clean\":true"));
+        let value = serde_json::to_string(&output.value)?;
+        assert!(value.contains("\"git_status\""));
+        assert!(value.contains("\"clean\":true"));
         Ok(())
     }
 

@@ -115,6 +115,7 @@ impl LifecycleEvent {
         }
     }
 
+    #[cfg(feature = "agent")]
     pub(crate) fn graph_failed(graph_name: &str, step_id: &str, receipt: &Receipt) -> Self {
         Self::AbnormalSeal {
             receipt_id: receipt.id.to_string(),

@@ -1,18 +1,17 @@
 // Module rationale: command wiring keeps tool build/search/inspect output parity together.
 use std::collections::BTreeMap;
-use std::env;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use runx_runtime::{
-    ToolBuildOptions, ToolCatalogError, ToolInspectOptions, ToolSearchOptions, build_tool_catalogs,
-    inspect_tool_with_effects, search_tools_with_effects,
+    ToolBuildOptions, ToolCatalogError, ToolInspectOptions, ToolSearchOptions, WorkspaceEnv,
+    build_tool_catalogs, inspect_tool_with_effects, search_tools_with_effects,
 };
 
 use crate::router::{ToolAction, ToolPlan};
 
-pub fn run_native_tool(plan: ToolPlan) -> ExitCode {
-    match run_tool(plan) {
+pub fn run_native_tool(plan: ToolPlan, workspace: &WorkspaceEnv) -> ExitCode {
+    match run_tool(plan, workspace) {
         Ok(output) => crate::cli_io::write_stdout_code(&output.stdout, output.exit_code),
         Err(error) => {
             let _ignored = crate::cli_io::write_stderr_code(&render_cli_error(&error.to_string()));
@@ -26,13 +25,11 @@ struct ToolCliOutput {
     exit_code: u8,
 }
 
-fn run_tool(plan: ToolPlan) -> Result<ToolCliOutput, ToolCliError> {
-    let env = env_pairs();
-    let cwd = env::current_dir().map_err(|error| ToolCliError::Internal(error.to_string()))?;
+fn run_tool(plan: ToolPlan, workspace: &WorkspaceEnv) -> Result<ToolCliOutput, ToolCliError> {
     match plan.action {
-        ToolAction::Build => run_build(plan, &env, &cwd),
-        ToolAction::Search => run_search(plan, &env),
-        ToolAction::Inspect => run_inspect(plan, &env, &cwd),
+        ToolAction::Build => run_build(plan, workspace.env(), workspace.cwd()),
+        ToolAction::Search => run_search(plan, workspace.env()),
+        ToolAction::Inspect => run_inspect(plan, workspace.env(), workspace.cwd()),
     }
 }
 
@@ -71,7 +68,7 @@ fn run_search(
     let query = plan
         .ref_or_query
         .ok_or_else(|| ToolCliError::Usage("runx tool search requires a query".to_owned()))?;
-    let effects = crate::runtime::payment_effect_registry().map_err(|error| {
+    let effects = crate::runtime::payment_effect_registry(env).map_err(|error| {
         ToolCliError::Internal(format!("failed to initialize runtime effects: {error}"))
     })?;
     let report = search_tools_with_effects(
@@ -108,7 +105,7 @@ fn run_inspect(
     let tool_roots = env_value(env, "RUNX_TOOL_ROOTS")
         .map(|value| split_env_paths(&value))
         .unwrap_or_default();
-    let effects = crate::runtime::payment_effect_registry().map_err(|error| {
+    let effects = crate::runtime::payment_effect_registry(env).map_err(|error| {
         ToolCliError::Internal(format!("failed to initialize runtime effects: {error}"))
     })?;
     let report = inspect_tool_with_effects(
@@ -135,10 +132,6 @@ fn run_inspect(
     })
 }
 
-fn env_pairs() -> BTreeMap<String, String> {
-    env::vars().collect()
-}
-
 fn env_value(env: &BTreeMap<String, String>, key: &str) -> Option<String> {
     env.get(key).cloned()
 }
@@ -148,7 +141,7 @@ fn resolve_user_path(user_path: &Path, env: &BTreeMap<String, String>, cwd: &Pat
 }
 
 fn split_env_paths(value: &str) -> Vec<PathBuf> {
-    env::split_paths(value).collect()
+    std::env::split_paths(value).collect()
 }
 
 fn json_line<T: serde::Serialize>(value: &T) -> Result<String, ToolCliError> {

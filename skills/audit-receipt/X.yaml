@@ -40,6 +40,7 @@ runners:
         description: Explicit native redacted receipt details for deterministic replay only.
     graph:
       name: audit-receipt
+      result_from: [audit]
       steps:
         - id: evidence
           label: resolve and verify receipt evidence

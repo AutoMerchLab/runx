@@ -3,8 +3,8 @@ use std::io::BufReader;
 use std::process::{Command, Stdio};
 
 use runx_js_worker::protocol::{
-    InvocationLimits, MAX_FRAME_BYTES, MAX_WORKER_POOL_SIZE, PROTOCOL_VERSION, WorkerRequest,
-    WorkerResponse, read_frame, write_frame,
+    InvocationLimits, MAX_FRAME_BYTES, MAX_WORKER_POOL_SIZE, PROTOCOL_VERSION, WorkerDisposition,
+    WorkerRequest, WorkerResponse, read_frame, write_frame,
 };
 
 #[test]
@@ -56,6 +56,7 @@ fn packaged_worker_performs_the_versioned_handshake_and_invocation()
                 "export default ({ value }) => ({ value, now: Date.now() });".to_owned(),
             )]),
             inputs: serde_json::json!({"value": "runx"}),
+            environment: BTreeMap::new(),
             limits: InvocationLimits::default(),
         },
         MAX_FRAME_BYTES,
@@ -112,6 +113,7 @@ fn packaged_worker_serves_back_to_back_invocations() -> Result<(), Box<dyn std::
                     "export default ({ value, rounds }) => { let digest = 0; for (let i = 0; i < rounds; i += 1) digest = (digest + i) % 1000003; return { value, digest }; };".to_owned(),
                 )]),
                 inputs: serde_json::json!({"value": value, "rounds": rounds}),
+                environment: BTreeMap::new(),
                 limits: InvocationLimits::default(),
             },
             MAX_FRAME_BYTES,
@@ -186,7 +188,7 @@ fn packaged_worker_rejects_a_protocol_version_mismatch() -> Result<(), Box<dyn s
         Some(WorkerResponse::Failure {
             protocol_version: PROTOCOL_VERSION,
             invocation_id: None,
-            discard_worker: true,
+            disposition: WorkerDisposition::Discard,
             ..
         })
     ));

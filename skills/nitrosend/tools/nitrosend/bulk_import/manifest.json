@@ -12,8 +12,7 @@
       "cwd_policy": "skill-directory",
       "network": true,
       "writable_paths": [],
-      "require_enforcement": false,
-      "env_allowlist": []
+      "require_enforcement": false
     }
   },
   "inputs": {

@@ -13,6 +13,10 @@ runners:
       repository: "{{repository}}"
       number: "{{pr_number}}"
       body: "{{body}}"
+    outputs:
+      repository: string
+      number: string
+      review_note_id: string
     timeout_seconds: 15
     sandbox:
       profile: network

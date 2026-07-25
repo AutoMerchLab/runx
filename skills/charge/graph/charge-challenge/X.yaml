@@ -22,6 +22,7 @@ runners:
         description: Stable caller-owned challenge seed.
     graph:
       name: charge-challenge
+      result_from: [challenge]
       steps:
         - id: challenge
           tool: payment.charge_challenge

@@ -142,6 +142,7 @@ runners:
         description: Proposed provider binding for a downstream send plan.
     graph:
       name: lead-router
+      result_from: [hold, finalize]
       steps:
         - id: digest
           tool: data.digest

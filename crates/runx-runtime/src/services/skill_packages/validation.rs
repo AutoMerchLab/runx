@@ -49,13 +49,15 @@ fn run_candidate_harness(
     let receipt_stage = ValidationReceiptStage::prepare(repo_root)?;
     let mut harness_env = isolated_harness_env(repo_root, env);
     crate::services::merge_inferred_tool_roots(&mut harness_env, candidate);
-    let harness = crate::orchestrator::LocalOrchestrator::with_effects(effects.clone())
-        .run_package_harness(&crate::orchestrator::PackageHarnessRequest {
-            skill_path: candidate.to_path_buf(),
-            receipt_dir: Some(receipt_stage.receipt_dir.clone()),
-            env: Some(harness_env),
-        })
-        .map_err(|error| invalid_skill_change(format!("native harness failed: {error}")))?;
+    let harness = crate::orchestrator::LocalOrchestrator::with_effects_and_environment(
+        effects.clone(),
+        harness_env,
+    )
+    .run_package_harness(&crate::orchestrator::PackageHarnessRequest {
+        skill_path: candidate.to_path_buf(),
+        receipt_dir: Some(receipt_stage.receipt_dir.clone()),
+    })
+    .map_err(|error| invalid_skill_change(format!("native harness failed: {error}")))?;
     if harness.status == "failed" {
         return Err(invalid_skill_change(format!(
             "native harness failed: {}",

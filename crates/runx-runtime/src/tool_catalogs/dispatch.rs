@@ -9,8 +9,8 @@ use runx_contracts::{JsonObject, JsonValue};
 use runx_parser::SkillArtifactContract;
 
 use crate::RuntimeError;
-use crate::adapter::{InvocationStatus, SkillOutput};
-use crate::adapter_pipeline::{AdapterCapture, AdapterProjection};
+use crate::adapter::{InvocationOutput, InvocationStatus};
+use crate::adapter_pipeline::AdapterProjection;
 use crate::credentials::CredentialDelivery;
 use crate::effects::{EffectAdmission, RuntimeEffectRegistry};
 use crate::tool_catalogs::ToolCatalogError;
@@ -80,7 +80,7 @@ pub(crate) fn dispatch_tool(
     effects: &RuntimeEffectRegistry,
     observed_at: &str,
     started: Instant,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     let tool_ref = request.tool_ref.trim();
     if tool_ref.is_empty() {
         return Ok(failure("Tool reference must not be empty.", started));
@@ -169,7 +169,7 @@ fn invoke_resolved_tool(
     effects: &RuntimeEffectRegistry,
     observed_at: &str,
     started: Instant,
-) -> Result<(SkillOutput, Option<SkillArtifactContract>), RuntimeError> {
+) -> Result<(InvocationOutput, Option<SkillArtifactContract>), RuntimeError> {
     if crate::tool_catalogs::native::is_core_tool(request.tool_ref.as_ref())
         || effects.capability(request.tool_ref.as_ref()).is_some()
     {
@@ -198,14 +198,14 @@ fn invoke_resolved_tool(
 }
 
 fn finalize_output(
-    mut output: SkillOutput,
+    mut output: InvocationOutput,
     invocation_artifacts: Option<SkillArtifactContract>,
     data_operation: Option<&crate::tool_catalogs::native::PreparedDataOperation>,
     effects: &RuntimeEffectRegistry,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     let artifacts = if let Some(operation) = data_operation {
         if output.succeeded()
-            && let Err(error) = operation.validate_result(&output.stdout)
+            && let Err(error) = operation.validate_result(&output.value)
         {
             reject_invalid_provider_output(&mut output, error);
             return Ok(output);
@@ -215,7 +215,7 @@ fn finalize_output(
         invocation_artifacts
     };
     if output.succeeded() {
-        artifacts::apply(&mut output, artifacts.as_ref())?;
+        artifacts::apply(&mut output, artifacts.as_ref());
     }
     Ok(output)
 }
@@ -226,7 +226,7 @@ fn invoke_native_tool(
     effects: &RuntimeEffectRegistry,
     observed_at: &str,
     started: Instant,
-) -> Result<SkillOutput, RuntimeError> {
+) -> Result<InvocationOutput, RuntimeError> {
     let inputs = std::mem::replace(&mut request.inputs, Cow::Owned(JsonObject::new())).into_owned();
     let Some(result) =
         crate::tool_catalogs::native::invoke(crate::tool_catalogs::native::NativeToolInvocation {
@@ -248,11 +248,7 @@ fn invoke_native_tool(
         });
     };
     let mut output = match result {
-        Ok(payload) => success(
-            serde_json::to_string(&payload)
-                .map_err(|source| RuntimeError::json("serializing native tool output", source))?,
-            started,
-        ),
+        Ok(payload) => success(payload, started),
         Err(error @ RuntimeError::ProviderEffectUnknown { .. })
         | Err(error @ RuntimeError::EffectState { .. }) => return Err(error),
         Err(error) => failure(error.to_string(), started),
@@ -263,11 +259,8 @@ fn invoke_native_tool(
     Ok(output)
 }
 
-fn reject_invalid_provider_output(output: &mut SkillOutput, error: RuntimeError) {
-    output.status = InvocationStatus::Failure;
-    output.stdout.clear();
-    output.stderr = error.to_string();
-    output.exit_code = Some(1);
+fn reject_invalid_provider_output(output: &mut InvocationOutput, error: RuntimeError) {
+    output.reject(error.to_string());
 }
 
 pub(super) fn configured_tool_roots(env: &BTreeMap<String, String>) -> Vec<PathBuf> {
@@ -291,20 +284,20 @@ pub(super) fn catalog_error(skill_name: &str, error: ToolCatalogError) -> Runtim
     }
 }
 
-fn success(stdout: String, started: Instant) -> SkillOutput {
-    AdapterProjection::from_started(started).output(
+fn success(value: JsonValue, started: Instant) -> InvocationOutput {
+    AdapterProjection::from_started(started).runtime_output(
         InvocationStatus::Success,
-        AdapterCapture::new(stdout, String::new()),
-        Some(0),
+        value,
+        None,
         JsonObject::new(),
     )
 }
 
-pub(super) fn failure(message: impl Into<String>, started: Instant) -> SkillOutput {
+pub(super) fn failure(message: impl Into<String>, started: Instant) -> InvocationOutput {
     AdapterProjection::from_started(started).failure(message.into(), JsonObject::new())
 }
 
-fn missing_imported_tool(tool_ref: &str, started: Instant) -> SkillOutput {
+fn missing_imported_tool(tool_ref: &str, started: Instant) -> InvocationOutput {
     failure(
         format!("Imported tool '{tool_ref}' was not found in configured tool catalogs."),
         started,

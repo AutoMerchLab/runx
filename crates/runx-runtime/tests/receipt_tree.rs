@@ -16,8 +16,8 @@ use runx_runtime::receipts::tree::{
 };
 use runx_runtime::receipts::{RuntimeReceiptSignaturePolicy, graph_receipt, step_receipt};
 use runx_runtime::{
-    InvocationStatus, RuntimeReceiptResolver, SkillOutput, StepRun, validate_runtime_receipt_tree,
-    verify_runtime_receipt_tree,
+    InvocationOutput, InvocationStatus, RuntimeReceiptResolver, StepRun,
+    validate_runtime_receipt_tree, verify_runtime_receipt_tree,
 };
 
 const CREATED_AT: &str = "2026-05-18T00:00:00Z";
@@ -65,9 +65,26 @@ fn runtime_tree_rejects_legacy_exact_id_child_ref() -> Result<(), Box<dyn std::e
 }
 
 #[test]
-fn runtime_resolver_reports_ambiguous_scoped_receipts() -> Result<(), Box<dyn std::error::Error>> {
+fn runtime_resolver_reuses_identical_content_addressed_children()
+-> Result<(), Box<dyn std::error::Error>> {
     let (root, mut children) = graph_with_steps("tree_runtime_ambiguous", &["child"])?;
     children.push(children[0].clone());
+
+    let resolver = RuntimeReceiptResolver::new(children.clone());
+    let verification = verify_runtime_receipt_tree(&root, children, ReceiptTreeConfig::default());
+
+    assert_eq!(resolver.receipts().len(), 1);
+    assert!(verification.valid, "{:?}", verification.findings);
+    Ok(())
+}
+
+#[test]
+fn runtime_resolver_reports_conflicting_same_id_children() -> Result<(), Box<dyn std::error::Error>>
+{
+    let (root, mut children) = graph_with_steps("tree_runtime_ambiguous", &["child"])?;
+    let mut conflicting = children[0].clone();
+    conflicting.seal.summary = "different signed body under the same id".into();
+    children.push(conflicting);
 
     let verification = verify_runtime_receipt_tree(&root, children, ReceiptTreeConfig::default());
 
@@ -323,26 +340,20 @@ fn step_run(
         skill: step_id.to_owned(),
         runner: None,
         fanout_group: fanout_group.map(str::to_owned),
-        output,
-        outputs: JsonObject::new(),
+        contract: JsonObject::new(),
+        outcome: output.into(),
         receipt,
+        nested_receipts: Vec::new(),
         admission_witness,
     })
 }
 
-fn skill_output(status: InvocationStatus) -> SkillOutput {
+fn skill_output(status: InvocationStatus) -> InvocationOutput {
     let (stdout, stderr, exit_code) = match status {
         InvocationStatus::Success => ("ok".to_owned(), String::new(), Some(0)),
         InvocationStatus::Failure => (String::new(), "failed".to_owned(), Some(1)),
     };
-    SkillOutput {
-        status,
-        stdout,
-        stderr,
-        exit_code,
-        duration_ms: 1,
-        metadata: JsonObject::new(),
-    }
+    InvocationOutput::process(status, stdout, stderr, exit_code, 1, JsonObject::new())
 }
 
 fn fanout_sync_point(steps: &[StepRun]) -> FanoutReceiptSyncPoint {

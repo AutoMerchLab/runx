@@ -207,6 +207,36 @@ runners:
 }
 
 #[test]
+fn graph_runner_requires_an_intentional_public_result_producer() {
+    let source = package([
+        ("SKILL.md", manual("missing-graph-result")),
+        (
+            "X.yaml",
+            r#"skill: missing-graph-result
+runners:
+  run:
+    default: true
+    type: graph
+    graph:
+      name: missing-graph-result
+      steps:
+        - id: work
+          run:
+            type: agent-task
+"#
+            .to_owned(),
+        ),
+    ]);
+
+    let error = validate_skill_package(source).expect_err("missing result producer must fail");
+    assert!(
+        error
+            .to_string()
+            .contains("must name at least one intentional public result producer")
+    );
+}
+
+#[test]
 fn skill_package_rejects_cross_file_ambiguity_and_unsafe_sources() {
     let cases = [
         package([
@@ -296,6 +326,7 @@ fn skill_package_validates_local_context_manuals() {
     type: graph
     graph:
       name: context
+      result_from: [review]
       steps:
         - id: review
           run:
@@ -515,6 +546,7 @@ runners:
     type: graph
     graph:
       name: bundled-tool
+      result_from: [invoke]
       steps:
         - id: invoke
           tool: example.echo

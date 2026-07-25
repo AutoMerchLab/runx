@@ -663,7 +663,7 @@ fn mcp_server_mid_session_transport_error_keeps_recorded_diagnostic()
 fn mcp_server_host_result_conversion_covers_terminal_statuses() {
     let completed = mcp_tool_result_from_host_result(McpHostRunResult::Completed {
         skill_name: "echo".to_owned(),
-        output: String::new(),
+        output: JsonValue::Null,
         receipt_id: "receipt-1".to_owned(),
         runx: runx_status("completed"),
     });

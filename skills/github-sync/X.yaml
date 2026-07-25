@@ -56,6 +56,7 @@ runners:
         description: Bounded issue, PR, or thread selector.
     graph:
       name: github-sync-pull
+      result_from: [pull]
       steps:
         - id: plan
           inputs:
@@ -111,6 +112,7 @@ runners:
         description: Stable retry key for this exact mutation set.
     graph:
       name: github-sync-push
+      result_from: [readback]
       steps:
         - id: plan
           inputs:
@@ -228,6 +230,7 @@ runners:
         description: read or write.
     graph:
       name: github-sync-plan-and-append-cursor
+      result_from: [append-cursor-event, readback]
       steps:
         - id: read-cursor
           skill: ../data-store

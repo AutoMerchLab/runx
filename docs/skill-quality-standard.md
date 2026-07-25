@@ -165,13 +165,13 @@ agent act; they never substitute for the guide.
 
 The catalog audit enforces a deliberately structural anti-stub floor: before
 any agent task contracts, a public guide needs a title, a real section, and
-explanatory prose. A package with direct external skill edges also carries a
-`## Composes` section whose `- \`skill#runner\`` entries exactly equal the
-typed direct edges emitted by native `runx skill inspect`. This is set equality,
-not a prose keyword search: an undocumented dependency and a stale documented
-dependency both fail. The audit does not parse `X.yaml` through a parallel
-JavaScript model. Private nested stages remain visible in native execution
-closure evidence without becoming direct composition declarations.
+explanatory prose. Skill-chain facts are owned by the typed execution closure
+emitted by native `runx skill inspect` and surfaced in operator preflight.
+Manuals should still explain meaningful upstream and downstream relationships
+in natural language, but they do not duplicate that closure in a machine-parsed
+prose registry. The audit does not parse `X.yaml` through a parallel JavaScript
+model. Private nested stages remain visible in native execution-closure
+evidence.
 
 That structural floor is not a claim that the guide is substantive, nor should
 it be met with filler. Review still judges whether the manual explains the
@@ -239,13 +239,13 @@ Skill authoring must decide ownership before it writes files:
   admission names the domain boundary, why the graph cannot express it, and
   which existing owners and tools were inspected.
 - Express irreducible JavaScript through `source.type: javascript`: a cohesive
-  package module exposes focused functions from resolved inputs to JSON values,
-  while Runx owns process input, output, errors, timeouts, and sandboxing. Do
-  not simulate named operations with public inputs or create one process wrapper
-  per graph step. The runtime must enforce a read-only, skill-directory,
-  no-network sandbox with no writable paths, injected credentials, or extra
-  environment. Reserve `cli-tool` for a genuine executable or protocol
-  boundary.
+  package module exposes focused functions from resolved inputs and frozen
+  declared non-secret environment to JSON values, while Runx owns process
+  input, output, errors, wall limits, and sandboxing. Do not simulate named
+  operations with public inputs or create one process wrapper per graph step.
+  The runtime must enforce a read-only, no-network worker with no workspace,
+  writable paths, ambient OS environment, or injected credentials. Reserve
+  `cli-tool` for a genuine executable or protocol boundary.
 - Generic packet and evidence digests belong to native `data.digest`. A
   package-local canonical hash is admissible only when the hash is an intrinsic
   field of an established domain or wire protocol, never as a replacement for

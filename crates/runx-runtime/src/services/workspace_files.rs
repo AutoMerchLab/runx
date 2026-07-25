@@ -8,7 +8,8 @@ use thiserror::Error;
 mod artifacts;
 
 pub(crate) use artifacts::{
-    ArtifactPageEncoding, ArtifactRecordPage, LocalArtifact, LocalArtifactService,
+    ArtifactPageEncoding, ArtifactRecordPage, DEFAULT_ARTIFACT_PAGE_BYTES, LocalArtifact,
+    LocalArtifactService,
 };
 
 pub(crate) struct WorkspaceFile {

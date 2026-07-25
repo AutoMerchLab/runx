@@ -43,6 +43,7 @@ runners:
         description: Stable caller-owned idempotency material.
     graph:
       name: stripe-pay
+      result_from: [spend]
       steps:
         - id: spend
           skill: ../spend

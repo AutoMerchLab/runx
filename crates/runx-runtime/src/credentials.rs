@@ -5,6 +5,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::sync::Arc;
 
+use base64::Engine as _;
 use runx_contracts::{
     CredentialDeliveryMode, CredentialDeliveryObservation, CredentialDeliveryObservationStatus,
     CredentialDeliveryPurpose, CredentialEnvelopeKind, JsonObject, JsonValue, ProofKind, Reference,
@@ -320,8 +321,100 @@ pub struct CredentialDelivery {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 struct CredentialDeliveryState {
     secret_env: SecretEnv,
+    secret_taint: SecretTaint,
     public_observation: Option<runx_contracts::CredentialDeliveryObservation>,
     destination_hosts: BTreeSet<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct SecretTaint {
+    derived: Vec<SecretString>,
+}
+
+impl SecretTaint {
+    fn from_secret_env(secret_env: &SecretEnv) -> Self {
+        let mut variants = BTreeSet::new();
+        for (_, secret) in secret_env.iter() {
+            // Derived encodings of tiny values are too collision-prone to be a
+            // useful redaction boundary. The exact raw value is still scrubbed.
+            if secret.len() < 6 {
+                continue;
+            }
+            let encoded = [
+                url::form_urlencoded::byte_serialize(secret.as_bytes()).collect::<String>(),
+                form_urlencoded_value(secret),
+                base64::engine::general_purpose::STANDARD.encode(secret),
+                base64::engine::general_purpose::STANDARD_NO_PAD.encode(secret),
+                base64::engine::general_purpose::URL_SAFE.encode(secret),
+                base64::engine::general_purpose::URL_SAFE_NO_PAD.encode(secret),
+            ];
+            for value in encoded {
+                if value != secret && value.len() >= 8 {
+                    variants.insert(value);
+                }
+            }
+        }
+        let mut derived = variants
+            .into_iter()
+            .map(SecretString::new)
+            .collect::<Vec<_>>();
+        derived.sort_by_key(|value| std::cmp::Reverse(value.expose().len()));
+        Self { derived }
+    }
+}
+
+fn form_urlencoded_value(value: &str) -> String {
+    url::form_urlencoded::Serializer::new(String::new())
+        .append_pair("", value)
+        .finish()
+        .strip_prefix('=')
+        .unwrap_or_default()
+        .to_owned()
+}
+
+/// Detect raw credential fields at untrusted configuration/provider boundaries.
+///
+/// This is deliberately separate from [`SecretTaint`]: taint precisely scrubs
+/// credential values Runx delivered, while external configuration and provider
+/// output can contain material Runx never minted and therefore cannot taint.
+/// Exact normalized field names keep this fail-closed admission check from
+/// turning into a general text redactor or a substring guess.
+#[cfg(any(feature = "catalog", test))]
+pub(crate) fn first_unregistered_secret_field(value: &JsonValue) -> Option<String> {
+    match value {
+        JsonValue::Object(object) => object.iter().find_map(|(key, value)| {
+            if is_unregistered_secret_field(key) {
+                return Some(key.clone());
+            }
+            first_unregistered_secret_field(value)
+        }),
+        JsonValue::Array(values) => values.iter().find_map(first_unregistered_secret_field),
+        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => None,
+    }
+}
+
+#[cfg(any(feature = "catalog", test))]
+fn is_unregistered_secret_field(field: &str) -> bool {
+    let normalized = field
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .flat_map(char::to_lowercase)
+        .collect::<String>();
+    matches!(
+        normalized.as_str(),
+        "apikey"
+            | "accesstoken"
+            | "refreshtoken"
+            | "clientsecret"
+            | "secretkey"
+            | "privatekey"
+            | "password"
+            | "bearertoken"
+            | "connectionstring"
+            | "authorization"
+            | "token"
+            | "secret"
+    )
 }
 
 impl CredentialDelivery {
@@ -335,9 +428,11 @@ impl CredentialDelivery {
         public_observation: Option<runx_contracts::CredentialDeliveryObservation>,
         destination_hosts: BTreeSet<String>,
     ) -> Self {
+        let secret_taint = SecretTaint::from_secret_env(&secret_env);
         Self {
             inner: Arc::new(CredentialDeliveryState {
                 secret_env,
+                secret_taint,
                 public_observation,
                 destination_hosts,
             }),
@@ -537,6 +632,22 @@ impl CredentialDelivery {
         })
     }
 
+    pub fn ensure_environment_disjoint(
+        &self,
+        environment: &BTreeMap<String, String>,
+    ) -> Result<(), CredentialDeliveryError> {
+        if let Some(name) = self
+            .inner
+            .secret_env
+            .values
+            .keys()
+            .find(|name| environment.contains_key(*name))
+        {
+            return Err(CredentialDeliveryError::EnvironmentCollision { name: name.clone() });
+        }
+        Ok(())
+    }
+
     #[must_use]
     pub fn with_public_observation(
         mut self,
@@ -570,6 +681,9 @@ impl CredentialDelivery {
             if !secret.is_empty() {
                 redacted = redacted.replace(secret, REDACTED_CREDENTIAL);
             }
+        }
+        for value in &self.inner.secret_taint.derived {
+            redacted = redacted.replace(value.expose(), REDACTED_CREDENTIAL);
         }
         redacted
     }
@@ -674,7 +788,7 @@ impl CredentialDelivery {
     pub fn redact_bytes_to_string(&self, bytes: Vec<u8>, limit_bytes: usize) -> String {
         let text = String::from_utf8_lossy(&bytes).into_owned();
         let redacted = self.redact_output_text(text);
-        truncate_utf8_string(&redacted, limit_bytes)
+        crate::bytes::truncate_utf8_bytes(&redacted, limit_bytes)
     }
 }
 
@@ -708,6 +822,10 @@ pub enum CredentialDeliveryError {
     UnsupportedDeliveryMode { mode: String },
     #[error("credential process-env delivery is not supported across the '{boundary}' boundary")]
     ProcessEnvBoundaryUnsupported { boundary: String },
+    #[error(
+        "credential delivery environment variable '{name}' collides with non-secret process environment"
+    )]
+    EnvironmentCollision { name: String },
     #[error("invalid hosted credential handles: {reason}")]
     HostedCredentialHandlesInvalid { reason: String },
     #[error("hosted credential handles must share one provider, purpose, and audience")]
@@ -854,17 +972,6 @@ fn validate_env_name(name: &str) -> Result<(), CredentialDeliveryError> {
     }
 }
 
-fn truncate_utf8_string(text: &str, limit_bytes: usize) -> String {
-    if text.len() <= limit_bytes {
-        return text.to_owned();
-    }
-    let mut end = limit_bytes;
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    text[..end].to_owned()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -876,6 +983,33 @@ mod tests {
         assert_eq!(
             CredentialDelivery::none().redact_bytes_to_string(output, 64 * 1024),
             "{\"message\":\"hello\"}\n"
+        );
+    }
+
+    #[test]
+    fn unregistered_secret_field_detection_is_exact_not_substring_based() {
+        let safe = JsonValue::Object(JsonObject::from([
+            (
+                "token_budget".to_owned(),
+                JsonValue::String("10".to_owned()),
+            ),
+            (
+                "credential_profile".to_owned(),
+                JsonValue::String("production".to_owned()),
+            ),
+        ]));
+        let unsafe_value = JsonValue::Object(JsonObject::from([(
+            "nested".to_owned(),
+            JsonValue::Object(JsonObject::from([(
+                "access_token".to_owned(),
+                JsonValue::String("raw-provider-material".to_owned()),
+            )])),
+        )]));
+
+        assert_eq!(first_unregistered_secret_field(&safe), None);
+        assert_eq!(
+            first_unregistered_secret_field(&unsafe_value).as_deref(),
+            Some("access_token")
         );
     }
 

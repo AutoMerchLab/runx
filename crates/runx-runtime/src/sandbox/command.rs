@@ -21,7 +21,7 @@ pub(super) struct SandboxSpawnCommand<'a> {
     pub(super) args: Vec<String>,
     pub(super) cwd: &'a Path,
     pub(super) skill_directory: &'a Path,
-    pub(super) workspace_cwd: Option<&'a Path>,
+    pub(super) workspace_cwd: &'a Path,
     pub(super) writable_paths: &'a [PathBuf],
     pub(super) network: bool,
     pub(super) private_tmp: Option<&'a Path>,
@@ -72,7 +72,7 @@ struct BubblewrapCommand<'a> {
     command_args: Vec<String>,
     cwd: &'a Path,
     skill_directory: &'a Path,
-    workspace_cwd: Option<&'a Path>,
+    workspace_cwd: &'a Path,
     writable_paths: &'a [PathBuf],
     network: bool,
     private_tmp: Option<&'a Path>,
@@ -89,11 +89,7 @@ fn bubblewrap_args(input: BubblewrapCommand<'_>) -> Vec<String> {
         network,
         private_tmp,
     } = input;
-    let workspace_root = workspace_cwd.map(normalize_path).or_else(|| {
-        std::env::current_dir()
-            .ok()
-            .map(|path| normalize_path(&path))
-    });
+    let workspace_root = normalize_path(workspace_cwd);
     let mut args = vec!["--unshare-all".to_owned()];
     if network {
         args.push("--share-net".to_owned());
@@ -107,7 +103,7 @@ fn bubblewrap_args(input: BubblewrapCommand<'_>) -> Vec<String> {
         "--tmpfs".to_owned(),
         "/tmp".to_owned(),
     ]);
-    for mount_path in readonly_mounts(skill_directory, workspace_root.as_deref(), cwd, network) {
+    for mount_path in readonly_mounts(skill_directory, &workspace_root, cwd, network) {
         args.extend([
             "--ro-bind-try".to_owned(),
             path_string(&mount_path),
@@ -140,7 +136,7 @@ fn bubblewrap_args(input: BubblewrapCommand<'_>) -> Vec<String> {
 
 fn readonly_mounts(
     skill_directory: &Path,
-    workspace_root: Option<&Path>,
+    workspace_root: &Path,
     cwd: &Path,
     network: bool,
 ) -> Vec<PathBuf> {
@@ -149,7 +145,7 @@ fn readonly_mounts(
             .into_iter()
             .chain(find_package_root(skill_directory))
             .chain([normalize_existing_path(skill_directory)])
-            .chain(workspace_root.map(Path::to_path_buf))
+            .chain([workspace_root.to_path_buf()])
             .chain([normalize_existing_path(cwd)])
             .collect(),
     )
@@ -362,7 +358,7 @@ mod tests {
             command_args: Vec::new(),
             cwd: Path::new("/workspace/skill"),
             skill_directory: Path::new("/workspace/skill"),
-            workspace_cwd: Some(Path::new("/workspace")),
+            workspace_cwd: Path::new("/workspace"),
             writable_paths: &[PathBuf::from("/workspace/logs/output.json")],
             network: false,
             private_tmp: None,

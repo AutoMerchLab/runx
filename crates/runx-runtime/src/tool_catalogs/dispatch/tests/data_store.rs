@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use runx_contracts::{JsonNumber, JsonObject, JsonValue, sha256_prefixed};
 use tempfile::tempdir;
 
-use crate::adapter::{InvocationStatus, SkillOutput};
+use crate::adapter::{InvocationOutput, InvocationStatus};
 
 const SOURCE: &str = "local://runx-data-store/native-contract";
 const RESOURCE: &str = "board_events";
@@ -199,7 +199,7 @@ fn native_sqlite_binding_refuses_workspace_escape_and_unknown_legacy_schema()
         escaping,
     )?;
     assert_eq!(escaped.status, InvocationStatus::Failure);
-    assert!(escaped.stderr.contains("stay inside the workspace root"));
+    assert!(diagnostic(&escaped).contains("stay inside the workspace root"));
 
     let retired_override = configured_env(
         &env,
@@ -213,8 +213,7 @@ fn native_sqlite_binding_refuses_workspace_escape_and_unknown_legacy_schema()
     )?;
     assert_eq!(refused_override.status, InvocationStatus::Failure);
     assert!(
-        refused_override
-            .stderr
+        diagnostic(&refused_override)
             .contains("data.sqlite binding field \"allow_absolute_path\" is not supported")
     );
 
@@ -237,7 +236,7 @@ fn native_sqlite_binding_refuses_workspace_escape_and_unknown_legacy_schema()
         legacy,
     )?;
     assert_eq!(refused.status, InvocationStatus::Failure);
-    assert!(refused.stderr.contains("unsupported legacy schema"));
+    assert!(diagnostic(&refused).contains("unsupported legacy schema"));
     Ok(())
 }
 
@@ -260,7 +259,7 @@ fn native_sqlite_requires_offline_migration_for_exact_unscoped_event_store()
         env.clone(),
     )?;
     assert_eq!(refused.status, InvocationStatus::Failure);
-    assert!(refused.stderr.contains("migrate it out of band"));
+    assert!(diagnostic(&refused).contains("migrate it out of band"));
     assert_eq!(fs::read(&database)?, legacy_bytes);
 
     let proof = crate::migrate_event_store(&crate::EventStoreMigrationRequest {
@@ -431,7 +430,7 @@ fn concurrent_native_appends_commit_once_and_return_one_version_conflict()
             output.status,
             InvocationStatus::Success,
             "{}",
-            output.stderr
+            diagnostic(&output)
         );
         let packet = packet(&output)?;
         let packet = packet
@@ -527,7 +526,7 @@ fn volume_independent_state_pages_histories_beyond_one_mebibyte_without_ambiguit
         BTreeMap::new(),
     )?;
     assert_eq!(failed.status, InvocationStatus::Failure);
-    assert!(failed.stdout.is_empty());
+    assert_eq!(failed.value, JsonValue::Null);
     Ok(())
 }
 
@@ -670,20 +669,24 @@ fn invoke(
         output.status,
         InvocationStatus::Success,
         "{}",
-        output.stderr
+        diagnostic(&output)
     );
     packet(&output)
 }
 
-fn packet(output: &SkillOutput) -> Result<JsonValue, Box<dyn std::error::Error>> {
-    let payload: JsonValue = serde_json::from_str(&output.stdout)?;
-    Ok(payload
+fn packet(output: &InvocationOutput) -> Result<JsonValue, Box<dyn std::error::Error>> {
+    Ok(output
+        .value
         .as_object()
         .and_then(|payload| payload.get("data_operation_result"))
         .and_then(JsonValue::as_object)
         .and_then(|envelope| envelope.get("data"))
         .cloned()
         .ok_or("missing data_operation_result.data")?)
+}
+
+fn diagnostic(output: &InvocationOutput) -> String {
+    output.failure_message().unwrap_or_default()
 }
 
 fn append_inputs(

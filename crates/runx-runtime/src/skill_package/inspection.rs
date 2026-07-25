@@ -68,7 +68,7 @@ pub(crate) fn inspect_loaded_skill_package(
                                     )
                                 })?;
                         Ok(JsonValue::Object(JsonObject::from([
-                            ("runner".to_owned(), inspect_runner(runner)?),
+                            ("runner".to_owned(), inspect_runner(manifest, runner)?),
                             ("execution_closure".to_owned(), closure),
                         ])))
                     })
@@ -80,9 +80,51 @@ pub(crate) fn inspect_loaded_skill_package(
         let closure = execution_closures
             .remove(&runner.name)
             .ok_or_else(|| format!("native execution closure omitted runner {}", runner.name))?;
-        append_runner_inspection(&mut output, &loaded, runner, closure)?;
+        append_runner_inspection(
+            &mut output,
+            &loaded,
+            manifest.ok_or_else(|| "runner manifest is unavailable".to_owned())?,
+            runner,
+            closure,
+        )?;
     }
     Ok(JsonValue::Object(output))
+}
+
+pub(crate) struct InspectedExecutionClosureBinding {
+    pub(crate) digest: String,
+    pub(crate) fully_bound: bool,
+}
+
+pub(crate) fn inspect_loaded_execution_closure_binding(
+    loaded: LoadedSkillPackage,
+    selected_runner: &str,
+) -> Result<InspectedExecutionClosureBinding, String> {
+    let mut closures = inspect_execution_closures(Arc::new(loaded))?;
+    let closure = closures
+        .remove(selected_runner)
+        .ok_or_else(|| format!("native execution closure omitted runner {selected_runner}"))?;
+    let closure = closure
+        .as_object()
+        .ok_or_else(|| "native execution closure is not an object".to_owned())?;
+    let fully_bound = closure
+        .get("fully_bound")
+        .and_then(JsonValue::as_bool)
+        .ok_or_else(|| {
+            format!("native execution closure omitted binding state for runner {selected_runner}")
+        })?;
+    let digest = closure
+        .get("closure_digest")
+        .and_then(JsonValue::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .map(str::to_owned)
+        .ok_or_else(|| {
+            format!("native execution closure omitted digest for runner {selected_runner}")
+        })?;
+    Ok(InspectedExecutionClosureBinding {
+        digest,
+        fully_bound,
+    })
 }
 
 fn base_inspection(loaded: &LoadedSkillPackage) -> JsonObject {
@@ -146,10 +188,11 @@ fn base_inspection(loaded: &LoadedSkillPackage) -> JsonObject {
 fn append_runner_inspection(
     output: &mut JsonObject,
     loaded: &LoadedSkillPackage,
+    manifest: &runx_parser::SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
     execution_closure: JsonValue,
 ) -> Result<(), String> {
-    output.insert("runner".to_owned(), inspect_runner(runner)?);
+    output.insert("runner".to_owned(), inspect_runner(manifest, runner)?);
     output.insert("execution_closure".to_owned(), execution_closure);
     output.insert(
         "readiness".to_owned(),
@@ -245,6 +288,7 @@ runners:
     type: graph
     graph:
       name: root
+      result_from: [child]
       steps:
         - id: child
           skill: child
@@ -252,6 +296,7 @@ runners:
     type: graph
     graph:
       name: alternate
+      result_from: [child]
       steps:
         - id: child
           skill: child
@@ -265,6 +310,7 @@ runners:
     type: graph
     graph:
       name: child
+      result_from: [digest]
       steps:
         - id: digest
           tool: data.digest
@@ -305,6 +351,27 @@ runners:
         assert_eq!(
             closure.get("direct_external_skill_edges"),
             Some(&JsonValue::Array(Vec::new()))
+        );
+        assert_eq!(
+            closure.get("fully_bound").and_then(JsonValue::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            closure.get("runtime_release").and_then(JsonValue::as_str),
+            Some(crate::EXECUTION_RUNTIME_RELEASE)
+        );
+        assert!(
+            closure
+                .get("closure_digest")
+                .and_then(JsonValue::as_str)
+                .is_some_and(|value| value.starts_with("sha256:"))
+        );
+        assert_eq!(
+            closure
+                .get("package_bindings")
+                .and_then(JsonValue::as_array)
+                .map(Vec::len),
+            Some(2)
         );
         assert_eq!(
             closure.get("profiles"),
@@ -348,6 +415,7 @@ runners:
     type: graph
     graph:
       name: root
+      result_from: [internal, research]
       steps:
         - id: internal
           skill: internal
@@ -369,7 +437,7 @@ runners:
             fs::write(
                 directory.join("X.yaml"),
                 format!(
-                    "skill: {name}\nrunners:\n  {runner}:\n    default: true\n    type: graph\n    graph:\n      name: {name}\n      steps:\n        - id: digest\n          tool: data.digest\n          inputs:\n            value: inspected\n"
+                    "skill: {name}\nrunners:\n  {runner}:\n    default: true\n    type: graph\n    graph:\n      name: {name}\n      result_from: [digest]\n      steps:\n        - id: digest\n          tool: data.digest\n          inputs:\n            value: inspected\n"
                 ),
             )
             .expect("child manifest");

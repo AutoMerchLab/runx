@@ -3,9 +3,9 @@
 use std::collections::BTreeMap;
 use std::fs;
 
-use runx_contracts::{JsonObject, JsonValue};
+use runx_contracts::{EnvironmentRequirements, ExecutionRequirements, JsonObject, JsonValue};
 use runx_parser::{ArtifactPageFraming, ArtifactPageSource, SkillSource, SourceKind};
-use runx_runtime::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
+use runx_runtime::adapter::{InvocationOutput, InvocationStatus, SkillAdapter, SkillInvocation};
 use runx_runtime::adapters::javascript::JavaScriptAdapter;
 use runx_runtime::credentials::CredentialDelivery;
 
@@ -72,18 +72,29 @@ impl JavaScriptPackage {
     pub(super) fn invoke(
         &self,
         inputs: JsonObject,
-    ) -> Result<SkillOutput, runx_runtime::RuntimeError> {
-        self.invoke_source(inputs, javascript_source())
+    ) -> Result<InvocationOutput, runx_runtime::RuntimeError> {
+        self.invoke_source(inputs, javascript_source(), BTreeMap::new())
+    }
+
+    pub(super) fn invoke_with_environment(
+        &self,
+        inputs: JsonObject,
+        requirements: EnvironmentRequirements,
+        environment: BTreeMap<String, String>,
+    ) -> Result<InvocationOutput, runx_runtime::RuntimeError> {
+        let mut source = javascript_source();
+        source.environment = requirements;
+        self.invoke_source(inputs, source, environment)
     }
 
     pub(super) fn invoke_export(
         &self,
         export: &str,
         inputs: JsonObject,
-    ) -> Result<SkillOutput, runx_runtime::RuntimeError> {
+    ) -> Result<InvocationOutput, runx_runtime::RuntimeError> {
         let mut source = javascript_source();
         source.javascript_export = Some(export.to_owned());
-        self.invoke_source(inputs, source)
+        self.invoke_source(inputs, source, BTreeMap::new())
     }
 
     pub(super) fn invoke_paged(
@@ -92,7 +103,7 @@ impl JavaScriptPackage {
         contents: &str,
         page_bytes: u64,
         inputs: JsonObject,
-    ) -> Result<SkillOutput, Box<dyn std::error::Error>> {
+    ) -> Result<InvocationOutput, Box<dyn std::error::Error>> {
         self.invoke_paged_with_export(archive, contents, page_bytes, None, inputs)
     }
 
@@ -103,7 +114,7 @@ impl JavaScriptPackage {
         page_bytes: u64,
         export: &str,
         inputs: JsonObject,
-    ) -> Result<SkillOutput, Box<dyn std::error::Error>> {
+    ) -> Result<InvocationOutput, Box<dyn std::error::Error>> {
         self.invoke_paged_with_export(archive, contents, page_bytes, Some(export), inputs)
     }
 
@@ -114,7 +125,7 @@ impl JavaScriptPackage {
         page_bytes: u64,
         export: Option<&str>,
         mut inputs: JsonObject,
-    ) -> Result<SkillOutput, Box<dyn std::error::Error>> {
+    ) -> Result<InvocationOutput, Box<dyn std::error::Error>> {
         let archive_path = self.root.join(archive);
         if let Some(parent) = archive_path.parent() {
             fs::create_dir_all(parent)?;
@@ -137,24 +148,32 @@ impl JavaScriptPackage {
             framing: ArtifactPageFraming::JsonArray,
             page_bytes,
         });
-        Ok(self.invoke_source(inputs, source)?)
+        Ok(self.invoke_source(inputs, source, BTreeMap::new())?)
     }
 
     fn invoke_source(
         &self,
         inputs: JsonObject,
         source: SkillSource,
-    ) -> Result<SkillOutput, runx_runtime::RuntimeError> {
+        env: BTreeMap<String, String>,
+    ) -> Result<InvocationOutput, runx_runtime::RuntimeError> {
+        let requirements = ExecutionRequirements {
+            environment: source.environment.clone(),
+            ..ExecutionRequirements::default()
+        };
         self.adapter.invoke(SkillInvocation {
             skill_name: "deterministic-module".to_owned(),
+            step_id: None,
             artifacts: None,
             allowed_tools: None,
             source,
+            requirements,
             inputs,
             resolved_inputs: JsonObject::new(),
             current_context: Vec::new(),
+            provenance: Vec::new(),
             skill_directory: self.root.clone(),
-            env: BTreeMap::new(),
+            env,
             credential_delivery: CredentialDelivery::none(),
         })
     }
@@ -166,11 +185,19 @@ impl JavaScriptPackage {
     }
 }
 
-pub(super) fn success_json(output: &SkillOutput) -> Result<JsonValue, Box<dyn std::error::Error>> {
+pub(super) fn success_json(
+    output: &InvocationOutput,
+) -> Result<JsonValue, Box<dyn std::error::Error>> {
     if output.status != InvocationStatus::Success {
-        return Err(format!("JavaScript invocation failed: {}", output.stderr).into());
+        return Err(format!(
+            "JavaScript invocation failed: {}",
+            output
+                .failure_message()
+                .unwrap_or_else(|| "no diagnostic".to_owned())
+        )
+        .into());
     }
-    Ok(serde_json::from_str(&output.stdout)?)
+    Ok(output.value.clone())
 }
 
 pub(super) fn expected_json(value: serde_json::Value) -> JsonValue {
@@ -188,6 +215,7 @@ fn javascript_source() -> SkillSource {
         cwd: None,
         timeout_seconds: None,
         input_mode: None,
+        environment: EnvironmentRequirements::default(),
         sandbox: None,
         server: None,
         tool: None,

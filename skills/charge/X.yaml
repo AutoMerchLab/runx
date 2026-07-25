@@ -36,6 +36,7 @@ runners:
         description: Stable caller-owned challenge seed.
     graph:
       name: charge-mock-plan
+      result_from: [finalize]
       steps:
         - id: price
           skill: graph/charge-price
@@ -100,6 +101,7 @@ runners:
         description: Stable caller-owned challenge seed.
     graph:
       name: charge-mpp-plan
+      result_from: [finalize]
       steps:
         - id: price
           skill: graph/charge-price
@@ -164,6 +166,7 @@ runners:
         description: Stable caller-owned challenge seed.
     graph:
       name: charge-stripe-plan
+      result_from: [finalize]
       steps:
         - id: price
           skill: graph/charge-price

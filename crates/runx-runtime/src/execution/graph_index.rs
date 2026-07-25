@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
-use runx_contracts::{JsonObject, JsonValue};
+use runx_contracts::schema::NonEmptyString;
+use runx_contracts::{JsonObject, JsonValue, ProvenanceEntry};
 use runx_core::state_machine::{
     FanoutGroupPolicy, FanoutSyncDecision, SequentialGraphEvent, SequentialGraphPlan,
     SequentialGraphState, SequentialGraphStepDefinition, SequentialGraphStepIndex,
@@ -10,7 +11,6 @@ use runx_core::state_machine::{
 };
 use runx_parser::{ExecutionGraph, GraphStep};
 
-use crate::execution::output_projection::BASE_OUTPUT_FIELDS;
 use crate::{RuntimeError, StepRun};
 
 pub(crate) struct ExecutionGraphIndex {
@@ -194,8 +194,7 @@ impl<'a> PriorRunIndex<'a> {
                 reason: "context source step has not run".to_owned(),
             });
         };
-        reject_base_key_edge(from_step, output)?;
-        resolve_output_path(&run.outputs, output).map_err(|break_at| {
+        resolve_output_path(&run.contract, output).map_err(|break_at| {
             RuntimeError::context_edge_unresolved(
                 to_step,
                 input,
@@ -206,23 +205,39 @@ impl<'a> PriorRunIndex<'a> {
             )
         })
     }
-}
 
-/// Base/diagnostic fields (`raw`/`skill_claim`/`stdout`/`stderr`/`status`) are kept
-/// in a step's `outputs` for receipts and effect replay, but they are not part of
-/// the step's addressable contract. A context edge whose first path segment names
-/// one of them is rejected loudly so authors bind to the contract (declared outputs
-/// or artifact packets), never to diagnostic material.
-fn reject_base_key_edge(from_step: &str, output: &str) -> Result<(), RuntimeError> {
-    let first = output.split('.').next().unwrap_or(output);
-    if BASE_OUTPUT_FIELDS.contains(&first) {
-        return Err(RuntimeError::ContextEdgeBaseKey {
-            from_step: from_step.to_owned(),
-            output_path: output.to_owned(),
-            base_field: first.to_owned(),
-        });
+    pub(crate) fn provenance(
+        &self,
+        to_step: &str,
+        input: &str,
+        from_step: &str,
+        output: &str,
+    ) -> Result<ProvenanceEntry, RuntimeError> {
+        let run = self
+            .runs
+            .get(from_step)
+            .ok_or_else(|| RuntimeError::GraphBlocked {
+                step_id: from_step.to_owned(),
+                reason: "context source step has not run".to_owned(),
+            })?;
+        let input =
+            NonEmptyString::new(input.to_owned()).ok_or_else(|| RuntimeError::InvalidRunStep {
+                step_id: to_step.to_owned(),
+                reason: "context edge input must not be empty".to_owned(),
+            })?;
+        let output =
+            NonEmptyString::new(output.to_owned()).ok_or_else(|| RuntimeError::InvalidRunStep {
+                step_id: to_step.to_owned(),
+                reason: "context edge output must not be empty".to_owned(),
+            })?;
+        Ok(ProvenanceEntry {
+            input,
+            output,
+            from_step: Some(from_step.to_owned()),
+            artifact_id: None,
+            receipt_id: Some(run.receipt.id.to_string()),
+        })
     }
-    Ok(())
 }
 
 /// Where a context-edge path stopped resolving: the segment that was absent and the keys

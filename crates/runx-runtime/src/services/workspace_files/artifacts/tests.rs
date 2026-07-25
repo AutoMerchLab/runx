@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use super::{ArtifactPageEncoding, LocalArtifactService};
+use super::{ArtifactPageEncoding, LocalArtifactService, MAX_ARTIFACT_PAGE_BYTES};
 
 #[test]
 fn volume_independent_artifacts_snapshot_is_immutable_and_pages_are_contiguous()
@@ -132,5 +132,40 @@ fn volume_independent_artifacts_bound_whitespace_only_continuation_pages()
 
     assert!(pages > 2);
     assert_eq!(records, ["{\"id\":1}", "{\"id\":2}"]);
+    Ok(())
+}
+
+#[test]
+fn volume_independent_artifacts_allow_pages_beyond_one_mib_up_to_the_runtime_ceiling()
+-> Result<(), Box<dyn std::error::Error>> {
+    let root = tempfile::tempdir()?;
+    let bytes = vec![b'x'; (1024 * 1024) + 1];
+    std::fs::write(root.path().join("large.bin"), &bytes)?;
+    let service = LocalArtifactService::default();
+    let artifact = service.admit(
+        root.path(),
+        Path::new("large.bin"),
+        "application/octet-stream",
+    )?;
+
+    let page = service.read_page(
+        &artifact.reference,
+        0,
+        MAX_ARTIFACT_PAGE_BYTES,
+        ArtifactPageEncoding::Base64,
+    )?;
+    assert_eq!(page.length, bytes.len() as u64);
+    assert!(page.eof);
+
+    let error = service
+        .read_page(
+            &artifact.reference,
+            0,
+            MAX_ARTIFACT_PAGE_BYTES + 1,
+            ArtifactPageEncoding::Base64,
+        )
+        .err()
+        .ok_or_else(|| std::io::Error::other("page above the runtime ceiling must fail"))?;
+    assert!(error.to_string().contains("4194304"));
     Ok(())
 }

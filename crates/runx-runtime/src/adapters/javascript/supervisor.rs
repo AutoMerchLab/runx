@@ -4,7 +4,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use runx_contracts::javascript_worker::{
-    InvocationLimits, PROTOCOL_VERSION, WorkerFailureCode, WorkerRequest,
+    InvocationLimits, PROTOCOL_VERSION, WorkerDisposition, WorkerFailureCode, WorkerLimit,
+    WorkerRequest,
 };
 
 use crate::RuntimeError;
@@ -22,6 +23,8 @@ pub(super) struct WorkerInvocation {
     pub(super) export_name: String,
     pub(super) modules: BTreeMap<String, String>,
     pub(super) inputs: serde_json::Value,
+    pub(super) environment: BTreeMap<String, String>,
+    pub(super) worker_path: Option<String>,
     pub(super) limits: InvocationLimits,
 }
 
@@ -29,8 +32,9 @@ pub(super) enum WorkerInvocationResult {
     Success(serde_json::Value),
     Failure {
         code: WorkerFailureCode,
+        limit: Option<WorkerLimit>,
         message: String,
-        discard_worker: bool,
+        disposition: WorkerDisposition,
     },
 }
 
@@ -61,6 +65,7 @@ impl JavaScriptWorkerSupervisor {
             self.next_invocation.fetch_add(1, Ordering::Relaxed)
         );
         let timeout = Duration::from_millis(invocation.limits.wall_milliseconds);
+        let worker_path = invocation.worker_path;
         let request = WorkerRequest::Invoke {
             protocol_version: PROTOCOL_VERSION,
             invocation_id: invocation_id.clone(),
@@ -68,30 +73,28 @@ impl JavaScriptWorkerSupervisor {
             export_name: invocation.export_name,
             modules: invocation.modules,
             inputs: invocation.inputs,
+            environment: invocation.environment,
             limits: invocation.limits,
         };
-        let mut lease = self.pool.acquire()?;
+        let mut lease = self.pool.acquire(worker_path.as_deref())?;
         let (isolation, result) = {
             let session = lease.session_mut()?;
-            let isolation = session.isolation.as_ref().clone();
+            let isolation = session.isolation.clone();
             let result = session.invoke(&invocation_id, &request, timeout);
             (isolation, result)
         };
         match result {
             Ok(response) => {
-                let discard = matches!(
-                    &response,
-                    WorkerInvocationResult::Failure {
-                        discard_worker: true,
-                        ..
-                    }
-                );
-                if discard {
+                let disposition = match &response {
+                    WorkerInvocationResult::Success(_) => WorkerDisposition::Reuse,
+                    WorkerInvocationResult::Failure { disposition, .. } => *disposition,
+                };
+                if disposition == WorkerDisposition::Discard {
                     lease.poison();
                 }
                 Ok(WorkerInvocationOutcome {
                     result: response,
-                    isolation,
+                    isolation: isolation.as_ref().clone(),
                 })
             }
             Err(error) => {

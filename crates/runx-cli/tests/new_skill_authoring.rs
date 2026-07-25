@@ -57,10 +57,7 @@ fn new_skill_authoring_waits_for_agent_then_applies_one_validated_package() -> T
 
     assert_eq!(completed["status"], "sealed");
     assert_eq!(completed["closure"]["disposition"], "closed");
-    assert_eq!(
-        completed["execution"]["skill_claim"]["graph"],
-        "skill-lab-build"
-    );
+    assert_eq!(completed["trace"]["graph"], "skill-lab-build");
     assert_eq!(fs::read_dir(&target)?.count(), 2);
     assert!(target.join("SKILL.md").is_file());
     assert!(target.join("X.yaml").is_file());

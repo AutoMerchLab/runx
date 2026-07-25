@@ -4,6 +4,7 @@ use crate::{ValidationError, json_fields::JsonFieldReader};
 
 mod catalog;
 mod credential;
+mod environment;
 mod execution_semantics;
 mod fixtures;
 mod governance;
@@ -36,6 +37,7 @@ pub(crate) use catalog::validate_catalog_metadata;
 pub(crate) use credential::{
     validate_credential_requirements, validate_runner_credential_references,
 };
+pub(crate) use environment::validate_environment_requirements;
 pub(crate) use fixtures::validate_harness_manifest;
 pub(crate) use governance::validate_inputs;
 pub(crate) use runner_definition::validate_runner_definition;

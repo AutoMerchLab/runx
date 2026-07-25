@@ -14,9 +14,8 @@ use runx_contracts::javascript_worker::MAX_STDERR_BYTES;
 
 use crate::RuntimeError;
 
+use super::super::WORKER_PATH_ENV;
 use super::worker_error;
-
-const WORKER_PATH_ENV: &str = "RUNX_JS_WORKER_PATH";
 
 pub(super) struct StartingChild(Option<Child>);
 
@@ -159,8 +158,8 @@ pub(super) fn capture_stderr(mut stderr: impl Read, capture: &Mutex<BoundedStder
     }
 }
 
-pub(super) fn resolve_worker_path() -> Result<PathBuf, RuntimeError> {
-    let explicit = std::env::var_os(WORKER_PATH_ENV).map(PathBuf::from);
+pub(super) fn resolve_worker_path(explicit: Option<&str>) -> Result<PathBuf, RuntimeError> {
+    let explicit = explicit.map(PathBuf::from);
     let current = std::env::current_exe()
         .map_err(|source| RuntimeError::io("resolving current executable", source))?;
     let binary = worker_binary_name();

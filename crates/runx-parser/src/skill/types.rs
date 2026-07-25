@@ -1,9 +1,11 @@
 // Module rationale: skill schema vocabulary is intentionally
 // centralized so parser fixtures, contract mirrors, and runtime front validation
 // share one typed source of truth.
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
-use runx_contracts::{ExecutionSemantics, ExternalAdapterManifest, JsonObject, JsonValue};
+use runx_contracts::{
+    EnvironmentRequirements, ExecutionSemantics, ExternalAdapterManifest, JsonObject, JsonValue,
+};
 use runx_core::policy::{CwdPolicy, SandboxProfile};
 use serde::{Deserialize, Serialize};
 
@@ -126,6 +128,10 @@ pub struct SkillSource {
     pub timeout_seconds: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub input_mode: Option<InputMode>,
+    /// Explicit configuration names consumed by this executable source.
+    /// Values are resolved by the runtime and never stored in the manifest IR.
+    #[serde(default, skip_serializing_if = "EnvironmentRequirements::is_empty")]
+    pub environment: EnvironmentRequirements,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sandbox: Option<SkillSandbox>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -271,8 +277,6 @@ pub struct SkillSandbox {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cwd_policy: Option<CwdPolicy>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub env_allowlist: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub network: Option<bool>,
     pub writable_paths: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -401,12 +405,12 @@ impl SkillRunnerDefinition {
     /// the raw manifest tree independently.
     #[must_use]
     pub fn declared_scopes(&self) -> Vec<String> {
-        let mut scopes = self.scopes.iter().cloned().collect::<BTreeSet<_>>();
+        let mut scopes = self.scopes.clone();
         if let Some(graph) = &self.source.graph {
             for step in &graph.steps {
-                scopes.extend(step.scopes.iter().cloned());
+                scopes.extend(step.scopes.clone());
             }
         }
-        scopes.into_iter().collect()
+        scopes
     }
 }

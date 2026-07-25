@@ -64,7 +64,7 @@ pub struct LocalAdmissionOptions {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct LocalExecutionPolicy {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub strict_cli_tool_inline_code: Option<bool>,

@@ -64,6 +64,8 @@ impl TwitterFixture {
         )?;
         let invocation = SkillInvocation {
             skill_name: "twitter".to_owned(),
+            step_id: None,
+            requirements: Default::default(),
             artifacts: None,
             allowed_tools: None,
             source: SkillSource {
@@ -82,6 +84,7 @@ impl TwitterFixture {
                 cwd: None,
                 timeout_seconds: None,
                 input_mode: None,
+                environment: Default::default(),
                 sandbox: None,
                 server: None,
                 tool: None,
@@ -100,6 +103,7 @@ impl TwitterFixture {
             inputs: selection_inputs(),
             resolved_inputs: JsonObject::new(),
             current_context: Vec::new(),
+            provenance: Vec::new(),
             skill_directory: root,
             env: BTreeMap::from([(
                 "RUNX_CWD".to_owned(),

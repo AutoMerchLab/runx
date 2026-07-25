@@ -1,3 +1,4 @@
+// Approval host resolution is a concrete step-handler concern.
 use runx_contracts::ApprovalGate;
 use runx_parser::GraphStep;
 

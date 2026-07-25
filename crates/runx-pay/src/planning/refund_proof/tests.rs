@@ -6,8 +6,8 @@ use runx_contracts::{
 };
 use runx_receipts::{canonical_receipt_body_digest, content_addressed_receipt_id};
 use runx_runtime::{
-    CredentialDelivery, EffectToolRequest, InvocationStatus, LocalReceiptStore,
-    RUNX_RECEIPT_DIR_ENV, SkillOutput,
+    CredentialDelivery, EffectToolRequest, InvocationOutput, LocalReceiptStore,
+    RUNX_RECEIPT_DIR_ENV,
 };
 
 use super::*;
@@ -110,14 +110,11 @@ fn payment_receipt(
     amount_minor: u64,
     original_receipt_ref: Option<&str>,
 ) -> Receipt {
-    let output = SkillOutput {
-        status: InvocationStatus::Success,
-        stdout: "{}".to_owned(),
-        stderr: String::new(),
-        exit_code: Some(0),
-        duration_ms: 1,
-        metadata: JsonObject::new(),
-    };
+    let output = InvocationOutput::runtime_success(
+        JsonValue::Object(JsonObject::new()),
+        1,
+        JsonObject::new(),
+    );
     let mut receipt = runx_runtime::receipts::step_receipt(
         "refund-proof-test",
         step_id,

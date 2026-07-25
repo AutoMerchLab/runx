@@ -187,42 +187,12 @@ fn binding_from_config(config: &JsonValue, data_source_ref: &str) -> Option<Json
 }
 
 fn reject_secret_material(binding: &JsonObject, data_source_ref: &str) -> Result<(), String> {
-    let Some(key) = first_secret_material_key(&JsonValue::Object(binding.clone())) else {
+    let Some(key) =
+        crate::credentials::first_unregistered_secret_field(&JsonValue::Object(binding.clone()))
+    else {
         return Ok(());
     };
     Err(format!(
         "Data source '{data_source_ref}' binding contains secret-like field '{key}'. Put provider credentials behind a runx credential profile or hosted grant instead."
     ))
-}
-
-fn first_secret_material_key(value: &JsonValue) -> Option<String> {
-    match value {
-        JsonValue::Object(object) => object.iter().find_map(|(key, value)| {
-            if secret_material_key(key) {
-                return Some(key.clone());
-            }
-            first_secret_material_key(value)
-        }),
-        JsonValue::Array(values) => values.iter().find_map(first_secret_material_key),
-        JsonValue::Null | JsonValue::Bool(_) | JsonValue::Number(_) | JsonValue::String(_) => None,
-    }
-}
-
-fn secret_material_key(key: &str) -> bool {
-    let normalized = key
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect::<String>();
-    matches!(
-        normalized.as_str(),
-        "apikey"
-            | "accesstoken"
-            | "refreshtoken"
-            | "clientsecret"
-            | "secretkey"
-            | "privatekey"
-            | "password"
-            | "bearertoken"
-    )
 }

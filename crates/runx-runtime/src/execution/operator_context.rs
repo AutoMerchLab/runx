@@ -115,6 +115,8 @@ pub struct SkillOperatorContextRunner {
     pub source_type: String,
     pub selection: String,
     pub requested_name: Option<String>,
+    pub mutating: bool,
+    pub scopes: Vec<String>,
     pub raw: JsonValue,
     pub allowed_tools: Vec<String>,
 }
@@ -152,9 +154,9 @@ impl SkillOperatorContextStep {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct SkillOperatorContextContextSkill {
     pub reference: String,
-    pub summary_sha256: String,
-    pub summary_bytes: u64,
-    pub summary: JsonObject,
+    pub artifact_sha256: String,
+    pub artifact_bytes: u64,
+    pub artifact: JsonObject,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -190,7 +192,8 @@ pub fn load_skill_operator_context_chain(
     let manual_markdown = loaded.package.manual_markdown;
     let manual_digest = loaded.package.manual_digest;
     let runner = selected_runner(&manifest, selected_runner_name)?.clone();
-    let workspace = WorkspaceEnv::new(options.env.clone(), options.cwd.clone());
+    let workspace =
+        WorkspaceEnv::new(options.env.clone(), options.cwd.clone()).map_err(RuntimeError::from)?;
     let env = workspace.skill_env_for_skill(&skill_dir);
     let mut state = ExpansionState::new(options);
     let entry = state.expand_runner_node(NodeInput {
@@ -394,7 +397,7 @@ impl ExpansionState {
             package,
             skill_dir: loaded.directory,
             manual_path: loaded.manual_path,
-            manual_markdown: loaded.manual_markdown,
+            manual_markdown: loaded.manual_markdown.as_ref().to_owned(),
             manual_digest: loaded.manual_digest,
             runner: loaded.runner,
             requested_runner: requested_runner.map(str::to_owned),
@@ -438,14 +441,14 @@ impl ExpansionState {
                 "resolved context skill ref '{resolved_reference}' does not match declared ref '{reference}'"
             )));
         }
-        let summary_bytes = usize::try_from(entry.meta.size_bytes)
-            .map_err(|_| blocked("resolved context skill summary size exceeds this platform"))?;
-        self.add_bytes(summary_bytes)?;
+        let artifact_bytes = usize::try_from(entry.meta.size_bytes)
+            .map_err(|_| blocked("resolved context skill artifact size exceeds this platform"))?;
+        self.add_bytes(artifact_bytes)?;
         Ok(SkillOperatorContextContextSkill {
             reference: reference.to_owned(),
-            summary_sha256: entry.meta.hash.as_str().to_owned(),
-            summary_bytes: entry.meta.size_bytes,
-            summary: entry.data,
+            artifact_sha256: entry.meta.hash.as_str().to_owned(),
+            artifact_bytes: entry.meta.size_bytes,
+            artifact: entry.data,
         })
     }
 
@@ -565,6 +568,8 @@ fn runner_context(
         source_type: runner.source.source_type.to_string(),
         selection: selection.to_owned(),
         requested_name: requested_runner.map(str::to_owned),
+        mutating: runner.mutating.unwrap_or(false),
+        scopes: runner.scopes.clone(),
         raw,
         allowed_tools: runner.allowed_tools.clone().unwrap_or_default(),
     }
@@ -743,6 +748,7 @@ runners:
     type: graph
     graph:
       name: entry
+      result_from: [review]
       steps:
         - id: review
           skill: ./child
@@ -780,6 +786,7 @@ runners:
     type: graph
     graph:
       name: child
+      result_from: [judge]
       steps:
         - id: judge
           run:
@@ -801,11 +808,14 @@ runners:
         let context = &child.steps[0].context_skills[0];
         assert_eq!(context.reference, "./context/rubric");
         assert_eq!(
-            context.summary.get("path").and_then(JsonValue::as_str),
+            context.artifact.get("path").and_then(JsonValue::as_str),
             rubric.join("SKILL.md").canonicalize()?.to_str()
         );
-        assert!(!context.summary.contains_key("content"));
-        assert!(context.summary.contains_key("manual_sha256"));
+        assert_eq!(
+            context.artifact.get("content").and_then(JsonValue::as_str),
+            Some("---\nname: rubric\n---\nchild-local rubric\n")
+        );
+        assert!(context.artifact.contains_key("manual_sha256"));
         Ok(())
     }
 
@@ -843,10 +853,13 @@ runners:
         )?;
         let context = &chain.entry.steps[0].context_skills[0];
         assert_eq!(
-            context.summary.get("path").and_then(JsonValue::as_str),
+            context.artifact.get("path").and_then(JsonValue::as_str),
             rubric.join("SKILL.md").canonicalize()?.to_str()
         );
-        assert!(!context.summary.contains_key("content"));
+        assert_eq!(
+            context.artifact.get("content").and_then(JsonValue::as_str),
+            Some("---\nname: rubric\n---\nparent-local rubric\n")
+        );
         Ok(())
     }
 
@@ -867,6 +880,7 @@ runners:
     type: graph
     graph:
       name: child
+      result_from: [judge]
       steps:
         - id: judge
           run:
@@ -1042,7 +1056,7 @@ runners:
         )?;
         write_file(
             &entry.join("X.yaml"),
-            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      steps:\n        - id: first\n          skill: ./child\n        - id: second\n          skill: ./child\n",
+            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      result_from: [second]\n      steps:\n        - id: first\n          skill: ./child\n        - id: second\n          skill: ./child\n",
         )?;
         let chain = load_skill_operator_context_chain(
             &entry,
@@ -1094,7 +1108,7 @@ runners:
         )?;
         write_file(
             &entry.join("X.yaml"),
-            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      steps:\n        - id: record\n          tool: example.record\n          mutation: true\n          idempotency_key: record-1\n",
+            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      result_from: [record]\n      steps:\n        - id: record\n          tool: example.record\n          mutation: true\n          idempotency_key: record-1\n",
         )?;
 
         let chain = load_skill_operator_context_chain(
@@ -1123,7 +1137,7 @@ runners:
         write_skill(&entry, "entry", "# Entry")?;
         write_file(
             &entry.join("X.yaml"),
-            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      steps:\n        - id: append\n          tool: data.append_event\n",
+            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      result_from: [append]\n      steps:\n        - id: append\n          tool: data.append_event\n",
         )?;
 
         let chain = load_skill_operator_context_chain(
@@ -1153,7 +1167,7 @@ runners:
         write_skill(&entry, "entry", "# Entry")?;
         write_file(
             &entry.join("X.yaml"),
-            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      steps:\n        - id: apply\n          tool: runx.skill.apply\n          mutation: true\n          idempotency_key: apply-1\n",
+            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      result_from: [apply]\n      steps:\n        - id: apply\n          tool: runx.skill.apply\n          mutation: true\n          idempotency_key: apply-1\n",
         )?;
 
         let chain = load_skill_operator_context_chain(
@@ -1188,7 +1202,7 @@ runners:
         write_file(
             &dir.join("X.yaml"),
             &format!(
-                "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      steps:\n        - id: child\n          skill: {child_ref}\n{extra}"
+                "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      result_from: [child]\n      steps:\n        - id: child\n          skill: {child_ref}\n{extra}"
             ),
         )
     }

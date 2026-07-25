@@ -27,8 +27,8 @@ impl PreparedOperation {
         self.expectation.tool_ref()
     }
 
-    pub(crate) fn validate_result(&self, stdout: &str) -> Result<(), RuntimeError> {
-        result::validate(&self.expectation, stdout)
+    pub(crate) fn validate_result(&self, value: &JsonValue) -> Result<(), RuntimeError> {
+        result::validate(&self.expectation, value)
     }
 
     pub(crate) fn apply_adapter_inputs(&self, inputs: &mut JsonObject) {

@@ -1,7 +1,7 @@
 use runx_contracts::{JsonNumber, JsonObject, JsonValue, ProofKind, Reference, ReferenceType};
 use runx_runtime::{
     EffectAdmission, EffectOutputRequest, EffectReceiptRequest, EffectReplay,
-    EffectReplayOutputRequest, EffectReplayReceiptRequest, RuntimeEffectError, SkillOutput,
+    EffectReplayOutputRequest, EffectReplayReceiptRequest, InvocationOutput, RuntimeEffectError,
     insert_effect_verification_ref,
 };
 
@@ -82,7 +82,7 @@ fn supervise_payment_output(
 }
 
 fn attach_payment_output_evidence(
-    output: &mut SkillOutput,
+    output: &mut InvocationOutput,
     payment: &StepPaymentAuthorityContext,
     evidence: &PaymentSupervisorSettlementEvidence,
 ) -> Result<(), RuntimeEffectError> {
@@ -249,21 +249,16 @@ pub(super) fn validate_payment_replay(
     })
 }
 
-fn redact_transient_payment_output(output: &mut SkillOutput) -> Result<(), RuntimeEffectError> {
-    let Ok(JsonValue::Object(mut payload)) = serde_json::from_str(&output.stdout) else {
+fn redact_transient_payment_output(
+    output: &mut InvocationOutput,
+) -> Result<(), RuntimeEffectError> {
+    let JsonValue::Object(payload) = &mut output.value else {
         return Ok(());
     };
-    let redacted_packet = redact_payment_transient_material(&mut payload);
-    let redacted_root = match payload.get_mut("rail_proof") {
-        Some(JsonValue::Object(proof)) => proof.remove("rail_session_material_ref").is_some(),
-        _ => false,
-    };
-    let redacted = redacted_packet || redacted_root;
-    if !redacted {
-        return Ok(());
+    redact_payment_transient_material(payload);
+    if let Some(JsonValue::Object(proof)) = payload.get_mut("rail_proof") {
+        proof.remove("rail_session_material_ref");
     }
-    output.stdout = serde_json::to_string(&JsonValue::Object(payload))
-        .map_err(|source| failed("redacting transient payment output", source))?;
     Ok(())
 }
 

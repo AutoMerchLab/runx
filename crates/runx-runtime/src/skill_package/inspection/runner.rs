@@ -1,9 +1,13 @@
 use runx_contracts::{JsonObject, JsonValue};
 use runx_parser::{
-    CatalogMetadata, GraphStep, SkillInput, SkillRunnerDefinition, ValidatedSkillPackage,
+    CatalogMetadata, GraphStep, SkillInput, SkillRunnerDefinition, SkillRunnerManifest,
+    ValidatedSkillPackage,
 };
 
-pub(super) fn inspect_runner(runner: &SkillRunnerDefinition) -> Result<JsonValue, String> {
+pub(super) fn inspect_runner(
+    manifest: &SkillRunnerManifest,
+    runner: &SkillRunnerDefinition,
+) -> Result<JsonValue, String> {
     let mut output = JsonObject::from([
         ("name".to_owned(), JsonValue::String(runner.name.clone())),
         (
@@ -33,6 +37,12 @@ pub(super) fn inspect_runner(runner: &SkillRunnerDefinition) -> Result<JsonValue
             ),
         ),
     ]);
+    output.insert(
+        "requirements".to_owned(),
+        serde_json::to_value(manifest.execution_requirements(runner))
+            .and_then(serde_json::from_value)
+            .map_err(|error| format!("serializing runner requirements: {error}"))?,
+    );
     insert_runner_contract_metadata(&mut output, runner)?;
     let provider_requirements = inspect_provider_requirements(runner);
     if !provider_requirements.is_empty() {

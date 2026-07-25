@@ -222,6 +222,7 @@ runners:
         description: Tone, ownership, send, and scheduling constraints.
     graph:
       name: chief-of-staff
+      result_from: [reject, finalize]
       steps:
         - id: index
           inputs:

@@ -53,6 +53,33 @@ fn supervisors_own_independent_session_state() {
 }
 
 #[test]
+fn pooled_worker_never_reuses_a_session_for_a_different_runtime_path()
+-> Result<(), Box<dyn std::error::Error>> {
+    let supervisor = JavaScriptWorkerSupervisor::new(1);
+    supervisor.invoke(invocation(
+        "export default () => ({ ready: true });",
+        InvocationLimits::default().wall_milliseconds,
+    ))?;
+    let missing = tempfile::tempdir()?.path().join("missing-worker");
+    let mut changed = invocation(
+        "export default () => ({ should_not_run: true });",
+        InvocationLimits::default().wall_milliseconds,
+    );
+    changed.worker_path = Some(missing.to_string_lossy().into_owned());
+
+    let error = supervisor
+        .invoke(changed)
+        .err()
+        .ok_or("a different worker path unexpectedly reused the pooled process")?;
+    assert!(
+        error
+            .to_string()
+            .contains("cannot mix runtime worker paths")
+    );
+    Ok(())
+}
+
+#[test]
 fn timed_out_worker_does_not_fail_a_healthy_sibling() -> Result<(), Box<dyn std::error::Error>> {
     let supervisor = Arc::new(JavaScriptWorkerSupervisor::new(2));
     let barrier = Arc::new(Barrier::new(3));
@@ -80,15 +107,22 @@ fn timed_out_worker_does_not_fail_a_healthy_sibling() -> Result<(), Box<dyn std:
     };
     barrier.wait();
 
-    let slow_error = slow
+    let slow = slow
         .join()
-        .map_err(|_| "slow JavaScript invocation thread panicked")?
-        .err()
-        .map(|error| error.to_string())
-        .ok_or("slow JavaScript invocation unexpectedly succeeded")?;
+        .map_err(|_| "slow JavaScript invocation thread panicked")??;
     assert!(
-        slow_error.contains("exceeded 1 ms wall limit"),
-        "{slow_error}"
+        matches!(
+            slow.result,
+            WorkerInvocationResult::Failure {
+                code: runx_contracts::javascript_worker::WorkerFailureCode::ResourceLimit,
+                limit: Some(
+                    runx_contracts::javascript_worker::WorkerLimit::WallMilliseconds
+                ),
+                ref message,
+                disposition: runx_contracts::javascript_worker::WorkerDisposition::Discard,
+            } if message.contains("exceeded 1 ms wall limit")
+        ),
+        "timed-out invocation must be a typed wall-limit failure"
     );
     let healthy = healthy
         .join()
@@ -136,6 +170,8 @@ fn invocation(source: &str, wall_milliseconds: u64) -> WorkerInvocation {
         export_name: "default".to_owned(),
         modules: BTreeMap::from([("main.mjs".to_owned(), source.to_owned())]),
         inputs: serde_json::json!({}),
+        environment: BTreeMap::new(),
+        worker_path: None,
         limits: InvocationLimits {
             wall_milliseconds,
             ..InvocationLimits::default()

@@ -195,8 +195,9 @@ shape.
 
 ## HTTP Steps And Credentials
 
-Local operator commands (`runx skill`, `runx resume`, and `runx mcp serve`)
-capture one workspace environment when the command starts. Runx first resolves
+Every executing Runx CLI command captures one workspace environment when the
+command starts. Help and version rendering remain independent of workspace
+state. Runx first resolves
 the workspace from the process environment and current directory, then parses
 the exact `<workspace>/.env` file when it exists. The file only fills missing
 keys, so an exported process value always wins. Runx parses the file as data; it
@@ -204,8 +205,10 @@ does not source a shell or mutate the process environment.
 
 Keep `.env` local and ignored by version control. Loading a key makes it
 available to declared credential resolution, but does not make it ambient child
-configuration. Credential delivery is a separate runtime channel; sandbox
-`env_allowlist` remains for non-secret configuration.
+configuration. Credential delivery is a separate runtime channel. Executable
+runners declare non-secret configuration once through `environment.required`
+and `environment.optional`; the same declaration drives CLI, MCP, and
+deterministic JavaScript delivery.
 
 A graph performs governed HTTP through the native `http.read`, `http.query`, or
 `http.execute` capability. There is no parallel HTTP source or tool-manifest

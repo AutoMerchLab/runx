@@ -15,6 +15,9 @@ pub struct DevLoopOptions {
     pub unit_path: Option<PathBuf>,
     /// A specific fixture lane, or `None` to run every lane.
     pub lane: Option<DevFixtureLane>,
+    /// Immutable workspace environment admitted by the caller. Dev fixtures
+    /// may overlay their declared values, but must never re-read process state.
+    pub env: BTreeMap<String, String>,
 }
 
 impl DevLoopOptions {
@@ -24,6 +27,7 @@ impl DevLoopOptions {
             root: root.into(),
             unit_path: None,
             lane: Some(DevFixtureLane::Deterministic),
+            env: BTreeMap::new(),
         }
     }
 }
@@ -123,4 +127,6 @@ pub trait DevFixtureExecutor {
 }
 
 #[derive(Clone, Debug, Default)]
-pub struct LocalDevFixtureExecutor;
+pub struct LocalDevFixtureExecutor {
+    pub(crate) env: BTreeMap<String, String>,
+}

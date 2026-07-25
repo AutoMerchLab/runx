@@ -7,7 +7,7 @@ use super::{
 use runx_contracts::{ClosureDisposition, JsonObject, JsonValue};
 
 use crate::RuntimeError;
-use crate::adapter::{InvocationStatus, SkillInvocation, SkillOutput};
+use crate::adapter::{InvocationOutput, SkillInvocation};
 #[cfg(feature = "agent")]
 use crate::adapters::agent::AgentAdapterSourceType;
 use crate::agent_contract::verified_agent_metadata_with_artifacts;
@@ -33,6 +33,8 @@ pub(super) struct AgentSkillExecutionContext<'a> {
     pub receipts: &'a ReceiptServices,
     pub manifest: &'a SkillRunnerManifest,
     pub runner: &'a SkillRunnerDefinition,
+    pub package_digest: &'a str,
+    pub execution_closure_digest: Option<&'a str>,
 }
 
 // Function rationale: one agent-front transaction resolves the
@@ -50,6 +52,8 @@ pub(super) fn execute_agent_skill_run(
         receipts,
         manifest,
         runner,
+        package_digest,
+        execution_closure_digest,
     } = context;
     let source_type = agent_invocation_source_type(runner.source.source_type.as_str())?;
     let request_id = agent_act_invocation_id(&invocation, source_type);
@@ -93,6 +97,8 @@ pub(super) fn execute_agent_skill_run(
                             receipts,
                             manifest,
                             runner,
+                            package_digest,
+                            execution_closure_digest,
                             &run_id,
                             &request_id,
                         )?;
@@ -113,8 +119,6 @@ pub(super) fn execute_agent_skill_run(
         &invocation.skill_directory,
         workspace.env(),
     )?;
-    let stdout = serde_json::to_string(&answer)
-        .map_err(|error| SkillRunError::Invalid(format!("failed to serialize answer: {error}")))?;
     let disposition = answer_disposition(&answer)?;
     let receipt = match domain_act_frame(&invocation, &answer, governed_effect.as_ref()) {
         Some(mut frame) => {
@@ -141,7 +145,7 @@ pub(super) fn execute_agent_skill_run(
         None => seal_skill_answer(
             &run_id,
             runner,
-            &stdout,
+            &answer,
             disposition,
             receipts.signature_config(),
             workspace.env(),
@@ -153,10 +157,11 @@ pub(super) fn execute_agent_skill_run(
     Ok(JsonValue::Object(sealed_output(
         manifest,
         &run_id,
-        &agent_skill_output(stdout, &receipt, verification_metadata),
+        &agent_skill_output(answer.clone(), &receipt, verification_metadata),
         &answer,
+        None,
+        None,
         &receipt,
-        contract_json_value(&receipt)?,
     )))
 }
 
@@ -166,6 +171,8 @@ fn write_paused_agent_checkpoint(
     receipts: &ReceiptServices,
     manifest: &SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
+    package_digest: &str,
+    execution_closure_digest: Option<&str>,
     run_id: &str,
     request_id: &str,
 ) -> Result<(), SkillRunError> {
@@ -184,6 +191,8 @@ fn write_paused_agent_checkpoint(
             .local_credential
             .as_ref()
             .and_then(|credential| credential.profile.clone()),
+        package_digest: Some(package_digest.to_owned()),
+        execution_closure_digest: execution_closure_digest.map(str::to_owned),
         step_ids: vec![request_id.to_owned()],
         step_labels: vec![runner.name.clone()],
     };
@@ -307,19 +316,12 @@ fn seal_managed_agent_failure(
     let payload = context.error.public_failure_projection();
     let metadata = context.error.receipt_metadata();
     let payload = JsonValue::Object(payload);
-    let stdout = serde_json::to_string(&payload).map_err(|error| {
-        SkillRunError::Invalid(format!(
-            "failed to serialize managed-agent failure: {error}"
-        ))
-    })?;
-    let output = SkillOutput {
-        status: InvocationStatus::Failure,
-        stdout,
-        stderr: context.error.sanitized_message().to_owned(),
-        exit_code: None,
-        duration_ms: 0,
+    let output = InvocationOutput::runtime_failure(
+        payload.clone(),
+        context.error.sanitized_message(),
+        0,
         metadata,
-    };
+    );
     let reason_code = format!("managed_agent_{}", context.error.reason_code());
     let receipt = super::seal_skill_output(
         context.run_id,
@@ -345,8 +347,9 @@ fn seal_managed_agent_failure(
         context.run_id,
         &output,
         &payload,
+        None,
+        None,
         &receipt,
-        contract_json_value(&receipt)?,
     )))
 }
 
@@ -412,26 +415,20 @@ fn agent_run_id(
 }
 
 fn agent_skill_output(
-    stdout: String,
+    answer: JsonValue,
     receipt: &runx_contracts::Receipt,
     verification_metadata: JsonObject,
-) -> SkillOutput {
+) -> InvocationOutput {
     let succeeded = receipt.seal.disposition == ClosureDisposition::Closed;
-    SkillOutput {
-        status: if succeeded {
-            InvocationStatus::Success
-        } else {
-            InvocationStatus::Failure
-        },
-        stdout,
-        stderr: if succeeded {
-            String::new()
-        } else {
-            format!("agent act closed with {}", receipt.seal.disposition.label())
-        },
-        exit_code: succeeded.then_some(0),
-        duration_ms: 0,
-        metadata: verification_metadata,
+    if succeeded {
+        InvocationOutput::runtime_success(answer, 0, verification_metadata)
+    } else {
+        InvocationOutput::runtime_failure(
+            answer,
+            format!("agent act closed with {}", receipt.seal.disposition.label()),
+            0,
+            verification_metadata,
+        )
     }
 }
 
@@ -478,7 +475,7 @@ runners:
                 managed_agent: Default::default(),
                 local_credential: None,
             };
-            let workspace = WorkspaceEnv::new(Default::default(), temp.path().to_path_buf());
+            let workspace = WorkspaceEnv::new(Default::default(), temp.path().to_path_buf())?;
             let receipts = ReceiptServices::from_env_or_local_development(workspace.env())?;
             let error = AgentResolverError::bounded_failure(
                 "round_budget_exhausted",

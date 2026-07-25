@@ -29,7 +29,7 @@ use crate::http::{
 };
 
 const TOOL: &str = "web.fetch";
-const MAX_BYTES: usize = STANDARD_HTTP_RESPONSE_BYTES;
+const MAX_WEB_FETCH_BYTES: usize = STANDARD_HTTP_RESPONSE_BYTES;
 const MAX_REDIRECTS: usize = 10;
 
 #[derive(Clone, Copy)]
@@ -152,7 +152,7 @@ impl FetchRequest {
         }
         let max_bytes = usize::try_from(inputs.max_bytes)
             .ok()
-            .filter(|value| (1..=MAX_BYTES).contains(value))
+            .filter(|value| (1..=MAX_WEB_FETCH_BYTES).contains(value))
             .ok_or_else(|| {
                 failed_result(
                     "needs_agent",

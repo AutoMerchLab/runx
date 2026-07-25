@@ -82,7 +82,11 @@ fn doctor_authority_json_redacts_secret_values_and_reports_state_path()
         .env("RUNX_PROVIDER_PERMISSION_GRANT_ID", "grant_prod")
         .env(
             "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES",
-            "repo.read repo.write",
+            r#"["repo.read","repo.write"]"#,
+        )
+        .env(
+            "RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF",
+            "runx:principal:operator:test",
         )
         .output()?;
 
@@ -96,6 +100,42 @@ fn doctor_authority_json_redacts_secret_values_and_reports_state_path()
     assert!(rendered.contains("/Users/kam/private/effect-state.json"));
     assert!(!rendered.contains("repo.read"));
     assert!(!rendered.contains("grant_prod"));
+    Ok(())
+}
+
+#[test]
+fn doctor_authority_rejects_malformed_provider_scope_transport()
+-> Result<(), Box<dyn std::error::Error>> {
+    let output = authority_doctor_command()
+        .args(["doctor", "authority", "--json"])
+        .env("RUNX_PROVIDER_PERMISSION_GRANT_ID", "grant_prod")
+        .env(
+            "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES",
+            "repo.read,repo.write",
+        )
+        .env(
+            "RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF",
+            "runx:principal:operator:test",
+        )
+        .output()?;
+
+    assert!(output.status.success());
+    let report = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
+    let diagnostic = report["diagnostics"]
+        .as_array()
+        .and_then(|diagnostics| {
+            diagnostics
+                .iter()
+                .find(|diagnostic| diagnostic["id"] == "runx.authority.provider_grant")
+        })
+        .ok_or("provider grant diagnostic missing")?;
+    assert_eq!(diagnostic["severity"], "warning");
+    assert_eq!(diagnostic["evidence"]["malformed_scopes"], true);
+    assert!(
+        diagnostic["message"]
+            .as_str()
+            .is_some_and(|message| message.contains("JSON array"))
+    );
     Ok(())
 }
 
@@ -324,6 +364,7 @@ const AUTHORITY_ENV_NAMES: &[&str] = &[
     "RUNX_HOSTED_EFFECT_STATE_BACKEND_JSON",
     "RUNX_PROVIDER_PERMISSION_GRANT_ID",
     "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES",
+    "RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF",
 ];
 
 const REGISTRY_ENV_NAMES: &[&str] = &[

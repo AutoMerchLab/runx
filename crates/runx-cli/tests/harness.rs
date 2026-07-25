@@ -282,16 +282,25 @@ harness:
 runners:
   default:
     default: true
-    type: cli-tool
-    command: sh
-    args:
-      - -c
-      - 'printf "{\"ok\":true,\"step_outputs\":{\"run\":{\"status\":\"actual\"}}}"'
-    timeout_seconds: 5
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
-      require_enforcement: false
+    type: graph
+    graph:
+      name: harness-negative
+      result_from: [run]
+      steps:
+        - id: run
+          run:
+            type: cli-tool
+            command: sh
+            args:
+              - -c
+              - 'printf "{\"ok\":true}"'
+            timeout_seconds: 5
+            outputs:
+              ok: boolean
+            sandbox:
+              profile: readonly
+              cwd_policy: skill-directory
+              require_enforcement: false
 "#
     .replace("__EXPECTATION__", expectation);
     fs::write(skill_dir.join("X.yaml"), manifest)?;

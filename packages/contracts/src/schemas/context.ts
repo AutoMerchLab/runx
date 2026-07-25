@@ -55,6 +55,53 @@ export const executionLocationSchema = Type.Object(
 
 export type ExecutionLocationContract = DeepReadonly<Static<typeof executionLocationSchema>>;
 
+export const environmentRequirementsSchema = Type.Object(
+  {
+    required: Type.Optional(Type.Array(Type.String())),
+    optional: Type.Optional(Type.Array(Type.String())),
+  },
+  { additionalProperties: false },
+);
+
+export const executionCredentialRequirementSchema = Type.Object(
+  {
+    name: Type.String(),
+    provider: Type.String(),
+    audience: Type.Optional(Type.String()),
+    deliveries: Type.Record(Type.String(), Type.String()),
+  },
+  { additionalProperties: false },
+);
+
+export const executionRequirementsSchema = Type.Object(
+  {
+    auth: Type.Optional(Type.Unknown()),
+    scopes: Type.Optional(Type.Array(Type.String())),
+    environment: Type.Optional(environmentRequirementsSchema),
+    credential: Type.Optional(executionCredentialRequirementSchema),
+    runtime: Type.Optional(Type.Unknown()),
+    sandbox: Type.Optional(Type.Unknown()),
+  },
+  { additionalProperties: false },
+);
+
+export const agentExecutionRequirementsSchema = Type.Object(
+  {
+    declaration: executionRequirementsSchema,
+    environment: Type.Optional(Type.Array(Type.Object(
+      {
+        name: Type.String(),
+        required: Type.Boolean(),
+        available: Type.Boolean(),
+      },
+      { additionalProperties: false },
+    ))),
+  },
+  { additionalProperties: false },
+);
+
+export type AgentExecutionRequirementsContract = DeepReadonly<Static<typeof agentExecutionRequirementsSchema>>;
+
 const agentContextEnvelopeTypeSchema = Type.Object(
   {
     run_id: Type.String({ minLength: 1 }),
@@ -64,6 +111,7 @@ const agentContextEnvelopeTypeSchema = Type.Object(
     instructions: Type.String({ minLength: 1 }),
     inputs: unknownRecordSchema(),
     allowed_tools: Type.Array(Type.String({ minLength: 1 })),
+    requirements: agentExecutionRequirementsSchema,
     current_context: Type.Array(artifactEnvelopeSchema),
     historical_context: Type.Array(artifactEnvelopeSchema),
     provenance: Type.Array(agentContextProvenanceSchema),

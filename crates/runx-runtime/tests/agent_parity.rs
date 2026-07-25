@@ -221,9 +221,14 @@ fn agent_declared_text_field_success() -> Result<(), Box<dyn std::error::Error>>
     ))?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    assert_eq!(output.stdout, r#"{"summary":"plain final answer"}"#);
-    assert_eq!(output.stderr, "");
-    assert_eq!(output.exit_code, Some(0));
+    assert_eq!(
+        output.value,
+        JsonValue::Object(BTreeMap::from([(
+            "summary".to_owned(),
+            JsonValue::String("plain final answer".to_owned()),
+        )]))
+    );
+    assert_eq!(output.exit_code(), None);
     let agent_runner = object_field(&output.metadata, "agent_runner")?;
     assert_eq!(agent_runner.get("skill"), Some(&string("fixture.agent")));
     assert_eq!(agent_runner.get("route"), Some(&string("native")));
@@ -256,7 +261,7 @@ fn agent_task_structured_json_payload_success() -> Result<(), Box<dyn std::error
         ]
         .into(),
     );
-    let resolver = RecordingResolver::success(payload, None);
+    let resolver = RecordingResolver::success(payload.clone(), None);
     let outputs = [
         ("title".to_owned(), JsonValue::String("string".to_owned())),
         ("ready".to_owned(), JsonValue::String("boolean".to_owned())),
@@ -276,7 +281,7 @@ fn agent_task_structured_json_payload_success() -> Result<(), Box<dyn std::error
     ))?;
 
     assert_eq!(output.status, InvocationStatus::Success);
-    assert_eq!(output.stdout, r#"{"ready":true,"title":"Release"}"#);
+    assert_eq!(output.value, payload);
     let requests = resolver.requests.borrow();
     let ResolutionRequest::AgentAct { invocation, .. } = &requests[0] else {
         return Err(std::io::Error::other("missing agent_act request").into());
@@ -313,9 +318,12 @@ fn provider_error_failure_sanitizes_stderr_and_metadata() -> Result<(), Box<dyn 
     ))?;
 
     assert_eq!(output.status, InvocationStatus::Failure);
-    assert_eq!(output.stdout, "");
-    assert_eq!(output.stderr, "Managed agent provider request failed.");
-    assert_eq!(output.exit_code, None);
+    assert_eq!(output.value, JsonValue::Null);
+    assert_eq!(
+        output.failure_message().as_deref(),
+        Some("Managed agent provider request failed.")
+    );
+    assert_eq!(output.exit_code(), None);
     assert!(!format!("{output:?}").contains("sk-secret-value"));
     let agent_hook = object_field(&output.metadata, "agent_hook")?;
     assert_eq!(agent_hook.get("status"), Some(&string("failure")));
@@ -362,8 +370,8 @@ fn bounded_failure_projects_reason_and_telemetry_without_raw_content()
 
     assert_eq!(output.status, InvocationStatus::Failure);
     assert_eq!(
-        output.stderr,
-        "Managed agent exceeded 3 tool-call rounds without finalizing."
+        output.failure_message().as_deref(),
+        Some("Managed agent exceeded 3 tool-call rounds without finalizing.")
     );
     let agent_runner = object_field(&output.metadata, "agent_runner")?;
     assert_eq!(
@@ -468,14 +476,14 @@ expect:
         .skill_output
         .ok_or_else(|| std::io::Error::other("missing replay skill output"))?;
     assert_eq!(output.status, InvocationStatus::Success);
-    assert!(output.stdout.contains("agent replayed"));
+    assert!(output.rendered_value().contains("agent replayed"));
     Ok(())
 }
 
 fn fixture_runtime_options() -> RuntimeOptions {
     RuntimeOptions {
         created_at: FIXTURE_CREATED_AT.to_owned(),
-        ..RuntimeOptions::local_development()
+        ..RuntimeOptions::local_development(std::env::vars().collect())
     }
 }
 
@@ -533,12 +541,15 @@ fn invocation(
         .join("fixtures/skills/agent-task");
     let mut request = SkillInvocation {
         skill_name: skill_name.to_owned(),
+        step_id: None,
+        requirements: Default::default(),
         artifacts: None,
         allowed_tools: None,
         source,
         inputs,
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory,
         env: BTreeMap::new(),
         credential_delivery: runx_runtime::CredentialDelivery::none(),
@@ -564,6 +575,7 @@ fn source(
         cwd: None,
         timeout_seconds: None,
         input_mode: None,
+        environment: Default::default(),
         sandbox: None,
         server: None,
         tool: None,

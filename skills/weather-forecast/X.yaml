@@ -36,6 +36,7 @@ runners:
         description: Maximum acceptable age or timestamp policy for analyst assessment.
     graph:
       name: weather-forecast
+      result_from: [validate]
       steps:
         - id: interpret
           label: interpret bounded provider evidence

@@ -42,6 +42,7 @@ runners:
         description: Entities to include or compare.
     graph:
       name: research
+      result_from: [reject, finalize]
       steps:
         - id: index
           label: index bounded source evidence

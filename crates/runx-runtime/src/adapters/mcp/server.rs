@@ -68,14 +68,16 @@ pub fn mcp_tool_result_from_host_result(result: McpHostRunResult) -> McpToolResu
 
 fn completed_mcp_tool_result(
     skill_name: String,
-    output: String,
+    output: JsonValue,
     receipt_id: String,
     runx: JsonObject,
 ) -> McpToolResult {
-    let text = if output.trim().is_empty() {
-        format!("{skill_name} completed. Inspect receipt {receipt_id}.")
-    } else {
-        output
+    let fallback = || format!("{skill_name} completed. Inspect receipt {receipt_id}.");
+    let text = match output {
+        JsonValue::Null => fallback(),
+        JsonValue::String(value) if value.trim().is_empty() => fallback(),
+        JsonValue::String(value) => value,
+        value => serde_json::to_string(&value).unwrap_or_else(|_| fallback()),
     };
     mcp_host_tool_result(text, runx, false)
 }
@@ -354,7 +356,11 @@ fn admit_mcp_tool_scopes(
     };
     let granted_scopes = env
         .get(PROVIDER_PERMISSION_GRANTED_SCOPES_ENV)
-        .map(|value| parse_scope_list(value))
+        .map(|value| {
+            crate::decode_provider_scopes_env(value)
+                .map_err(|error| rmcp_invalid_params(error.to_string()))
+        })
+        .transpose()?
         .unwrap_or_default();
     let granted = granted_scopes.iter().collect::<BTreeSet<_>>();
     let missing = required_scopes
@@ -371,15 +377,6 @@ fn admit_mcp_tool_scopes(
         grant_id,
         granted_scopes.join(", ")
     )))
-}
-
-fn parse_scope_list(value: &str) -> Vec<String> {
-    value
-        .split([',', '\n', '\t', ' '])
-        .map(str::trim)
-        .filter(|scope| !scope.is_empty())
-        .map(str::to_owned)
-        .collect()
 }
 
 async fn execute_rmcp_tool_call(
@@ -673,7 +670,8 @@ mod tests {
             ),
             (
                 PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
-                "repo.read".to_owned(),
+                crate::encode_provider_scopes_env(&["repo.read".to_owned()])
+                    .expect("scope transport"),
             ),
         ]);
         let result = admit_mcp_tool_scopes("github-write", &required_scopes, &env);
@@ -684,7 +682,8 @@ mod tests {
 
         env.insert(
             PROVIDER_PERMISSION_GRANTED_SCOPES_ENV.to_owned(),
-            "repo.read,issues.write".to_owned(),
+            crate::encode_provider_scopes_env(&["repo.read".to_owned(), "issues.write".to_owned()])
+                .expect("scope transport"),
         );
         let result = admit_mcp_tool_scopes("github-write", &required_scopes, &env);
         assert!(

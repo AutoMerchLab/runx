@@ -334,6 +334,7 @@ runners:
         description: "Optional model forwarded to scafld review."
     graph:
       name: issue-to-pr
+      result_from: [push-feed-entry]
       notes:
         status: governed
         rationale: >

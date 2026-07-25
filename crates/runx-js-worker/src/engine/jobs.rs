@@ -5,7 +5,7 @@ use std::rc::Rc;
 use boa_engine::job::{Job, JobExecutor};
 use boa_engine::{Context, JsNativeError};
 
-use crate::protocol::WorkerFailureCode;
+use crate::protocol::WorkerLimit;
 
 use super::EngineError;
 
@@ -32,8 +32,8 @@ impl BoundedJobExecutor {
 
     pub(super) fn check(&self) -> Result<(), EngineError> {
         if self.overflowed.get() {
-            return Err(EngineError::new(
-                WorkerFailureCode::ResourceLimit,
+            return Err(EngineError::limit(
+                WorkerLimit::QueuedJobs,
                 format!("JavaScript queued more than {} jobs", self.maximum),
             ));
         }

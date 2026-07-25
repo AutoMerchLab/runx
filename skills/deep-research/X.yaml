@@ -171,6 +171,7 @@ runners:
         description: Entities to include or compare.
     graph:
       name: deep-research
+      result_from: [draft-brief]
       steps:
         - id: research-topic
           skill: ../research

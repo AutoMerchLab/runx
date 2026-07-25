@@ -7,7 +7,6 @@ use runx_parser::{SkillMcpServer, SkillRunnerDefinition};
 
 use crate::credentials::SecretEnv;
 use crate::sandbox::SandboxPlan;
-use crate::services::process_env_snapshot;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct McpToolCallRequest {
@@ -55,7 +54,7 @@ impl Default for McpServerExecutionOptions {
         Self {
             runner: None,
             receipt_dir: None,
-            env: process_env_snapshot(),
+            env: BTreeMap::new(),
             credential_deliveries: BTreeMap::new(),
         }
     }
@@ -81,6 +80,7 @@ pub struct McpServerSkillExecution {
     pub skill_path: PathBuf,
     pub skill_name: String,
     pub runner: SkillRunnerDefinition,
+    pub requirements: runx_contracts::ExecutionRequirements,
     pub receipt_dir: Option<PathBuf>,
     pub env: BTreeMap<String, String>,
     pub credential_delivery: crate::credentials::CredentialDelivery,
@@ -102,7 +102,7 @@ pub struct McpContent {
 pub enum McpHostRunResult {
     Completed {
         skill_name: String,
-        output: String,
+        output: JsonValue,
         receipt_id: String,
         runx: JsonObject,
     },

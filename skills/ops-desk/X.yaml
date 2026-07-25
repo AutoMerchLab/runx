@@ -194,6 +194,7 @@ runners:
         description: Optional action id or lane selected by the dashboard.
     graph:
       name: ops-desk-operate-from-projection
+      result_from: [operate]
       steps:
         - id: read-state
           skill: ../data-store

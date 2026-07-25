@@ -58,6 +58,7 @@ runners:
         description: "Maximum extracted items to include in output."
     graph:
       name: extract
+      result_from: [extract_structured_json]
       steps:
         - id: extract_structured_json
           tool: structured.extract

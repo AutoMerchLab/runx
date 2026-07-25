@@ -237,6 +237,10 @@ impl Host for RecordingHost {
         self.requests.push(request);
         Ok(self.responses.pop_front().flatten())
     }
+
+    fn log(&mut self, _message: String) -> Result<(), RuntimeError> {
+        Ok(())
+    }
 }
 
 fn gate() -> ApprovalGate {

@@ -279,14 +279,11 @@ mod tests {
                 .all(|key| { !key.contains("credential-sentinel") })
         );
 
-        let skill_output = crate::adapter::SkillOutput {
-            status: crate::adapter::InvocationStatus::Success,
-            stdout: String::from_utf8(output_bytes)?,
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 1,
-            metadata: JsonObject::new(),
-        };
+        let skill_output = crate::adapter::InvocationOutput::runtime_success(
+            serde_json::from_slice(&output_bytes)?,
+            1,
+            JsonObject::new(),
+        );
         let receipt = crate::receipts::step_receipt(
             "native-http-redaction",
             "request-escaped",

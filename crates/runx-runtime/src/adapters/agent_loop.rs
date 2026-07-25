@@ -14,7 +14,7 @@
 //!
 //! Output and telemetry reuse the existing agent contracts ([`AgentResolution`],
 //! [`AgentExecutionTelemetry`], [`AgentToolExecutionTrace`]) and tool execution
-//! reuses the runtime's universal [`SkillOutput`]; this module only adds the two
+//! reuses the runtime's universal [`InvocationOutput`]; this module only adds the two
 //! seams that did not exist before (the per-turn model call and tool execution).
 //!
 // Module rationale: the governed agent loop, its provider and
@@ -26,7 +26,7 @@ use runx_contracts::JsonValue;
 
 use super::agent::{AgentExecutionTelemetry, AgentResolution, AgentToolExecutionTrace};
 use crate::RuntimeError;
-use crate::adapter::{InvocationStatus, SkillOutput};
+use crate::adapter::{InvocationOutput, InvocationStatus};
 
 pub(crate) const UNRECOGNIZED_MODEL_TOOL: &str = "unrecognized_tool";
 
@@ -126,7 +126,7 @@ pub trait ModelCaller {
 }
 
 /// Executes one chosen tool through the governed runtime, returning the standard
-/// [`SkillOutput`]. Production implementations delegate to skill execution (which
+/// [`InvocationOutput`]. Production implementations delegate to skill execution (which
 /// passes through authority admission); tests supply a fake.
 pub trait ToolExecutor {
     /// Return the canonical name this executor would admit for execution.
@@ -134,7 +134,7 @@ pub trait ToolExecutor {
     /// records only a fixed sentinel for those attempts.
     fn admitted_tool_name(&self, tool: &str) -> Option<String>;
 
-    fn execute(&self, tool: &str, input: &JsonValue) -> Result<SkillOutput, RuntimeError>;
+    fn execute(&self, tool: &str, input: &JsonValue) -> Result<InvocationOutput, RuntimeError>;
 }
 
 /// Loop bounds and the name of the tool the model calls to finalize.
@@ -150,11 +150,13 @@ pub struct AgentLoopConfig {
     pub final_result_tool: String,
 }
 
-fn tool_result_content(output: &SkillOutput, is_error: bool) -> String {
-    if is_error && !output.stderr.is_empty() {
-        output.stderr.clone()
+fn tool_result_content(output: &InvocationOutput, is_error: bool) -> String {
+    if is_error {
+        output
+            .failure_message()
+            .unwrap_or_else(|| output.rendered_value())
     } else {
-        output.stdout.clone()
+        output.rendered_value()
     }
 }
 
@@ -314,9 +316,8 @@ where
                 }
             };
             let is_error = !matches!(output.status, InvocationStatus::Success);
-            if !is_error && let Ok(effect) = serde_json::from_str::<JsonValue>(output.stdout.trim())
-            {
-                last_effect = Some(effect);
+            if !is_error {
+                last_effect = Some(output.value.clone());
             }
             let content = tool_result_content(&output, is_error);
             tool_executions.push(AgentToolExecutionTrace {
@@ -353,20 +354,15 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::adapter::{InvocationStatus, SkillOutput};
+    use crate::adapter::InvocationOutput;
     use runx_contracts::{JsonObject, JsonValue};
 
     const FINAL: &str = "runx_final_result";
 
-    fn skill_output(stdout: &str) -> SkillOutput {
-        SkillOutput {
-            status: InvocationStatus::Success,
-            stdout: stdout.to_owned(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 0,
-            metadata: JsonObject::new(),
-        }
+    fn skill_output(stdout: &str) -> InvocationOutput {
+        let value =
+            serde_json::from_str(stdout).unwrap_or_else(|_| JsonValue::String(stdout.to_owned()));
+        InvocationOutput::runtime_success(value, 0, JsonObject::new())
     }
 
     struct OkExecutor;
@@ -375,7 +371,11 @@ mod tests {
             Some(tool.to_owned())
         }
 
-        fn execute(&self, _tool: &str, _input: &JsonValue) -> Result<SkillOutput, RuntimeError> {
+        fn execute(
+            &self,
+            _tool: &str,
+            _input: &JsonValue,
+        ) -> Result<InvocationOutput, RuntimeError> {
             Ok(skill_output("charged"))
         }
     }
@@ -570,7 +570,11 @@ mod tests {
             Some(tool.to_owned())
         }
 
-        fn execute(&self, _tool: &str, _input: &JsonValue) -> Result<SkillOutput, RuntimeError> {
+        fn execute(
+            &self,
+            _tool: &str,
+            _input: &JsonValue,
+        ) -> Result<InvocationOutput, RuntimeError> {
             self.calls.set(self.calls.get() + 1);
             Err(RuntimeError::SkillFailed {
                 skill_name: "managed-tool".to_owned(),
@@ -687,7 +691,7 @@ mod tests {
                 &self,
                 _tool: &str,
                 _input: &JsonValue,
-            ) -> Result<SkillOutput, RuntimeError> {
+            ) -> Result<InvocationOutput, RuntimeError> {
                 Ok(skill_output("paid"))
             }
         }
@@ -720,15 +724,17 @@ mod tests {
             Some(tool.to_owned())
         }
 
-        fn execute(&self, _tool: &str, _input: &JsonValue) -> Result<SkillOutput, RuntimeError> {
-            Ok(SkillOutput {
-                status: InvocationStatus::Failure,
-                stdout: String::new(),
-                stderr: "insufficient funds".to_owned(),
-                exit_code: Some(1),
-                duration_ms: 0,
-                metadata: JsonObject::new(),
-            })
+        fn execute(
+            &self,
+            _tool: &str,
+            _input: &JsonValue,
+        ) -> Result<InvocationOutput, RuntimeError> {
+            Ok(InvocationOutput::runtime_failure(
+                JsonValue::Null,
+                "insufficient funds",
+                0,
+                JsonObject::new(),
+            ))
         }
     }
 

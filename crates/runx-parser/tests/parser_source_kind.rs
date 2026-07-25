@@ -51,6 +51,50 @@ source:
 }
 
 #[test]
+fn javascript_source_declares_exact_required_and_optional_environment() -> Result<(), String> {
+    let skill = parse_strict(
+        r#"---
+name: javascript-environment
+source:
+  type: javascript
+  module: domain/workflow.mjs
+  environment:
+    required: [NITROSEND_ACCOUNT_ID, REGION]
+    optional: [TRACE_LABEL]
+---
+# JavaScript environment
+"#,
+    )?;
+
+    assert_eq!(
+        skill.source.environment.required,
+        ["NITROSEND_ACCOUNT_ID", "REGION"]
+    );
+    assert_eq!(skill.source.environment.optional, ["TRACE_LABEL"]);
+    Ok(())
+}
+
+#[test]
+fn environment_declaration_rejects_duplicates_invalid_names_and_runtime_owned_names()
+-> Result<(), String> {
+    for environment in [
+        "required: [REGION]\n    optional: [REGION]",
+        "required: [not-portable!]",
+        "required: [RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64]",
+    ] {
+        let raw = parse_skill_markdown(&format!(
+            "---\nname: bad-environment\nsource:\n  type: javascript\n  module: domain.mjs\n  environment:\n    {environment}\n---\n# Bad environment\n"
+        ))
+        .map_err(|error| error.to_string())?;
+        assert!(
+            validate_skill(raw).is_err(),
+            "invalid environment unexpectedly passed: {environment}"
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn javascript_source_parses_runtime_owned_artifact_pages() -> Result<(), String> {
     let skill = parse_strict(
         r#"---
@@ -90,7 +134,7 @@ fn javascript_source_rejects_ambiguous_or_reserved_page_inputs() -> Result<(), S
     for pages in [
         "path_from: runx_page\n      media_type: application/json\n      framing: json_array",
         "path_from: archive\n      path_scope_from: archive\n      media_type: application/json\n      framing: json_array",
-        "path_from: archive\n      media_type: application/json\n      framing: json_array\n      page_bytes: 1048577",
+        "path_from: archive\n      media_type: application/json\n      framing: json_array\n      page_bytes: 4194305",
     ] {
         let raw = parse_skill_markdown(&format!(
             "---\nname: bad-pages\nsource:\n  type: javascript\n  module: domain.mjs\n  pages:\n      {pages}\n---\n# Bad pages\n"
@@ -110,7 +154,7 @@ fn javascript_source_rejects_process_fields_and_path_escape() -> Result<(), Stri
         "type: javascript\n  module: ../escape.mjs",
         "type: javascript\n  module: domain.mjs\n  command: node",
         "type: javascript\n  module: domain.mjs\n  args: [extra]",
-        "type: javascript\n  module: domain.mjs\n  timeout_seconds: 1",
+        "type: javascript\n  module: domain.mjs\n  timeout_seconds: 31",
         "type: javascript\n  module: domain.mjs\n  export: not-valid",
         "type: cli-tool\n  command: node\n  module: domain.mjs",
     ] {
@@ -123,6 +167,18 @@ fn javascript_source_rejects_process_fields_and_path_escape() -> Result<(), Stri
             "invalid javascript source unexpectedly passed: {source}"
         );
     }
+    Ok(())
+}
+
+#[test]
+fn javascript_source_accepts_a_bounded_wall_limit() -> Result<(), String> {
+    let raw = parse_skill_markdown(
+        "---\nname: bounded-javascript\nsource:\n  type: javascript\n  module: domain.mjs\n  timeout_seconds: 30\n---\n# Bounded JavaScript\n",
+    )
+    .map_err(|error| error.to_string())?;
+    let skill = validate_skill(raw).map_err(|error| error.to_string())?;
+
+    assert_eq!(skill.source.timeout_seconds, Some(30));
     Ok(())
 }
 

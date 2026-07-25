@@ -3,18 +3,17 @@ use std::time::Duration;
 use runx_contracts::{JsonObject, JsonValue, sha256_hex};
 
 use crate::RuntimeError;
-use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
-use crate::adapter_pipeline::{AdapterCapture, AdapterExecutionContext};
+use crate::adapter::{InvocationOutput, InvocationStatus, SkillAdapter, SkillInvocation};
+use crate::adapter_pipeline::AdapterExecutionContext;
 use crate::credentials::CredentialDelivery;
 use crate::sandbox::sandbox_metadata;
 use crate::services::SandboxServices;
 
-use super::sandbox_metadata::mcp_process_sandbox_metadata;
 use super::templates::map_mcp_arguments;
 use super::transport::ProcessMcpTransport;
 use super::types::{McpToolCallRequest, McpTransport};
 
-const DEFAULT_TIMEOUT_MS: u64 = 60_000;
+const DEFAULT_MCP_CALL_TIMEOUT_MS: u64 = 60_000;
 const MIN_TIMEOUT_MS: u64 = 50;
 
 #[derive(Clone, Debug)]
@@ -43,7 +42,7 @@ where
         "mcp"
     }
 
-    fn invoke(&self, request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
+    fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         let context = AdapterExecutionContext::start();
         let prepared = match prepare_mcp_tool_call(request, &context)? {
             Ok(prepared) => prepared,
@@ -56,13 +55,10 @@ where
                 // be bypassed by JSON escapes that reconstruct a credential when
                 // graph context or receipt projection parses stdout again.
                 prepared.credential_delivery.redact_json_value(&mut result);
-                let stdout = prepared
-                    .credential_delivery
-                    .redact_output_text(super::templates::stringify_mcp_tool_result(&result)?);
-                Ok(context.projection().output(
+                Ok(context.projection().runtime_output(
                     InvocationStatus::Success,
-                    AdapterCapture::new(stdout, String::new()),
-                    Some(0),
+                    result,
+                    None,
                     prepared.success_metadata,
                 ))
             }
@@ -88,9 +84,10 @@ struct PreparedMcpToolCall {
 fn prepare_mcp_tool_call(
     invocation: SkillInvocation,
     context: &AdapterExecutionContext,
-) -> Result<Result<PreparedMcpToolCall, SkillOutput>, RuntimeError> {
+) -> Result<Result<PreparedMcpToolCall, InvocationOutput>, RuntimeError> {
     let SkillInvocation {
         source,
+        requirements,
         inputs,
         resolved_inputs,
         skill_directory,
@@ -110,7 +107,13 @@ fn prepare_mcp_tool_call(
         return Ok(Err(missing_mcp_metadata(context)));
     };
     let arguments = map_mcp_arguments(source.arguments.as_ref(), &inputs, &resolved_inputs)?;
-    let sandbox = match SandboxServices.mcp_process_plan(&source, &server, &skill_directory, &env) {
+    let sandbox = match SandboxServices.mcp_process_plan(
+        &source,
+        &requirements.environment,
+        &server,
+        &skill_directory,
+        &env,
+    ) {
         Ok(plan) => plan,
         Err(RuntimeError::SandboxViolation { message }) => {
             return Ok(Err(failure(
@@ -121,15 +124,13 @@ fn prepare_mcp_tool_call(
         }
         Err(error) => return Err(error),
     };
-    let success_metadata = metadata_for(
-        &source,
-        Some(mcp_process_sandbox_metadata(
-            source.sandbox.as_ref(),
-            &sandbox,
-            &env,
-        )?),
-    )?;
+    let success_metadata = metadata_for(&source, Some(sandbox.metadata.clone()))?;
     let failure_metadata = metadata_for(&source, None)?;
+    credential_delivery
+        .ensure_environment_disjoint(&sandbox.env)
+        .map_err(|error| RuntimeError::SandboxViolation {
+            message: error.to_string(),
+        })?;
     Ok(Ok(PreparedMcpToolCall {
         request: McpToolCallRequest {
             server,
@@ -145,7 +146,7 @@ fn prepare_mcp_tool_call(
     }))
 }
 
-fn missing_mcp_metadata(context: &AdapterExecutionContext) -> SkillOutput {
+fn missing_mcp_metadata(context: &AdapterExecutionContext) -> InvocationOutput {
     failure(
         "MCP source requires server and tool metadata.",
         context,
@@ -190,14 +191,14 @@ pub(super) fn failure(
     message: impl Into<String>,
     context: &AdapterExecutionContext,
     metadata: JsonObject,
-) -> SkillOutput {
+) -> InvocationOutput {
     context.projection().failure(message.into(), metadata)
 }
 
 fn timeout_from_source(timeout_seconds: Option<u64>) -> Duration {
     let timeout_ms = timeout_seconds
         .map(|seconds| seconds.saturating_mul(1000))
-        .unwrap_or(DEFAULT_TIMEOUT_MS)
+        .unwrap_or(DEFAULT_MCP_CALL_TIMEOUT_MS)
         .max(MIN_TIMEOUT_MS);
     Duration::from_millis(timeout_ms)
 }

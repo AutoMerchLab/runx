@@ -1,6 +1,5 @@
 use runx_contracts::{JsonObject, JsonValue};
 
-use crate::execution::harness::json_assertions::parse_json_maybe;
 use crate::execution::harness::runner::{HarnessReplayError, HarnessReplayOutput};
 
 pub(super) fn assert_caller_answers_replayed(
@@ -17,8 +16,13 @@ pub(super) fn assert_caller_answers_replayed(
     let observed = output
         .skill_output
         .iter()
-        .chain(output.steps.iter().map(|step| &step.output))
-        .map(|skill_output| parse_json_maybe(&skill_output.stdout))
+        .map(|skill_output| skill_output.value.clone())
+        .chain(
+            output
+                .steps
+                .iter()
+                .map(|step| JsonValue::Object(step.contract.clone())),
+        )
         .collect::<Vec<_>>();
     assert_replayed_answers(answers, &observed)
 }

@@ -9,13 +9,12 @@ use runx_runtime::skill_front::{
     PreparedEntryProvenance, PreparedSkillRunApproval, PreparedSkillRunStatus,
 };
 use runx_runtime::{
-    ManagedAgentPolicy, RUNX_DEVELOPMENT_AUTO_APPROVE_ENV,
-    RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV, RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
-    RUNX_RECEIPT_SIGN_KID_ENV, SkillCredentialContext, SkillRunRequest, WorkspaceEnv,
-    development_auto_approve_requested, resolve_skill_credential_for_path,
+    ManagedAgentPolicy, SkillCredentialContext, SkillRunRequest, WorkspaceEnv,
+    resolve_skill_credential_for_path,
 };
 
 mod credential;
+mod environment_readiness;
 mod inputs;
 mod operator_context;
 mod output;
@@ -26,9 +25,12 @@ mod resolver;
 use credential::{
     inspect_context as inspect_credential_context, write_required as write_needs_credential,
 };
+use environment_readiness::{
+    append_text as append_environment_readiness_text, inspect as inspect_environment_readiness,
+};
 use inputs::read_input_document;
 use operator_context::write_operator_context;
-use output::{SkillOutputResume, skill_result_exit_code, write_skill_output};
+use output::{ResumeHint, skill_result_exit_code, write_skill_output};
 pub use parser::{parse_skill_plan, parse_skill_plan_with_workspace};
 use provider_readiness::{
     append_text as append_provider_readiness_text, inspect as inspect_provider_readiness,
@@ -45,9 +47,13 @@ pub struct SkillPlan {
     pub answers: Option<PathBuf>,
     pub registry: Option<String>,
     pub expected_digest: Option<String>,
+    pub expected_package_digest: Option<String>,
+    pub expected_execution_closure_digest: Option<String>,
     pub json: bool,
     pub non_interactive: bool,
-    pub skip_operator_context: bool,
+    /// Internal command authorization for composite CLI commands such as
+    /// `runx new`. User-supplied `runx skill` invocations cannot set this.
+    pub trusted_command_execution: bool,
     pub full_operator_context: bool,
     pub approve_operator_context: Option<String>,
     pub inputs: BTreeMap<String, JsonValue>,
@@ -65,37 +71,11 @@ pub enum SkillAction {
 }
 
 // Function rationale: the top-level command path owns resolve/inspect/run/failure presentation in one explicit dispatch.
-pub fn run_native_skill(plan: SkillPlan) -> ExitCode {
-    let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
-    let workspace = match WorkspaceEnv::load_process(cwd) {
-        Ok(workspace) => workspace,
-        Err(error) => {
-            return write_skill_failure(&error.to_string(), plan.json, "env_error", 1, None);
-        }
-    };
-    run_native_skill_with_workspace(plan, &workspace)
-}
-
-// Function rationale: the top-level command path owns resolve/inspect/run/failure presentation in one explicit dispatch.
 pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv) -> ExitCode {
     let cwd = workspace.cwd().to_path_buf();
-    let mut env = workspace.env().clone();
-    let development_auto_approve = match development_auto_approve_requested(&env, &cwd) {
-        Ok(requested) => requested && !production_receipt_signing_configured(&env),
-        Err(error) => {
-            return write_skill_failure(&error.to_string(), plan.json, "config_error", 1, None);
-        }
-    };
-    if development_auto_approve {
-        env.insert(
-            RUNX_DEVELOPMENT_AUTO_APPROVE_ENV.to_owned(),
-            "true".to_owned(),
-        );
-    } else {
-        env.remove(RUNX_DEVELOPMENT_AUTO_APPROVE_ENV);
-    }
+    let env = workspace.env().clone();
     let resume_skill_ref = plan.skill_path.to_string_lossy().into_owned();
-    let resolved = match resolve_skill_ref_details(
+    let mut resolved = match resolve_skill_ref_details(
         &plan.skill_path,
         &cwd,
         resolver::SkillResolverOptions {
@@ -109,6 +89,9 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
             return write_skill_failure(&error.to_string(), plan.json, "skill_error", 1, None);
         }
     };
+    if let Some(expected_package_digest) = &plan.expected_package_digest {
+        resolved.package_digest = Some(expected_package_digest.clone());
+    }
     let skill_path = resolved.runnable_path.clone();
     let credential = match resolve_skill_credential_for_path(
         &skill_path,
@@ -158,9 +141,7 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
         },
         None => plan.inputs.clone(),
     };
-    let resume = SkillOutputResume {
-        skill_ref: Some(&resume_skill_ref),
-        selected_runner: plan.runner.as_deref(),
+    let resume = ResumeHint {
         receipt_dir: plan.receipt_dir.as_deref(),
         answers_path: plan.answers.as_deref(),
     };
@@ -177,7 +158,7 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
             .as_ref()
             .and_then(|context| context.resolution.descriptor().cloned()),
     };
-    let orchestrator = match crate::runtime::local_orchestrator() {
+    let orchestrator = match crate::runtime::local_orchestrator(&request.env) {
         Ok(orchestrator) => orchestrator,
         Err(error) => {
             return write_skill_failure(
@@ -189,7 +170,16 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
             );
         }
     };
-    let result = if plan.skip_operator_context {
+    let bound_execution =
+        plan.expected_package_digest.is_some() && plan.expected_execution_closure_digest.is_some();
+    let result = if bound_execution {
+        orchestrator.run_skill_with_binding(
+            &request,
+            plan.runner.as_deref(),
+            plan.expected_package_digest.as_deref(),
+            plan.expected_execution_closure_digest.as_deref(),
+        )
+    } else if plan.trusted_command_execution {
         match plan.runner.as_deref() {
             Some(runner) => orchestrator.run_skill_with_runner(&request, runner),
             None => orchestrator.run_skill(&request),
@@ -198,7 +188,7 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
         let mut prepared = match orchestrator.prepare_skill(
             request,
             plan.runner.as_deref(),
-            prepared_entry_provenance(&resolved),
+            prepared_entry_provenance(&resolved, plan.expected_execution_closure_digest.as_deref()),
         ) {
             Ok(prepared) => prepared,
             Err(error) => {
@@ -245,28 +235,13 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
             }
             orchestrator.run_prepared_skill(&prepared)
         } else {
-            match authorize_operator_context(
-                &plan,
-                prepared.digest(),
-                &resume_skill_ref,
-                development_auto_approve,
-            ) {
+            match authorize_operator_context(&plan, prepared.digest(), &resume_skill_ref) {
                 OperatorAuthorization::Approved(mode) => {
-                    let actor = if mode == "development_auto_approve" {
-                        "local_development_override".to_owned()
-                    } else {
-                        workspace
-                            .env()
-                            .get("USER")
-                            .cloned()
-                            .unwrap_or_else(|| "local_operator".to_owned())
-                    };
-                    if mode == "development_auto_approve" {
-                        let _ignored = writeln!(
-                            io::stderr(),
-                            "Development override: operator context auto-approved"
-                        );
-                    }
+                    let actor = workspace
+                        .env()
+                        .get("USER")
+                        .cloned()
+                        .unwrap_or_else(|| "local_operator".to_owned());
                     if let Err(error) = prepared.approve(PreparedSkillRunApproval::now(actor, mode))
                     {
                         return write_skill_failure(
@@ -320,7 +295,6 @@ fn authorize_operator_context(
     plan: &SkillPlan,
     digest: &str,
     skill_ref: &str,
-    development_auto_approve: bool,
 ) -> OperatorAuthorization {
     if let Some(approved) = plan.approve_operator_context.as_deref() {
         if approved == digest {
@@ -332,9 +306,6 @@ fn authorize_operator_context(
             ),
             code: "operator_context_approval_mismatch",
         };
-    }
-    if development_auto_approve {
-        return OperatorAuthorization::Approved("development_auto_approve");
     }
     if plan.non_interactive || !io::stdin().is_terminal() || !io::stderr().is_terminal() {
         return OperatorAuthorization::NeedsApproval;
@@ -355,16 +326,6 @@ fn authorize_operator_context(
             code: "operator_context_approval_error",
         },
     }
-}
-
-fn production_receipt_signing_configured(env: &BTreeMap<String, String>) -> bool {
-    [
-        RUNX_RECEIPT_SIGN_KID_ENV,
-        RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
-        RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
-    ]
-    .iter()
-    .any(|name| env.get(*name).is_some_and(|value| !value.trim().is_empty()))
 }
 
 fn write_operator_approval_required(digest: &str, json: bool) -> ExitCode {
@@ -389,9 +350,7 @@ fn write_operator_approval_required(digest: &str, json: bool) -> ExitCode {
             &value,
             true,
             ExitCode::from(2),
-            SkillOutputResume {
-                skill_ref: None,
-                selected_runner: None,
+            ResumeHint {
                 receipt_dir: None,
                 answers_path: None,
             },
@@ -403,7 +362,10 @@ fn write_operator_approval_required(digest: &str, json: bool) -> ExitCode {
     ExitCode::from(2)
 }
 
-fn prepared_entry_provenance(resolved: &ResolvedSkillRef) -> PreparedEntryProvenance {
+fn prepared_entry_provenance(
+    resolved: &ResolvedSkillRef,
+    execution_closure_digest: Option<&str>,
+) -> PreparedEntryProvenance {
     PreparedEntryProvenance {
         kind: match resolved.kind {
             resolver::SkillRefKind::ExplicitPath => "explicit_path",
@@ -426,7 +388,8 @@ fn prepared_entry_provenance(resolved: &ResolvedSkillRef) -> PreparedEntryProven
         skill_id: resolved.skill_id.clone(),
         version: resolved.version.clone(),
         digest: resolved.digest.clone(),
-        package_digest: None,
+        package_digest: resolved.package_digest.clone(),
+        execution_closure_digest: execution_closure_digest.map(str::to_owned),
         trust_tier: resolved.trust_tier.clone(),
     }
 }
@@ -491,6 +454,25 @@ fn inspect_skill(
         );
     }
     if object.get("runner").is_some()
+        && let Some(environment) = inspect_environment_readiness(object, env)?
+    {
+        let ready = environment
+            .as_object()
+            .and_then(|value| value.get("status"))
+            .and_then(JsonValue::as_str)
+            == Some("ready");
+        object.insert("environment".to_owned(), environment);
+        if !ready {
+            object.insert(
+                "readiness".to_owned(),
+                JsonValue::Object(JsonObject::from([(
+                    "status".to_owned(),
+                    JsonValue::String("needs_environment".to_owned()),
+                )])),
+            );
+        }
+    }
+    if object.get("runner").is_some()
         && let Some(credential) = credential
     {
         let credential = inspect_credential_context(credential);
@@ -543,6 +525,7 @@ fn write_inspection_text(value: &JsonValue) -> ExitCode {
             out.push_str(&format!("readiness: {status}\n"));
         }
         append_provider_readiness_text(&mut out, object);
+        append_environment_readiness_text(&mut out, object);
         if let Some(credential) = object.get("credential").and_then(JsonValue::as_object) {
             out.push_str(&format!(
                 "credential: {} ({})\n",
@@ -654,6 +637,11 @@ fn registry_provenance(resolved: &ResolvedSkillRef) -> Option<JsonObject> {
         &mut provenance,
         "profile_digest",
         resolved.profile_digest.as_ref(),
+    );
+    insert_optional(
+        &mut provenance,
+        "package_digest",
+        resolved.package_digest.as_ref(),
     );
     insert_optional(
         &mut provenance,

@@ -9,6 +9,8 @@ use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 #[cfg(feature = "cli-tool")]
 use ring::signature::KeyPair;
 use runx_contracts::JsonValue;
+#[cfg(all(feature = "cli-tool", feature = "catalog"))]
+use runx_receipts::ReceiptTreeConfig;
 #[cfg(feature = "cli-tool")]
 use runx_runtime::registry::TrustTier;
 use runx_runtime::registry::{FileRegistryStore, IngestSkillOptions, ingest_skill_markdown};
@@ -45,6 +47,8 @@ runners:
         cat >/dev/null
         printf '%s\n' '{"nested":{"message":"registry child"}}'
     input_mode: stdin
+    outputs:
+      nested: object
 "#
     .to_owned()
 }
@@ -200,7 +204,7 @@ fn test_manifest_key_pair() -> Result<ring::signature::Ed25519KeyPair, std::io::
 
 #[test]
 fn runtime_options_local_development_uses_live_timestamp() {
-    let options = RuntimeOptions::local_development();
+    let options = RuntimeOptions::local_development(std::env::vars().collect());
 
     assert_ne!(options.created_at, FIXTURE_CREATED_AT);
     assert!(options.created_at.ends_with('Z'));
@@ -417,8 +421,8 @@ fn native_skill_run_resumes_and_seals_receipt() -> Result<(), Box<dyn std::error
         "failed"
     );
 
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    assert!(object_field(payload, "intake_report").is_some());
+    let result = object_field(output, "result").ok_or("missing result")?;
+    assert!(object_field(result, "intake_report").is_some());
 
     Ok(())
 }
@@ -477,8 +481,9 @@ fn native_skill_run_treats_structured_stdout_as_claim_not_receipt_proof()
     })?;
 
     let output = object(&result.output, "skill run result")?;
-    let execution = object_field(output, "execution").ok_or("missing execution")?;
-    assert!(object_field(execution, "skill_claim").is_some());
+    assert!(object_field(output, "result").is_some());
+    assert!(object_field(output, "execution").is_none());
+    assert!(object_field(output, "receipt").is_none());
     let receipt_id = string_field(output, "receipt_id").ok_or("missing receipt_id")?;
     let receipt = crate::support::read_test_signed_receipt(&receipt_dir, receipt_id)?;
     let refs = receipt.acts[0]
@@ -543,8 +548,7 @@ fn native_skill_run_preserves_deferred_closure_disposition()
     assert_eq!(string_field(output, "status"), Some("sealed"));
     let closure = object_field(output, "closure").ok_or("missing closure")?;
     assert_eq!(string_field(closure, "disposition"), Some("deferred"));
-    let execution = object_field(output, "execution").ok_or("missing execution")?;
-    assert_eq!(execution.get("exit_code"), Some(&JsonValue::Null));
+    assert!(object_field(output, "error").is_none());
     let receipt_id = string_field(output, "receipt_id").ok_or("missing receipt_id")?;
     let receipt = crate::support::read_test_signed_receipt(&receipt_dir, receipt_id)?;
     assert_eq!(serde_json::to_value(&receipt.seal.disposition)?, "deferred");
@@ -659,8 +663,7 @@ runners:
     })?;
 
     let output = object(&result.output, "skill run result")?;
-    let execution = object_field(output, "execution").ok_or("missing execution")?;
-    let structured = object_field(execution, "structured_output").ok_or("missing output")?;
+    let structured = object_field(output, "result").ok_or("missing output")?;
     assert_eq!(
         string_field(structured, "receipt_dir"),
         Some(receipt_dir.to_string_lossy().as_ref())
@@ -753,12 +756,11 @@ runners:
 
     let output = object(&result.output, "javascript module result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let claim = step_claim(payload, "transform").ok_or("missing transform claim")?;
-    let transformed = object_field(claim, "transformed").ok_or("missing transformed output")?;
+    let result = object_field(output, "result").ok_or("missing result")?;
+    let transformed = object_field(result, "transformed").ok_or("missing transformed output")?;
     assert_eq!(string_field(transformed, "value"), Some("RUNX"));
-    let steps = payload
-        .get("steps")
+    let steps = object_field(output, "trace")
+        .and_then(|trace| trace.get("steps"))
         .and_then(JsonValue::as_array)
         .ok_or("missing graph steps")?;
     let receipt_id = steps
@@ -1076,15 +1078,9 @@ fn native_graph_skill_run_pauses_and_resumes_agent_task() -> Result<(), Box<dyn 
 
     let output = object(&resumed.output, "resumed graph skill run result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let decide_claim = step_claim(payload, "decide").ok_or("missing decide skill claim")?;
-    let result = object_field(decide_claim, "result").ok_or("missing result")?;
-    assert_eq!(string_field(result, "summary"), Some("Graph fix authored."));
-    let step_outputs = object_field(payload, "step_outputs").ok_or("missing step_outputs")?;
-    let decide = object_field(step_outputs, "decide").ok_or("missing decide step output")?;
-    assert_eq!(string_field(decide, "status"), Some("success"));
-    assert!(object_field(decide, "skill_claim").is_some());
-    let declared_result = object_field(decide, "result").ok_or("missing declared result output")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let declared_result =
+        object_field(public_result, "result").ok_or("missing declared result output")?;
     assert_eq!(
         string_field(declared_result, "summary"),
         Some("Graph fix authored.")
@@ -1297,15 +1293,14 @@ fn native_graph_skill_run_pauses_and_resumes_nested_agent_skill()
 
     let output = object(&resumed.output, "resumed nested agent graph result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let nested_claim = step_claim(payload, "nested").ok_or("missing nested skill claim")?;
-    let result = object_field(nested_claim, "result").ok_or("missing result")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let result = object_field(public_result, "result").ok_or("missing declared result")?;
     assert_eq!(
         string_field(result, "summary"),
         Some("Nested agent fix authored.")
     );
-    let step_outputs = object_field(payload, "step_outputs").ok_or("missing step_outputs")?;
-    assert!(object_field(step_outputs, "nested").is_some());
+    let trace = object_field(output, "trace").ok_or("missing trace")?;
+    assert_eq!(array_field(trace, "steps").map(Vec::len), Some(1));
 
     Ok(())
 }
@@ -1373,9 +1368,8 @@ fn native_graph_skill_run_pauses_and_resumes_nested_agent_task_skill()
 
     let output = object(&resumed.output, "resumed nested agent-task graph result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let nested_claim = step_claim(payload, "nested").ok_or("missing nested skill claim")?;
-    let result = object_field(nested_claim, "result").ok_or("missing result")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let result = object_field(public_result, "result").ok_or("missing declared result")?;
     assert_eq!(
         string_field(result, "summary"),
         Some("Nested agent-task fix authored.")
@@ -1461,17 +1455,17 @@ runners:
     assert_eq!(string_field(data, "source"), Some("runx-registry"));
     assert_eq!(string_field(data, "skill_id"), Some("runx/taste-profile"));
     assert_eq!(string_field(data, "version"), Some("1.0.0"));
-    assert_eq!(
-        string_field(data, "content_kind"),
-        Some("skill-catalog-summary")
-    );
+    assert_eq!(string_field(data, "content_kind"), Some("skill-manual"));
     assert_eq!(
         string_field(data, "description"),
         Some("Portable taste guidance for downstream agents.")
     );
     assert!(string_field(data, "manual_sha256").is_some_and(|hash| hash.starts_with("sha256:")));
     assert!(string_field(data, "profile_sha256").is_some_and(|hash| hash.starts_with("sha256:")));
-    assert!(data.get("content").is_none());
+    assert!(
+        string_field(data, "content").is_some_and(|manual| manual.contains("# Taste Profile")
+            && manual.contains("Prefer clear product taste"))
+    );
     let meta = object_field(context_entry, "meta").ok_or("missing context meta")?;
     assert!(string_field(meta, "hash").is_some_and(|hash| hash.starts_with("sha256:")));
 
@@ -1678,9 +1672,8 @@ fn native_graph_skill_run_executes_local_tool_step() -> Result<(), Box<dyn std::
 
     let output = object(&result.output, "graph tool result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let echo_claim = step_claim(payload, "echo").ok_or("missing echo skill claim")?;
-    let echo = object_field(echo_claim, "echo").ok_or("missing echo")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let echo = object_field(public_result, "echo").ok_or("missing echo")?;
     assert_eq!(string_field(echo, "message"), Some("Graph tool bug"));
 
     Ok(())
@@ -1777,9 +1770,8 @@ fn native_graph_skill_run_resolves_agent_task_named_emit_context()
 
     let output = object(&result.output, "graph agent artifact result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let echo_claim = step_claim(payload, "echo").ok_or("missing echo skill claim")?;
-    let echo = object_field(echo_claim, "echo").ok_or("missing echo")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let echo = object_field(public_result, "echo").ok_or("missing echo")?;
     assert_eq!(string_field(echo, "message"), Some("Graph tool bug"));
 
     Ok(())
@@ -1855,9 +1847,8 @@ fn native_graph_skill_resume_preserves_initial_inputs_for_later_tool_steps()
 
     let output = object(&result.output, "graph input resume result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let echo_claim = step_claim(payload, "echo").ok_or("missing echo skill claim")?;
-    let echo = object_field(echo_claim, "echo").ok_or("missing echo")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let echo = object_field(public_result, "echo").ok_or("missing echo")?;
     assert_eq!(string_field(echo, "message"), Some("Graph tool bug"));
 
     Ok(())
@@ -1931,72 +1922,9 @@ fn native_graph_skill_run_resolves_agent_task_output_envelope_named_emit_context
 
     let output = object(&result.output, "graph agent artifact envelope result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let echo_claim = step_claim(payload, "echo").ok_or("missing echo skill claim")?;
-    let echo = object_field(echo_claim, "echo").ok_or("missing echo")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let echo = object_field(public_result, "echo").ok_or("missing echo")?;
     assert_eq!(string_field(echo, "message"), Some("Graph tool bug"));
-
-    Ok(())
-}
-
-#[cfg(feature = "catalog")]
-#[test]
-fn native_graph_skill_run_rejects_reserved_artifact_output_names()
--> Result<(), Box<dyn std::error::Error>> {
-    let temp = tempdir()?;
-    let skill_dir = write_graph_reserved_artifact_output_skill(temp.path())?;
-    let receipt_dir = temp.path().join("receipts");
-    let answers_path = temp.path().join("answers.json");
-    fs::write(
-        &answers_path,
-        serde_json::json!({
-            "answers": {
-                "agent_task.graph-author.output": {
-                    "result": "claimed",
-                    "closure": {
-                        "disposition": "closed"
-                    }
-                }
-            }
-        })
-        .to_string(),
-    )?;
-    let pending = run_skill(SkillRunRequest {
-        skill_path: skill_dir.clone(),
-        receipt_dir: Some(receipt_dir.clone()),
-        run_id: None,
-        answers_path: None,
-        inputs: BTreeMap::new(),
-        env: BTreeMap::new(),
-        cwd: temp.path().to_path_buf(),
-        managed_agent: Default::default(),
-        local_credential: None,
-    })?;
-    let pending_output = object(&pending.output, "pending reserved artifact result")?;
-    let run_id = string_field(pending_output, "run_id")
-        .ok_or("pending reserved artifact result missing run_id")?
-        .to_owned();
-
-    let error = match run_skill(SkillRunRequest {
-        skill_path: skill_dir,
-        receipt_dir: Some(receipt_dir),
-        run_id: Some(run_id),
-        answers_path: Some(answers_path),
-        inputs: BTreeMap::new(),
-        env: BTreeMap::new(),
-        cwd: temp.path().to_path_buf(),
-        managed_agent: Default::default(),
-        local_credential: None,
-    }) {
-        Ok(_) => return Err("reserved artifact output name unexpectedly succeeded".into()),
-        Err(error) => error,
-    };
-    assert!(
-        error
-            .to_string()
-            .contains("artifact output name \"status\" is reserved"),
-        "unexpected error: {error}"
-    );
 
     Ok(())
 }
@@ -2037,9 +1965,8 @@ fn native_graph_skill_run_omits_missing_optional_graph_input_references()
 
     let output = object(&result.output, "graph optional JSON tool result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let echo_claim = step_claim(payload, "echo").ok_or("missing echo skill claim")?;
-    let echo = object_field(echo_claim, "echo").ok_or("missing echo")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let echo = object_field(public_result, "echo").ok_or("missing echo")?;
     assert_eq!(
         string_field(echo, "message"),
         Some("Graph optional JSON bug")
@@ -2134,12 +2061,9 @@ fn native_graph_skill_resume_applies_approval_before_completing_step()
         })?;
         let resumed_output = object(&resumed.output, "resumed approval result")?;
         assert_eq!(string_field(resumed_output, "status"), Some("sealed"));
-        let payload = object_field(resumed_output, "payload").ok_or("missing payload")?;
-        let step_outputs = object_field(payload, "step_outputs").ok_or("missing step outputs")?;
-        let approval_output =
-            object_field(step_outputs, "approve").ok_or("missing approval output")?;
+        let result = object_field(resumed_output, "result").ok_or("missing result")?;
         let approval_packet =
-            object_field(approval_output, "approval_decision").ok_or("missing approval packet")?;
+            object_field(result, "approval_decision").ok_or("missing approval packet")?;
         let approval_data = object_field(approval_packet, "data").ok_or("missing approval data")?;
         assert_eq!(approval_data.get("approved"), Some(&JsonValue::Bool(true)));
         assert_eq!(string_field(approval_data, "status"), Some("approved"));
@@ -2180,10 +2104,10 @@ fn native_graph_skill_run_uses_canonical_tool_root() -> Result<(), Box<dyn std::
 
     let output = object(&result.output, "graph tool result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let echo_claim = step_claim(payload, "echo").ok_or("missing echo skill claim")?;
-    let echo = object_field(echo_claim, "echo").ok_or("missing echo")?;
-    assert_eq!(string_field(echo, "message"), Some("root tools"));
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let echo = object_field(public_result, "echo").ok_or("missing echo")?;
+    let echo_data = object_field(echo, "data").ok_or("missing echo data")?;
+    assert_eq!(string_field(echo_data, "message"), Some("root tools"));
 
     Ok(())
 }
@@ -2204,7 +2128,7 @@ fn native_graph_skill_run_merges_imported_graph_skill_tool_roots()
 
     let result = run_skill(SkillRunRequest {
         skill_path: skill_dir,
-        receipt_dir: Some(receipt_dir),
+        receipt_dir: Some(receipt_dir.clone()),
         run_id: None,
         answers_path: None,
         inputs,
@@ -2216,16 +2140,65 @@ fn native_graph_skill_run_merges_imported_graph_skill_tool_roots()
 
     let output = object(&result.output, "nested graph tool root result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let nested_claim = step_claim(payload, "nested").ok_or("missing nested skill claim")?;
-    let child_steps = object_field(nested_claim, "step_outputs").ok_or("missing child steps")?;
-    let child_echo_step = object_field(child_steps, "echo").ok_or("missing child echo step")?;
-    let child_echo_claim =
-        object_field(child_echo_step, "skill_claim").ok_or("missing child echo claim")?;
-    let echo = object_field(child_echo_claim, "echo").ok_or("missing nested echo output")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let echo = object_field(public_result, "echo").ok_or("missing nested echo output")?;
+    let echo_data = object_field(echo, "data").ok_or("missing nested echo data")?;
     assert_eq!(
-        string_field(echo, "message"),
+        string_field(echo_data, "message"),
         Some("Nested graph tool root bug")
+    );
+    let root_receipt_id = string_field(output, "receipt_id").ok_or("missing receipt id")?;
+    let trace = object_field(output, "trace").ok_or("missing trace")?;
+    let steps = array_field(trace, "steps").ok_or("missing graph steps")?;
+    let nested_step = object(&steps[0], "nested graph step")?;
+    let nested_step_id =
+        string_field(nested_step, "receipt_id").ok_or("missing nested step receipt id")?;
+    let root_receipt = crate::support::read_test_signed_receipt(&receipt_dir, root_receipt_id)?;
+    let nested_step_receipt =
+        crate::support::read_test_signed_receipt(&receipt_dir, nested_step_id)?;
+    let nested_graph_ref = nested_step_receipt
+        .lineage
+        .as_ref()
+        .and_then(|lineage| lineage.children.first())
+        .ok_or("nested step receipt missing child graph reference")?;
+    let nested_graph_id = nested_graph_ref
+        .uri
+        .as_str()
+        .strip_prefix("runx:receipt:")
+        .ok_or("nested graph receipt reference is malformed")?;
+    let nested_graph_receipt =
+        crate::support::read_test_signed_receipt(&receipt_dir, nested_graph_id)?;
+    assert_eq!(
+        nested_graph_ref.locator.as_deref(),
+        Some(nested_graph_receipt.digest.as_str())
+    );
+    let nested_child_refs = &nested_graph_receipt
+        .lineage
+        .as_ref()
+        .ok_or("nested graph receipt missing lineage")?
+        .children;
+    assert_eq!(nested_child_refs.len(), 1);
+    let nested_child_id = nested_child_refs[0]
+        .uri
+        .as_str()
+        .strip_prefix("runx:receipt:")
+        .ok_or("nested child receipt reference is malformed")?;
+    let nested_child_receipt =
+        crate::support::read_test_signed_receipt(&receipt_dir, nested_child_id)?;
+    let signature_config = crate::support::test_signature_config()?;
+    let validation = runx_runtime::receipts::tree::validate_runtime_receipt_tree_with_policy(
+        &root_receipt,
+        vec![
+            nested_step_receipt,
+            nested_graph_receipt,
+            nested_child_receipt,
+        ],
+        ReceiptTreeConfig::default(),
+        signature_config.signature_policy(),
+    );
+    assert!(
+        validation.is_ok(),
+        "the persisted nested receipt tree must resolve end to end: {validation:?}"
     );
 
     Ok(())
@@ -2259,24 +2232,45 @@ fn native_graph_skill_run_executes_nested_cli_tool_skill() -> Result<(), Box<dyn
 
     let output = object(&result.output, "nested graph skill result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let nested_claim = step_claim(payload, "nested").ok_or("missing nested skill claim")?;
-    let nested = object_field(nested_claim, "nested").ok_or("missing nested output")?;
-    assert_eq!(string_field(nested, "message"), Some("Nested graph bug"));
-    let step_outputs = object_field(payload, "step_outputs").ok_or("missing step outputs")?;
-    let nested_step = object_field(step_outputs, "nested").ok_or("missing nested step output")?;
-    // The contract packet exposes the claim's `nested` field under the single
-    // `{ data: ... }` envelope: `<step>.nested.data.message`.
+    let public_result = object_field(output, "result").ok_or("missing result")?;
     let declared_nested =
-        object_field(nested_step, "nested").ok_or("missing exposed nested output")?;
-    let declared_nested_data =
-        object_field(declared_nested, "data").ok_or("missing exposed nested data envelope")?;
+        object_field(public_result, "nested").ok_or("missing exposed nested output")?;
     assert_eq!(
-        string_field(declared_nested_data, "message"),
+        object_field(declared_nested, "data").and_then(|nested| string_field(nested, "message")),
         Some("Nested graph bug")
     );
+    let context = object_field(output, "context").ok_or("missing graph context")?;
+    let step_outputs =
+        object_field(context, "step_outputs").ok_or("missing declared step context")?;
+    let nested_context =
+        object_field(step_outputs, "nested").ok_or("missing nested step context")?;
+    assert_eq!(
+        object_field(nested_context, "nested")
+            .and_then(|nested| object_field(nested, "data"))
+            .and_then(|nested| string_field(nested, "message")),
+        Some("Nested graph bug")
+    );
+    let public_json = serde_json::to_string(&result.output)?;
+    for retired in [
+        "\"execution\"",
+        "\"payload\"",
+        "\"receipt\"",
+        "\"skill_claim\"",
+        "\"structured_output\"",
+    ] {
+        assert!(
+            !public_json.contains(retired),
+            "public result leaked retired diagnostic field {retired}"
+        );
+    }
+    assert!(
+        public_json.len() < 4_096,
+        "small nested result expanded to {} bytes",
+        public_json.len()
+    );
     let root_receipt_id = string_field(output, "receipt_id").ok_or("missing receipt id")?;
-    let steps = array_field(payload, "steps").ok_or("missing graph steps")?;
+    let trace = object_field(output, "trace").ok_or("missing trace")?;
+    let steps = array_field(trace, "steps").ok_or("missing graph steps")?;
     let nested_step_summary = object(&steps[0], "nested step summary")?;
     let nested_receipt_id =
         string_field(nested_step_summary, "receipt_id").ok_or("missing nested receipt id")?;
@@ -2308,7 +2302,6 @@ fn native_graph_skill_run_executes_nested_cli_tool_skill() -> Result<(), Box<dyn
             .is_none(),
         "reusable child receipts must not be rebound to one parent"
     );
-
     Ok(())
 }
 
@@ -2353,9 +2346,8 @@ fn native_graph_skill_run_executes_nested_registry_skill() -> Result<(), Box<dyn
 
     let output = object(&result.output, "nested registry skill result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let nested_claim = step_claim(payload, "nested").ok_or("missing nested registry claim")?;
-    let nested = object_field(nested_claim, "nested").ok_or("missing nested output")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let nested = object_field(public_result, "nested").ok_or("missing nested output")?;
     assert_eq!(string_field(nested, "message"), Some("registry child"));
 
     Ok(())
@@ -2613,11 +2605,11 @@ fn native_graph_skill_run_executes_graph_stage_cli_tool_skill()
 
     let output = object(&result.output, "stage graph skill result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let nested_claim = step_claim(payload, "nested").ok_or("missing nested skill claim")?;
-    let nested = object_field(nested_claim, "nested").ok_or("missing nested output")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let nested = object_field(public_result, "nested").ok_or("missing nested output")?;
     assert_eq!(string_field(nested, "message"), Some("Stage graph bug"));
-    let steps = array_field(payload, "steps").ok_or("missing graph steps")?;
+    let trace = object_field(output, "trace").ok_or("missing trace")?;
+    let steps = array_field(trace, "steps").ok_or("missing graph steps")?;
     let nested_step_summary = object(&steps[0], "nested step summary")?;
     assert_eq!(
         string_field(nested_step_summary, "skill"),
@@ -2655,9 +2647,8 @@ fn native_graph_skill_run_executes_nested_x_yaml_runner_skill()
 
     let output = object(&result.output, "nested X.yaml graph skill result")?;
     assert_eq!(string_field(output, "status"), Some("sealed"));
-    let payload = object_field(output, "payload").ok_or("missing payload")?;
-    let nested_claim = step_claim(payload, "nested").ok_or("missing nested skill claim")?;
-    let nested = object_field(nested_claim, "nested").ok_or("missing nested output")?;
+    let public_result = object_field(output, "result").ok_or("missing result")?;
+    let nested = object_field(public_result, "nested").ok_or("missing nested output")?;
     assert_eq!(string_field(nested, "message"), Some("Runner manifest bug"));
 
     Ok(())
@@ -2991,6 +2982,8 @@ runners:
         required: true
     graph:
       name: parent-board
+      result_from:
+        - nested
       steps:
         - id: nested
           skill: ../child-data
@@ -3017,6 +3010,8 @@ runners:
         required: true
     graph:
       name: child-data
+      result_from:
+        - echo
       steps:
         - id: echo
           tool: test.echo
@@ -3048,6 +3043,8 @@ runners:
     type: graph
     graph:
       name: graph-tool
+      result_from:
+        - echo
       steps:
         - id: echo
           tool: test.echo
@@ -3130,42 +3127,6 @@ runners:
           tool: test.echo
           inputs:
             message: $input.thread_title
-"#,
-    )?;
-    Ok(skill_dir)
-}
-
-#[cfg(feature = "catalog")]
-fn write_graph_reserved_artifact_output_skill(
-    root: &Path,
-) -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let skill_dir = root.join("graph-reserved-artifact-output");
-    fs::create_dir_all(&skill_dir)?;
-    fs::write(
-        skill_dir.join("SKILL.md"),
-        "---\nname: graph-reserved-artifact-output\n---\n# Graph Reserved Artifact Output\n",
-    )?;
-    fs::write(
-        skill_dir.join("X.yaml"),
-        r#"
-skill: graph-reserved-artifact-output
-runners:
-  graph:
-    default: true
-    type: graph
-    graph:
-      name: graph-reserved-artifact-output
-      steps:
-        - id: author
-          run:
-            type: agent-task
-            agent: builder
-            task: graph-author
-            outputs:
-              result: string
-          artifacts:
-            named_emits:
-              status: result
 "#,
     )?;
     Ok(skill_dir)
@@ -3290,6 +3251,11 @@ fn write_echo_tool_at(tool_dir: &Path, message: &str) -> Result<(), Box<dyn std:
   "inputs": {
     "message": { "type": "string", "required": true }
   },
+  "artifacts": {
+    "named_emits": {
+      "echo": "test.echo.v1"
+    }
+  },
   "scopes": ["test.echo"]
 }
 "#,
@@ -3379,6 +3345,8 @@ runners:
     args:
       - run.mjs
     input_mode: stdin
+    outputs:
+      nested: object
     artifacts:
       named_emits:
         nested: nested
@@ -3413,6 +3381,8 @@ runners:
         required: true
     graph:
       name: graph-nested-cli
+      result_from:
+        - nested
       steps:
         - id: nested
           skill: ../child-echo
@@ -3483,6 +3453,8 @@ runners:
     args:
       - run.mjs
     input_mode: stdin
+    outputs:
+      nested: object
 "#,
     )?;
     fs::write(
@@ -3620,6 +3592,8 @@ runners:
     args:
       - run.mjs
     input_mode: stdin
+    outputs:
+      nested: object
 "#,
     )?;
     fs::write(
@@ -3689,15 +3663,6 @@ fn object_field<'a>(
         Some(JsonValue::Object(value)) => Some(value),
         _ => None,
     }
-}
-
-fn step_claim<'a>(
-    payload: &'a runx_contracts::JsonObject,
-    step_id: &str,
-) -> Option<&'a runx_contracts::JsonObject> {
-    object_field(payload, "step_outputs")
-        .and_then(|steps| object_field(steps, step_id))
-        .and_then(|step| object_field(step, "skill_claim"))
 }
 
 fn array_field<'a>(

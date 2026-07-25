@@ -12,7 +12,7 @@ use std::process::ExitCode;
 
 use runx_runtime::{
     HostedApiOperationError, HostedConnectAction, HostedConnectStart,
-    RuntimeHttpTransport as Transport,
+    RuntimeHttpTransport as Transport, WorkspaceEnv,
 };
 use serde_json::Value;
 
@@ -20,14 +20,9 @@ mod plan;
 
 pub use plan::{ConnectAction, ConnectPlan, ConnectStartPlan, parse_connect_plan};
 
-pub fn run_native_connect(plan: ConnectPlan) -> ExitCode {
-    let cwd = match std::env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(error) => return fail(&plan, &format!("failed to resolve cwd: {error}")),
-    };
-    let env = crate::history::env_map();
+pub fn run_native_connect(plan: ConnectPlan, workspace: &WorkspaceEnv) -> ExitCode {
     let transport = match runx_runtime::hosted_api_transport(
-        runx_runtime::hosted_private_network_allowed(plan.allow_local_api, &env),
+        runx_runtime::hosted_private_network_allowed(plan.allow_local_api, workspace.env()),
     ) {
         Ok(transport) => transport,
         Err(error) => {
@@ -37,7 +32,7 @@ pub fn run_native_connect(plan: ConnectPlan) -> ExitCode {
             );
         }
     };
-    match run_connect_with_transport(&plan, &env, &cwd, &transport) {
+    match run_connect_with_transport(&plan, workspace.env(), workspace.cwd(), &transport) {
         Ok(output) => crate::cli_io::write_stdout_code(&output, 0),
         Err(error) => fail(&plan, &error.to_string()),
     }
@@ -276,6 +271,68 @@ mod tests {
         assert_eq!(requests[0].url, "https://runx.test/v1/me");
         assert_eq!(requests[1].url, "https://runx.test/v1/grants");
         assert_eq!(requests[1].method, HttpMethod::Get);
+        Ok(())
+    }
+
+    #[test]
+    fn connect_start_passes_opaque_skill_scopes_unchanged() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let scopes = [
+            "vendor.operation:v3".to_owned(),
+            "https://provider.example/auth/custom.scope".to_owned(),
+            "urn:runx:test:opaque".to_owned(),
+            "opaque capability with spaces,commas".to_owned(),
+            "vendor.operation:v3".to_owned(),
+        ];
+        let plan = parse_connect_plan(&[
+            "connect".into(),
+            "start".into(),
+            "future-provider".into(),
+            "--scope".into(),
+            scopes[0].clone().into(),
+            "--scope".into(),
+            scopes[1].clone().into(),
+            "--scope".into(),
+            scopes[2].clone().into(),
+            "--scope".into(),
+            scopes[3].clone().into(),
+            "--scope".into(),
+            scopes[4].clone().into(),
+            "--api-base-url".into(),
+            "https://runx.test/".into(),
+            "--token".into(),
+            "rxk_test".into(),
+            "--json".into(),
+        ])?;
+        let transport = StubTransport::new(vec![
+            RuntimeHttpResponse::new(
+                200,
+                serde_json::json!({
+                    "status": "success",
+                    "principal": {"principal_id": "user_1"}
+                })
+                .to_string(),
+            ),
+            RuntimeHttpResponse::new(
+                201,
+                serde_json::json!({
+                    "status": "oauth_required",
+                    "session_id": "flow_1"
+                })
+                .to_string(),
+            ),
+        ]);
+
+        run_connect_with_transport(&plan, &BTreeMap::new(), &std::env::temp_dir(), &transport)?;
+
+        let requests = transport.requests.borrow();
+        let body = requests[1]
+            .body
+            .as_deref()
+            .ok_or("connect start request body missing")?;
+        let request: serde_json::Value = serde_json::from_str(body)?;
+        assert_eq!(request["provider"], "future-provider");
+        assert_eq!(request["scopes"], serde_json::json!(scopes));
         Ok(())
     }
 

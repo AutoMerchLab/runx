@@ -38,6 +38,7 @@ runners:
         description: Bound on downstream reliance.
     graph:
       name: sign-receipt
+      result_from: [attest]
       steps:
         - id: attest
           tool: receipt.attest

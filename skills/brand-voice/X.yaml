@@ -38,6 +38,7 @@ runners:
         description: Legal, accessibility, product, or editorial boundaries.
     graph:
       name: brand-voice
+      result_from: [reject, finalize]
       steps:
         - id: index
           inputs:

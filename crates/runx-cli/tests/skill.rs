@@ -65,7 +65,6 @@ fn input_document_supports_file_and_stdin_without_a_second_input_map()
             "inputs.json",
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .output()?;
     let value = assert_json(&output, Some(2))?;
@@ -84,7 +83,6 @@ fn input_document_supports_file_and_stdin_without_a_second_input_map()
             "-",
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -127,7 +125,6 @@ fn input_document_rejects_paths_outside_the_invocation_workspace()
                 &path,
                 "--json",
                 "--non-interactive",
-                "--skip-operator-context",
             ])
             .output()?;
 
@@ -163,7 +160,6 @@ fn native_skill_resolves_bare_local_skill_and_documented_input_flags()
             "low",
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .output()?;
     let output_json = assert_json(&output, Some(2))?;
@@ -235,8 +231,8 @@ fn native_skill_prints_operator_context_and_admits_safe_run_by_default()
     assert!(full_stderr.contains("--- root skill ---"));
     assert!(full_stderr.contains("# Operator Context Fixture"));
     assert!(full_stderr.contains("--- skill node: entry.review ---"));
-    assert!(full_stderr.contains("context skill summary: ./context/review-rubric"));
-    assert!(!full_stderr.contains("production bar from context skill"));
+    assert!(full_stderr.contains("context skill: ./context/review-rubric"));
+    assert!(full_stderr.contains("production bar from context skill"));
     assert!(full_stderr.contains("tool manifest: example.record at entry.review"));
     let full_stdout = serde_json::from_slice::<serde_json::Value>(&full.stdout)?;
     assert_eq!(full_stdout["status"], "needs_agent");
@@ -293,23 +289,12 @@ fn native_mutating_skill_requires_digest_bound_operator_approval()
 }
 
 #[test]
-fn development_auto_approve_covers_prepared_and_graph_gates_but_not_production_signing()
+fn mutating_context_and_graph_approval_gates_always_require_operator_resolution()
 -> Result<(), Box<dyn std::error::Error>> {
-    let root = crate::support::temp_root("runx-development-auto-approve");
+    let root = crate::support::temp_root("runx-explicit-approval");
     fs::create_dir_all(&root)?;
     let receipt_dir = root.join(".runx/receipts");
     let approval_skill = write_approval_graph_skill(&root)?;
-
-    let configured = crate::support::unsigned_runx_command_at(&root)
-        .args([
-            "config",
-            "set",
-            "development.auto_approve",
-            "true",
-            "--json",
-        ])
-        .output()?;
-    assert_json(&configured, Some(0))?;
 
     let graph_run = crate::support::unsigned_runx_command_at(&root)
         .args([
@@ -323,10 +308,16 @@ fn development_auto_approve_covers_prepared_and_graph_gates_but_not_production_s
             "--non-interactive",
         ])
         .output()?;
-    assert_eq!(graph_run.status.code(), Some(0));
+    assert_eq!(
+        graph_run.status.code(),
+        Some(2),
+        "stdout={}\nstderr={}",
+        String::from_utf8_lossy(&graph_run.stdout),
+        String::from_utf8_lossy(&graph_run.stderr)
+    );
     let graph_json = serde_json::from_slice::<serde_json::Value>(&graph_run.stdout)?;
-    assert_eq!(graph_json["status"], "sealed");
-    assert!(String::from_utf8(graph_run.stdout)?.contains("development_auto_approve"));
+    assert_eq!(graph_json["status"], "needs_agent");
+    assert_eq!(graph_json["requests"][0]["kind"], "approval");
 
     let mutating_skill = write_operator_context_skill(&root.join("mutating"))?;
     let child_profile = mutating_skill.join("nested-review/X.yaml");
@@ -350,15 +341,17 @@ fn development_auto_approve_covers_prepared_and_graph_gates_but_not_production_s
             "--non-interactive",
         ])
         .output()?;
-    assert_eq!(prepared_run.status.code(), Some(2));
-    let prepared_json = serde_json::from_slice::<serde_json::Value>(&prepared_run.stdout)?;
-    assert_eq!(prepared_json["status"], "needs_agent");
-    assert!(
-        String::from_utf8(prepared_run.stderr)?
-            .contains("Development override: operator context auto-approved")
+    assert_eq!(
+        prepared_run.status.code(),
+        Some(2),
+        "stdout={}\nstderr={}",
+        String::from_utf8_lossy(&prepared_run.stdout),
+        String::from_utf8_lossy(&prepared_run.stderr)
     );
+    let prepared_json = serde_json::from_slice::<serde_json::Value>(&prepared_run.stdout)?;
+    assert_eq!(prepared_json["status"], "needs_operator_approval");
 
-    let production_run = runx_command()
+    let signed_run = runx_command()
         .current_dir(&root)
         .env("RUNX_HOME", root.join("home"))
         .args([
@@ -372,10 +365,10 @@ fn development_auto_approve_covers_prepared_and_graph_gates_but_not_production_s
             "--non-interactive",
         ])
         .output()?;
-    assert_eq!(production_run.status.code(), Some(2));
-    let production_json = serde_json::from_slice::<serde_json::Value>(&production_run.stdout)?;
-    assert_eq!(production_json["status"], "needs_agent");
-    assert_eq!(production_json["requests"][0]["kind"], "approval");
+    assert_eq!(signed_run.status.code(), Some(2));
+    let signed_json = serde_json::from_slice::<serde_json::Value>(&signed_run.stdout)?;
+    assert_eq!(signed_json["status"], "needs_agent");
+    assert_eq!(signed_json["requests"][0]["kind"], "approval");
 
     Ok(())
 }
@@ -397,7 +390,6 @@ fn native_skill_positional_runner_selects_non_default_runner()
             receipt_dir.to_str().ok_or("non-utf8 receipt dir")?,
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .output()?;
     let output_json = assert_json(&output, Some(2))?;
@@ -473,7 +465,6 @@ fn native_skill_exported_shim_resolves_to_source_skill() -> Result<(), Box<dyn s
             "Docs bug",
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .output()?;
     let output_json = assert_json(&output, Some(2))?;
@@ -503,7 +494,6 @@ fn native_skill_resolves_trusted_registry_ref() -> Result<(), Box<dyn std::error
             registry_dir.to_str().ok_or("non-utf8 registry dir")?,
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .output()?;
     let output_json = assert_json(&output, Some(2))?;
@@ -529,7 +519,6 @@ fn native_skill_registry_run_reports_provenance() -> Result<(), Box<dyn std::err
             registry_dir.to_str().ok_or("non-utf8 registry dir")?,
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .output()?;
     let output_json = assert_json(&json_output, Some(2))?;
@@ -568,7 +557,6 @@ fn native_skill_registry_run_reports_provenance() -> Result<(), Box<dyn std::err
             "--registry",
             registry_dir.to_str().ok_or("non-utf8 registry dir")?,
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .output()?;
     assert_eq!(text_output.status.code(), Some(2));
@@ -601,7 +589,6 @@ fn native_skill_registry_run_reports_provenance_on_execution_error()
             registry_dir.to_str().ok_or("non-utf8 registry dir")?,
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .output()?;
     let output_json = assert_json(&json_output, Some(1))?;
@@ -638,7 +625,6 @@ fn native_skill_resolves_registry_versions_side_by_side() -> Result<(), Box<dyn 
             registry_dir.to_str().ok_or("non-utf8 registry dir")?,
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .output()?;
     let v1_json = assert_json(&v1, Some(2))?;
@@ -652,7 +638,6 @@ fn native_skill_resolves_registry_versions_side_by_side() -> Result<(), Box<dyn 
             registry_dir.to_str().ok_or("non-utf8 registry dir")?,
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .output()?;
     let v2_json = assert_json(&v2, Some(2))?;
@@ -908,7 +893,6 @@ sleep 30
             &sentinel_input,
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -982,7 +966,6 @@ runners:
             skill_dir.to_str().ok_or("non-utf8 skill dir")?,
             "--json",
             "--non-interactive",
-            "--skip-operator-context",
         ])
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -1151,6 +1134,7 @@ runners:
     type: graph
     graph:
       name: operator-context-review
+      result_from: [review]
       steps:
         - id: review
           skill: ./nested-review
@@ -1166,6 +1150,7 @@ runners:
     type: graph
     graph:
       name: nested-review
+      result_from: [record]
       steps:
         - id: verdict
           run:
@@ -1202,6 +1187,7 @@ runners:
     type: graph
     graph:
       name: approval-graph
+      result_from: [approve]
       steps:
         - id: approve
           run:

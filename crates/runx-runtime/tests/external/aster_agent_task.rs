@@ -3,8 +3,8 @@ use std::path::{Path, PathBuf};
 use runx_contracts::{ClosureDisposition, JsonObject, JsonValue};
 use runx_receipts::validate_receipt;
 use runx_runtime::{
-    HarnessExpectedStatus, HarnessReplayOutput, InvocationStatus, RuntimeOptions, SkillAdapter,
-    SkillInvocation, SkillOutput, load_harness_fixture, run_harness_fixture_with_adapter,
+    HarnessExpectedStatus, HarnessReplayOutput, InvocationOutput, RuntimeOptions, SkillAdapter,
+    SkillInvocation, load_harness_fixture, run_harness_fixture_with_adapter,
 };
 
 const FIXTURE_CREATED_AT: &str = "2026-05-18T00:00:00Z";
@@ -33,16 +33,14 @@ fn aster_agent_task_replays_current_rust_bridge_terminal_report()
         "run_aster_issue_triage_14"
     );
 
-    let receipt = object_field_value(&payload, "receipt")?;
-    assert_eq!(string_field(receipt, "schema")?, "runx.receipt.v1");
+    let result = object_field_value(&payload, "result")?;
     assert_eq!(
-        string_field(receipt, "id")?,
-        "hrn_rcpt_aster_issue_triage_14"
+        string_field(result, "summary")?,
+        "Aster issue-triage bridge completed."
     );
-    let harness = object_field(receipt, "harness")?;
-    assert_eq!(string_field(harness, "state")?, "sealed");
-    let seal = object_field(receipt, "seal")?;
-    assert_eq!(string_field(seal, "disposition")?, "closed");
+    assert!(payload.as_object().is_some_and(|object| {
+        !object.contains_key("receipt") && !object.contains_key("execution")
+    }));
 
     let skill_output = output
         .skill_output
@@ -101,7 +99,7 @@ fn run_case() -> Result<HarnessReplayOutput, runx_runtime::HarnessReplayError> {
         NoopAdapter,
         RuntimeOptions {
             created_at: FIXTURE_CREATED_AT.to_owned(),
-            ..RuntimeOptions::local_development()
+            ..RuntimeOptions::local_development(std::env::vars().collect())
         },
     )
 }
@@ -111,7 +109,7 @@ fn skill_payload(output: &HarnessReplayOutput) -> Result<JsonValue, Box<dyn std:
         .skill_output
         .as_ref()
         .ok_or("agent-task fixture did not produce skill output")?;
-    Ok(serde_json::from_str(&skill_output.stdout)?)
+    Ok(skill_output.value.clone())
 }
 
 fn object_field_value<'a>(
@@ -220,14 +218,14 @@ impl SkillAdapter for NoopAdapter {
         "noop"
     }
 
-    fn invoke(&self, _request: SkillInvocation) -> Result<SkillOutput, runx_runtime::RuntimeError> {
-        Ok(SkillOutput {
-            status: InvocationStatus::Success,
-            stdout: String::new(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 0,
-            metadata: Default::default(),
-        })
+    fn invoke(
+        &self,
+        _request: SkillInvocation,
+    ) -> Result<InvocationOutput, runx_runtime::RuntimeError> {
+        Ok(InvocationOutput::runtime_success(
+            JsonValue::Null,
+            0,
+            Default::default(),
+        ))
     }
 }

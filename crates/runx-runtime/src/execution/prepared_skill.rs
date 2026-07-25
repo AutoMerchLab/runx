@@ -60,6 +60,7 @@ pub struct PreparedEntryProvenance {
     pub version: Option<String>,
     pub digest: Option<String>,
     pub package_digest: Option<String>,
+    pub execution_closure_digest: Option<String>,
     pub trust_tier: Option<String>,
 }
 
@@ -156,6 +157,7 @@ pub(crate) struct PreparedArtifactGuard {
 #[derive(Clone)]
 pub struct PreparedSkillRun {
     request: SkillRunRequest,
+    package_digest: String,
     selected_runner: String,
     manifest: SkillRunnerManifest,
     runner: SkillRunnerDefinition,
@@ -169,6 +171,7 @@ impl std::fmt::Debug for PreparedSkillRun {
     fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         formatter
             .debug_struct("PreparedSkillRun")
+            .field("package_digest", &self.package_digest)
             .field("selected_runner", &self.selected_runner)
             .field("report", &self.report)
             .field("guard_count", &self.guards.len())
@@ -186,6 +189,20 @@ impl PreparedSkillRun {
     #[must_use]
     pub fn digest(&self) -> &str {
         &self.report.digest
+    }
+
+    #[must_use]
+    pub(crate) fn package_digest(&self) -> &str {
+        &self.package_digest
+    }
+
+    #[must_use]
+    pub(crate) fn execution_closure_digest(&self) -> Option<&str> {
+        self.report
+            .request
+            .entry
+            .execution_closure_digest
+            .as_deref()
     }
 
     #[must_use]
@@ -305,7 +322,19 @@ impl PreparedSkillRun {
                 )));
             }
         }
-        Ok(())
+        let loaded = crate::load_validated_skill_package(&self.report.request.skill_path)?;
+        crate::skill_package::verify_loaded_execution_binding(
+            loaded,
+            &self.selected_runner,
+            Some(&self.package_digest),
+            self.execution_closure_digest(),
+        )
+        .map(|_| ())
+        .map_err(|message| {
+            SkillRunError::Invalid(format!(
+                "skill execution binding drift at execution boundary: {message}"
+            ))
+        })
     }
 }
 
@@ -340,7 +369,7 @@ pub fn prepare_skill_run(
 pub(crate) fn prepare_skill_run_with_effects(
     mut request: SkillRunRequest,
     selected_runner_name: Option<&str>,
-    entry: PreparedEntryProvenance,
+    mut entry: PreparedEntryProvenance,
     effects: &crate::RuntimeEffectRegistry,
 ) -> Result<PreparedSkillRun, SkillRunError> {
     strip_untrusted_prepared_env(&mut request.env);
@@ -351,8 +380,19 @@ pub(crate) fn prepare_skill_run_with_effects(
             loaded.directory.display()
         ))
     })?;
-    let skill_dir = loaded.directory;
+    let package_digest = loaded.package.package_digest.clone();
+    let skill_dir = loaded.directory.clone();
     let runner = selected_runner(&manifest, selected_runner_name)?.clone();
+    let execution_closure_digest = crate::skill_package::verify_loaded_execution_binding(
+        loaded,
+        &runner.name,
+        entry.package_digest.as_deref(),
+        entry.execution_closure_digest.as_deref(),
+    )
+    .map_err(SkillRunError::Invalid)?;
+    if entry.execution_closure_digest.is_none() {
+        entry.execution_closure_digest = execution_closure_digest;
+    }
     crate::input_contract::apply_defaults(&runner.inputs, &mut request.inputs);
     let request_summary = request_summary(&request, &skill_dir, &runner.name, entry);
     let context = resolve_prepared_context(&request, &skill_dir, &runner, effects);
@@ -365,6 +405,7 @@ pub(crate) fn prepare_skill_run_with_effects(
         .unwrap_or_default();
     Ok(PreparedSkillRun {
         request,
+        package_digest,
         selected_runner: runner.name.clone(),
         manifest,
         runner,
@@ -654,6 +695,12 @@ fn governance_summary(chain: &SkillOperatorContextChain) -> PreparedGovernanceSu
 }
 
 fn summarize_node(node: &SkillOperatorContextNode, summary: &mut PreparedGovernanceSummary) {
+    if node.runner.mutating {
+        summary.mutating_steps.push(node.node_path.clone());
+    }
+    summary
+        .authority_scopes
+        .extend(node.runner.scopes.iter().cloned());
     if matches!(
         node.runner.source_type.as_str(),
         "agent" | "agent-task" | "agent-step"
@@ -743,9 +790,9 @@ fn collect_node_guards(node: &SkillOperatorContextNode, guards: &mut BTreeMap<Pa
     for step in &node.steps {
         for context in &step.context_skills {
             if let (Some(path), Some(digest)) = (
-                context.summary.get("path").and_then(JsonValue::as_str),
+                context.artifact.get("path").and_then(JsonValue::as_str),
                 context
-                    .summary
+                    .artifact
                     .get("manual_sha256")
                     .and_then(JsonValue::as_str),
             ) {
@@ -753,11 +800,11 @@ fn collect_node_guards(node: &SkillOperatorContextNode, guards: &mut BTreeMap<Pa
             }
             if let (Some(path), Some(digest)) = (
                 context
-                    .summary
+                    .artifact
                     .get("profile_path")
                     .and_then(JsonValue::as_str),
                 context
-                    .summary
+                    .artifact
                     .get("profile_sha256")
                     .and_then(JsonValue::as_str),
             ) {
@@ -850,6 +897,154 @@ mod tests {
             .insert("prompt".to_owned(), JsonValue::String("changed".to_owned()));
         let changed = prepare_skill_run(changed, None, PreparedEntryProvenance::default())?;
         assert_ne!(first.digest(), changed.digest());
+        Ok(())
+    }
+
+    #[test]
+    fn prepared_skill_rejects_execution_package_drift() -> Result<(), Box<dyn Error>> {
+        let temp = tempdir()?;
+        write_skill(temp.path(), "", "# Prepared")?;
+        let error = prepare_skill_run(
+            request(temp.path()),
+            None,
+            PreparedEntryProvenance {
+                package_digest: Some("sha256:not-the-package".to_owned()),
+                ..PreparedEntryProvenance::default()
+            },
+        )
+        .expect_err("a mismatched execution package digest must fail closed");
+
+        assert!(error.to_string().contains("skill package digest mismatch"));
+        Ok(())
+    }
+
+    #[test]
+    fn prepared_skill_rejects_execution_closure_drift() -> Result<(), Box<dyn Error>> {
+        let temp = tempdir()?;
+        write_skill(temp.path(), "", "# Prepared")?;
+        let error = prepare_skill_run(
+            request(temp.path()),
+            None,
+            PreparedEntryProvenance {
+                execution_closure_digest: Some("sha256:not-the-closure".to_owned()),
+                ..PreparedEntryProvenance::default()
+            },
+        )
+        .expect_err("a mismatched execution closure digest must fail closed");
+
+        assert!(
+            error
+                .to_string()
+                .contains("skill execution closure digest mismatch")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn prepared_skill_rechecks_sibling_closure_at_execution_boundary() -> Result<(), Box<dyn Error>>
+    {
+        let temp = tempdir()?;
+        let entry = temp.path().join("twitter");
+        let child = temp.path().join("data-store");
+        write_manual(&entry, "twitter", "# Twitter")?;
+        write_manual(&child, "data-store", "# Data store")?;
+        fs::write(
+            child.join("X.yaml"),
+            "skill: data-store\nrunners:\n  read:\n    default: true\n    type: javascript\n    module: run.mjs\n",
+        )?;
+        fs::write(
+            child.join("run.mjs"),
+            "export default () => ({ version: 1 });\n",
+        )?;
+        fs::write(
+            entry.join("X.yaml"),
+            "skill: twitter\nrunners:\n  inspect:\n    default: true\n    type: graph\n    graph:\n      name: twitter\n      result_from: [store]\n      steps:\n        - id: store\n          skill: ../data-store\n          runner: read\n",
+        )?;
+        let closure = crate::skill_package::inspect_loaded_execution_closure_binding(
+            crate::load_validated_skill_package(&entry)?,
+            "inspect",
+        )?;
+        assert!(closure.fully_bound);
+        let prepared = prepare_skill_run(
+            request(&entry),
+            Some("inspect"),
+            PreparedEntryProvenance {
+                execution_closure_digest: Some(closure.digest),
+                ..PreparedEntryProvenance::default()
+            },
+        )?;
+
+        fs::write(
+            child.join("run.mjs"),
+            "export default () => ({ version: 2 });\n",
+        )?;
+        let error = prepared
+            .verify_artifacts()
+            .expect_err("sibling package drift must invalidate the bound closure");
+        assert!(
+            error
+                .to_string()
+                .contains("skill execution binding drift at execution boundary")
+        );
+        assert!(
+            error
+                .to_string()
+                .contains("skill execution closure digest mismatch")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bound_continuation_rechecks_execution_closure_without_reapproval()
+    -> Result<(), Box<dyn Error>> {
+        use crate::execution::orchestrator::LocalOrchestrator;
+
+        let temp = tempdir()?;
+        write_skill(temp.path(), "", "# Prepared")?;
+        let error = LocalOrchestrator::default()
+            .run_skill_with_binding(
+                &request(temp.path()),
+                Some("main"),
+                None,
+                Some("sha256:not-the-closure"),
+            )
+            .expect_err("a resumed continuation must retain its execution closure binding");
+        assert!(
+            error
+                .to_string()
+                .contains("skill execution closure digest mismatch")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn bound_continuation_persists_closure_for_resume() -> Result<(), Box<dyn Error>> {
+        use crate::execution::orchestrator::LocalOrchestrator;
+
+        let temp = tempdir()?;
+        write_skill(temp.path(), "", "# Prepared")?;
+        let loaded = crate::load_validated_skill_package(temp.path())?;
+        let package_digest = loaded.package.package_digest.clone();
+        let closure =
+            crate::skill_package::inspect_loaded_execution_closure_binding(loaded, "main")?;
+        assert!(closure.fully_bound);
+        let closure = closure.digest;
+        let receipt_dir = temp.path().join("receipts");
+        let mut bound_request = request(temp.path());
+        bound_request.receipt_dir = Some(receipt_dir.clone());
+
+        let result = LocalOrchestrator::default().run_skill_with_binding(
+            &bound_request,
+            Some("main"),
+            Some(&package_digest),
+            Some(&closure),
+        )?;
+        assert_eq!(result.status, RunStatus::NeedsAgent);
+        let ledger = fs::read_dir(receipt_dir.join("ledgers"))?
+            .next()
+            .ok_or("bound continuation did not write a pause ledger")??;
+        let persisted = fs::read_to_string(ledger.path())?;
+        assert!(persisted.contains(&format!("\"execution_closure_digest\":\"{closure}\"")));
         Ok(())
     }
 
@@ -989,7 +1184,7 @@ mod tests {
         write_manual(temp.path(), "prepared", "# Prepared")?;
         fs::write(
             temp.path().join("X.yaml"),
-            "skill: prepared\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: prepared\n      steps:\n        - id: call\n          tool: missing.tool\n",
+            "skill: prepared\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: prepared\n      result_from: [call]\n      steps:\n        - id: call\n          tool: missing.tool\n",
         )?;
         let prepared = prepare_skill_run(
             request(temp.path()),
@@ -1021,6 +1216,7 @@ runners:
     type: graph
     graph:
       name: prepared
+      result_from: [approve-publish]
       steps:
         - id: approve-publish
           run:
@@ -1059,6 +1255,39 @@ runners:
         );
         assert_eq!(governance.idempotency_keys, ["release-publish-1"]);
         assert_eq!(governance.managed_agent_acts, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn prepared_governance_includes_terminal_runner_mutation_and_scopes()
+    -> Result<(), Box<dyn Error>> {
+        let temp = tempdir()?;
+        write_manual(temp.path(), "prepared", "# Prepared")?;
+        fs::write(
+            temp.path().join("X.yaml"),
+            r#"skill: prepared
+runners:
+  mutate:
+    default: true
+    type: cli-tool
+    command: example-mutator
+    mutating: true
+    scopes: [example:write]
+"#,
+        )?;
+
+        let prepared = prepare_skill_run(
+            request(temp.path()),
+            None,
+            PreparedEntryProvenance::default(),
+        )?;
+
+        assert_eq!(prepared.report().governance.mutating_steps, ["entry"]);
+        assert_eq!(
+            prepared.report().governance.authority_scopes,
+            ["example:write"]
+        );
+        assert!(prepared.requires_operator_approval());
         Ok(())
     }
 
@@ -1173,7 +1402,7 @@ runners:
         )?;
         fs::write(
             entry.join("X.yaml"),
-            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      steps:\n        - id: child\n          skill: ./child\n",
+            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      result_from: [child]\n      steps:\n        - id: child\n          skill: ./child\n",
         )?;
         let mut prepared =
             prepare_skill_run(request(&entry), None, PreparedEntryProvenance::default())?;
@@ -1207,7 +1436,7 @@ runners:
     #[test]
     fn prepared_skill_receipt_binds_context_artifact_and_approval_decision()
     -> Result<(), Box<dyn Error>> {
-        use crate::adapter::{InvocationStatus, SkillOutput};
+        use crate::adapter::InvocationOutput;
         use crate::execution::output_projection::project_step_output;
         use crate::receipts::{
             RuntimeReceiptSignaturePolicy, StepSeal, StepSealClosure, seal_step,
@@ -1231,26 +1460,25 @@ runners:
             PREPARED_APPROVAL_TIME_ENV.to_owned(),
             "2026-07-12T00:00:00Z".to_owned(),
         );
-        let output = SkillOutput {
-            status: InvocationStatus::Success,
-            stdout: "{}".to_owned(),
-            stderr: String::new(),
-            exit_code: Some(0),
-            duration_ms: 0,
-            metadata: BTreeMap::new(),
-        };
-        let projection = project_step_output(&output);
+        let output = InvocationOutput::runtime_success(
+            JsonValue::Object(BTreeMap::new()),
+            0,
+            BTreeMap::new(),
+        );
+        let mut projection = project_step_output(&output);
         let receipt = seal_step(
             StepSeal {
                 graph_name: "prepared",
                 step_id: "execute",
                 attempt: 1,
                 output: &output,
-                projection: &projection,
+                projection_refs: std::mem::take(&mut projection.refs),
                 created_at: "2026-07-12T00:00:00Z",
                 authority_grant_refs: Vec::new(),
                 authority_scope_refs: Vec::new(),
                 operator_refs: prepared_receipt_references(&env),
+                child_receipts: &[],
+                descendant_receipts: &[],
                 closure: Some(StepSealClosure {
                     disposition: ClosureDisposition::Closed,
                     reason_code: "prepared_complete".to_owned(),

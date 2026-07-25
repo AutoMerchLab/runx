@@ -54,6 +54,11 @@ pub fn validate_step(
 
     let scopes = optional_string_array(raw_step.get("scopes"), &format!("{field}.scopes"))?
         .unwrap_or_default();
+    if scopes.iter().any(|scope| scope.trim().is_empty()) {
+        return Err(validation_error(format!(
+            "{field}.scopes must contain only non-empty scope strings."
+        )));
+    }
     let requested_scope_from = optional_non_empty_string(
         raw_step.get("requested_scope_from"),
         &format!("{field}.requested_scope_from"),
@@ -511,13 +516,6 @@ fn parse_context_reference(
         )));
     }
     let output = &reference[dot_index + 1..];
-    let first_segment = output.split('.').next().unwrap_or(output);
-    if runx_contracts::output::BASE_OUTPUT_FIELDS.contains(&first_segment) {
-        return Err(validation_error(format!(
-            "{field} binds base/diagnostic field '{first_segment}' of step '{from_step}'; base fields ({}) are not addressable, bind a declared output or artifact packet instead.",
-            runx_contracts::output::BASE_OUTPUT_FIELDS.join("/")
-        )));
-    }
     Ok(GraphContextEdge {
         input: input.to_owned(),
         from_step: from_step.to_owned(),

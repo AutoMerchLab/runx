@@ -65,13 +65,14 @@ impl RegistryPublishPackage {
     pub fn run_harness(
         &self,
         orchestrator: &LocalOrchestrator,
+        env: &BTreeMap<String, String>,
     ) -> Result<RegistryPublishHarnessReport, RegistryPublishPackageError> {
         let harness = self.harness.as_ref().ok_or_else(|| {
             RegistryPublishPackageError::invalid(
                 "publish requires a skill execution profile and at least one harness case",
             )
         })?;
-        harness::run_publish_harness(orchestrator, harness.path())
+        harness::run_publish_harness(orchestrator, harness.path(), env)
     }
 
     #[must_use]

@@ -11,7 +11,7 @@ use runx_contracts::{
 use runx_parser::SkillArtifactContract;
 
 use crate::RuntimeError;
-use crate::adapter::{CONTRACT_VERIFICATION_METADATA, SkillOutput};
+use crate::adapter::{CONTRACT_VERIFICATION_METADATA, InvocationOutput};
 
 pub(crate) fn verified_runner_metadata_with_artifacts(
     skill_name: &str,
@@ -86,7 +86,7 @@ pub(crate) fn verified_output_metadata_with_artifacts(
 }
 
 pub(crate) fn attach_verified_metadata(
-    output: &mut SkillOutput,
+    output: &mut InvocationOutput,
     mut metadata: JsonObject,
 ) -> Result<(), RuntimeError> {
     let Some(verification) = metadata.remove(CONTRACT_VERIFICATION_METADATA) else {

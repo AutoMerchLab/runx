@@ -28,7 +28,7 @@ use super::fixtures::{
     fixture_kind_name, load_harness_fixture,
 };
 use crate::RuntimeError;
-use crate::adapter::{InvocationStatus, SkillAdapter, SkillInvocation, SkillOutput};
+use crate::adapter::{InvocationOutput, SkillAdapter, SkillInvocation};
 use crate::agent_invocation::{AgentActInvocationSourceType, agent_act_invocation_id};
 use crate::effects::RuntimeEffectRegistry;
 use crate::execution::runner::{GraphRun, Runtime, RuntimeOptions, StepRun};
@@ -46,7 +46,7 @@ pub struct HarnessReplayOutput {
     pub receipt: Receipt,
     pub step_receipts: Vec<Receipt>,
     pub steps: Vec<StepRun>,
-    pub skill_output: Option<SkillOutput>,
+    pub skill_output: Option<InvocationOutput>,
 }
 
 #[derive(Debug, Error)]
@@ -100,7 +100,7 @@ pub enum HarnessReplayError {
 
 #[derive(Debug, Error)]
 #[error(
-    "{message}; receipt={receipt_id}; disposition={disposition}; reason={reason_code}; summary={summary}; skill_stdout={skill_stdout}; skill_stderr={skill_stderr}"
+    "{message}; receipt={receipt_id}; disposition={disposition}; reason={reason_code}; summary={summary}; skill_value={skill_value}; skill_failure={skill_failure}"
 )]
 pub struct HarnessExpectationFailure {
     pub message: String,
@@ -108,8 +108,8 @@ pub struct HarnessExpectationFailure {
     pub disposition: String,
     pub reason_code: String,
     pub summary: String,
-    pub skill_stdout: String,
-    pub skill_stderr: String,
+    pub skill_value: String,
+    pub skill_failure: String,
 }
 
 impl From<crate::execution::skill_front::SkillRunError> for HarnessReplayError {
@@ -126,58 +126,22 @@ impl From<crate::execution::skill_front::SkillRunError> for HarnessReplayError {
 
 pub fn run_harness_fixture(
     fixture_path: impl AsRef<Path>,
+    env: BTreeMap<String, String>,
 ) -> Result<HarnessReplayOutput, HarnessReplayError> {
     #[cfg(feature = "cli-tool")]
     {
         run_harness_fixture_with_adapter(
             fixture_path,
             crate::execution::skill_front::SkillRunGraphAdapter::default(),
-            fixture_runtime_options()?,
+            fixture_runtime_options_from_env(env)?,
         )
     }
     #[cfg(not(feature = "cli-tool"))]
     {
         let _ = fixture_path;
+        let _ = env;
         Err(HarnessReplayError::CliToolFeatureDisabled)
     }
-}
-
-#[cfg(feature = "cli-tool")]
-pub fn run_harness_fixture_with_env(
-    fixture_path: impl AsRef<Path>,
-    env: BTreeMap<String, String>,
-) -> Result<HarnessReplayOutput, HarnessReplayError> {
-    run_harness_fixture_with_adapter(
-        fixture_path,
-        crate::execution::skill_front::SkillRunGraphAdapter::default(),
-        fixture_runtime_options_from_env(env)?,
-    )
-}
-
-#[cfg(not(feature = "cli-tool"))]
-pub fn run_harness_fixture_with_env(
-    fixture_path: impl AsRef<Path>,
-    env: BTreeMap<String, String>,
-) -> Result<HarnessReplayOutput, HarnessReplayError> {
-    let _ = fixture_path;
-    let _ = env;
-    Err(HarnessReplayError::CliToolFeatureDisabled)
-}
-
-#[cfg(feature = "cli-tool")]
-pub fn run_harness_fixture_cli_tool(
-    fixture_path: impl AsRef<Path>,
-) -> Result<HarnessReplayOutput, HarnessReplayError> {
-    run_harness_fixture_with_adapter(
-        fixture_path,
-        crate::execution::skill_front::SkillRunGraphAdapter::default(),
-        fixture_runtime_options()?,
-    )
-}
-
-#[cfg(feature = "cli-tool")]
-fn fixture_runtime_options() -> Result<RuntimeOptions, HarnessReplayError> {
-    fixture_runtime_options_from_env(crate::services::process_env_snapshot())
 }
 
 #[cfg(feature = "cli-tool")]
@@ -282,15 +246,16 @@ fn expectation_error_with_output(
         disposition: format!("{:?}", output.receipt.seal.disposition),
         reason_code: output.receipt.seal.reason_code.to_string(),
         summary: truncate_diagnostic(&output.receipt.seal.summary),
-        skill_stdout: output
+        skill_value: output
             .skill_output
             .as_ref()
-            .map(|skill_output| truncate_diagnostic(&skill_output.stdout))
+            .map(|skill_output| truncate_diagnostic(&skill_output.rendered_value()))
             .unwrap_or_default(),
-        skill_stderr: output
+        skill_failure: output
             .skill_output
             .as_ref()
-            .map(|skill_output| truncate_diagnostic(&skill_output.stderr))
+            .and_then(InvocationOutput::failure_message)
+            .map(|message| truncate_diagnostic(&message))
             .unwrap_or_default(),
     }))
 }
@@ -301,7 +266,10 @@ fn truncate_diagnostic(value: &str) -> String {
     if trimmed.len() <= LIMIT {
         return trimmed.to_owned();
     }
-    format!("{}...[truncated]", &trimmed[..LIMIT])
+    format!(
+        "{}...[truncated]",
+        crate::bytes::truncate_utf8_bytes(trimmed, LIMIT)
+    )
 }
 
 fn run_agent_task_fixture(
@@ -383,7 +351,9 @@ fn run_graph_replay_fixture(
                 summary: if output.succeeded() {
                     format!("agent-task {} replayed", replay_step.task)
                 } else {
-                    output.stderr.clone()
+                    output
+                        .failure_message()
+                        .unwrap_or_else(|| "agent-task replay failed".to_owned())
                 },
             },
             options.signature_policy(),
@@ -398,9 +368,10 @@ fn run_graph_replay_fixture(
             skill: replay_step.task.clone(),
             runner: Some(replay_step.task),
             fanout_group: None,
-            output,
-            outputs,
+            contract: outputs,
+            outcome: output.into(),
             receipt,
+            nested_receipts: Vec::new(),
             admission_witness,
         });
         if !succeeded {
@@ -419,7 +390,7 @@ fn run_graph_replay_fixture(
         .as_ref()
         .map(disposition_from_expected_status)
         .unwrap_or_else(|| {
-            if runs.iter().all(|run| run.output.succeeded()) {
+            if runs.iter().all(|run| run.outcome.succeeded()) {
                 ClosureDisposition::Closed
             } else {
                 ClosureDisposition::Deferred
@@ -428,7 +399,7 @@ fn run_graph_replay_fixture(
     let receipt = graph_receipt_with_disposition_and_policy(
         &fixture.name,
         &mut runs,
-        Vec::new(),
+        &[],
         &options.created_at,
         GraphClosure {
             disposition: disposition.clone(),
@@ -445,9 +416,26 @@ fn run_graph_replay_fixture(
     let skill_output = runs
         .iter()
         .rev()
-        .find(|run| run.output.succeeded())
+        .find(|run| run.outcome.succeeded())
         .or_else(|| runs.last())
-        .map(|run| run.output.clone());
+        .map(|run| {
+            if run.outcome.succeeded() {
+                InvocationOutput::runtime_success(
+                    JsonValue::Object(run.contract.clone()),
+                    0,
+                    run.outcome.metadata.clone(),
+                )
+            } else {
+                InvocationOutput::runtime_failure(
+                    JsonValue::Object(run.contract.clone()),
+                    run.outcome
+                        .failure_message()
+                        .unwrap_or_else(|| "fixture replay step failed".to_owned()),
+                    0,
+                    run.outcome.metadata.clone(),
+                )
+            }
+        });
     Ok(HarnessReplayOutput {
         fixture: fixture.clone(),
         status: status_from_disposition(&receipt.seal.disposition),
@@ -595,9 +583,26 @@ where
             .steps
             .iter()
             .rev()
-            .find(|run| run.output.succeeded())
+            .find(|run| run.outcome.succeeded())
             .or_else(|| output.steps.last())
-            .map(|run| run.output.clone());
+            .map(|run| {
+                if run.outcome.succeeded() {
+                    InvocationOutput::runtime_success(
+                        JsonValue::Object(run.contract.clone()),
+                        0,
+                        run.outcome.metadata.clone(),
+                    )
+                } else {
+                    InvocationOutput::runtime_failure(
+                        JsonValue::Object(run.contract.clone()),
+                        run.outcome
+                            .failure_message()
+                            .unwrap_or_else(|| "graph harness step failed".to_owned()),
+                        0,
+                        run.outcome.metadata.clone(),
+                    )
+                }
+            });
     }
     if output.steps.is_empty() {
         return Err(RuntimeError::UnsupportedSource {
@@ -629,12 +634,15 @@ fn skill_fixture_invocation(
     let skill_name = runner.name.clone();
     let invocation = SkillInvocation {
         skill_name: skill_name.clone(),
+        step_id: None,
         source: runner.source.clone(),
+        requirements: manifest.execution_requirements(&runner),
         artifacts: runner.artifacts.clone(),
         allowed_tools: runner.allowed_tools.clone(),
         inputs: fixture.inputs.clone(),
         resolved_inputs: JsonObject::new(),
         current_context: Vec::new(),
+        provenance: Vec::new(),
         skill_directory: skill_dir,
         env,
         credential_delivery: crate::credentials::CredentialDelivery::none(),
@@ -647,7 +655,7 @@ fn run_skill_invocation<A>(
     runner: &SkillRunnerDefinition,
     invocation: SkillInvocation,
     adapter: A,
-) -> Result<(SkillOutput, ClosureDisposition, String, String), HarnessReplayError>
+) -> Result<(InvocationOutput, ClosureDisposition, String, String), HarnessReplayError>
 where
     A: SkillAdapter,
 {
@@ -661,11 +669,9 @@ where
             _ => {
                 let mut output = adapter.invoke(invocation)?;
                 if output.succeeded() {
-                    let payload = serde_json::from_str::<JsonValue>(&output.stdout)
-                        .unwrap_or_else(|_| JsonValue::String(output.stdout.clone()));
                     let metadata = verified_runner_metadata_with_artifacts(
                         &skill_name,
-                        &payload,
+                        &output.value,
                         raw_output.as_ref(),
                         runner.artifacts.as_ref(),
                         &skill_directory,
@@ -725,7 +731,7 @@ fn select_harness_runner<'a>(
 fn replay_agent_skill_fixture(
     fixture: &HarnessFixture,
     invocation: &SkillInvocation,
-) -> Result<(SkillOutput, ClosureDisposition, String, String), HarnessReplayError> {
+) -> Result<(InvocationOutput, ClosureDisposition, String, String), HarnessReplayError> {
     let source_type =
         AgentActInvocationSourceType::from_contract_value(invocation.source.source_type.as_str())
             .ok_or_else(|| RuntimeError::UnsupportedAdapter {
@@ -739,42 +745,31 @@ fn replay_agent_skill_fixture(
     );
     let Some(answer) = fixture_answer(fixture, "answers", &request_id, &request_id) else {
         return Ok((
-            SkillOutput {
-                status: InvocationStatus::Failure,
-                stdout: String::new(),
-                stderr: format!("missing replay answer for {request_id}"),
-                exit_code: None,
-                duration_ms: 0,
+            InvocationOutput::runtime_failure(
+                JsonValue::Null,
+                format!("missing replay answer for {request_id}"),
+                0,
                 metadata,
-            },
+            ),
             ClosureDisposition::Deferred,
             "agent_act_deferred".to_owned(),
             format!("agent act {request_id} is awaiting replay answer"),
         ));
     };
-    let stdout = serde_json::to_string(answer).map_err(|source| RuntimeError::Json {
-        context: format!("serializing replay answer {request_id}"),
-        source,
-    })?;
     let disposition = agent_answer_disposition(answer)?;
     let succeeded = disposition == ClosureDisposition::Closed;
-    Ok((
-        SkillOutput {
-            status: if succeeded {
-                InvocationStatus::Success
-            } else {
-                InvocationStatus::Failure
-            },
-            stdout,
-            stderr: if succeeded {
-                String::new()
-            } else {
-                format!("agent act closed with {}", disposition_suffix(&disposition))
-            },
-            exit_code: succeeded.then_some(0),
-            duration_ms: 0,
+    let output = if succeeded {
+        InvocationOutput::runtime_success(answer.clone(), 0, metadata)
+    } else {
+        InvocationOutput::runtime_failure(
+            answer.clone(),
+            format!("agent act closed with {}", disposition_suffix(&disposition)),
+            0,
             metadata,
-        },
+        )
+    };
+    Ok((
+        output,
         disposition.clone(),
         format!("agent_act_{}", disposition_suffix(&disposition)),
         format!("agent act closed with {}", disposition_suffix(&disposition)),
@@ -840,6 +835,10 @@ impl Host for FixtureHost<'_> {
             }
             ResolutionRequest::Input { .. } => Ok(None),
         }
+    }
+
+    fn log(&mut self, _message: String) -> Result<(), RuntimeError> {
+        Ok(())
     }
 }
 
@@ -936,6 +935,19 @@ fn invalid_fixture_answer(request_id: &str, gate_id: &str) -> RuntimeError {
 }
 
 fn replay_output_from_graph(fixture: &HarnessFixture, graph_run: GraphRun) -> HarnessReplayOutput {
+    let result = crate::execution::runner::graph_run_result(&graph_run).ok();
+    let skill_output = result.map(|result| {
+        if graph_run.state.status == runx_core::state_machine::GraphStatus::Succeeded {
+            InvocationOutput::runtime_success(result, 0, JsonObject::new())
+        } else {
+            InvocationOutput::runtime_failure(
+                result,
+                format!("graph {} did not succeed", graph_run.graph.name),
+                0,
+                JsonObject::new(),
+            )
+        }
+    });
     let step_receipts = graph_run
         .steps
         .iter()
@@ -947,7 +959,7 @@ fn replay_output_from_graph(fixture: &HarnessFixture, graph_run: GraphRun) -> Ha
         receipt: graph_run.receipt,
         step_receipts,
         steps: graph_run.steps,
-        skill_output: None,
+        skill_output,
     }
 }
 

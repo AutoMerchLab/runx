@@ -1,6 +1,8 @@
 use std::collections::BTreeMap;
 
-use runx_contracts::{JsonObject, JsonValue};
+use runx_contracts::{
+    ExecutionCredentialRequirement, ExecutionRequirements, JsonObject, JsonValue,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::skill::{
@@ -54,6 +56,38 @@ pub struct SkillRunnerManifest {
     pub raw: RawRunnerManifestIr,
 }
 
+impl SkillRunnerManifest {
+    /// Return the exact non-secret requirements selected by one runner.
+    ///
+    /// This is the parser-owned projection used by inspection and execution;
+    /// downstream consumers must not rescan raw YAML or normalize scope values.
+    #[must_use]
+    pub fn execution_requirements(&self, runner: &SkillRunnerDefinition) -> ExecutionRequirements {
+        let credential = runner.credential.as_ref().and_then(|name| {
+            self.credentials
+                .get(name)
+                .map(|requirement| ExecutionCredentialRequirement {
+                    name: name.clone(),
+                    provider: requirement.provider.clone(),
+                    audience: requirement.audience.clone(),
+                    deliveries: requirement.deliveries.clone(),
+                })
+        });
+        ExecutionRequirements {
+            auth: runner.auth.clone(),
+            scopes: runner.declared_scopes(),
+            environment: runner.source.environment.clone(),
+            credential,
+            runtime: runner.runtime.clone(),
+            sandbox: runner
+                .source
+                .sandbox
+                .as_ref()
+                .map(|sandbox| JsonValue::Object(sandbox.raw.clone())),
+        }
+    }
+}
+
 pub fn parse_runner_manifest_yaml(yaml: &str) -> Result<RawRunnerManifestIr, ParseError> {
     assert_execution_profile_yaml_subset("runner_manifest", yaml)?;
     let parsed: JsonValue =
@@ -91,6 +125,7 @@ pub fn validate_runner_manifest(
 
     let credentials = validate_credential_requirements(raw.document.get("credentials"))?;
     validate_runner_credential_references(&runners, &credentials)?;
+    validate_credential_environment_separation(&runners, &credentials)?;
 
     let harness = validate_harness_manifest(
         FIELDS.optional_object(raw.document.get("harness"), "harness")?,
@@ -114,6 +149,32 @@ pub fn validate_runner_manifest(
         harness,
         raw,
     })
+}
+
+fn validate_credential_environment_separation(
+    runners: &BTreeMap<String, SkillRunnerDefinition>,
+    credentials: &BTreeMap<String, CredentialRequirement>,
+) -> Result<(), ValidationError> {
+    for (runner_name, runner) in runners {
+        let Some(credential_name) = runner.credential.as_ref() else {
+            continue;
+        };
+        let Some(credential) = credentials.get(credential_name) else {
+            continue;
+        };
+        for environment_name in runner.source.environment.names() {
+            if credential
+                .deliveries
+                .values()
+                .any(|delivery_name| delivery_name == environment_name)
+            {
+                return Err(FIELDS.validation_error(format!(
+                    "runners.{runner_name}.environment cannot redeclare credential delivery environment variable {environment_name}; credentials and non-secret environment use separate channels"
+                )));
+            }
+        }
+    }
+    Ok(())
 }
 
 pub fn resolve_post_run_reflect_policy(

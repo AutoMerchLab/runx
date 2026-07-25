@@ -5,8 +5,7 @@ use runx_receipts::canonical_stable_json;
 #[cfg(feature = "agent")]
 use runx_runtime::adapters::agent::{AgentExecutionTelemetry, AgentResolverError};
 use runx_runtime::{
-    Host, InvocationStatus, Runtime, RuntimeError, RuntimeOptions, SkillAdapter, SkillInvocation,
-    SkillOutput,
+    Host, InvocationOutput, Runtime, RuntimeError, RuntimeOptions, SkillAdapter, SkillInvocation,
 };
 
 #[derive(Default)]
@@ -26,6 +25,10 @@ impl Host for RecordingHost {
         self.requests.push(request);
         Ok(None)
     }
+
+    fn log(&mut self, _message: String) -> Result<(), RuntimeError> {
+        Ok(())
+    }
 }
 
 struct UnusedAdapter;
@@ -35,15 +38,13 @@ impl SkillAdapter for UnusedAdapter {
         "unused"
     }
 
-    fn invoke(&self, _request: SkillInvocation) -> Result<SkillOutput, RuntimeError> {
-        Ok(SkillOutput {
-            status: InvocationStatus::Failure,
-            stdout: String::new(),
-            stderr: "agent context test unexpectedly invoked the adapter".to_owned(),
-            exit_code: Some(1),
-            duration_ms: 0,
-            metadata: Default::default(),
-        })
+    fn invoke(&self, _request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
+        Ok(InvocationOutput::runtime_failure(
+            JsonValue::Null,
+            "agent context test unexpectedly invoked the adapter",
+            0,
+            Default::default(),
+        ))
     }
 }
 
@@ -74,6 +75,10 @@ impl Host for MisidentifiedManagedFailureHost {
             )),
         })
     }
+
+    fn log(&mut self, _message: String) -> Result<(), RuntimeError> {
+        Ok(())
+    }
 }
 
 #[cfg(feature = "agent")]
@@ -89,7 +94,10 @@ fn graph_execution_binds_managed_failure_to_the_owning_step()
         temp.path().join("graph.yaml"),
         "name: owner\nsteps:\n  - id: owning-step\n    run:\n      type: agent-task\n      agent: test\n      task: work\n      outputs:\n        result: object\n",
     )?;
-    let runtime = Runtime::new(UnusedAdapter, RuntimeOptions::local_development());
+    let runtime = Runtime::new(
+        UnusedAdapter,
+        RuntimeOptions::local_development(std::env::vars().collect()),
+    );
 
     let error = match runtime.run_graph_file_with_host(
         &temp.path().join("graph.yaml"),
@@ -128,7 +136,10 @@ fn skill_manual_context_is_exact_digest_bound_and_progressive()
         temp.path().join("invoke.yaml"),
         "name: invoke-adjacent\nsteps:\n  - id: adjacent\n    skill: ./context/adjacent\n    runner: operate\n",
     )?;
-    let runtime = Runtime::new(UnusedAdapter, RuntimeOptions::local_development());
+    let runtime = Runtime::new(
+        UnusedAdapter,
+        RuntimeOptions::local_development(std::env::vars().collect()),
+    );
 
     let mut summary_host = RecordingHost::default();
     let result =
@@ -150,7 +161,7 @@ fn skill_manual_context_is_exact_digest_bound_and_progressive()
         .ok_or("adjacent skill context missing")?;
     assert_eq!(
         adjacent_context.data.get("content_kind"),
-        Some(&JsonValue::String("skill-catalog-summary".to_owned()))
+        Some(&JsonValue::String("skill-manual".to_owned()))
     );
     assert_eq!(
         adjacent_context.data.get("manual_sha256"),
@@ -158,7 +169,10 @@ fn skill_manual_context_is_exact_digest_bound_and_progressive()
             adjacent_manual.as_bytes()
         )))
     );
-    assert!(!adjacent_context.data.contains_key("content"));
+    assert_eq!(
+        adjacent_context.data.get("content"),
+        Some(&JsonValue::String(adjacent_manual.to_owned()))
+    );
     let catalog = adjacent_context
         .data
         .get("catalog")

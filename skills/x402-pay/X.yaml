@@ -35,6 +35,7 @@ runners:
         description: Stable caller-owned idempotency material.
     graph:
       name: x402-pay
+      result_from: [spend]
       steps:
         - id: spend
           skill: ../spend

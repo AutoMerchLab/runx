@@ -38,6 +38,7 @@ runners:
         description: Policy, accessibility, legal, or operational boundaries.
     graph:
       name: taste-profile
+      result_from: [reject, finalize]
       steps:
         - id: index
           inputs:

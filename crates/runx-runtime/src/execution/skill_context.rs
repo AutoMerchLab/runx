@@ -14,9 +14,11 @@ mod entry;
 use catalog::validate_context_manifest;
 use entry::{SkillContextEntryInput, insert_string, skill_context_entry};
 
-const MAX_CONTEXT_SKILLS: usize = 12;
-const MAX_CONTEXT_SKILL_BYTES: usize = 64 * 1024;
-const MAX_CONTEXT_SKILLS_TOTAL_BYTES: usize = 256 * 1024;
+// Context is an explicit skill-chain dependency, not an inline convenience
+// field. Keep one aggregate safety boundary large enough for substantive
+// manuals and examples; never truncate an individual skill to make it fit.
+const MAX_CONTEXT_SKILLS: usize = 128;
+const MAX_CONTEXT_SKILLS_TOTAL_BYTES: usize = 4 * 1024 * 1024;
 
 pub(crate) fn load_context_skills(
     step_id: &str,
@@ -46,7 +48,20 @@ pub(crate) fn load_context_skills(
                 });
             }
             let entry = load_context_skill(step_id, graph_dir, reference, env, created_at)?;
-            total_bytes += usize::try_from(entry.meta.size_bytes).unwrap_or(usize::MAX);
+            let entry_bytes =
+                usize::try_from(entry.meta.size_bytes).map_err(|_| RuntimeError::InvalidRunStep {
+                    step_id: step_id.to_owned(),
+                    reason: format!(
+                        "context skill '{reference}' size exceeds this platform's address space"
+                    ),
+                })?;
+            total_bytes =
+                total_bytes
+                    .checked_add(entry_bytes)
+                    .ok_or_else(|| RuntimeError::InvalidRunStep {
+                        step_id: step_id.to_owned(),
+                        reason: "context_skills total size overflowed".to_owned(),
+                    })?;
             if total_bytes > MAX_CONTEXT_SKILLS_TOTAL_BYTES {
                 return Err(RuntimeError::InvalidRunStep {
                     step_id: step_id.to_owned(),
@@ -132,12 +147,13 @@ fn load_local_context_skill(
         );
     }
     insert_catalog_summary(&mut data, package.manifest())?;
-    let entry = summary_context_entry(
+    let entry = manual_context_entry(
         step_id,
         reference,
         env,
         created_at,
         &package.package.manual_digest,
+        &package.package.manual_markdown,
         data,
     )?;
     super::prepared_skill::verify_prepared_artifact_at_use(env, &canonical_skill_path)?;
@@ -180,12 +196,13 @@ fn load_registry_context_skill(
         insert_string(&mut data, "description", description);
     }
     insert_catalog_summary(&mut data, package.root_manifest())?;
-    summary_context_entry(
+    manual_context_entry(
         step_id,
         reference,
         env,
         created_at,
         &package.manual_digest,
+        &package.manual_markdown,
         data,
     )
 }
@@ -249,21 +266,22 @@ fn insert_catalog_summary(
     Ok(())
 }
 
-fn summary_context_entry(
+fn manual_context_entry(
     step_id: &str,
     reference: &str,
     env: &BTreeMap<String, String>,
     created_at: &str,
     manual_digest: &str,
+    manual_markdown: &str,
     mut data: JsonObject,
 ) -> Result<ContextEntry, RuntimeError> {
-    insert_string(&mut data, "content_kind", "skill-catalog-summary");
+    insert_string(&mut data, "content_kind", "skill-manual");
     insert_string(&mut data, "manual_sha256", manual_digest);
+    insert_string(&mut data, "content", manual_markdown);
     let canonical = runx_receipts::canonical_stable_json(&JsonValue::Object(data.clone()))
         .map_err(|error| RuntimeError::ReceiptInvalid {
-            message: format!("skill context summary could not be canonicalized: {error}"),
+            message: format!("skill context artifact could not be canonicalized: {error}"),
         })?;
-    validate_context_skill_size(step_id, reference, canonical.len())?;
     let digest = runx_contracts::sha256_prefixed(canonical.as_bytes());
     skill_context_entry(SkillContextEntryInput {
         step_id,
@@ -328,20 +346,4 @@ fn prefixed_registry_digest(digest: &str) -> String {
     } else {
         format!("sha256:{digest}")
     }
-}
-
-fn validate_context_skill_size(
-    step_id: &str,
-    reference: &str,
-    size_bytes: usize,
-) -> Result<(), RuntimeError> {
-    if size_bytes <= MAX_CONTEXT_SKILL_BYTES {
-        return Ok(());
-    }
-    Err(RuntimeError::InvalidRunStep {
-        step_id: step_id.to_owned(),
-        reason: format!(
-            "context skill '{reference}' is {size_bytes} bytes; the maximum is {MAX_CONTEXT_SKILL_BYTES}"
-        ),
-    })
 }

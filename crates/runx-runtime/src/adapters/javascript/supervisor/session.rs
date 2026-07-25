@@ -4,7 +4,8 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
 use runx_contracts::javascript_worker::{
-    MAX_FRAME_BYTES, PROTOCOL_VERSION, WorkerRequest, WorkerResponse, write_frame,
+    MAX_FRAME_BYTES, PROTOCOL_VERSION, WorkerDisposition, WorkerFailureCode, WorkerLimit,
+    WorkerRequest, WorkerResponse, write_frame,
 };
 
 use crate::RuntimeError;
@@ -16,7 +17,7 @@ use super::{WorkerInvocationResult, lock, worker_error};
 // This bounds process startup and the protocol handshake, not JavaScript
 // execution. A freshly downloaded macOS binary may remain in dyld while the OS
 // performs first-launch policy verification, so this must tolerate cold-host
-// startup without weakening the worker's 2-second invocation wall limit.
+// startup without weakening the independently governed invocation wall limit.
 const WORKER_START_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub(super) struct WorkerSession {
@@ -35,14 +36,15 @@ pub(super) struct WorkerLaunchPlan {
     command: String,
     args: Vec<String>,
     cwd: std::path::PathBuf,
+    pub(super) worker_path_override: Option<String>,
     pub(super) isolation: Arc<runx_contracts::JsonObject>,
 }
 
 impl WorkerLaunchPlan {
-    pub(super) fn prepare() -> Result<Self, RuntimeError> {
+    pub(super) fn prepare(worker_path_override: Option<&str>) -> Result<Self, RuntimeError> {
         crate::process::ensure_host_process_containment()
             .map_err(|source| RuntimeError::io("installing host process containment", source))?;
-        let worker_path = resolve_worker_path()?;
+        let worker_path = resolve_worker_path(worker_path_override)?;
         let sandbox =
             crate::sandbox::prepare_javascript_worker_sandbox(&worker_path)?.into_process_plan();
         if !sandbox.env.is_empty() || !sandbox.cleanup_paths.is_empty() {
@@ -54,6 +56,7 @@ impl WorkerLaunchPlan {
             command: sandbox.command,
             args: sandbox.args,
             cwd: sandbox.cwd,
+            worker_path_override: worker_path_override.map(str::to_owned),
             isolation: Arc::new(sandbox.metadata),
         })
     }
@@ -151,10 +154,15 @@ impl WorkerSession {
             Ok(Err(message)) => return Err(self.failure_with_stderr(message)),
             Err(mpsc::RecvTimeoutError::Timeout) => {
                 self.terminate();
-                return Err(self.failure_with_stderr(format!(
-                    "deterministic JavaScript worker exceeded {} ms wall limit",
-                    timeout.as_millis()
-                )));
+                return Ok(WorkerInvocationResult::Failure {
+                    code: WorkerFailureCode::ResourceLimit,
+                    limit: Some(WorkerLimit::WallMilliseconds),
+                    message: self.failure_message_with_stderr(format!(
+                        "deterministic JavaScript worker exceeded {} ms wall limit",
+                        timeout.as_millis()
+                    )),
+                    disposition: WorkerDisposition::Discard,
+                });
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => {
                 return Err(self.failure_with_stderr(
@@ -174,13 +182,15 @@ impl WorkerSession {
                 protocol_version,
                 invocation_id: Some(response_id),
                 code,
+                limit,
                 message,
-                discard_worker,
+                disposition,
             } if protocol_version == PROTOCOL_VERSION && response_id == invocation_id => {
                 Ok(WorkerInvocationResult::Failure {
                     code,
+                    limit,
                     message,
-                    discard_worker,
+                    disposition,
                 })
             }
             response => Err(worker_error(format!(
@@ -212,6 +222,10 @@ impl WorkerSession {
     }
 
     fn failure_with_stderr(&mut self, message: impl std::fmt::Display) -> RuntimeError {
+        worker_error(self.failure_message_with_stderr(message))
+    }
+
+    fn failure_message_with_stderr(&mut self, message: impl std::fmt::Display) -> String {
         let mut message = message.to_string();
         if let Some(status) = self.exited_status() {
             message.push_str(&format!("; exit status: {status}"));
@@ -220,7 +234,7 @@ impl WorkerSession {
         if !stderr.is_empty() {
             message.push_str(&format!("; stderr: {stderr}"));
         }
-        worker_error(message)
+        message
     }
 
     fn exited_status(&mut self) -> Option<String> {

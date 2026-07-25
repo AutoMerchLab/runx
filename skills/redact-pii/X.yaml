@@ -36,6 +36,7 @@ runners:
         description: Boundary purpose and risk posture for the review pass.
     graph:
       name: redact-pii
+      result_from: [finalize]
       steps:
         - id: digest-source
           tool: data.digest

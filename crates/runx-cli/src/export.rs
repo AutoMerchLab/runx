@@ -4,6 +4,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
+use runx_runtime::WorkspaceEnv;
 use runx_runtime::export::{RunxExportLoadError, RunxExportLoadOptions};
 use serde::Serialize;
 
@@ -107,17 +108,8 @@ impl From<RunxExportLoadError> for ExportError {
     }
 }
 
-pub fn run_native_export(plan: ExportPlan) -> ExitCode {
-    let env = std::env::vars().collect::<BTreeMap<_, _>>();
-    let cwd = match std::env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(error) => {
-            let _ignored = writeln!(std::io::stderr(), "runx: failed to resolve cwd: {error}");
-            return ExitCode::from(1);
-        }
-    };
-
-    match run_export_command(&plan, &cwd, &env) {
+pub fn run_native_export(plan: ExportPlan, workspace: &WorkspaceEnv) -> ExitCode {
+    match run_export_command(&plan, workspace.cwd(), workspace.env()) {
         Ok(report) => report::write_report(&report, plan.json),
         Err(ExportError::InvalidArgs(message)) => {
             let _ignored = writeln!(std::io::stderr(), "runx: {message}");

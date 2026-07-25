@@ -30,6 +30,7 @@ use crate::{RuntimeOptions, run_harness_fixture_with_adapter};
 pub(super) fn run_skill_or_graph_fixture(
     root: &Path,
     fixture: &LoadedDevFixture,
+    env: &BTreeMap<String, String>,
 ) -> Result<DevFixtureResult, DevError> {
     let started = Instant::now();
     let kind = fixture.target().kind;
@@ -39,8 +40,15 @@ pub(super) fn run_skill_or_graph_fixture(
     };
     let workspace =
         prepare_fixture_workspace(root, &fixture.path, fixture.definition.workspace.as_ref())?;
-    let result =
-        run_skill_or_graph_fixture_inner(root, fixture, kind, &target_path, &workspace, started);
+    let result = run_skill_or_graph_fixture_inner(
+        root,
+        fixture,
+        kind,
+        &target_path,
+        &workspace,
+        env,
+        started,
+    );
     if let Some(workspace_root) = &workspace.root {
         let _ = fs::remove_dir_all(workspace_root);
     }
@@ -53,6 +61,7 @@ fn run_skill_or_graph_fixture_inner(
     kind: DevFixtureTargetKind,
     target_path: &Path,
     workspace: &PreparedDevFixtureWorkspace,
+    env: &BTreeMap<String, String>,
     started: Instant,
 ) -> Result<DevFixtureResult, DevError> {
     let Some(execution_roots) =
@@ -62,7 +71,7 @@ fn run_skill_or_graph_fixture_inner(
     };
     let harness_fixture_path =
         write_harness_replay_fixture(fixture, kind, target_path, workspace, &execution_roots)?;
-    let output = run_dev_harness_fixture(&harness_fixture_path);
+    let output = run_dev_harness_fixture(&harness_fixture_path, env);
     let _ = fs::remove_file(&harness_fixture_path);
     if let Some(parent) = harness_fixture_path.parent() {
         let _ = fs::remove_dir(parent);
@@ -83,14 +92,19 @@ fn run_skill_or_graph_fixture_inner(
     }
 }
 
-fn run_dev_harness_fixture(path: &Path) -> Result<HarnessReplayOutput, HarnessReplayError> {
+fn run_dev_harness_fixture(
+    path: &Path,
+    _env: &BTreeMap<String, String>,
+) -> Result<HarnessReplayOutput, HarnessReplayError> {
     #[cfg(feature = "cli-tool")]
     {
-        run_harness_fixture_with_adapter(path, CliToolAdapter, RuntimeOptions::local_development())
+        let options = RuntimeOptions::from_env_or_local_development(_env.clone())
+            .map_err(HarnessReplayError::Runtime)?;
+        run_harness_fixture_with_adapter(path, CliToolAdapter, options)
     }
     #[cfg(not(feature = "cli-tool"))]
     {
-        run_harness_fixture(path)
+        run_harness_fixture(path, _env.clone())
     }
 }
 
@@ -228,7 +242,7 @@ fn result_from_harness_output(
 
 fn dev_output_from_harness(output: &HarnessReplayOutput) -> JsonValue {
     if let Some(skill_output) = &output.skill_output {
-        return parse_json_maybe(&skill_output.stdout);
+        return skill_output.value.clone();
     }
     let mut object = JsonObject::new();
     object.insert(
@@ -331,14 +345,6 @@ fn missing_execution_roots(fixture: &LoadedDevFixture, started: Instant) -> DevF
                 .to_owned(),
         }],
     )
-}
-
-fn parse_json_maybe(value: &str) -> JsonValue {
-    let trimmed = value.trim();
-    if trimmed.is_empty() {
-        return JsonValue::String(String::new());
-    }
-    serde_json::from_str(trimmed).unwrap_or_else(|_| JsonValue::String(trimmed.to_owned()))
 }
 
 fn unique_harness_fixture_path() -> Result<PathBuf, DevError> {

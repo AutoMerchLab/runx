@@ -118,31 +118,8 @@ fn graph_projects_credential_away_from_javascript_around_credentialed_tool()
         .output
         .as_object()
         .ok_or("skill output was not an object")?;
-    let payload = object_field(output, "payload").ok_or("graph payload was missing")?;
-
-    let prepared = object_field(
-        step_claim(payload, "prepare").ok_or("prepare claim was missing")?,
-        "prepared",
-    )
-    .ok_or("prepared output was missing")?;
-    assert_eq!(
-        prepared.get("process_type"),
-        Some(&JsonValue::String("undefined".to_owned()))
-    );
-    let provider = step_claim(payload, "provider").ok_or("provider claim was missing")?;
-    assert_eq!(
-        provider.get("credential_seen"),
-        Some(&JsonValue::Bool(true))
-    );
-    assert_eq!(
-        provider.get("echoed"),
-        Some(&JsonValue::String("[redacted-credential]".to_owned()))
-    );
-    let final_result = object_field(
-        step_claim(payload, "finalize").ok_or("finalize claim was missing")?,
-        "result",
-    )
-    .ok_or("final result was missing")?;
+    let public_result = object_field(output, "result").ok_or("graph result was missing")?;
+    let final_result = object_field(public_result, "result").ok_or("final result was missing")?;
     assert_eq!(
         final_result.get("process_type"),
         Some(&JsonValue::String("undefined".to_owned()))
@@ -151,9 +128,13 @@ fn graph_projects_credential_away_from_javascript_around_credentialed_tool()
         final_result.get("echoed"),
         Some(&JsonValue::String("[redacted-credential]".to_owned()))
     );
+    assert_eq!(
+        final_result.get("credential_seen"),
+        Some(&JsonValue::Bool(true))
+    );
 
-    let steps = payload
-        .get("steps")
+    let steps = object_field(output, "trace")
+        .and_then(|trace| trace.get("steps"))
         .and_then(JsonValue::as_array)
         .ok_or("graph step summaries were missing")?;
     let mut observed_steps = Vec::new();
@@ -317,10 +298,4 @@ export const finalize = ({ prepared, credential_seen, echoed }) => ({
 
 fn object_field<'a>(object: &'a JsonObject, field: &str) -> Option<&'a JsonObject> {
     object.get(field).and_then(JsonValue::as_object)
-}
-
-fn step_claim<'a>(payload: &'a JsonObject, step_id: &str) -> Option<&'a JsonObject> {
-    object_field(payload, "step_outputs")
-        .and_then(|steps| object_field(steps, step_id))
-        .and_then(|step| object_field(step, "skill_claim"))
 }

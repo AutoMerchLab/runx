@@ -2,7 +2,7 @@ use std::error::Error;
 
 use criterion::Criterion;
 use runx_contracts::{JsonNumber, JsonObject, JsonValue};
-use runx_runtime::{InvocationStatus, SkillOutput};
+use runx_runtime::{InvocationOutput, InvocationStatus};
 
 #[path = "volume_paths/artifact_io.rs"]
 mod artifact_io;
@@ -18,7 +18,7 @@ pub(super) fn register(c: &mut Criterion) {
     twitter_selection::register(c);
 }
 
-fn output_object(output: SkillOutput) -> Result<JsonObject, Box<dyn Error>> {
+fn output_object(output: InvocationOutput) -> Result<JsonObject, Box<dyn Error>> {
     if output.status != InvocationStatus::Success {
         return Err(std::io::Error::other(output.stderr).into());
     }
@@ -28,7 +28,7 @@ fn output_object(output: SkillOutput) -> Result<JsonObject, Box<dyn Error>> {
     }
 }
 
-fn wrapped_data(output: SkillOutput, name: &str) -> Result<JsonObject, Box<dyn Error>> {
+fn wrapped_data(output: InvocationOutput, name: &str) -> Result<JsonObject, Box<dyn Error>> {
     output_object(output)?
         .remove(name)
         .and_then(|value| match value {

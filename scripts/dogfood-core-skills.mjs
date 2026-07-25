@@ -43,9 +43,19 @@ if (registryResolverOnly) {
 
 const steps = [
   {
-    label: "build rust kernel eval binary",
+    label: "build rust kernel and JavaScript worker",
     command: cargo,
-    args: ["build", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-cli", "--bin", "runx"],
+    args: [
+      "build",
+      "--quiet",
+      "--manifest-path",
+      "crates/Cargo.toml",
+      "-p",
+      "runx-cli",
+      "-p",
+      "runx-js-worker",
+      "--bins",
+    ],
   },
   {
     label: "prove rust payment runtime",
@@ -105,9 +115,19 @@ for (const step of steps) {
 
 function runRegistryResolverDogfood() {
   runStep({
-    label: "build native runx binary",
+    label: "build native runx and JavaScript worker",
     command: cargo,
-    args: ["build", "--quiet", "--manifest-path", "crates/Cargo.toml", "-p", "runx-cli", "--bin", "runx"],
+    args: [
+      "build",
+      "--quiet",
+      "--manifest-path",
+      "crates/Cargo.toml",
+      "-p",
+      "runx-cli",
+      "-p",
+      "runx-js-worker",
+      "--bins",
+    ],
   });
 
   const root = mkdtempSync(path.join(os.tmpdir(), "runx-registry-dogfood-"));

@@ -1,5 +1,4 @@
 use std::collections::BTreeMap;
-use std::env;
 use std::fmt;
 use std::io;
 use std::path::Path;
@@ -9,6 +8,7 @@ use runx_pay::{
     PaymentAdmissionError, PaymentAdmissionIssueResponse, PaymentAdmissionRequest,
     PaymentAdmissionSigner,
 };
+use runx_runtime::WorkspaceEnv;
 use serde::Serialize;
 
 use crate::document_input::{DocumentInputError, read_document_input};
@@ -34,16 +34,8 @@ pub struct PaymentAdmissionPlan {
     pub json: bool,
 }
 
-pub fn run_native_payment(plan: PaymentPlan) -> ExitCode {
-    let cwd = match env::current_dir() {
-        Ok(cwd) => cwd,
-        Err(error) => {
-            let error = PaymentCliError::CurrentDirectory(error);
-            return write_error(&error, true);
-        }
-    };
-
-    match run_payment_command(&plan, &crate::cli_io::env_map(), &cwd) {
+pub fn run_native_payment(plan: PaymentPlan, workspace: &WorkspaceEnv) -> ExitCode {
+    match run_payment_command(&plan, workspace.env(), workspace.cwd()) {
         Ok(output) => crate::cli_io::write_stdout_code(&output.stdout, output.exit_code),
         Err(error) => write_error(&error, true),
     }
