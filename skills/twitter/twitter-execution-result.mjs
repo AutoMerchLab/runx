@@ -99,22 +99,38 @@ function completedResult(group, responses) {
     };
   }
   const data = record(record(responses[0].json).data);
-  const outcome = data.deleted
-    ?? data.following
-    ?? data.muting
-    ?? data.blocking
-    ?? data.liked
-    ?? data.retweeted;
-  if (outcome === false) {
+  if (reachedRequestedState(group.kind, data) === false) {
     return {
       ok: false,
-      result: result(group, "failed", null, "provider reported the action as a no-op"),
+      result: result(
+        group,
+        "failed",
+        null,
+        "provider reported that the requested state was not reached",
+      ),
     };
   }
   return {
     ok: true,
     result: result(group, "done", data.id ?? group.fallback_provider_ref ?? null, null),
   };
+}
+
+const BOOLEAN_OUTCOMES = Object.freeze({
+  delete_post: ["deleted", true],
+  unfollow: ["following", false],
+  follow: ["following", true],
+  mute: ["muting", true],
+  block: ["blocking", true],
+  like: ["liked", true],
+  repost: ["retweeted", true],
+});
+
+function reachedRequestedState(kind, data) {
+  const expectation = BOOLEAN_OUTCOMES[kind];
+  if (!expectation) return null;
+  const [field, expected] = expectation;
+  return typeof data[field] === "boolean" ? data[field] === expected : null;
 }
 
 function progressEvent(plan, decision, state) {
