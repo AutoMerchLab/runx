@@ -87,22 +87,30 @@ fn timed_out_worker_does_not_fail_a_healthy_sibling() -> Result<(), Box<dyn std:
         let supervisor = supervisor.clone();
         let barrier = barrier.clone();
         thread::spawn(move || {
-            barrier.wait();
-            supervisor.invoke(invocation(
-                "export default () => { let value = 0; for (let index = 0; index < 9000000; index += 1) value = (value + index) % 1000003; return { value }; };",
-                1,
-            ))
+            supervisor.invoke_after_acquire(
+                invocation(
+                    "export default () => { let value = 0; for (let index = 0; index < 9000000; index += 1) value = (value + index) % 1000003; return { value }; };",
+                    1,
+                ),
+                || {
+                    barrier.wait();
+                },
+            )
         })
     };
     let healthy = {
         let supervisor = supervisor.clone();
         let barrier = barrier.clone();
         thread::spawn(move || {
-            barrier.wait();
-            supervisor.invoke(invocation(
-                "export default () => { let value = 0; for (let index = 0; index < 100000; index += 1) value = (value + index) % 1000003; return { healthy: true }; };",
-                InvocationLimits::default().wall_milliseconds,
-            ))
+            supervisor.invoke_after_acquire(
+                invocation(
+                    "export default () => { let value = 0; for (let index = 0; index < 100000; index += 1) value = (value + index) % 1000003; return { healthy: true }; };",
+                    InvocationLimits::default().wall_milliseconds,
+                ),
+                || {
+                    barrier.wait();
+                },
+            )
         })
     };
     barrier.wait();
@@ -141,11 +149,15 @@ fn timed_out_worker_does_not_fail_a_healthy_sibling() -> Result<(), Box<dyn std:
             let supervisor = supervisor.clone();
             let barrier = barrier.clone();
             thread::spawn(move || {
-                barrier.wait();
-                supervisor.invoke(invocation(
-                    "export default () => { let value = 0; for (let index = 0; index < 100000; index += 1) value = (value + index) % 1000003; return { recovered: true }; };",
-                    InvocationLimits::default().wall_milliseconds,
-                ))
+                supervisor.invoke_after_acquire(
+                    invocation(
+                        "export default () => { let value = 0; for (let index = 0; index < 100000; index += 1) value = (value + index) % 1000003; return { recovered: true }; };",
+                        InvocationLimits::default().wall_milliseconds,
+                    ),
+                    || {
+                        barrier.wait();
+                    },
+                )
             })
         })
         .collect::<Vec<_>>();

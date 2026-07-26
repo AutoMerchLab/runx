@@ -60,6 +60,14 @@ impl JavaScriptWorkerSupervisor {
         &self,
         invocation: WorkerInvocation,
     ) -> Result<WorkerInvocationOutcome, RuntimeError> {
+        self.invoke_inner(invocation, || {})
+    }
+
+    fn invoke_inner(
+        &self,
+        invocation: WorkerInvocation,
+        after_acquire: impl FnOnce(),
+    ) -> Result<WorkerInvocationOutcome, RuntimeError> {
         let invocation_id = format!(
             "js-{}",
             self.next_invocation.fetch_add(1, Ordering::Relaxed)
@@ -77,6 +85,7 @@ impl JavaScriptWorkerSupervisor {
             limits: invocation.limits,
         }));
         let mut lease = self.pool.acquire(worker_path.as_deref())?;
+        after_acquire();
         let (isolation, result) = {
             let session = lease.session_mut()?;
             let isolation = session.isolation.clone();
@@ -102,6 +111,15 @@ impl JavaScriptWorkerSupervisor {
                 Err(error)
             }
         }
+    }
+
+    #[cfg(test)]
+    fn invoke_after_acquire(
+        &self,
+        invocation: WorkerInvocation,
+        after_acquire: impl FnOnce(),
+    ) -> Result<WorkerInvocationOutcome, RuntimeError> {
+        self.invoke_inner(invocation, after_acquire)
     }
 
     pub(super) fn spawn_count(&self) -> u64 {
