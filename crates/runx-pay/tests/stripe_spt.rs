@@ -376,7 +376,7 @@ impl SkillAdapter for StripeSptAdapter {
             skill_name: request.skill_name.clone(),
             inputs: request.inputs.clone(),
         });
-        Ok(match request.skill_name.as_str() {
+        match request.skill_name.as_str() {
             "pay-quote" => skill_success(json!({
                 "payment_quote_packet": {
                     "data": {
@@ -412,11 +412,13 @@ impl SkillAdapter for StripeSptAdapter {
             })),
             "pay-fulfill-rail" => stripe_spt_fulfill_output(self.scenario),
             other => skill_failure(&format!("unexpected skill {other}")),
-        })
+        }
     }
 }
 
-fn stripe_spt_fulfill_output(scenario: StripeSptScenario) -> InvocationOutput {
+fn stripe_spt_fulfill_output(
+    scenario: StripeSptScenario,
+) -> Result<InvocationOutput, RuntimeError> {
     match scenario {
         StripeSptScenario::Fulfilled => skill_success(stripe_spt_rail_packet(
             "fulfilled",
@@ -494,23 +496,37 @@ fn stripe_spt_rail_packet(
     json!({ "effect_evidence_packet": { "data": data } })
 }
 
-fn skill_success(value: Value) -> InvocationOutput {
-    InvocationOutput::runtime_success(runtime_value(value), 1, JsonObject::new())
+fn skill_success(value: Value) -> Result<InvocationOutput, RuntimeError> {
+    Ok(InvocationOutput::runtime_success(
+        runtime_value(value)?,
+        1,
+        JsonObject::new(),
+    ))
 }
 
-fn skill_failure(message: &str) -> InvocationOutput {
-    InvocationOutput::runtime_failure(JsonValue::Null, message, 1, JsonObject::new())
+fn skill_failure(message: &str) -> Result<InvocationOutput, RuntimeError> {
+    Ok(InvocationOutput::runtime_failure(
+        JsonValue::Null,
+        message,
+        1,
+        JsonObject::new(),
+    ))
 }
 
-fn skill_failure_with_value(value: Value, message: &str) -> InvocationOutput {
-    InvocationOutput::runtime_failure(runtime_value(value), message, 1, JsonObject::new())
+fn skill_failure_with_value(value: Value, message: &str) -> Result<InvocationOutput, RuntimeError> {
+    Ok(InvocationOutput::runtime_failure(
+        runtime_value(value)?,
+        message,
+        1,
+        JsonObject::new(),
+    ))
 }
 
-fn runtime_value(value: Value) -> JsonValue {
-    let Ok(value) = serde_json::from_value(value) else {
-        panic!("test output fixture must match the Runx JSON contract");
-    };
-    value
+fn runtime_value(value: Value) -> Result<JsonValue, RuntimeError> {
+    serde_json::from_value(value).map_err(|source| RuntimeError::Json {
+        context: "converting stripe-spt test output".to_owned(),
+        source,
+    })
 }
 
 struct ApprovalHost {

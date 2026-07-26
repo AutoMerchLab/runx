@@ -1284,7 +1284,7 @@ fn payment_supervisor_evidence(
 
 struct RecordingAdapter {
     invocations: Rc<RefCell<Vec<String>>>,
-    value: JsonValue,
+    output_json: &'static str,
 }
 
 impl Default for RecordingAdapter {
@@ -1302,13 +1302,10 @@ impl RecordingAdapter {
         )
     }
 
-    fn with_output_json(output_json: &str) -> Self {
-        let Ok(value) = serde_json::from_str(output_json) else {
-            panic!("test output fixture must be valid JSON");
-        };
+    fn with_output_json(output_json: &'static str) -> Self {
         Self {
             invocations: Rc::new(RefCell::new(Vec::new())),
-            value,
+            output_json,
         }
     }
 
@@ -1324,8 +1321,13 @@ impl SkillAdapter for RecordingAdapter {
 
     fn invoke(&self, request: SkillInvocation) -> Result<InvocationOutput, RuntimeError> {
         self.invocations.borrow_mut().push(request.skill_name);
+        let value =
+            serde_json::from_str(self.output_json).map_err(|source| RuntimeError::Json {
+                context: "parsing recording-adapter test output".to_owned(),
+                source,
+            })?;
         Ok(InvocationOutput::runtime_success(
-            self.value.clone(),
+            value,
             1,
             JsonObject::new(),
         ))
@@ -1463,7 +1465,7 @@ impl SkillAdapter for PaidEchoAdapter {
             skill_name: request.skill_name.clone(),
             inputs: request.inputs.clone(),
         });
-        Ok(match request.skill_name.as_str() {
+        match request.skill_name.as_str() {
             "pay-quote" => skill_success(json!({
                 "payment_quote_packet": {
                     "data": {
@@ -1551,27 +1553,41 @@ impl SkillAdapter for PaidEchoAdapter {
                 }
             }
             other => skill_failure(&format!("unexpected skill {other}")),
-        })
+        }
     }
 }
 
-fn skill_success(value: Value) -> InvocationOutput {
-    InvocationOutput::runtime_success(runtime_value(value), 1, JsonObject::new())
+fn skill_success(value: Value) -> Result<InvocationOutput, RuntimeError> {
+    Ok(InvocationOutput::runtime_success(
+        runtime_value(value)?,
+        1,
+        JsonObject::new(),
+    ))
 }
 
-fn skill_failure(message: &str) -> InvocationOutput {
-    InvocationOutput::runtime_failure(JsonValue::Null, message, 1, JsonObject::new())
+fn skill_failure(message: &str) -> Result<InvocationOutput, RuntimeError> {
+    Ok(InvocationOutput::runtime_failure(
+        JsonValue::Null,
+        message,
+        1,
+        JsonObject::new(),
+    ))
 }
 
-fn skill_failure_with_value(value: Value, message: &str) -> InvocationOutput {
-    InvocationOutput::runtime_failure(runtime_value(value), message, 1, JsonObject::new())
+fn skill_failure_with_value(value: Value, message: &str) -> Result<InvocationOutput, RuntimeError> {
+    Ok(InvocationOutput::runtime_failure(
+        runtime_value(value)?,
+        message,
+        1,
+        JsonObject::new(),
+    ))
 }
 
-fn runtime_value(value: Value) -> JsonValue {
-    let Ok(value) = serde_json::from_value(value) else {
-        panic!("test output fixture must match the Runx JSON contract");
-    };
-    value
+fn runtime_value(value: Value) -> Result<JsonValue, RuntimeError> {
+    serde_json::from_value(value).map_err(|source| RuntimeError::Json {
+        context: "converting paid-echo test output".to_owned(),
+        source,
+    })
 }
 
 fn paid_echo_rail_packet(

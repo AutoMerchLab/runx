@@ -11,7 +11,7 @@
   "disposition": "refused",
   "evidence_refs": [
     "hrn_x402-pay-negative-cap-exceeded_reserve",
-    "runx:receipt:sha256:821bf72259d6ee7019ec034e4ab91b943bf56979c7031d5c06a0bc63370e8a0d",
+    "runx:receipt:sha256:cef87d3f045f9b97077689b00f3dccdb44ecaadd8f37ff2daf21156ca5db0d60",
     "runx:payment-capability:paid-echo-cap-exceeded-spend"
   ],
   "payment_profile": "x402-pay",
@@ -23,5 +23,5 @@
   },
   "scenario_id": "P1.3",
   "schema_version": "runx.payment_ledger_projection.v1",
-  "source_receipt_id": "runx:receipt:sha256:6f5483efb09de0bede94291f658f5443e0431305c8ed8ab9cdab0f19da3e080f"
+  "source_receipt_id": "runx:receipt:sha256:55228f8af35b1436202543a709bff318eb3020a85fd02d9ed422a9725863a722"
 }

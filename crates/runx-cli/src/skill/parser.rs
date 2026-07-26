@@ -623,7 +623,7 @@ mod tests {
     }
 
     #[test]
-    fn unbound_operator_context_bypass_is_not_a_public_flag() {
+    fn unbound_operator_context_bypass_is_not_a_public_flag() -> Result<(), String> {
         let args = [
             "skill",
             "skills/messageboard",
@@ -634,14 +634,16 @@ mod tests {
         .into_iter()
         .map(std::ffi::OsString::from)
         .collect::<Vec<_>>();
-        let Err(error) = super::parse_skill_plan(&args) else {
-            panic!("public skill runs must not bypass prepared admission");
+        let error = match super::parse_skill_plan(&args) {
+            Err(error) => error,
+            Ok(_) => return Err("public skill runs bypassed prepared admission".to_owned()),
         };
         assert!(error.contains("operator-context bypass is not supported"));
+        Ok(())
     }
 
     #[test]
-    fn bound_execution_requires_package_and_closure_digests() {
+    fn bound_execution_requires_package_and_closure_digests() -> Result<(), String> {
         let package_only = [
             "skill",
             "skills/messageboard",
@@ -651,8 +653,9 @@ mod tests {
         .into_iter()
         .map(std::ffi::OsString::from)
         .collect::<Vec<_>>();
-        let Err(error) = super::parse_skill_plan(&package_only) else {
-            panic!("a package digest alone is not a complete execution binding");
+        let error = match super::parse_skill_plan(&package_only) {
+            Err(error) => error,
+            Ok(_) => return Err("a package digest formed a partial execution binding".to_owned()),
         };
         assert!(error.contains("requires both --package-digest"));
 
@@ -665,10 +668,12 @@ mod tests {
         .into_iter()
         .map(std::ffi::OsString::from)
         .collect::<Vec<_>>();
-        let Err(error) = super::parse_skill_plan(&closure_only) else {
-            panic!("a closure digest alone is not a complete execution binding");
+        let error = match super::parse_skill_plan(&closure_only) {
+            Err(error) => error,
+            Ok(_) => return Err("a closure digest formed a partial execution binding".to_owned()),
         };
         assert!(error.contains("requires both --package-digest"));
+        Ok(())
     }
 
     #[test]
