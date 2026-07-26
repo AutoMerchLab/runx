@@ -40,6 +40,10 @@ runx export codex                           # ~/.codex/skills plus managed rules
 Add `--json` for machine-readable output. Only public skills export; hidden and
 builder-surface skills are skipped.
 
+A full export synchronizes the managed catalog and removes stale generated
+shims. Supplying one or more skill refs is additive: Runx updates those shims
+without removing any other managed skills.
+
 ## What A Claude Shim Looks Like
 
 `runx export claude` writes a shim like this for the `spend` skill:

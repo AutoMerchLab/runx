@@ -262,7 +262,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         name: "export",
         top_level_usage: &[],
         usage: &["runx export <claude|codex> [skill-ref...] [--project] [--json]"],
-        notes: &[],
+        notes: &["A full export prunes stale managed shims; named skill refs update additively."],
         options: &[
             "--project  Write project-local host-agent shims",
             "-j, --json",
