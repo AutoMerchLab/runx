@@ -12,7 +12,6 @@ The npm CLI package is `@runxhq/cli` and exposes the `runx` binary.
 Start with the checked-in hello-world skill:
 
 ```bash
-cd oss
 cargo build --manifest-path crates/Cargo.toml -p runx-cli
 export RUNX_RECEIPT_DIR="$(mktemp -d)"
 crates/target/debug/runx skill examples/hello-world \
@@ -755,9 +754,9 @@ coverage.
 ## Build And Pack
 
 ```bash
-pnpm --dir oss build
-pnpm --dir oss test tests/cli-package.test.ts
-cd oss/packages/cli
+pnpm build
+pnpm test tests/cli-package.test.ts
+cd packages/cli
 npm pack --dry-run --json
 ```
 
@@ -765,7 +764,7 @@ The package must include `dist/index.js` and `dist/index.d.ts`, and `dist/index.
 
 ## Boundary Rules
 
-- `oss/` must not import from `cloud/`.
+- `oss/` (this repository) must not import from `cloud/` (the private companion workspace, not part of this checkout).
 - State-machine and policy packages remain pure.
 - Rust owns trusted local runtime/execution, including sandbox, receipts,
   policy, authority, payment, harness, built-in adapters, and external
