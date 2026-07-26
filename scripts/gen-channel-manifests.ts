@@ -65,8 +65,8 @@ function archiveStem(m: Manifest, target: string): string {
   return `runx-${m.version}-${target}`;
 }
 
-function windowsBinaryPath(m: Manifest, target: string): string {
-  return `${archiveStem(m, target)}\\runx.exe`;
+function windowsArchivePath(m: Manifest, target: string, file: string): string {
+  return `${archiveStem(m, target)}\\${file}`;
 }
 
 function artifact(m: Manifest, target: string): Artifact {
@@ -188,9 +188,9 @@ PackageVersion: ${m.version}
 InstallerType: zip
 NestedInstallerType: portable
 NestedInstallerFiles:
-  - RelativeFilePath: ${windowsBinaryPath(m, TARGETS.winX64)}
+  - RelativeFilePath: ${windowsArchivePath(m, TARGETS.winX64, "runx.exe")}
     PortableCommandAlias: runx
-  - RelativeFilePath: ${archiveStem(m, TARGETS.winX64)}\runx-js-worker.exe
+  - RelativeFilePath: ${windowsArchivePath(m, TARGETS.winX64, "runx-js-worker.exe")}
 Installers:
   - Architecture: x64
     InstallerUrl: ${archiveUrl(m, TARGETS.winX64)}
