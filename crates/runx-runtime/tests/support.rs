@@ -85,15 +85,7 @@ pub(crate) fn read_test_signed_receipt(
 /// Linux fixtures include `/proc/self/stat` start time so a busy concurrent test
 /// run cannot mistake rapid PID reuse for a surviving descendant. Older
 /// pid-only fixtures retain the ESRCH/zombie check.
-#[cfg(all(
-    unix,
-    any(
-        feature = "catalog",
-        feature = "external-adapter",
-        feature = "mcp",
-        feature = "thread-outbox-provider"
-    )
-))]
+#[cfg(all(unix, any(feature = "cli-tool", feature = "thread-outbox-provider")))]
 pub(crate) fn wait_for_recorded_pid_exit(
     pid_path: &Path,
     deadline: std::time::Duration,
@@ -129,15 +121,7 @@ pub(crate) fn wait_for_recorded_pid_exit(
 /// PID 1 has not reaped it yet. A zombie cannot run or write the sentinel the
 /// containment tests protect, so it is terminal even though `kill(pid, 0)`
 /// continues to resolve the PID.
-#[cfg(all(
-    unix,
-    any(
-        feature = "catalog",
-        feature = "external-adapter",
-        feature = "mcp",
-        feature = "thread-outbox-provider"
-    )
-))]
+#[cfg(all(unix, feature = "mcp"))]
 pub(crate) fn wait_for_pid_exit(
     pid: i32,
     deadline: std::time::Duration,
@@ -148,8 +132,7 @@ pub(crate) fn wait_for_pid_exit(
 #[cfg(all(
     unix,
     any(
-        feature = "catalog",
-        feature = "external-adapter",
+        feature = "cli-tool",
         feature = "mcp",
         feature = "thread-outbox-provider"
     )
@@ -184,8 +167,7 @@ fn wait_for_process_exit(
 #[cfg(all(
     unix,
     any(
-        feature = "catalog",
-        feature = "external-adapter",
+        feature = "cli-tool",
         feature = "mcp",
         feature = "thread-outbox-provider"
     )
@@ -209,8 +191,7 @@ fn process_start_time(pid: i32) -> Option<u64> {
 #[cfg(all(
     unix,
     any(
-        feature = "catalog",
-        feature = "external-adapter",
+        feature = "cli-tool",
         feature = "mcp",
         feature = "thread-outbox-provider"
     )

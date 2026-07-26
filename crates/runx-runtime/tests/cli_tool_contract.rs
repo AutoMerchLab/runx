@@ -761,6 +761,8 @@ fn invoke_node(
 
 fn env_with_local_sandbox_fallback() -> BTreeMap<String, String> {
     let mut env = std::env::vars().collect::<BTreeMap<_, _>>();
+    env.remove(RUNX_CWD_ENV);
+    env.remove(INIT_CWD_ENV);
     env.insert(
         RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV.to_owned(),
         "local".to_owned(),
@@ -772,8 +774,6 @@ fn env_with_local_sandbox_fallback_and(
     entries: impl IntoIterator<Item = (String, String)>,
 ) -> BTreeMap<String, String> {
     let mut env = env_with_local_sandbox_fallback();
-    env.remove(RUNX_CWD_ENV);
-    env.remove(INIT_CWD_ENV);
     env.extend(entries);
     env
 }
