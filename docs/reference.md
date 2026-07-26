@@ -44,7 +44,7 @@ shape. It does not claim real x402 settlement or a real Stripe charge; live
 conformance lanes require dedicated funded testnet wallets or provider test
 credentials. No-secret preflight reports use `can_run: false` and `missing_env`
 to name live blockers without printing secret values. See
-[docs/demos.md](docs/demos.md#payment-demo-gate) for the full split between
+[docs/demos.md](demos.md#payment-demo-gate) for the full split between
 local dogfood and live protocol conformance.
 
 ## Requirements
@@ -72,7 +72,7 @@ pnpm rust:check
 ```
 
 Contributor setup, test selection, and commit sign-off rules are in
-[CONTRIBUTING.md](CONTRIBUTING.md).
+[CONTRIBUTING.md](../CONTRIBUTING.md).
 
 ## Local CLI
 
@@ -253,7 +253,7 @@ generated-contract layer:
   generated contracts plus narrow process/protocol, host-presentation, and
   bridge packages over language-neutral contracts.
 
-For the generated package export index, see [docs/api-surface.md](docs/api-surface.md).
+For the generated package export index, see [docs/api-surface.md](api-surface.md).
 
 `runx-runtime` is the canonical local runtime. It owns local skill, graph,
 harness, receipt, history, policy, authority, payment, sandbox admission and
@@ -286,7 +286,7 @@ Command-surface ownership:
 | marketplace and docs projection | Rust-owned catalog/contracts | generated docs and client views |
 
 Stateful product work should use the governed data-plane shape in
-[docs/governed-data-plane.md](docs/governed-data-plane.md): domain skills own
+[docs/governed-data-plane.md](governed-data-plane.md): domain skills own
 meaning, while provider adapters execute bounded reads, append-only event
 writes, and projection reads.
 
@@ -366,7 +366,7 @@ command, and there is no privileged `runx docs ...` path inside the engine.
 
 `issue-to-pr` follows the same boundary. runx owns the generic source-thread to
 scafld to PR machinery; service repos own Slack, Sentry, owner assignment, and
-publish policy. See [docs/issue-to-pr.md](docs/issue-to-pr.md).
+publish policy. See [docs/issue-to-pr.md](issue-to-pr.md).
 
 ## Standalone Skill Packages
 
