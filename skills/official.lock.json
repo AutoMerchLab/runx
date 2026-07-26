@@ -407,8 +407,8 @@
   },
   {
     "skill_id": "runx/skill-lab",
-    "version": "sha-7307d420d15c",
-    "digest": "02e8445cae1bc82f5c2dba42d92653ee56ae222e661cf48cab1c78fec91138d1",
+    "version": "sha-095a217d6aab",
+    "digest": "fd73e9618ac51593c7afd109bec44c029864454f30f87af7ea9d3302607e29c4",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },

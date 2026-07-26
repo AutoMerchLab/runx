@@ -241,7 +241,7 @@ fn native_skill_prints_operator_context_and_admits_safe_run_by_default()
 }
 
 #[test]
-fn native_mutating_skill_requires_digest_bound_operator_approval()
+fn native_mutating_skill_prepares_once_and_defers_its_action_gate()
 -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::support::temp_root("runx-skill-mutating-operator-context");
     let skill_dir = write_operator_context_skill(&root)?;
@@ -266,30 +266,16 @@ fn native_mutating_skill_requires_digest_bound_operator_approval()
     assert_eq!(output.status.code(), Some(2));
     let stderr = String::from_utf8(output.stderr)?;
     assert!(stderr.contains("1 mutating"));
+    assert_eq!(stderr.matches("Prepared run").count(), 1);
     let stdout = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
-    assert_eq!(stdout["status"], "needs_operator_approval");
-    let digest = stdout["digest"].as_str().ok_or("missing digest")?;
-    assert!(digest.starts_with("sha256:"));
-
-    let approved = runx_command()
-        .args([
-            "skill",
-            skill_dir.to_str().ok_or("non-utf8 skill dir")?,
-            "--json",
-            "--non-interactive",
-            "--approve-operator-context",
-            digest,
-        ])
-        .output()?;
-    assert_eq!(approved.status.code(), Some(2));
-    let approved_stdout = serde_json::from_slice::<serde_json::Value>(&approved.stdout)?;
-    assert_eq!(approved_stdout["status"], "needs_agent");
+    assert_eq!(stdout["status"], "needs_agent");
+    assert!(stdout.get("approval_flag").is_none());
 
     Ok(())
 }
 
 #[test]
-fn mutating_context_and_graph_approval_gates_always_require_operator_resolution()
+fn graph_action_approval_remains_the_only_operator_resolution()
 -> Result<(), Box<dyn std::error::Error>> {
     let root = crate::support::temp_root("runx-explicit-approval");
     fs::create_dir_all(&root)?;
@@ -349,7 +335,13 @@ fn mutating_context_and_graph_approval_gates_always_require_operator_resolution(
         String::from_utf8_lossy(&prepared_run.stderr)
     );
     let prepared_json = serde_json::from_slice::<serde_json::Value>(&prepared_run.stdout)?;
-    assert_eq!(prepared_json["status"], "needs_operator_approval");
+    assert_eq!(prepared_json["status"], "needs_agent");
+    assert_eq!(
+        String::from_utf8_lossy(&prepared_run.stderr)
+            .matches("Prepared run")
+            .count(),
+        1
+    );
 
     let signed_run = runx_command()
         .current_dir(&root)

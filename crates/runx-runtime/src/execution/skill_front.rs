@@ -58,8 +58,7 @@ pub use super::operator_context::{
 pub use super::prepared_skill::{
     PREPARED_SKILL_REPORT_SCHEMA, PreparedCredentialSummary, PreparedEntryProvenance,
     PreparedGovernanceSummary, PreparedInputSummary, PreparedRequestSummary, PreparedSkillRun,
-    PreparedSkillRunApproval, PreparedSkillRunReport, PreparedSkillRunStatus, PreparedTraceEntry,
-    prepare_skill_run,
+    PreparedSkillRunReport, PreparedSkillRunStatus, PreparedTraceEntry, prepare_skill_run,
 };
 
 // The canonical public boundary is a bounded result envelope. Full receipts

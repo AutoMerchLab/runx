@@ -24,7 +24,7 @@ Every archetype must have a truthful closure, explicit authority and stop condit
 Provider operations follow one evidence contract: runtime-resolved credentials, pre-call scope and idempotency checks, approval only at an external mutation, provider execution through a declared boundary, acknowledgement kept separate from finality, and stable-id readback before a terminal effect claim. The keyless NWS lane is the reference read shape; Nitrosend is the reference credentialed account-operation shape.
 
 Managed-agent execution is optional infrastructure, not an admission category. Agent acts yield `needs_agent` by default. In-process execution requires per-run `--managed-agent` consent and a visible round budget; configured credentials are availability, not consent.
-Prepared context remains digest-bound and drift-checked for every run, but human context approval is reserved for selected graphs that declare mutation. Safe reads, analysis, planning, and artifact generation proceed without that gate.
+Prepared context remains digest-bound and drift-checked for every run, but it is evidence rather than an approval gate. Consequential approval belongs to exactly one action owner: the native effect boundary for provider mutations or an explicit graph gate for a consequential action with no effect-owned gate.
 
 The normative detail lives in
 [Skill Quality Standard](skill-quality-standard.md).

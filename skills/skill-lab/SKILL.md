@@ -86,8 +86,11 @@ approval rules.
   missing, return work to OSS or the product owner; never extend a Cloud script
   or hosted service as a substitute.
 - For hosted provider work, compose native `provider.read` or
-  `provider.mutate`; declare exact scopes and provider operations, gate only the
-  consequential mutation, and require provider readback. Use
+  `provider.mutate`; declare exact scopes and provider operations, and require
+  provider readback. `provider.mutate` owns the exact human approval at the
+  effect boundary, so never add an adjacent graph approval for the same action.
+  Use an explicit graph approval only for a consequential action whose native
+  capability does not already own one. One action has one approval owner. Use
   `expected_result` to bind the returned resource identity and `result_fields`
   to admit only the fields the receipt needs. Secret-adjacent operations must
   project their result. Pass mutation retry identity through the native
@@ -254,9 +257,11 @@ immutable artifact, durable cursor/projection, or bounded domain result, and
 name its production owner plus small/large proof. Reads, drafts, local
 validation, and reversible package writes do not gain ceremonial human
 approval. Provider mutations and other consequential effects keep their real
-gates. Budgets are operational ceilings, not guesses to be widened after
-validation. Do not write files, calculate a digest, invent provider proof, or
-solve an ownership gap with package code.
+gates. Assign each consequential action exactly one approval owner; never pair
+an explicit graph approval with an effect-owned approval for the same action.
+Budgets are operational ceilings, not guesses to be widened after validation.
+Do not write files, calculate a digest, invent provider proof, or solve an
+ownership gap with package code.
 
 For `improve`, diagnose only from supplied receipt or harness evidence and
 distinguish contract, implementation, fixture, environment, and operator

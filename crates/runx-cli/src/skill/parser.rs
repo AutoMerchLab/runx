@@ -86,7 +86,6 @@ fn parse_skill_plan_inner(args: &[OsString]) -> Result<SkillPlan, String> {
         non_interactive: state.non_interactive,
         trusted_command_execution: false,
         full_operator_context: state.full_operator_context,
-        approve_operator_context: state.approve_operator_context,
         inputs: state.inputs,
         input_document: state.input_document,
         credential_profile: state.credential_profile,
@@ -108,7 +107,6 @@ struct SkillParseState {
     json: bool,
     non_interactive: bool,
     full_operator_context: bool,
-    approve_operator_context: Option<String>,
     inspect: bool,
     force_run: bool,
     inputs: BTreeMap<String, JsonValue>,
@@ -335,19 +333,6 @@ fn parse_skill_arg(
             )?);
         }
         "--json" | "-j" => state.json = true,
-        value if value.starts_with("--approve-operator-context=") => {
-            state.approve_operator_context = Some(non_empty_flag_value(
-                "--approve-operator-context",
-                value.trim_start_matches("--approve-operator-context="),
-            )?);
-        }
-        "--approve-operator-context" => {
-            index += 1;
-            state.approve_operator_context = Some(non_empty_flag_value(
-                "--approve-operator-context",
-                &string_arg(args, index)?,
-            )?);
-        }
         value
             if value == "--skip-operator-context"
                 || value.starts_with("--skip-operator-context=")
@@ -355,7 +340,7 @@ fn parse_skill_arg(
                 || value.starts_with("--no-operator-context=") =>
         {
             return Err(
-                "runx skill operator-context bypass is not supported; use exact bound execution or approve the prepared context digest"
+                "runx skill operator context is always prepared and digest-bound; it cannot be bypassed"
                     .to_owned(),
             );
         }
@@ -673,32 +658,6 @@ mod tests {
             Ok(_) => return Err("a closure digest formed a partial execution binding".to_owned()),
         };
         assert!(error.contains("requires both --package-digest"));
-        Ok(())
-    }
-
-    #[test]
-    fn approve_operator_context_flag_is_not_a_skill_input() -> Result<(), String> {
-        let args = [
-            "skill",
-            "skills/messageboard",
-            "--approve-operator-context",
-            "sha256:abc123",
-            "--non-interactive",
-            "--input",
-            "title=hello",
-        ]
-        .into_iter()
-        .map(std::ffi::OsString::from)
-        .collect::<Vec<_>>();
-        let plan = super::parse_skill_plan(&args)?;
-
-        assert_eq!(
-            plan.approve_operator_context.as_deref(),
-            Some("sha256:abc123")
-        );
-        assert!(plan.non_interactive);
-        assert_eq!(plan.inputs.len(), 1);
-        assert!(plan.inputs.contains_key("title"));
         Ok(())
     }
 

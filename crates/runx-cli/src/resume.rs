@@ -254,7 +254,6 @@ pub fn run_native_resume_with_workspace(plan: ResumePlan, workspace: &WorkspaceE
         non_interactive: true,
         trusted_command_execution: false,
         full_operator_context: false,
-        approve_operator_context: None,
         inputs: BTreeMap::new(),
         input_document: None,
         credential_profile: pending.credential_profile.clone(),

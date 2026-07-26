@@ -144,9 +144,12 @@ With `agent.provider`, `agent.model`, and `agent.api_key` configured, the CLI
 can now resolve managed agent work directly. Deterministic tools, approvals,
 and required human inputs keep their existing local behavior.
 
-Mutating prepared runs and explicit approval steps always stop for an operator
-decision. There is no persistent or environment-based auto-approval override:
-development configuration must not silently acquire live authority.
+Prepared context never asks for performative approval: it binds the selected
+skill, inputs, execution closure, and drift guards into the receipt. A
+consequential action stops once at its owning boundary—an effect-owned gate for
+native provider mutation, or an explicit graph approval when no native effect
+owns the decision. There is no persistent or environment-based auto-approval
+override; development configuration must not silently acquire live authority.
 
 Provider-backed skills declare requirements in `X.yaml`; configure them with
 `runx credential` or an ignored workspace `.env`. See

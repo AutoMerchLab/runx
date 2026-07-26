@@ -286,7 +286,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         name: "skill",
         top_level_usage: &[],
         usage: &[
-            "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--approve-operator-context digest] [--full-operator-context] [--registry url|path] [--digest sha256] [--package-digest sha256 --execution-closure-digest sha256] [--flag value] [-R dir]",
+            "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--full-operator-context] [--registry url|path] [--digest sha256] [--package-digest sha256 --execution-closure-digest sha256] [--flag value] [-R dir]",
             "runx skill inspect <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-j] [--registry url|path] [--digest sha256]",
         ],
         notes: &[],
@@ -296,8 +296,6 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
             "-i, --input key=value    Set a structured input; repeat for multiple inputs",
             "--input-json key=json    Set an input that must parse as JSON",
             "--inputs file|-          Read the complete JSON input object from a file or stdin; do not mix with per-key inputs",
-            "--approve-operator-context digest",
-            "                          Approve a prepared mutation only when its context matches this digest",
             "--full-operator-context  Print the complete prepared context before execution",
             "--non-interactive        Never prompt; return approval instructions instead",
             "--managed-agent          Explicitly allow an in-process model loop for this run",

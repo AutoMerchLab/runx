@@ -26,19 +26,10 @@ use crate::RuntimeError;
 
 pub const PREPARED_SKILL_REPORT_SCHEMA: &str = "runx.prepared_skill_run.v1";
 pub(crate) const PREPARED_CONTEXT_DIGEST_ENV: &str = "RUNX_INTERNAL_PREPARED_CONTEXT_DIGEST";
-pub(crate) const PREPARED_APPROVAL_ACTOR_ENV: &str = "RUNX_INTERNAL_PREPARED_APPROVAL_ACTOR";
-pub(crate) const PREPARED_APPROVAL_MODE_ENV: &str = "RUNX_INTERNAL_PREPARED_APPROVAL_MODE";
-pub(crate) const PREPARED_APPROVAL_TIME_ENV: &str = "RUNX_INTERNAL_PREPARED_APPROVAL_TIME";
 pub(crate) const PREPARED_ARTIFACT_GUARDS_ENV: &str = "RUNX_INTERNAL_PREPARED_ARTIFACT_GUARDS";
 
 pub(crate) fn strip_untrusted_prepared_env(env: &mut BTreeMap<String, String>) {
-    for name in [
-        PREPARED_CONTEXT_DIGEST_ENV,
-        PREPARED_APPROVAL_ACTOR_ENV,
-        PREPARED_APPROVAL_MODE_ENV,
-        PREPARED_APPROVAL_TIME_ENV,
-        PREPARED_ARTIFACT_GUARDS_ENV,
-    ] {
+    for name in [PREPARED_CONTEXT_DIGEST_ENV, PREPARED_ARTIFACT_GUARDS_ENV] {
         env.remove(name);
     }
 }
@@ -118,24 +109,6 @@ pub struct PreparedTraceEntry {
     pub detail: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct PreparedSkillRunApproval {
-    pub actor: String,
-    pub mode: String,
-    pub observed_at: String,
-}
-
-impl PreparedSkillRunApproval {
-    #[must_use]
-    pub fn now(actor: impl Into<String>, mode: impl Into<String>) -> Self {
-        Self {
-            actor: actor.into(),
-            mode: mode.into(),
-            observed_at: crate::time::now_iso8601(),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PreparedSkillRunReport {
     pub schema: String,
@@ -163,8 +136,7 @@ pub struct PreparedSkillRun {
     runner: SkillRunnerDefinition,
     report: PreparedSkillRunReport,
     guards: Vec<PreparedArtifactGuard>,
-    admitted: bool,
-    approval: Option<PreparedSkillRunApproval>,
+    context_bound: bool,
 }
 
 impl std::fmt::Debug for PreparedSkillRun {
@@ -175,7 +147,7 @@ impl std::fmt::Debug for PreparedSkillRun {
             .field("selected_runner", &self.selected_runner)
             .field("report", &self.report)
             .field("guard_count", &self.guards.len())
-            .field("admitted", &self.admitted)
+            .field("context_bound", &self.context_bound)
             .finish_non_exhaustive()
     }
 }
@@ -210,42 +182,13 @@ impl PreparedSkillRun {
         self.report.status == PreparedSkillRunStatus::Ready
     }
 
-    pub fn approve(&mut self, approval: PreparedSkillRunApproval) -> Result<(), SkillRunError> {
-        self.bind_prepared_context()?;
-        self.request.env.insert(
-            PREPARED_APPROVAL_ACTOR_ENV.to_owned(),
-            approval.actor.clone(),
-        );
-        self.request
-            .env
-            .insert(PREPARED_APPROVAL_MODE_ENV.to_owned(), approval.mode.clone());
-        self.request.env.insert(
-            PREPARED_APPROVAL_TIME_ENV.to_owned(),
-            approval.observed_at.clone(),
-        );
-        self.approval = Some(approval);
-        Ok(())
-    }
-
-    /// Admit a prepared non-mutating run without fabricating human-approval
-    /// evidence. The digest and artifact guards still bind execution to the
-    /// exact contract the operator context surface displayed.
-    pub fn admit_safe(&mut self) -> Result<(), SkillRunError> {
-        if self.requires_operator_approval() {
-            return Err(SkillRunError::Invalid(
-                "prepared skill run contains mutating steps and requires digest-bound operator approval"
-                    .to_owned(),
-            ));
-        }
+    /// Bind the exact prepared context without fabricating action approval.
+    ///
+    /// Consequential actions are approved by their owning graph gate or
+    /// effect boundary after the exact action is known. Preparation binds
+    /// context and artifact drift only.
+    pub fn bind_context(&mut self) -> Result<(), SkillRunError> {
         self.bind_prepared_context()
-    }
-
-    /// Human approval is reserved for a prepared graph that declares an
-    /// external mutation. Safe reads, analysis, planning, and artifact work
-    /// retain digest/drift binding but do not stop for approval.
-    #[must_use]
-    pub fn requires_operator_approval(&self) -> bool {
-        !self.report.governance.mutating_steps.is_empty()
     }
 
     fn bind_prepared_context(&mut self) -> Result<(), SkillRunError> {
@@ -274,18 +217,13 @@ impl PreparedSkillRun {
         self.request
             .env
             .insert(PREPARED_ARTIFACT_GUARDS_ENV.to_owned(), encoded);
-        self.admitted = true;
+        self.context_bound = true;
         Ok(())
     }
 
     #[must_use]
-    pub const fn is_admitted(&self) -> bool {
-        self.admitted
-    }
-
-    #[must_use]
-    pub fn approval(&self) -> Option<&PreparedSkillRunApproval> {
-        self.approval.as_ref()
+    pub const fn is_context_bound(&self) -> bool {
+        self.context_bound
     }
 
     pub(crate) fn request(&self) -> &SkillRunRequest {
@@ -339,7 +277,7 @@ impl PreparedSkillRun {
 }
 
 #[derive(Serialize)]
-struct PreparedAuthorizationPreimage<'a> {
+struct PreparedContextPreimage<'a> {
     schema: &'static str,
     skill_path: &'a Path,
     cwd: &'a Path,
@@ -397,7 +335,7 @@ pub(crate) fn prepare_skill_run_with_effects(
     let request_summary = request_summary(&request, &skill_dir, &runner.name, entry);
     let context = resolve_prepared_context(&request, &skill_dir, &runner, effects);
     let governance = prepared_governance(&request, &context);
-    let digest = prepared_authorization_digest(&request, &request_summary, &context)?;
+    let digest = prepared_context_digest(&request, &request_summary, &context)?;
     let guards = context
         .chain
         .as_ref()
@@ -420,8 +358,7 @@ pub(crate) fn prepare_skill_run_with_effects(
             blocked_reason: context.blocked_reason,
         },
         guards,
-        admitted: false,
-        approval: None,
+        context_bound: false,
     })
 }
 
@@ -446,14 +383,14 @@ fn prepared_governance(
     governance
 }
 
-fn prepared_authorization_digest(
+fn prepared_context_digest(
     request: &SkillRunRequest,
     summary: &PreparedRequestSummary,
     context: &PreparedContextResolution,
 ) -> Result<String, SkillRunError> {
-    // Receipt storage and generated run identity are execution bookkeeping, not
-    // authority, so the same semantic run has the same approval preimage.
-    let preimage = PreparedAuthorizationPreimage {
+    // Receipt storage and generated run identity are execution bookkeeping, so
+    // the same semantic run has the same prepared-context identity.
+    let preimage = PreparedContextPreimage {
         schema: PREPARED_SKILL_REPORT_SCHEMA,
         skill_path: &summary.skill_path,
         cwd: &summary.cwd,
@@ -556,23 +493,7 @@ pub(crate) fn prepared_receipt_references(env: &BTreeMap<String, String>) -> Vec
         observed_at: None,
         proof_kind: None,
     };
-    let (Some(actor), Some(mode), Some(observed_at)) = (
-        env.get(PREPARED_APPROVAL_ACTOR_ENV),
-        env.get(PREPARED_APPROVAL_MODE_ENV),
-        env.get(PREPARED_APPROVAL_TIME_ENV),
-    ) else {
-        return vec![artifact];
-    };
-    let decision = Reference {
-        reference_type: ReferenceType::Decision,
-        uri: format!("runx:decision:operator_context_approval:{digest_id}").into(),
-        provider: Some("runx".to_owned().into()),
-        locator: Some(format!("actor={actor};mode={mode}").into()),
-        label: Some("operator context approval".to_owned().into()),
-        observed_at: Some(observed_at.clone().into()),
-        proof_kind: None,
-    };
-    vec![artifact, decision]
+    vec![artifact]
 }
 
 pub(crate) fn verify_prepared_artifact_at_use(
@@ -1291,7 +1212,6 @@ runners:
             prepared.report().governance.authority_scopes,
             ["example:write"]
         );
-        assert!(prepared.requires_operator_approval());
         Ok(())
     }
 
@@ -1310,11 +1230,11 @@ runners:
             None,
             PreparedEntryProvenance::default(),
         )?;
-        prepared.approve(PreparedSkillRunApproval::now("test", "explicit_digest"))?;
+        prepared.bind_context()?;
         let prepared_result = orchestrator.run_prepared_skill(&prepared)?;
         assert_eq!(baseline.status, prepared_result.status);
 
-        fs::write(temp.path().join("SKILL.md"), "# Changed after approval")?;
+        fs::write(temp.path().join("SKILL.md"), "# Changed after preparation")?;
         let Err(error) = orchestrator.run_prepared_skill(&prepared) else {
             return Err("prepared artifact drift must fail closed".into());
         };
@@ -1327,8 +1247,7 @@ runners:
     }
 
     #[test]
-    fn prepared_safe_admission_binds_context_without_human_approval() -> Result<(), Box<dyn Error>>
-    {
+    fn prepared_context_binding_does_not_fabricate_human_approval() -> Result<(), Box<dyn Error>> {
         use crate::execution::orchestrator::LocalOrchestrator;
 
         let temp = tempdir()?;
@@ -1341,13 +1260,12 @@ runners:
         )?;
 
         let Err(error) = orchestrator.run_prepared_skill(&prepared) else {
-            return Err("unadmitted prepared run must fail closed".into());
+            return Err("unbound prepared context must fail closed".into());
         };
-        assert!(error.to_string().contains("requires admission"));
+        assert!(error.to_string().contains("context to be bound"));
 
-        prepared.admit_safe()?;
-        assert!(prepared.is_admitted());
-        assert!(prepared.approval().is_none());
+        prepared.bind_context()?;
+        assert!(prepared.is_context_bound());
         let references = prepared_receipt_references(&prepared.request().env);
         assert_eq!(references.len(), 1);
         assert_eq!(references[0].reference_type, ReferenceType::Artifact);
@@ -1363,7 +1281,8 @@ runners:
     }
 
     #[test]
-    fn prepared_safe_admission_cannot_bypass_mutation_approval() -> Result<(), Box<dyn Error>> {
+    fn prepared_context_binding_does_not_fabricate_mutation_approval() -> Result<(), Box<dyn Error>>
+    {
         let temp = tempdir()?;
         write_skill(temp.path(), "", "# Prepared")?;
         let mut prepared = prepare_skill_run(
@@ -1377,16 +1296,11 @@ runners:
             .mutating_steps
             .push("entry.publish".to_owned());
 
-        assert!(prepared.requires_operator_approval());
-        let Err(error) = prepared.admit_safe() else {
-            return Err("mutating prepared runs unexpectedly used safe admission".into());
-        };
-        assert!(
-            error
-                .to_string()
-                .contains("requires digest-bound operator approval")
-        );
-        assert!(!prepared.is_admitted());
+        prepared.bind_context()?;
+        assert!(prepared.is_context_bound());
+        let references = prepared_receipt_references(&prepared.request().env);
+        assert_eq!(references.len(), 1);
+        assert_eq!(references[0].reference_type, ReferenceType::Artifact);
         Ok(())
     }
 
@@ -1410,7 +1324,7 @@ runners:
         )?;
         let mut prepared =
             prepare_skill_run(request(&entry), None, PreparedEntryProvenance::default())?;
-        prepared.approve(PreparedSkillRunApproval::now("test", "explicit_digest"))?;
+        prepared.bind_context()?;
         fs::write(
             child.join("X.yaml"),
             "skill: child\nrunners:\n  child:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: after\n",
@@ -1438,7 +1352,7 @@ runners:
     }
 
     #[test]
-    fn prepared_skill_receipt_binds_context_artifact_and_approval_decision()
+    fn prepared_skill_receipt_binds_context_artifact_without_approval_decision()
     -> Result<(), Box<dyn Error>> {
         use crate::adapter::InvocationOutput;
         use crate::receipts::{
@@ -1450,18 +1364,6 @@ runners:
         env.insert(
             PREPARED_CONTEXT_DIGEST_ENV.to_owned(),
             "sha256:abc123".to_owned(),
-        );
-        env.insert(
-            PREPARED_APPROVAL_ACTOR_ENV.to_owned(),
-            "test-operator".to_owned(),
-        );
-        env.insert(
-            PREPARED_APPROVAL_MODE_ENV.to_owned(),
-            "explicit_digest".to_owned(),
-        );
-        env.insert(
-            PREPARED_APPROVAL_TIME_ENV.to_owned(),
-            "2026-07-12T00:00:00Z".to_owned(),
         );
         let output = InvocationOutput::runtime_success(
             JsonValue::Object(BTreeMap::new()),
@@ -1498,18 +1400,11 @@ runners:
             reference.reference_type == ReferenceType::Artifact
                 && reference.uri.as_str().contains("operator_context:abc123")
         }));
-        assert!(refs.iter().any(|reference| {
-            reference.reference_type == ReferenceType::Decision
-                && reference
-                    .locator
-                    .as_ref()
-                    .is_some_and(|value| value.as_str().contains("test-operator"))
-        }));
         assert!(
             receipt.seal.criteria[0]
                 .verification_refs
                 .iter()
-                .any(|reference| reference.reference_type == ReferenceType::Decision)
+                .all(|reference| reference.reference_type != ReferenceType::Decision)
         );
         assert!(prepared_receipt_references(&BTreeMap::new()).is_empty());
 
@@ -1525,21 +1420,10 @@ runners:
 
     #[test]
     fn prepared_skill_untrusted_env_cannot_forge_receipt_references() {
-        let mut env = BTreeMap::from([
-            (
-                PREPARED_CONTEXT_DIGEST_ENV.to_owned(),
-                "sha256:forged".to_owned(),
-            ),
-            (
-                PREPARED_APPROVAL_ACTOR_ENV.to_owned(),
-                "attacker".to_owned(),
-            ),
-            (PREPARED_APPROVAL_MODE_ENV.to_owned(), "forged".to_owned()),
-            (
-                PREPARED_APPROVAL_TIME_ENV.to_owned(),
-                "2026-07-12T00:00:00Z".to_owned(),
-            ),
-        ]);
+        let mut env = BTreeMap::from([(
+            PREPARED_CONTEXT_DIGEST_ENV.to_owned(),
+            "sha256:forged".to_owned(),
+        )]);
         strip_untrusted_prepared_env(&mut env);
         assert!(prepared_receipt_references(&env).is_empty());
         assert!(
@@ -1561,25 +1445,13 @@ runners:
             "skill: unprepared\nrunners:\n  main:\n    default: true\n    type: cli-tool\n    command: \"true\"\n    args: []\n",
         )?;
         let mut request = request(temp.path());
-        request.env.extend([
-            (
-                PREPARED_CONTEXT_DIGEST_ENV.to_owned(),
-                "sha256:forged".to_owned(),
-            ),
-            (
-                PREPARED_APPROVAL_ACTOR_ENV.to_owned(),
-                "attacker".to_owned(),
-            ),
-            (PREPARED_APPROVAL_MODE_ENV.to_owned(), "forged".to_owned()),
-            (
-                PREPARED_APPROVAL_TIME_ENV.to_owned(),
-                "2026-07-12T00:00:00Z".to_owned(),
-            ),
-        ]);
+        request.env.insert(
+            PREPARED_CONTEXT_DIGEST_ENV.to_owned(),
+            "sha256:forged".to_owned(),
+        );
         let result = LocalOrchestrator::default().run_skill(&request)?;
         let output = serde_json::to_string(&result.output)?;
         assert!(!output.contains("operator_context"));
-        assert!(!output.contains("attacker"));
         assert!(!output.contains("forged"));
         Ok(())
     }

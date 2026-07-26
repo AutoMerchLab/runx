@@ -312,10 +312,9 @@ impl LocalOrchestrator {
             )
             .into());
         }
-        if !prepared.is_admitted() {
+        if !prepared.is_context_bound() {
             return Err(SkillRunError::Invalid(
-                "prepared skill run requires admission or digest-bound operator approval"
-                    .to_owned(),
+                "prepared skill run requires its context to be bound".to_owned(),
             )
             .into());
         }

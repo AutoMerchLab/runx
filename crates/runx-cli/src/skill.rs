@@ -1,13 +1,11 @@
 // Module rationale: skill command keeps parse, inspect, registry provenance, and execution wiring together until the native skill UX settles.
 use std::collections::BTreeMap;
-use std::io::{self, IsTerminal, Write};
+use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
 use runx_contracts::{JsonObject, JsonValue};
-use runx_runtime::skill_front::{
-    PreparedEntryProvenance, PreparedSkillRunApproval, PreparedSkillRunStatus,
-};
+use runx_runtime::skill_front::{PreparedEntryProvenance, PreparedSkillRunStatus};
 use runx_runtime::{
     ManagedAgentPolicy, SkillCredentialContext, SkillRunRequest, WorkspaceEnv,
     resolve_skill_credential_for_path,
@@ -55,7 +53,6 @@ pub struct SkillPlan {
     /// `runx new`. User-supplied `runx skill` invocations cannot set this.
     pub trusted_command_execution: bool,
     pub full_operator_context: bool,
-    pub approve_operator_context: Option<String>,
     pub inputs: BTreeMap<String, JsonValue>,
     pub input_document: Option<crate::document_input::DocumentInputSource>,
     /// Optional stored profile selector. Secret resolution happens only after
@@ -74,7 +71,6 @@ pub enum SkillAction {
 pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv) -> ExitCode {
     let cwd = workspace.cwd().to_path_buf();
     let env = workspace.env().clone();
-    let resume_skill_ref = plan.skill_path.to_string_lossy().into_owned();
     let mut resolved = match resolve_skill_ref_details(
         &plan.skill_path,
         &cwd,
@@ -225,51 +221,16 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
                 registry_provenance(&resolved),
             );
         }
-        if !prepared.requires_operator_approval() && plan.approve_operator_context.is_none() {
-            if let Err(error) = prepared.admit_safe() {
-                return write_skill_failure(
-                    &error.to_string(),
-                    plan.json,
-                    "operator_context_admission_error",
-                    1,
-                    registry_provenance(&resolved),
-                );
-            }
-            orchestrator.run_prepared_skill(&prepared)
-        } else {
-            match authorize_operator_context(&plan, prepared.digest(), &resume_skill_ref) {
-                OperatorAuthorization::Approved(mode) => {
-                    let actor = workspace
-                        .env()
-                        .get("USER")
-                        .cloned()
-                        .unwrap_or_else(|| "local_operator".to_owned());
-                    if let Err(error) = prepared.approve(PreparedSkillRunApproval::now(actor, mode))
-                    {
-                        return write_skill_failure(
-                            &error.to_string(),
-                            plan.json,
-                            "operator_context_approval_error",
-                            1,
-                            registry_provenance(&resolved),
-                        );
-                    }
-                    orchestrator.run_prepared_skill(&prepared)
-                }
-                OperatorAuthorization::NeedsApproval => {
-                    return write_operator_approval_required(prepared.digest(), plan.json);
-                }
-                OperatorAuthorization::Denied { message, code } => {
-                    return write_skill_failure(
-                        &message,
-                        plan.json,
-                        code,
-                        1,
-                        registry_provenance(&resolved),
-                    );
-                }
-            }
+        if let Err(error) = prepared.bind_context() {
+            return write_skill_failure(
+                &error.to_string(),
+                plan.json,
+                "operator_context_admission_error",
+                1,
+                registry_provenance(&resolved),
+            );
         }
+        orchestrator.run_prepared_skill(&prepared)
     };
     match result {
         Ok(mut result) => {
@@ -285,83 +246,6 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
             registry_provenance(&resolved),
         ),
     }
-}
-
-enum OperatorAuthorization {
-    Approved(&'static str),
-    NeedsApproval,
-    Denied { message: String, code: &'static str },
-}
-
-fn authorize_operator_context(
-    plan: &SkillPlan,
-    digest: &str,
-    skill_ref: &str,
-) -> OperatorAuthorization {
-    if let Some(approved) = plan.approve_operator_context.as_deref() {
-        if approved == digest {
-            return OperatorAuthorization::Approved("explicit_digest");
-        }
-        return OperatorAuthorization::Denied {
-            message: format!(
-                "operator context approval is stale for {skill_ref}: prepared {digest}; supplied {approved}. Review and approve the new digest"
-            ),
-            code: "operator_context_approval_mismatch",
-        };
-    }
-    if plan.non_interactive || !io::stdin().is_terminal() || !io::stderr().is_terminal() {
-        return OperatorAuthorization::NeedsApproval;
-    }
-    let _ignored = write!(io::stderr(), "Run this prepared skill? [y/N] ");
-    let _ignored = io::stderr().flush();
-    let mut answer = String::new();
-    match io::stdin().read_line(&mut answer) {
-        Ok(_) if matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes") => {
-            OperatorAuthorization::Approved("interactive_terminal")
-        }
-        Ok(_) => OperatorAuthorization::Denied {
-            message: "operator context approval denied".to_owned(),
-            code: "operator_context_approval_denied",
-        },
-        Err(error) => OperatorAuthorization::Denied {
-            message: format!("failed to read operator context approval: {error}"),
-            code: "operator_context_approval_error",
-        },
-    }
-}
-
-fn write_operator_approval_required(digest: &str, json: bool) -> ExitCode {
-    let approval_flag = format!("--approve-operator-context {digest}");
-    if json {
-        let value = JsonValue::Object(JsonObject::from([
-            (
-                "schema".to_owned(),
-                JsonValue::String("runx.operator_context_approval.v1".to_owned()),
-            ),
-            (
-                "status".to_owned(),
-                JsonValue::String("needs_operator_approval".to_owned()),
-            ),
-            ("digest".to_owned(), JsonValue::String(digest.to_owned())),
-            (
-                "approval_flag".to_owned(),
-                JsonValue::String(approval_flag.clone()),
-            ),
-        ]));
-        return write_skill_output(
-            &value,
-            true,
-            ExitCode::from(2),
-            ResumeHint {
-                receipt_dir: None,
-                answers_path: None,
-            },
-        );
-    }
-    let _ignored = writeln!(io::stdout(), "Approval required");
-    let _ignored = writeln!(io::stdout(), "Rerun the same command with:");
-    let _ignored = writeln!(io::stdout(), "  {approval_flag}");
-    ExitCode::from(2)
 }
 
 fn prepared_entry_provenance(

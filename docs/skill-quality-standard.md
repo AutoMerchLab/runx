@@ -131,12 +131,13 @@ and bounded tool statuses. A provider, tool, empty-turn, or round-budget failure
 is sealed into local history with a sanitized reason and exits nonzero; prompts,
 credentials, and raw provider or tool bodies are never failure telemetry.
 
-Prepared context is always digest-bound and drift-checked, but it is not always
-an approval gate. Safe reads, analysis, planning, and artifact generation are
-admitted automatically. Human context approval is reserved for runners whose
-selected execution graph declares a mutation; the receipt records an approval
-decision only when a human actually supplied one. A skill's own approval step
-still gates the specific consequential action at the point of use.
+Prepared context is always digest-bound and drift-checked, but it is not an
+approval gate. It proves what was selected and prevents context or artifact
+drift without fabricating human authority. Each consequential action has one
+approval owner at the point of use: an effect-owned capability such as
+`provider.mutate`, or an explicit graph approval when no native effect owns the
+decision. Never place a second approval immediately before an effect that
+already requires exact human approval.
 
 ## `SKILL.md` content
 
