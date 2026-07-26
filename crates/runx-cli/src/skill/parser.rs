@@ -621,9 +621,9 @@ mod tests {
         .collect::<Vec<_>>();
         let error = match super::parse_skill_plan(&args) {
             Err(error) => error,
-            Ok(_) => return Err("public skill runs bypassed prepared admission".to_owned()),
+            Ok(_) => return Err("public skill runs bypassed prepared context binding".to_owned()),
         };
-        assert!(error.contains("operator-context bypass is not supported"));
+        assert!(error.contains("operator context is always prepared and digest-bound"));
         Ok(())
     }
 

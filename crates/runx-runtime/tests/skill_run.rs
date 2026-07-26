@@ -1937,7 +1937,7 @@ fn native_graph_skill_run_rejects_agent_task_output_envelope_claim()
     };
     let message = error.to_string();
     assert!(
-        message.contains("declared run output \"fix_bundle\" was not returned"),
+        message.contains("runner output contract violation at $.output"),
         "unexpected envelope rejection: {message}"
     );
 

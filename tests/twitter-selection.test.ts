@@ -13,7 +13,7 @@ describe("twitter archive selection", () => {
 });
 
 function select(artifactRef: string) {
-  return selectArchivePage({
+  const selected = selectArchivePage({
     objective: "Delete old reposts",
     principal: "account:@fixture",
     max_acts: 10,
@@ -40,5 +40,9 @@ function select(artifactRef: string) {
       state: null,
       eof: true,
     },
-  }).twitter_selection_draft.twitter_plan;
+  });
+  if (!("twitter_selection_draft" in selected)) {
+    throw new Error("fixture archive page did not produce a selection draft");
+  }
+  return selected.twitter_selection_draft.twitter_plan;
 }
