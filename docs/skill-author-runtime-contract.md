@@ -84,6 +84,13 @@ contain only `{ runx_page: { state, done? } }`; the final call also returns the
 declared domain output. A failed page reports its index and byte offset and
 cannot be mistaken for an empty page.
 
+The two artifact identities have different jobs. `artifact_ref` is an opaque,
+runtime-local capability for reading the admitted snapshot; it deliberately
+changes across runtime instances and belongs in receipt provenance, not in a
+domain plan or idempotency digest. `whole_digest` is the stable content identity
+to carry into deterministic domain output. Two runs over identical bytes must
+produce the same semantic plan even though their `artifact_ref` values differ.
+
 Artifact admission is capped at 512 MiB. Pages default to 1 MiB and may be
 configured up to 4 MiB; continuation state is capped at 2 MiB and one execution
 at 4,096 pages. The normal 4 MiB deterministic-worker input/output ceilings

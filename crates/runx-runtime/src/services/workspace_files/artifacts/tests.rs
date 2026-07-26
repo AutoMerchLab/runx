@@ -32,6 +32,7 @@ fn volume_independent_artifacts_snapshot_is_immutable_and_pages_are_contiguous()
     assert_eq!(format!("{}{}", first.data, second.data), "a🙂bc");
     assert!(second.eof);
     assert_eq!(first.artifact.whole_digest, artifact.whole_digest);
+    assert_eq!(artifact.whole_digest, other_artifact.whole_digest);
     assert!(!artifact.reference.contains("source.txt"));
     assert_ne!(artifact.reference, other_artifact.reference);
     assert!(

@@ -162,11 +162,15 @@ approval rules.
 - Use deterministic `pages` only for irreducible record transforms over one
   admitted JSON-array artifact. The runtime owns containment, snapshot digest,
   record boundaries, offsets, retries, and the page loop; the module owns only
-  decoding and domain selection. Keep continuation state proportional to the
-  bounded result. Do not add a package file reader, manual byte cursor, hashing
-  loop, high-volume profile, or raised worker limit. If safe framing or bounded
-  state is impossible, choose `needs_core` or a genuinely separate sandboxed
-  protocol tool rather than smuggling filesystem authority into JavaScript.
+  decoding and domain selection. Treat `runx_page.artifact_ref` as an opaque,
+  runtime-local read capability that belongs in receipt provenance; never place
+  it in a plan or idempotency digest. Bind deterministic domain output to
+  `runx_page.whole_digest`, which is stable for identical content. Keep
+  continuation state proportional to the bounded result. Do not add a package
+  file reader, manual byte cursor, hashing loop, high-volume profile, or raised
+  worker limit. If safe framing or bounded state is impossible, choose
+  `needs_core` or a genuinely separate sandboxed protocol tool rather than
+  smuggling filesystem authority into JavaScript.
 - Prove a volume path at two materially different scales through the production
   owner. The result must be identical across page sizes, cursors must advance,
   process count must stay stable where session reuse applies, and failures must
