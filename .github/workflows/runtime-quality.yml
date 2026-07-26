@@ -43,12 +43,7 @@ jobs:
         run: rustup show
 
       - name: Install Linux sandbox
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y bubblewrap
-          if sysctl kernel.apparmor_restrict_unprivileged_userns >/dev/null 2>&1; then
-            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-          fi
+        uses: ./.github/actions/setup-linux-sandbox
 
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2

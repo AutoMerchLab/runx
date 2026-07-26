@@ -109,9 +109,12 @@ jobs:
         run: |
           rustup show               # installs the version pinned by rust-toolchain.toml
           rustup target add ${{ matrix.target }}
-      - name: Install Linux sandbox and musl toolchains
+      - name: Install Linux sandbox
         if: contains(matrix.target, 'musl')
-        run: sudo apt-get update && sudo apt-get install -y bubblewrap musl-tools
+        uses: ./.github/actions/setup-linux-sandbox
+      - name: Install musl toolchain
+        if: contains(matrix.target, 'musl')
+        run: sudo apt-get install -y musl-tools
       - name: Prove deterministic module boundary on the native runner
         working-directory: crates
         run: |
