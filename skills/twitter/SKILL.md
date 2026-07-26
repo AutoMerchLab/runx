@@ -47,9 +47,12 @@ Five runners:
   skill requests 512 KiB pages; the page size is not a total archive limit.
   Emits the same `twitter.evidence.v1` packet; no gate.
 - `plan`: turn one bounded objective plus evidence into `twitter.plan.v1`, an
-  explicit list of typed acts with rationale, using agent judgment. This is the
-  curated lane, for dozens of acts that each deserve a reason. A plan is a
-  draft; it delivers nothing.
+  explicit list of typed acts with rationale, using agent judgment, then bind
+  the exact plan through native `data.digest`. This is the curated lane, for
+  dozens of acts that each deserve a reason. A plan is a draft; it delivers
+  nothing. The result exposes `twitter_plan.data` and the matching
+  `digest_result.data.digest` required by `execute`; callers never calculate
+  the digest themselves.
 - `select`: the bulk lane. Apply a deterministic predicate to an archive export
   and emit a compact plan, no agent judgment. Use it when the criterion is
   mechanical and the match set runs to thousands, where a per-item rationale
@@ -200,7 +203,8 @@ For the `plan` runner, build `twitter_plan` this way:
   `account`, `items[]` (typed post or user records with metrics), `item_count`,
   `truncated`, `provenance` (`retrieved_via`, `request_count`,
   `content_digest`), `rate`, `blockers[]`, `stop_conditions[]`.
-- `twitter.plan.v1`: `decision` (`ready`, `needs_input`, `reject`),
+- `twitter.plan.v1` (returned as `twitter_plan.data` together with
+  `digest_result.data.digest`): `decision` (`ready`, `needs_input`, `reject`),
   `objective`, `principal`, `acts[]` (`act_id`, `kind`, `params`,
   `consequence`, `rationale`), `gates`
   (`human_approval_required`, `approval_ref`), `evidence_refs[]`,

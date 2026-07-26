@@ -144,7 +144,11 @@ pub fn run_export_command(
         &skill_dir,
         &runx_bin,
     );
-    let pruned = managed::prune_managed_files(plan.target, &skill_dir, &files)?;
+    let pruned = if plan.refs.is_empty() {
+        managed::prune_managed_files(plan.target, &skill_dir, &files)?
+    } else {
+        Vec::new()
+    };
     managed::write_files(&files)?;
     let rules_file = if plan.target == Target::Codex && !plan.project {
         Some(managed::merge_codex_rules(

@@ -190,14 +190,7 @@ runners:
             packets:
               twitter_evidence: twitter.evidence.v1
   plan:
-    type: agent-task
-    agent: builder
-    task: twitter-plan
-    outputs:
-      twitter_plan: object
-    artifacts:
-      wrap_as: twitter_plan
-      packet: twitter.plan.v1
+    type: graph
     inputs:
       objective:
         type: string
@@ -223,6 +216,31 @@ runners:
         type: string
         required: false
         description: Extra operator guardrails.
+    graph:
+      name: twitter-plan
+      result_from: [draft, digest]
+      steps:
+        - id: draft
+          inputs:
+            objective: "$input.objective"
+            principal: "$input.principal"
+            evidence_json: "$input.evidence_json"
+            operator_policy: "$input.operator_policy"
+            brand_context: "$input.brand_context"
+            operator_context: "$input.operator_context"
+          run:
+            type: agent-task
+            agent: builder
+            task: twitter-plan
+            outputs:
+              twitter_plan: object
+          artifacts:
+            wrap_as: twitter_plan
+            packet: twitter.plan.v1
+        - id: digest
+          tool: data.digest
+          context:
+            value: draft.twitter_plan.data
   select:
     type: graph
     inputs:

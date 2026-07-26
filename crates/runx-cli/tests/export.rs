@@ -374,6 +374,40 @@ fn reexport_prunes_only_marked_generated_files() -> Result<(), Box<dyn std::erro
 }
 
 #[test]
+fn explicit_ref_export_preserves_other_managed_skills() -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = ExportFixture::new("runx-export-explicit-preserves")?;
+    fixture.write_skill("first", None)?;
+    fixture.write_skill("second", None)?;
+
+    run_export_command(
+        &ExportPlan {
+            target: Target::Codex,
+            refs: Vec::new(),
+            project: false,
+            json: false,
+        },
+        &fixture.project,
+        &fixture.env,
+    )?;
+
+    let report = run_export_command(
+        &ExportPlan {
+            target: Target::Codex,
+            refs: vec!["first".to_owned()],
+            project: false,
+            json: false,
+        },
+        &fixture.project,
+        &fixture.env,
+    )?;
+
+    assert!(report.pruned.is_empty());
+    assert!(fixture.home.join(".codex/skills/first/SKILL.md").exists());
+    assert!(fixture.home.join(".codex/skills/second/SKILL.md").exists());
+    Ok(())
+}
+
+#[test]
 fn codex_project_scope_fails_closed() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = ExportFixture::new("runx-export-codex-project")?;
     fixture.write_skill("visible", None)?;

@@ -352,8 +352,8 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/twitter",
-        version: "sha-6daf4dcb9e46",
-        digest: "b8ed01a75a3e6ebde37572bbc74f5c4b6533d8700bc2200e1e5141f561f3688a",
+        version: "sha-eeb588faafbf",
+        digest: "fb9639afb9b075b3360afb9b09f9bf6c3b70301b19c91c0e5d2b125e56ca6bf4",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/vault-unseal",
