@@ -349,8 +349,8 @@ function fixtureCases(): readonly KernelFixtureCase[] {
     scopes: ["repo:read", "repo:read"],
     scope_family: "github_repo",
     authority_kind: "read_only",
-    target_repo: "runxhq/aster",
-    target_locator: "runxhq/aster#issue/4",
+    target_repo: "runxhq/runx",
+    target_locator: "runxhq/runx#issue/4",
   };
   const connectedAuthCheckedAt = "2026-05-22T00:00:00Z";
   const connectedAuthNotBefore = "2026-05-21T00:00:00Z";
@@ -364,8 +364,8 @@ function fixtureCases(): readonly KernelFixtureCase[] {
     expires_at: connectedAuthExpiresAt,
     scope_family: "github_repo",
     authority_kind: "read_only",
-    target_repo: "runxhq/aster",
-    target_locator: "runxhq/aster#issue/4",
+    target_repo: "runxhq/runx",
+    target_locator: "runxhq/runx#issue/4",
   };
   const githubCredential = {
     kind: "runx.credential-envelope.v1",
@@ -379,8 +379,8 @@ function fixtureCases(): readonly KernelFixtureCase[] {
       grant_id: "grant_expected",
       scope_family: "github_repo",
       authority_kind: "read_only",
-      target_repo: "runxhq/aster",
-      target_locator: "runxhq/aster#issue/4",
+      target_repo: "runxhq/runx",
+      target_locator: "runxhq/runx#issue/4",
     },
     material_ref: "local:github:grant_1",
   };

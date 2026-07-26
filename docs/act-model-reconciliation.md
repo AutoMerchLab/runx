@@ -64,10 +64,10 @@ A skill is a definition; a run is an act. The relationship is fixed:
   (Pausing for the host is today a `needs_agent` side channel, not yet a
   first-class pending act; making pause an act state is planned, not live.)
 
-## Plan vocabulary -> live contracts
+## Design vocabulary -> live contracts
 
-Some plans (`plans/runx.md`, `plans/aster.md`) use an alternate vocabulary. It maps
-onto the live shape with no contract change required:
+Design discussions sometimes use alternate vocabulary. It maps onto the live
+shape with no contract change required:
 
 | Plan concept                  | Live contract                                                        |
 | ----------------------------- | -------------------------------------------------------------------- |
@@ -85,6 +85,6 @@ future version adopts that naming, it can be added then.
 
 v1 finalizes the act/decision/signal/receipt model; the alternate plan vocabulary is
 future-aspirational, not an outstanding reconciliation against the core contracts.
-The remaining act-model work is in *enforcement and adoption* (e.g. aster gating its
-dispatch on declared act forms and verification status), not in reshaping these
-types. Those live on the aster/consumer side, not in the kernel contracts.
+The remaining act-model work is in *enforcement and adoption*: consuming
+applications gate dispatch on declared act forms and verification status rather
+than reshaping the kernel contracts.

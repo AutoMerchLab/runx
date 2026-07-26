@@ -15,6 +15,7 @@ pub(crate) struct SkillSourceAdapter {
 }
 
 impl SkillSourceAdapter {
+    #[cfg(feature = "mcp")]
     #[must_use]
     pub(crate) const fn with_javascript(
         javascript: crate::adapters::javascript::JavaScriptAdapter,

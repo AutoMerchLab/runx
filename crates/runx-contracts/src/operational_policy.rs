@@ -79,8 +79,6 @@ pub mod operational_policy_runner_kind {
     pub const LOCAL: &str = "local";
     /// GitHub Actions hosted runner.
     pub const GITHUB_ACTIONS: &str = "github-actions";
-    /// Aster operator runner.
-    pub const ASTER: &str = "aster";
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, RunxSchema)]

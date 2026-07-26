@@ -3727,6 +3727,7 @@ fn array_field<'a>(
 /// Minimal operator environment for tests that spawn real subprocesses: the
 /// runtime passes through only declared and baseline variables, so the tests
 /// forward the host PATH explicitly instead of relying on ambient fallback.
+#[cfg(feature = "cli-tool")]
 fn path_env() -> BTreeMap<String, String> {
     std::env::var("PATH")
         .ok()

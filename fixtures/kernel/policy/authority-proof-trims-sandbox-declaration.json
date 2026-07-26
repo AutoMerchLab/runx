@@ -10,8 +10,8 @@
             "authority_kind": "read_only",
             "grant_id": "grant_expected",
             "scope_family": "github_repo",
-            "target_locator": "runxhq/aster#issue/4",
-            "target_repo": "runxhq/aster"
+            "target_locator": "runxhq/runx#issue/4",
+            "target_repo": "runxhq/runx"
           },
           "material_ref_hash": "6ea8bcec5251bd7ca445945696574d89d2c8845277d7e4d21798f6aa184fdeaa",
           "provider": "github",
@@ -43,8 +43,8 @@
           "scopes": [
             "repo:read"
           ],
-          "target_locator": "runxhq/aster#issue/4",
-          "target_repo": "runxhq/aster"
+          "target_locator": "runxhq/runx#issue/4",
+          "target_repo": "runxhq/runx"
         },
         "run_id": "run_policy_fixture",
         "sandbox": {
@@ -85,8 +85,8 @@
           "repo:read",
           "repo:read"
         ],
-        "target_locator": "runxhq/aster#issue/4",
-        "target_repo": "runxhq/aster",
+        "target_locator": "runxhq/runx#issue/4",
+        "target_repo": "runxhq/runx",
         "type": "connected"
       },
       "connectedAuthCheckedAt": "2026-05-22T00:00:00Z",
@@ -97,8 +97,8 @@
           "authority_kind": "read_only",
           "grant_id": "grant_expected",
           "scope_family": "github_repo",
-          "target_locator": "runxhq/aster#issue/4",
-          "target_repo": "runxhq/aster"
+          "target_locator": "runxhq/runx#issue/4",
+          "target_repo": "runxhq/runx"
         },
         "kind": "runx.credential-envelope.v1",
         "material_kind": "api_key",
@@ -122,8 +122,8 @@
             "user:read"
           ],
           "status": "active",
-          "target_locator": "runxhq/aster#issue/4",
-          "target_repo": "runxhq/aster"
+          "target_locator": "runxhq/runx#issue/4",
+          "target_repo": "runxhq/runx"
         }
       ],
       "mutating": false,

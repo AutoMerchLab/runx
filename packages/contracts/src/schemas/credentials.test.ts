@@ -31,7 +31,7 @@ const validCredentialEnvelope: CredentialEnvelopeContract = {
     grant_id: "grant_1",
     scope_family: "github_repo",
     authority_kind: "constructive",
-    target_repo: "runxhq/aster",
+    target_repo: "runxhq/runx",
   },
   material_ref: "local:github:grant_1",
 };
@@ -47,7 +47,7 @@ const validAuthorityProof: AuthorityProofContract = {
     mutating: false,
     scope_family: "github_repo",
     authority_kind: "constructive",
-    target_repo: "runxhq/aster",
+    target_repo: "runxhq/runx",
     sandbox_profile: "readonly",
   },
   scope_admission: validScopeAdmission,
@@ -61,7 +61,7 @@ const validAuthorityProof: AuthorityProofContract = {
     material_ref_hash: "sha256-ref",
     scope_family: "github_repo",
     authority_kind: "constructive",
-    target_repo: "runxhq/aster",
+    target_repo: "runxhq/runx",
   },
   sandbox: {
     profile: "readonly",

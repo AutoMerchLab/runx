@@ -36,7 +36,6 @@ export const operationalPolicyActions = [
 export const operationalPolicyRunnerKinds = [
   "local",
   "github-actions",
-  "aster",
 ] as const;
 
 export const operationalPolicyRunnerStates = [

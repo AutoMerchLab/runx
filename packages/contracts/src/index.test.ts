@@ -347,7 +347,7 @@ describe("@runxhq/contracts", () => {
         mutating: false,
         scope_family: "github_repo",
         authority_kind: "read_only",
-        target_repo: "runxhq/aster",
+        target_repo: "runxhq/runx",
       },
       scope_admission: {
         status: "allow",
@@ -360,7 +360,7 @@ describe("@runxhq/contracts", () => {
         scopes: ["repo:read"],
         scope_family: "github_repo",
         authority_kind: "read_only",
-        target_repo: "runxhq/aster",
+        target_repo: "runxhq/runx",
       },
       redaction: {
         status: "applied",
