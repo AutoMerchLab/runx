@@ -113,8 +113,10 @@ The `runtime quality` workflow is the canonical automated heavy lane. It runs
 weekly, on explicit dispatch, and before a release build. One Ubuntu job reuses
 its Cargo cache and runs the official-skill audit, receipt ownership checks,
 the four stress commands, and a focused performance capture. The capture is
-bound to the exact source commit, enforces worker spawn and fanout saturation
-budgets, and is uploaded as a retained artifact.
+bound to the exact source commit, enforces worker spawn and parallel fanout
+budgets, and is uploaded as a retained artifact before enforcement. Exact
+four-way saturation remains a deterministic barrier-backed runtime test rather
+than a scheduler-sensitive benchmark assertion.
 
 Absolute timing comparisons still require two reports captured on comparable
 hardware. Do not compare a developer-laptop baseline with a hosted runner or

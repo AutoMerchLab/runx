@@ -13,6 +13,8 @@ try {
   const passingPath = path.join(tempRoot, "candidate-pass.json");
   const failingPath = path.join(tempRoot, "candidate-fail.json");
   const missingEvidencePath = path.join(tempRoot, "candidate-missing-evidence.json");
+  const qualityPassingPath = path.join(tempRoot, "quality-pass.json");
+  const qualityFailingPath = path.join(tempRoot, "quality-fail.json");
 
   writeFixture(baselinePath, {
     throughput: 100,
@@ -61,6 +63,31 @@ try {
   const missingGrowth = runGrowthCheck(baselinePath, passingPath);
   if (missingGrowth.status === 0) {
     throw new Error("runtime perf harness accepted a growth gate without measured scale evidence");
+  }
+
+  writeQualityFixture(qualityPassingPath, {
+    fanoutSpawnCount: 3,
+    fanoutPeakInFlight: 3,
+  });
+  const qualityPass = runQualityVerification(qualityPassingPath);
+  if (qualityPass.status !== 0) {
+    process.stderr.write(qualityPass.stderr || qualityPass.stdout);
+    throw new Error("runtime perf harness rejected valid release-quality evidence");
+  }
+
+  writeQualityFixture(qualityFailingPath, {
+    fanoutSpawnCount: 5,
+    fanoutPeakInFlight: 5,
+    worktreeDirty: true,
+  });
+  const qualityFail = runQualityVerification(qualityFailingPath);
+  if (qualityFail.status === 0) {
+    throw new Error("runtime perf harness accepted invalid release-quality evidence");
+  }
+  for (const expectedDiagnostic of ["worktree_clean", "fanout_spawn_count", "fanout_peak_in_flight"]) {
+    if (!qualityFail.stdout.includes(expectedDiagnostic)) {
+      throw new Error(`runtime quality failure did not name ${expectedDiagnostic}`);
+    }
   }
 
   assertReleaseProbeInvariant();
@@ -119,6 +146,24 @@ function runCheck(baselinePath, candidatePath) {
   );
 }
 
+function runQualityVerification(candidatePath) {
+  return spawnSync(
+    "node",
+    [
+      "scripts/runtime-throughput.mjs",
+      "verify-quality",
+      "--candidate",
+      candidatePath,
+      "--expected-source-commit",
+      "quality-fixture-commit",
+    ],
+    {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+    },
+  );
+}
+
 function writeFixture(filePath, metric) {
   writeFileSync(
     filePath,
@@ -131,6 +176,41 @@ function writeFixture(filePath, metric) {
           source: "fixture",
           unit: "iterations_per_second",
           ...metric,
+        },
+      },
+    }, null, 2)}\n`,
+  );
+}
+
+function writeQualityFixture(
+  filePath,
+  {
+    fanoutSpawnCount,
+    fanoutPeakInFlight,
+    worktreeDirty = false,
+  },
+) {
+  writeFileSync(
+    filePath,
+    `${JSON.stringify({
+      schema: "runx.oss_runtime_throughput.v1",
+      source_commit: "quality-fixture-commit",
+      worktree_dirty: worktreeDirty,
+      workloads: {
+        native_capability_dispatch: {
+          sample_count: 10,
+          spawn_count: 0,
+          peak_in_flight: 0,
+        },
+        pure_module_session_reuse: {
+          sample_count: 10,
+          spawn_count: 1,
+          peak_in_flight: 1,
+        },
+        bounded_parallel_fanout: {
+          sample_count: 10,
+          spawn_count: fanoutSpawnCount,
+          peak_in_flight: fanoutPeakInFlight,
         },
       },
     }, null, 2)}\n`,

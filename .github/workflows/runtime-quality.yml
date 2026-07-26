@@ -89,24 +89,6 @@ jobs:
             --warm-up-time 1 \
             --measurement-time 2
 
-      - name: Enforce runtime resource budgets
-        env:
-          EXPECTED_COMMIT: ${{ github.sha }}
-        run: |
-          jq -e --arg commit "$EXPECTED_COMMIT" '
-            .schema == "runx.oss_runtime_throughput.v1"
-            and .source_commit == $commit
-            and .worktree_dirty == false
-            and .workloads.native_capability_dispatch.sample_count >= 10
-            and .workloads.native_capability_dispatch.spawn_count == 0
-            and .workloads.pure_module_session_reuse.sample_count >= 10
-            and .workloads.pure_module_session_reuse.spawn_count == 1
-            and .workloads.pure_module_session_reuse.peak_in_flight == 1
-            and .workloads.bounded_parallel_fanout.sample_count >= 10
-            and .workloads.bounded_parallel_fanout.spawn_count <= 4
-            and .workloads.bounded_parallel_fanout.peak_in_flight == 4
-          ' .runx/evidence/runtime-quality.json
-
       - name: Upload exact-commit performance evidence
         uses: actions/upload-artifact@v7
         with:
@@ -114,3 +96,11 @@ jobs:
           path: .runx/evidence/runtime-quality.json
           if-no-files-found: error
           retention-days: 30
+
+      - name: Enforce runtime resource budgets
+        env:
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          node scripts/runtime-throughput.mjs verify-quality \
+            --candidate .runx/evidence/runtime-quality.json \
+            --expected-source-commit "$EXPECTED_COMMIT"

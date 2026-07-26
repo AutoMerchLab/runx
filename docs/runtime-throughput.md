@@ -213,8 +213,11 @@ weekly, on explicit dispatch, and as a release prerequisite. The lane captures
 `native_capability_dispatch`, `pure_module_session_reuse`, and
 `bounded_parallel_fanout` from the exact checked-out commit, then enforces the
 zero-process native path, one-process serial reuse, the four-process pool cap,
-and four-way fanout saturation. The digest-bound JSON report is uploaded as the
-workflow artifact; it is not checked into the repository.
+and observed parallel fanout. Exact four-way saturation is proven by the
+barrier-backed runtime test rather than inferred from a timing sample whose
+peak depends on host scheduling. The digest-bound JSON report is uploaded
+before enforcement so a failed check remains diagnosable; it is not checked
+into the repository.
 
 Timing regressions must be compared on like hardware. The workflow therefore
 does not pretend that a developer-machine baseline is valid on a hosted runner.

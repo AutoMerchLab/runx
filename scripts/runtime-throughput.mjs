@@ -183,8 +183,27 @@ try {
     if (failed.length > 0) {
       process.exitCode = 1;
     }
+  } else if (command === "verify-quality") {
+    if (!options.candidate) {
+      throw new Error("perf:runtime:verify-quality requires --candidate <path>.");
+    }
+    if (!options.expectedSourceCommit) {
+      throw new Error(
+        "perf:runtime:verify-quality requires --expected-source-commit <sha>.",
+      );
+    }
+    const candidate = readJson(path.resolve(repoRoot, options.candidate));
+    const checks = runtimeQualityChecks(candidate, options.expectedSourceCommit);
+    const failed = checks.filter((check) => check.status === "failed");
+    process.stdout.write(`${JSON.stringify({
+      status: failed.length === 0 ? "passed" : "failed",
+      checks,
+    }, null, 2)}\n`);
+    if (failed.length > 0) {
+      process.exitCode = 1;
+    }
   } else {
-    throw new Error("Usage: runtime-throughput.mjs <list|capture|check> [--output path] [--baseline path] [--candidate path] [--workloads a,b] [--min-throughput-ratio n] [--max-growth-exponent n] [--max-spawn-count n] [--max-p99-regression n]");
+    throw new Error("Usage: runtime-throughput.mjs <list|capture|check|verify-quality> [--output path] [--baseline path] [--candidate path] [--expected-source-commit sha] [--workloads a,b] [--min-throughput-ratio n] [--max-growth-exponent n] [--max-spawn-count n] [--max-p99-regression n]");
   }
 } catch (error) {
   process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
@@ -836,6 +855,53 @@ function compareReports(baseline, current, workloads, options) {
   });
 }
 
+function runtimeQualityChecks(report, expectedSourceCommit) {
+  const native = report?.workloads?.native_capability_dispatch;
+  const session = report?.workloads?.pure_module_session_reuse;
+  const fanout = report?.workloads?.bounded_parallel_fanout;
+  return [
+    qualityCheck("schema", report?.schema, { expected: schema }),
+    qualityCheck("source_commit", report?.source_commit, { expected: expectedSourceCommit }),
+    qualityCheck("worktree_clean", report?.worktree_dirty, { expected: false }),
+    qualityCheck("native_sample_count", native?.sample_count, { minimum: 10 }),
+    qualityCheck("native_spawn_count", native?.spawn_count, { expected: 0 }),
+    qualityCheck("native_peak_in_flight", native?.peak_in_flight, { expected: 0 }),
+    qualityCheck("session_sample_count", session?.sample_count, { minimum: 10 }),
+    qualityCheck("session_spawn_count", session?.spawn_count, { expected: 1 }),
+    qualityCheck("session_peak_in_flight", session?.peak_in_flight, { expected: 1 }),
+    qualityCheck("fanout_sample_count", fanout?.sample_count, { minimum: 10 }),
+    qualityCheck("fanout_spawn_count", fanout?.spawn_count, { minimum: 2, maximum: 4 }),
+    qualityCheck("fanout_peak_in_flight", fanout?.peak_in_flight, { minimum: 2, maximum: 4 }),
+    qualityCheck(
+      "fanout_peak_within_spawn_count",
+      fanout?.peak_in_flight,
+      { maximum: fanout?.spawn_count },
+    ),
+  ];
+}
+
+function qualityCheck(id, actual, requirement) {
+  const hasRange = "minimum" in requirement || "maximum" in requirement;
+  const rangeIsValid =
+    !hasRange
+    || (
+      Number.isInteger(actual)
+      && (!("minimum" in requirement) || actual >= requirement.minimum)
+      && (
+        !("maximum" in requirement)
+        || (Number.isInteger(requirement.maximum) && actual <= requirement.maximum)
+      )
+    );
+  const equalityIsValid =
+    !("expected" in requirement) || Object.is(actual, requirement.expected);
+  return {
+    id,
+    status: rangeIsValid && equalityIsValid ? "passed" : "failed",
+    actual: actual ?? null,
+    ...requirement,
+  };
+}
+
 function metricRatio(currentValue, baselineValue) {
   if (typeof currentValue !== "number" || typeof baselineValue !== "number") {
     return Number.NaN;
@@ -862,6 +928,8 @@ function parseArgs(argv) {
       parsed.baseline = requiredValue(argv, ++index, arg);
     } else if (arg === "--candidate") {
       parsed.candidate = requiredValue(argv, ++index, arg);
+    } else if (arg === "--expected-source-commit") {
+      parsed.expectedSourceCommit = requiredValue(argv, ++index, arg);
     } else if (arg === "--workloads") {
       parsed.workloads = requiredValue(argv, ++index, arg).split(",").filter(Boolean);
     } else if (arg === "--min-throughput-ratio") {
