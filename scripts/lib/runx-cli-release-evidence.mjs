@@ -32,6 +32,72 @@ export const RUNX_CLI_REQUIRED_RELEASE_CHANNELS = Object.freeze([
   "scoop",
 ]);
 
+export const RUNX_CLI_RELEASE_NOTE_SECTIONS = Object.freeze([
+  "Highlights",
+  "Added",
+  "Changed",
+  "Fixed",
+  "Removed",
+  "Security",
+  "Breaking changes",
+  "Upgrade guidance",
+  "Contributors",
+]);
+
+/**
+ * @param {{ body: string; version: string; previousTag: string }} options
+ */
+export function validateRunxCliReleaseNotes({ body, version, previousTag }) {
+  assertStableVersion(version);
+  if (typeof body !== "string") {
+    throw new Error("release notes body must be a string");
+  }
+  if (!/^cli-v\d+\.\d+\.\d+$/u.test(previousTag)) {
+    throw new Error(`invalid previous CLI tag: ${previousTag}`);
+  }
+
+  const title = `# Runx CLI ${version}`;
+  const summary = body
+    .slice(title.length)
+    .split(/^## /mu, 1)[0]
+    .trim();
+  const checks = [
+    check("release_notes_title", body.startsWith(`${title}\n`), `expected title '${title}'`),
+    check(
+      "release_notes_summary",
+      summary.length > 0,
+      summary.length > 0 ? "release summary is present" : "release summary is missing",
+    ),
+    ...RUNX_CLI_RELEASE_NOTE_SECTIONS.map((section) => {
+      const content = releaseNoteSection(body, section);
+      return check(
+        `release_notes_${section.toLowerCase().replaceAll(" ", "_")}`,
+        content.length > 0,
+        content.length > 0 ? `${section} is present` : `${section} is missing or empty`,
+      );
+    }),
+    check(
+      "release_notes_compare_link",
+      body.includes(
+        `https://github.com/${REPOSITORY}/compare/${previousTag}...cli-v${version}`,
+      ),
+      `expected full changelog link from ${previousTag} to cli-v${version}`,
+    ),
+    check(
+      "release_notes_no_placeholders",
+      !/\b(?:TBD|TODO|PLACEHOLDER|COMING SOON)\b/iu.test(body),
+      "release notes contain no placeholder text",
+    ),
+  ];
+
+  return {
+    ready: checks.every((entry) => entry.status === "passed"),
+    version,
+    previousTag,
+    checks,
+  };
+}
+
 /**
  * @param {{
  *   version: string;
@@ -142,6 +208,17 @@ export async function checkRunxGhcrAnonymousAccess({
   } catch (error) {
     return check(id, false, errorMessage(error));
   }
+}
+
+function releaseNoteSection(body, heading) {
+  const marker = `## ${heading}\n`;
+  const headingIndex = body.indexOf(marker);
+  if (headingIndex < 0) return "";
+  const contentIndex = headingIndex + marker.length;
+  const nextHeadingIndex = body.indexOf("\n## ", contentIndex);
+  return body
+    .slice(contentIndex, nextHeadingIndex < 0 ? body.length : nextHeadingIndex)
+    .trim();
 }
 
 async function observeGitHubRelease({ version, tag, fetchImpl, githubHeaders }) {

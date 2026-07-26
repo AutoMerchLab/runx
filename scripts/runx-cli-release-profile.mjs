@@ -40,6 +40,7 @@ async function prepare() {
   run("git", ["fetch", "origin", "main", "--tags"]);
   assertMainCommit();
   assertRemoteTagCompatible();
+  run("node", ["scripts/check-runx-cli-release-notes.mjs", "--version", version]);
   const ghcrAccess = await checkRunxGhcrAnonymousAccess();
   if (ghcrAccess.status !== "passed") {
     throw new Error(
@@ -64,6 +65,7 @@ async function prepare() {
       clean_checkout: true,
       head_matches_origin_main: true,
       manifests_match_version: true,
+      release_notes: true,
       verify_fast: true,
       remote_tag_compatible: true,
       ghcr_anonymous_access: true,

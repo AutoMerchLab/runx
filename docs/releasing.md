@@ -155,7 +155,11 @@ owned by an unrelated maintainer.
 ## Cutting a release
 
 ```bash
-# 1. On a clean OSS main commit, run the project-owned profile through the
+# 1. Write release/notes/X.Y.Z.md with every required section and the exact
+#    previous-tag comparison link, then validate it.
+node scripts/check-runx-cli-release-notes.mjs --version X.Y.Z
+
+# 2. On a clean OSS main commit, run the project-owned profile through the
 #    canonical governed release lane. This prepares, obtains approval for, and
 #    pushes the exact tag, then independently verifies every required channel.
 runx skill skills/release release \
@@ -165,7 +169,7 @@ runx skill skills/release release \
   -i version=X.Y.Z \
   --json
 
-# 2. After the release runner returns verified, add the reviewed release entry
+# 3. After the release runner returns verified, add the reviewed release entry
 #    to the Cloud changelog. From the workspace root, adopt the independently
 #    verified release across status, Cloud's exact npm pin, lockfile, and notary.
 pnpm release:adopt -- --version X.Y.Z
@@ -175,10 +179,12 @@ pnpm release:check:live
 
 The release profile refuses a dirty checkout, a commit that differs from
 `origin/main`, an existing tag bound to another commit, or a GHCR package that
-is not anonymously pullable. Use `workflow_dispatch` with a version only when a
-release-pipeline change needs a no-publish matrix rehearsal. Do not duplicate
-the complete platform build for an ordinary release: the governed tag publish
-starts the workflow that builds and smokes every target.
+is not anonymously pullable. It also requires a complete versioned release-note
+file; the tag workflow publishes that exact reviewed body instead of reconstructing
+a partial changelog from pull requests. Use `workflow_dispatch` with a version
+only when a release-pipeline change needs a no-publish matrix rehearsal. Do not
+duplicate the complete platform build for an ordinary release: the governed tag
+publish starts the workflow that builds and smokes every target.
 
 Never move a published semver tag. Never bump a new patch just to repair channel
 drift; fix the existing channel artifact or workflow unless the binary itself is
@@ -189,6 +195,7 @@ wrong.
 ```
 crates/rust-toolchain.toml    # pinned Rust version for reproducible builds
 scripts/
+  check-runx-cli-release-notes.mjs # validate complete versioned release notes
   set-release-version.ts      # stamp / --check the version across manifests
   release-platform-matrix.mjs # canonical topology -> GitHub matrix
   build-release-archives.ts   # CLI + worker archive + .sha256 per target
@@ -202,4 +209,6 @@ scripts/
   install / install.ps1       # end-user one-liner installers (proxied via runx.ai/install)
 packaging/
   docker/Dockerfile           # GHCR image (fetches the musl archive)
+release/
+  notes/X.Y.Z.md               # exact reviewed GitHub Release body
 ```

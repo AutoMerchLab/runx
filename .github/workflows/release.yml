@@ -50,6 +50,8 @@ jobs:
       platform_matrix: ${{ steps.platforms.outputs.matrix }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - uses: pnpm/action-setup@v6
         with:
           version: 10.18.2
@@ -70,6 +72,8 @@ jobs:
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "resolved version=$version publish from tag=${{ github.event_name == 'push' }}"
+      - name: Verify complete release notes
+        run: node scripts/check-runx-cli-release-notes.mjs --version "${{ steps.resolve.outputs.version }}"
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
       - name: Resolve release platform matrix
@@ -262,7 +266,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ github.ref_name }}
-          generate_release_notes: true
+          body_path: release/notes/${{ needs.prepare.outputs.version }}.md
           files: |
             dist/archives/*
 

@@ -2,9 +2,11 @@ import { describe, expect, it } from "vitest";
 
 import {
   RUNX_CLI_NPM_PACKAGES,
+  RUNX_CLI_RELEASE_NOTE_SECTIONS,
   RUNX_CLI_REQUIRED_RELEASE_CHANNELS,
   RUNX_CLI_REQUIRED_RELEASE_CHECKS,
   observeRunxCliRelease,
+  validateRunxCliReleaseNotes,
 } from "../scripts/lib/runx-cli-release-evidence.mjs";
 
 const version = "9.5.0";
@@ -75,6 +77,38 @@ describe("Runx CLI release evidence", () => {
     expect(evidence.ready).toBe(false);
     expect(failedIds(evidence)).toEqual(["release_workflow"]);
     expect(evidence.commitRef).toBe(commit);
+  });
+
+  it("requires complete version-bound release notes without placeholders", () => {
+    const previousTag = "cli-v9.4.0";
+    const body = [
+      `# Runx CLI ${version}`,
+      "",
+      "A complete release summary.",
+      "",
+      ...RUNX_CLI_RELEASE_NOTE_SECTIONS.flatMap((section) => [
+        `## ${section}`,
+        "",
+        `Complete ${section.toLowerCase()} evidence.`,
+        "",
+      ]),
+      `**Full changelog**: https://github.com/runxhq/runx/compare/${previousTag}...${tag}`,
+      "",
+    ].join("\n");
+
+    expect(validateRunxCliReleaseNotes({ body, version, previousTag }).ready).toBe(true);
+    const incomplete = validateRunxCliReleaseNotes({
+      body: body
+        .replace("## Security\n\nComplete security evidence.\n\n", "")
+        .replace("Complete fixed evidence.", "TBD"),
+      version,
+      previousTag,
+    });
+    expect(incomplete.ready).toBe(false);
+    expect(failedIds(incomplete)).toEqual([
+      "release_notes_security",
+      "release_notes_no_placeholders",
+    ]);
   });
 });
 
