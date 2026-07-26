@@ -279,8 +279,8 @@ function inspectSelectorTopology(
   output: Finding[],
 ): void {
   const selector = manifest.runx?.nativeSelector;
-  if (selector?.schema !== "runx.rust_cli_selector_topology.v2") {
-    output.push(finding("selector_topology_schema_invalid", manifestPath, "runx.nativeSelector schema must be runx.rust_cli_selector_topology.v2"));
+  if (selector?.schema !== "runx.rust_cli_selector_topology.v1") {
+    output.push(finding("selector_topology_schema_invalid", manifestPath, "runx.nativeSelector schema must be runx.rust_cli_selector_topology.v1"));
   }
   const expectedPlatforms = supportedPlatforms.map((entry) => entry.key);
   if (!sameStringSet(selector?.supportedPlatforms ?? [], expectedPlatforms)) {
@@ -317,8 +317,8 @@ function inspectSelectorTopology(
   if (!topology) {
     return;
   }
-  if (topology.schema !== "runx.rust_cli_selector_topology.v2") {
-    output.push(finding("selector_topology_manifest_schema_invalid", topologyPath, "topology manifest schema must be runx.rust_cli_selector_topology.v2"));
+  if (topology.schema !== "runx.rust_cli_selector_topology.v1") {
+    output.push(finding("selector_topology_manifest_schema_invalid", topologyPath, "topology manifest schema must be runx.rust_cli_selector_topology.v1"));
   }
   if (topology.selectorPackage !== selectorPackageName) {
     output.push(finding("selector_topology_manifest_selector_invalid", topologyPath, `topology selectorPackage must be ${selectorPackageName}`));
@@ -369,8 +369,8 @@ function inspectNativePackageManifest(
     output.push(finding("native_package_cpu_invalid", manifestPath, `native package cpu must be ${spec.cpu}`));
   }
   const native = manifest.runx?.nativePackage;
-  if (native?.schema !== "runx.rust_cli_native_package.v2") {
-    output.push(finding("native_package_schema_invalid", manifestPath, "runx.nativePackage schema must be runx.rust_cli_native_package.v2"));
+  if (native?.schema !== "runx.rust_cli_native_package.v1") {
+    output.push(finding("native_package_schema_invalid", manifestPath, "runx.nativePackage schema must be runx.rust_cli_native_package.v1"));
   }
   if (native?.selectorPackage !== selectorPackageName) {
     output.push(finding("native_package_selector_invalid", manifestPath, `native package selectorPackage must be ${selectorPackageName}`));
@@ -445,8 +445,8 @@ function inspectChecksum(packageDir: string, bin: string, worker: string, output
   if (!checksum) {
     return;
   }
-  if (checksum.schema !== "runx.rust_cli_artifact_checksums.v2") {
-    output.push(finding("checksum_schema_invalid", checksumPath, "checksum schema must be runx.rust_cli_artifact_checksums.v2"));
+  if (checksum.schema !== "runx.rust_cli_artifact_checksums.v1") {
+    output.push(finding("checksum_schema_invalid", checksumPath, "checksum schema must be runx.rust_cli_artifact_checksums.v1"));
   }
   if (checksum.binary !== stripDotSlash(bin)) {
     output.push(finding("checksum_binary_mismatch", checksumPath, `checksum binary ${checksum.binary ?? "<missing>"} does not match ${bin}`));
@@ -508,8 +508,8 @@ function inspectSignature(packageDir: string, bin: string, worker: string, outpu
   if (!signature) {
     return;
   }
-  if (signature.schema !== "runx.rust_cli_artifact_signatures.v2") {
-    output.push(finding("signature_schema_invalid", signaturePath, "signature manifest schema must be runx.rust_cli_artifact_signatures.v2"));
+  if (signature.schema !== "runx.rust_cli_artifact_signatures.v1") {
+    output.push(finding("signature_schema_invalid", signaturePath, "signature manifest schema must be runx.rust_cli_artifact_signatures.v1"));
   }
   if (signature.binary !== stripDotSlash(bin)) {
     output.push(finding("signature_binary_mismatch", signaturePath, `signature binary ${signature.binary ?? "<missing>"} does not match ${bin}`));
@@ -641,7 +641,7 @@ function loadSupportedPlatforms(): readonly PlatformSpec[] {
       readonly worker?: string;
     }>;
   };
-  if (topology.schema !== "runx.rust_cli_selector_topology.v2" || !topology.nativePackages) {
+  if (topology.schema !== "runx.rust_cli_selector_topology.v1" || !topology.nativePackages) {
     throw new Error("Rust CLI selector topology is missing or unsupported");
   }
   return Object.entries(topology.nativePackages).map(([key, entry]) => {

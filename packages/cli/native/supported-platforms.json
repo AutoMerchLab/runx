@@ -1,5 +1,5 @@
 {
-  "schema": "runx.rust_cli_selector_topology.v2",
+  "schema": "runx.rust_cli_selector_topology.v1",
   "selectorPackage": "@runxhq/cli",
   "nativePackages": {
     "darwin-arm64": {

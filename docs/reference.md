@@ -79,7 +79,7 @@ Contributor setup, test selection, and commit sign-off rules are in
 For a live creator workflow, link the global `runx` binary to this checkout once:
 
 ```bash
-pnpm --dir oss cli:link-global
+pnpm cli:link-global
 ```
 
 Then invoke the linked `runx` binary from anywhere. Use explicit paths outside
@@ -224,8 +224,8 @@ large immutable content behind the digest-bound artifact/page boundary and put
 durable histories behind data cursors rather than carrying either through graph
 context.
 
-The global link points at `oss/packages/cli` in this checkout. Rebuild with
-`pnpm --dir oss build`; do not reinstall.
+The global link points at `packages/cli` in this checkout. Rebuild with
+`pnpm build`; do not reinstall.
 
 ## Package Topology
 

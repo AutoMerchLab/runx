@@ -2,18 +2,18 @@ name: release
 
 # Tag-driven, multi-channel release for the runx CLI.
 #
-# The git tag (cli-vX.Y.Z) is the single source of truth for the CLI
-# distribution. Every job stamps that version into the npm CLI packages and the
-# `runx-cli` crate before building or publishing, so the source tree never
-# carries per-release version edits and `runx --version` is truthful on every
-# channel. Internal Rust crates keep their own semver and are not published by
-# this CLI release workflow.
+# A reviewed CLI version is committed to the candidate manifests before the
+# cli-vX.Y.Z tag is created. Every job re-stamps and verifies the tag version in
+# its ephemeral checkout so `runx --version` stays truthful on every channel.
+# Internal Rust crates keep their own semver and are not published by this CLI
+# release workflow.
 #
 # The GitHub Release is the hub: it serves the raw per-target archives that
-# Homebrew, Scoop, winget, AUR, Docker and direct downloads all consume by URL +
-# sha256. npm packages and native archives carry the same stamped version.
-# Per-registry publish jobs are gated on their credentials and skipped (with a
-# warning) when unset.
+# Homebrew, Scoop, winget, optional AUR handoff, Docker, and direct downloads
+# all consume by URL + sha256. npm packages and native archives carry the same
+# stamped version. GitHub Release, npm, GHCR, Homebrew, and Scoop are the
+# independently verified release set. Winget remains an asynchronous submission;
+# AUR is not published unless Runx controls the package.
 #
 # Pushing a cli-v* tag runs a real release. workflow_dispatch runs a dry-run
 # (build + render, no publish).
@@ -377,30 +377,18 @@ jobs:
     if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - name: Check Homebrew tap credentials
-        id: gate
-        run: |
-          if [ -n "${{ secrets.HOMEBREW_TAP_TOKEN }}" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Skipping Homebrew publish because HOMEBREW_TAP_TOKEN is not configured."
-          fi
       - name: Download rendered manifests
-        if: steps.gate.outputs.publish == 'true'
         uses: actions/download-artifact@v8
         with:
           name: channel-manifests
           path: channels
       - name: Check out tap
-        if: steps.gate.outputs.publish == 'true'
         uses: actions/checkout@v7
         with:
           repository: runxhq/homebrew-tap
           token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
           path: tap
       - name: Commit formula
-        if: steps.gate.outputs.publish == 'true'
         run: |
           mkdir -p tap/Formula
           cp channels/homebrew/runx.rb tap/Formula/runx.rb
@@ -414,30 +402,18 @@ jobs:
     if: needs.prepare.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     steps:
-      - name: Check Scoop bucket credentials
-        id: gate
-        run: |
-          if [ -n "${{ secrets.SCOOP_BUCKET_TOKEN }}" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Skipping Scoop publish because SCOOP_BUCKET_TOKEN is not configured."
-          fi
       - name: Download rendered manifests
-        if: steps.gate.outputs.publish == 'true'
         uses: actions/download-artifact@v8
         with:
           name: channel-manifests
           path: channels
       - name: Check out bucket
-        if: steps.gate.outputs.publish == 'true'
         uses: actions/checkout@v7
         with:
           repository: runxhq/scoop-bucket
           token: ${{ secrets.SCOOP_BUCKET_TOKEN }}
           path: bucket
       - name: Commit manifest
-        if: steps.gate.outputs.publish == 'true'
         run: |
           mkdir -p bucket/bucket
           cp channels/scoop/runx.json bucket/bucket/runx.json
@@ -477,37 +453,6 @@ jobs:
             --manifest channels/winget \
             --version "${{ needs.prepare.outputs.version }}" \
             --identifier runxhq.runx
-
-  publish-aur:
-    needs: [prepare, package-managers]
-    if: needs.prepare.outputs.publish == 'true'
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Check AUR credentials
-        id: gate
-        run: |
-          if [ -n "${{ secrets.AUR_SSH_PRIVATE_KEY }}" ]; then
-            echo "publish=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "publish=false" >> "$GITHUB_OUTPUT"
-            echo "::warning::Skipping AUR publish because AUR_SSH_PRIVATE_KEY is not configured."
-          fi
-      - name: Download rendered manifests
-        if: steps.gate.outputs.publish == 'true'
-        uses: actions/download-artifact@v8
-        with:
-          name: channel-manifests
-          path: channels
-      - name: Publish to AUR
-        if: steps.gate.outputs.publish == 'true'
-        uses: KSXGitHub/github-actions-deploy-aur@v3
-        with:
-          pkgname: runx-bin
-          pkgbuild: channels/aur/PKGBUILD
-          commit_username: github-actions[bot]
-          commit_email: 41898282+github-actions[bot]@users.noreply.github.com
-          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_message: "runx ${{ needs.prepare.outputs.version }}"
 
   publish-docker:
     needs: [prepare, github-release]

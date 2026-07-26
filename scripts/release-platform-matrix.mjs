@@ -6,7 +6,7 @@ const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url))
 const topology = JSON.parse(
   readFileSync(path.join(workspaceRoot, "packages", "cli", "native", "supported-platforms.json"), "utf8"),
 );
-if (topology.schema !== "runx.rust_cli_selector_topology.v2") {
+if (topology.schema !== "runx.rust_cli_selector_topology.v1") {
   throw new Error("release platform topology has an unsupported schema");
 }
 

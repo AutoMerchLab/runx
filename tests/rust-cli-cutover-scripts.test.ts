@@ -80,7 +80,6 @@ describe("Rust CLI cutover scripts", () => {
         clean,
         "--no-legacy-shapes",
         "--no-v2",
-        "--no-aliases",
         "--no-js-fallback",
       ]);
       expect(cleanResult.status).toBe(0);
@@ -147,7 +146,7 @@ describe("Rust CLI cutover scripts", () => {
         findings: [],
       });
       await expect(readFile(path.join(packageDir, "native", "signatures.json"), "utf8")).resolves.toContain(
-        "runx.rust_cli_artifact_signatures.v2",
+        "runx.rust_cli_artifact_signatures.v1",
       );
       const checksums = JSON.parse(await readFile(path.join(packageDir, "native", "checksums.json"), "utf8")) as {
         readonly worker: string;
@@ -347,7 +346,7 @@ async function fixtureSignatureManifest(
     readonly version: string;
   };
   return {
-    schema: "runx.rust_cli_artifact_signatures.v2",
+    schema: "runx.rust_cli_artifact_signatures.v1",
     package: `${manifest.name}-${platform}`,
     version: manifest.version,
     platform,

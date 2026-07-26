@@ -58,7 +58,7 @@ describe("CLI package", () => {
     };
 
     expect(topology).toMatchObject({
-      schema: "runx.rust_cli_selector_topology.v2",
+      schema: "runx.rust_cli_selector_topology.v1",
       selectorPackage: "@runxhq/cli",
     });
     expect(packageJson).toMatchObject({
@@ -67,7 +67,7 @@ describe("CLI package", () => {
       files: ["LICENSE", "bin/runx", "native/supported-platforms.json"],
       runx: {
         nativeSelector: {
-          schema: "runx.rust_cli_selector_topology.v2",
+          schema: "runx.rust_cli_selector_topology.v1",
           nativePackagePattern: "@runxhq/cli-${platform}",
         },
       },

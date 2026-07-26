@@ -30,6 +30,7 @@ for (const required of [
   'step("runtime architecture"',
   'step("deterministic module engine decision"',
   'step("catalog version drift"',
+  'step("docs:api:check"',
   'await runSerialGroup("rust structure checks"',
   'step("build rust binaries"',
   'step("build workspace"',

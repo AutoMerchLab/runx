@@ -176,7 +176,7 @@ jobs:
           cargo metadata --manifest-path crates/Cargo.toml --format-version 1 | node scripts/check-license-edges.mjs --check edges
 
       - name: Cargo policy
-        run: cargo deny --manifest-path crates/Cargo.toml check bans licenses sources
+        run: cargo deny --manifest-path crates/Cargo.toml check advisories bans licenses sources
 
       - name: Rust public API snapshot
         run: node scripts/check-rust-kernel-parity.mjs --api-only

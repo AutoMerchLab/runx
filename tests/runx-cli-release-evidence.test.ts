@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   RUNX_CLI_NPM_PACKAGES,
+  RUNX_CLI_REQUIRED_RELEASE_CHANNELS,
+  RUNX_CLI_REQUIRED_RELEASE_CHECKS,
   observeRunxCliRelease,
 } from "../scripts/lib/runx-cli-release-evidence.mjs";
 
@@ -20,10 +22,10 @@ describe("Runx CLI release evidence", () => {
 
     expect(evidence.ready).toBe(true);
     expect(evidence.commitRef).toBe(commit);
-    expect(evidence.checks.map((check: { id: string }) => check.id)).toEqual([
+    expect(evidence.checks.map((check: { id: string }) => check.id))
+      .toEqual(RUNX_CLI_REQUIRED_RELEASE_CHECKS);
+    expect(RUNX_CLI_REQUIRED_RELEASE_CHANNELS).toEqual([
       "github_release",
-      "github_tag",
-      "release_workflow",
       "npm",
       "ghcr",
       "homebrew",

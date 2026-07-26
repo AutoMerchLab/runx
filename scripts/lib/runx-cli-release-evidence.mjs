@@ -14,6 +14,24 @@ export const RUNX_CLI_NPM_PACKAGES = Object.freeze([
   "@runxhq/cli-win32-x64",
 ]);
 
+export const RUNX_CLI_REQUIRED_RELEASE_CHECKS = Object.freeze([
+  "github_release",
+  "github_tag",
+  "release_workflow",
+  "npm",
+  "ghcr",
+  "homebrew",
+  "scoop",
+]);
+
+export const RUNX_CLI_REQUIRED_RELEASE_CHANNELS = Object.freeze([
+  "github_release",
+  "npm",
+  "ghcr",
+  "homebrew",
+  "scoop",
+]);
+
 /**
  * @param {{
  *   version: string;

@@ -68,7 +68,6 @@ The native Rust CLI needs Rust 1.97 or newer and stays useful without Node, pnpm
 From the OSS workspace:
 
 ```bash
-cd oss
 pnpm install
 pnpm build
 pnpm test
@@ -128,7 +127,13 @@ The first runnable example is documented in [docs/getting-started.md](docs/getti
 
 ## Releasing
 
-The CLI ships from a single `cli-vX.Y.Z` tag to every channel (GitHub Release, npm, crates.io, Homebrew, Scoop, winget, AUR, Docker) plus the `runx.ai/install` one-liner. The tag is the only source of truth; release jobs stamp the version, they are never hand-committed. Full pipeline, versioning model, required secrets, and how to cut a release are in [docs/releasing.md](docs/releasing.md).
+The CLI ships from a reviewed `cli-vX.Y.Z` candidate to GitHub Releases, npm,
+GHCR, Homebrew, and Scoop, plus the `runx.ai/install` one-liner. Winget is an
+asynchronous submission and AUR is published only when Runx controls the
+package. CLI versions are committed to the candidate manifests and verified
+again from the tag; CLI tags never publish internal Cargo crates. Full pipeline,
+versioning, channel, and release instructions are in
+[docs/releasing.md](docs/releasing.md).
 
 ## Code of conduct
 

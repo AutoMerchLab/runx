@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 const selectorRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 
 const topology = readJson(path.join(selectorRoot, "native", "supported-platforms.json"));
-if (topology.schema !== "runx.rust_cli_selector_topology.v2") {
+if (topology.schema !== "runx.rust_cli_selector_topology.v1") {
   fail(`runx selector topology has an unsupported schema: ${topology.schema ?? "<missing>"}`);
 }
 const resolvedPlatform = Object.entries(topology.nativePackages ?? {})
@@ -68,8 +68,8 @@ function verifyNativePackage(packageName, packageJsonPath, expectedPlatform, tar
   if (checksum.platform !== expectedPlatform) {
     fail(`runx checksum platform mismatch: expected ${expectedPlatform}, found ${checksum.platform ?? "<missing>"}`);
   }
-  if (checksum.schema !== "runx.rust_cli_artifact_checksums.v2") {
-    fail(`runx checksum schema mismatch: expected v2, found ${checksum.schema ?? "<missing>"}`);
+  if (checksum.schema !== "runx.rust_cli_artifact_checksums.v1") {
+    fail(`runx checksum schema mismatch: expected v1, found ${checksum.schema ?? "<missing>"}`);
   }
   if (checksum.binary !== target.binary) {
     fail(`runx checksum binary mismatch: expected ${target.binary}, found ${checksum.binary ?? "<missing>"}`);

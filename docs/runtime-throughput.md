@@ -12,7 +12,7 @@ network APIs, or user subprocess work.
 Capture the local baseline before hot-path changes:
 
 ```bash
-pnpm --dir oss perf:runtime:capture -- --output ../.scafld/perf/oss-runtime-throughput-baseline.json
+pnpm perf:runtime:capture -- --output .scafld/perf/oss-runtime-throughput-baseline.json
 ```
 
 The capture script runs the Rust Criterion benches and records a JSON document
@@ -224,9 +224,9 @@ captured on the same host class using the commands below.
 Later phases compare against the Phase 1 baseline:
 
 ```bash
-pnpm --dir oss perf:runtime:check -- --baseline ../.scafld/perf/oss-runtime-throughput-baseline.json --workloads graph_planning,wide_fanout --min-throughput-ratio 2.00
-pnpm --dir oss perf:runtime:check -- --baseline ../.scafld/perf/oss-runtime-throughput-baseline.json --workloads graph_context_to_module --min-throughput-ratio 1.00 --max-p99-regression 1.10
-pnpm --dir oss perf:runtime:check -- --baseline ../.scafld/perf/oss-runtime-throughput-baseline.json --workloads receipt_canonicalization,graph_receipt_sealing --min-throughput-ratio 1.50
+pnpm perf:runtime:check -- --baseline .scafld/perf/oss-runtime-throughput-baseline.json --workloads graph_planning,wide_fanout --min-throughput-ratio 2.00
+pnpm perf:runtime:check -- --baseline .scafld/perf/oss-runtime-throughput-baseline.json --workloads graph_context_to_module --min-throughput-ratio 1.00 --max-p99-regression 1.10
+pnpm perf:runtime:check -- --baseline .scafld/perf/oss-runtime-throughput-baseline.json --workloads receipt_canonicalization,graph_receipt_sealing --min-throughput-ratio 1.50
 ```
 
 The check command exits non-zero when any requested workload misses its declared
@@ -237,15 +237,15 @@ The S-tier final gate captures all runtime-owned workloads into
 `.scafld/perf/oss-runtime-s-tier-baseline.json`:
 
 ```bash
-pnpm --dir oss perf:runtime:capture -- --output ../.scafld/perf/oss-runtime-s-tier-final.json --workloads graph_planning,wide_fanout,native_capability_dispatch,graph_context_to_module,pure_module_cold_start,pure_module_session_reuse,pure_module_large_input,bounded_parallel_fanout,provider_effect_finality,artifact_admission,artifact_page_continuation,event_page_continuation,twitter_archive_selection,receipt_canonicalization,graph_receipt_sealing,receipt_store_append,receipt_store_index,mcp_session_start,mcp_session_reuse,native_cli_launch,cli_file_input
-pnpm --dir oss perf:runtime:check -- --baseline ../.scafld/perf/oss-runtime-s-tier-baseline.json --candidate ../.scafld/perf/oss-runtime-s-tier-final.json --workloads graph_planning,wide_fanout --min-throughput-ratio 2.00 --max-p99-regression 1.10
-pnpm --dir oss perf:runtime:check -- --baseline ../.scafld/perf/oss-runtime-s-tier-baseline.json --candidate ../.scafld/perf/oss-runtime-s-tier-final.json --workloads native_capability_dispatch,graph_context_to_module,bounded_parallel_fanout --min-throughput-ratio 1.00 --max-p99-regression 1.10
-pnpm --dir oss perf:runtime:check -- --baseline ../.scafld/perf/oss-runtime-s-tier-baseline.json --candidate ../.scafld/perf/oss-runtime-s-tier-final.json --workloads receipt_canonicalization,graph_receipt_sealing --min-throughput-ratio 1.75
-pnpm --dir oss perf:runtime:check -- --baseline ../.scafld/perf/oss-runtime-s-tier-baseline.json --candidate ../.scafld/perf/oss-runtime-s-tier-final.json --workloads receipt_store_append,receipt_store_index --min-throughput-ratio 1.75 --max-growth-exponent 1.10
-pnpm --dir oss perf:runtime:check -- --baseline ../.scafld/perf/oss-runtime-production-path-baseline.json --candidate ../.scafld/perf/oss-runtime-s-tier-final.json --workloads provider_effect_finality,artifact_admission --min-throughput-ratio 0.85 --max-p99-regression 1.25 --max-spawn-count 0
-pnpm --dir oss perf:runtime:check -- --baseline ../.scafld/perf/oss-runtime-production-path-baseline.json --candidate ../.scafld/perf/oss-runtime-s-tier-final.json --workloads artifact_page_continuation,event_page_continuation,twitter_archive_selection --min-throughput-ratio 0.85 --max-growth-exponent 1.10 --max-p99-regression 1.25
-pnpm --dir oss perf:runtime:check -- --baseline ../.scafld/perf/oss-runtime-s-tier-baseline.json --candidate ../.scafld/perf/oss-runtime-s-tier-final.json --workloads mcp_session_reuse,native_cli_launch --max-spawn-count 1 --max-p99-regression 1.10
-pnpm --dir oss perf:runtime:check -- --baseline ../.scafld/perf/oss-runtime-production-path-baseline.json --candidate ../.scafld/perf/oss-runtime-s-tier-final.json --workloads cli_file_input --min-throughput-ratio 0.85 --max-p99-regression 1.25 --max-spawn-count 1
+pnpm perf:runtime:capture -- --output .scafld/perf/oss-runtime-s-tier-final.json --workloads graph_planning,wide_fanout,native_capability_dispatch,graph_context_to_module,pure_module_cold_start,pure_module_session_reuse,pure_module_large_input,bounded_parallel_fanout,provider_effect_finality,artifact_admission,artifact_page_continuation,event_page_continuation,twitter_archive_selection,receipt_canonicalization,graph_receipt_sealing,receipt_store_append,receipt_store_index,mcp_session_start,mcp_session_reuse,native_cli_launch,cli_file_input
+pnpm perf:runtime:check -- --baseline .scafld/perf/oss-runtime-s-tier-baseline.json --candidate .scafld/perf/oss-runtime-s-tier-final.json --workloads graph_planning,wide_fanout --min-throughput-ratio 2.00 --max-p99-regression 1.10
+pnpm perf:runtime:check -- --baseline .scafld/perf/oss-runtime-s-tier-baseline.json --candidate .scafld/perf/oss-runtime-s-tier-final.json --workloads native_capability_dispatch,graph_context_to_module,bounded_parallel_fanout --min-throughput-ratio 1.00 --max-p99-regression 1.10
+pnpm perf:runtime:check -- --baseline .scafld/perf/oss-runtime-s-tier-baseline.json --candidate .scafld/perf/oss-runtime-s-tier-final.json --workloads receipt_canonicalization,graph_receipt_sealing --min-throughput-ratio 1.75
+pnpm perf:runtime:check -- --baseline .scafld/perf/oss-runtime-s-tier-baseline.json --candidate .scafld/perf/oss-runtime-s-tier-final.json --workloads receipt_store_append,receipt_store_index --min-throughput-ratio 1.75 --max-growth-exponent 1.10
+pnpm perf:runtime:check -- --baseline .scafld/perf/oss-runtime-production-path-baseline.json --candidate .scafld/perf/oss-runtime-s-tier-final.json --workloads provider_effect_finality,artifact_admission --min-throughput-ratio 0.85 --max-p99-regression 1.25 --max-spawn-count 0
+pnpm perf:runtime:check -- --baseline .scafld/perf/oss-runtime-production-path-baseline.json --candidate .scafld/perf/oss-runtime-s-tier-final.json --workloads artifact_page_continuation,event_page_continuation,twitter_archive_selection --min-throughput-ratio 0.85 --max-growth-exponent 1.10 --max-p99-regression 1.25
+pnpm perf:runtime:check -- --baseline .scafld/perf/oss-runtime-s-tier-baseline.json --candidate .scafld/perf/oss-runtime-s-tier-final.json --workloads mcp_session_reuse,native_cli_launch --max-spawn-count 1 --max-p99-regression 1.10
+pnpm perf:runtime:check -- --baseline .scafld/perf/oss-runtime-production-path-baseline.json --candidate .scafld/perf/oss-runtime-s-tier-final.json --workloads cli_file_input --min-throughput-ratio 0.85 --max-p99-regression 1.25 --max-spawn-count 1
 ```
 
 ## Evidence ownership

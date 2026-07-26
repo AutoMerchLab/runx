@@ -408,7 +408,7 @@ fn external_adapter_process_supervisor_rejects_unknown_protocol_before_spawn()
 -> Result<(), Box<dyn std::error::Error>> {
     let manifest = serde_json::json!({
         "schema": MANIFEST_SCHEMA,
-        "protocol_version": "runx.external_adapter.v2",
+        "protocol_version": "runx.external_adapter.unsupported",
         "adapter_id": "adapter.github.issue-intake",
         "name": "GitHub issue intake adapter",
         "version": "0.1.0",

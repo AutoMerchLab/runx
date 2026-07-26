@@ -11,7 +11,7 @@ const releaseTopology = JSON.parse(
     "utf8",
   ),
 );
-if (releaseTopology.schema !== "runx.rust_cli_selector_topology.v2") {
+if (releaseTopology.schema !== "runx.rust_cli_selector_topology.v1") {
   fail("release platform topology has an unsupported schema");
 }
 

@@ -43,7 +43,10 @@ async function prepare() {
   const ghcrAccess = await checkRunxGhcrAnonymousAccess();
   if (ghcrAccess.status !== "passed") {
     throw new Error(
-      `GHCR must be publicly pullable before publication: ${ghcrAccess.detail}`,
+      "GHCR must be publicly pullable before publication; make the runxhq/runx "
+      + "container package public at "
+      + "https://github.com/orgs/runxhq/packages/container/package/runx/settings"
+      + `: ${ghcrAccess.detail}`,
     );
   }
 

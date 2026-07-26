@@ -31,6 +31,7 @@
     "thread:reconcile-sync": "node scripts/thread-reconcile-sync.mjs",
     "live:issue-to-pr": "node scripts/dogfood-github-issue-to-pr.mjs --preflight",
     "docs:api": "tsx scripts/gen-api-index.ts",
+    "docs:api:check": "tsx scripts/gen-api-index.ts --check",
     "docs:exit-codes": "tsx scripts/check-cli-exit-codes.ts",
     "docs:readme-art": "node scripts/render-ops-map.mjs",
     "extension-sdk:check-package-contract": "node scripts/check-extension-sdk-package-contract.mjs",

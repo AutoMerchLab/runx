@@ -42,6 +42,11 @@ jobs:
       - name: Setup Rust
         run: rustup show
 
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-deny
+
       - name: Install Linux sandbox
         uses: ./.github/actions/setup-linux-sandbox
 
@@ -61,6 +66,9 @@ jobs:
           pnpm core-skills:audit
           pnpm receipts:canonical-check
           pnpm receipts:importer-audit
+
+      - name: Audit Rust dependency advisories
+        run: cargo deny --manifest-path crates/Cargo.toml check advisories
 
       - name: Exercise runtime stress boundaries
         run: |

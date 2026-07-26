@@ -100,7 +100,7 @@ const signatureManifest = options.signatureManifest
 writeFileSync(
   path.join(nativeRoot, "native", "checksums.json"),
   `${JSON.stringify({
-    schema: "runx.rust_cli_artifact_checksums.v2",
+    schema: "runx.rust_cli_artifact_checksums.v1",
     package: nativePackage,
     version: manifest.version,
     platform: platform.key,
@@ -163,7 +163,7 @@ writeFileSync(
     cpu: [platform.cpu],
     runx: {
       nativePackage: {
-        schema: "runx.rust_cli_native_package.v2",
+        schema: "runx.rust_cli_native_package.v1",
         selectorPackage: manifest.name,
         platform: platform.key,
         binary: `bin/${stagedBinaryName}`,
@@ -345,7 +345,7 @@ function loadSupportedPlatforms(): readonly PlatformSpec[] {
       readonly worker?: string;
     }>;
   };
-  if (topology.schema !== "runx.rust_cli_selector_topology.v2" || !topology.nativePackages) {
+  if (topology.schema !== "runx.rust_cli_selector_topology.v1" || !topology.nativePackages) {
     throw new Error("Rust CLI selector topology is missing or unsupported");
   }
   return Object.entries(topology.nativePackages).map(([key, entry]) => {
@@ -398,7 +398,7 @@ function nativePackageName(selectorPackage: string, platform: string): string {
 function selectorTopology(selectorPackage: string): unknown {
   return {
     nativeSelector: {
-      schema: "runx.rust_cli_selector_topology.v2",
+      schema: "runx.rust_cli_selector_topology.v1",
       supportedPlatforms: supportedPlatforms.map((entry) => entry.key),
       nativePackagePattern: `${selectorPackage}-\${platform}`,
     },
@@ -442,8 +442,8 @@ function readSignatureManifest(
     readonly worker_sha256?: string;
     readonly signatures?: readonly unknown[];
   };
-  if (manifest.schema !== "runx.rust_cli_artifact_signatures.v2") {
-    throw new Error("signature manifest schema must be runx.rust_cli_artifact_signatures.v2");
+  if (manifest.schema !== "runx.rust_cli_artifact_signatures.v1") {
+    throw new Error("signature manifest schema must be runx.rust_cli_artifact_signatures.v1");
   }
   if (manifest.package !== expected.packageName) {
     throw new Error(`signature manifest package ${manifest.package ?? "<missing>"} does not match ${expected.packageName}`);

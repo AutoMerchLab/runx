@@ -15,15 +15,20 @@ Release policy lives at the workspace root (`AGENTS.md` plus
 package manifest, cloud pin, or channel table disagrees with `release/status.json`,
 fix the drift there and run the root checks; do not invent a second release flow.
 
-The same product version is used on every active channel. Individual workflow
-jobs may skip an unconfigured package manager with a warning, but the governed
-release remains unverified until every required channel has independent
-readback.
+The same product version is used on every active channel. The governed release
+is verified only after independent readback from its required synchronous
+channels:
 
 - GitHub Release: `cli-vX.Y.Z` (the hub; serves the raw per-target archives)
 - npm: `@runxhq/cli@X.Y.Z` (+ `@runxhq/cli-<platform>@X.Y.Z`)
-- Homebrew, Scoop, winget, AUR, Docker (GHCR): `X.Y.Z` when their channel
-  credentials are configured
+- Docker (GHCR): `ghcr.io/runxhq/runx:X.Y.Z`, anonymously pullable
+- Homebrew and Scoop: `X.Y.Z`
+
+Winget is an asynchronous submission recorded separately after its pull request
+exists. AUR is not an active Runx-owned channel while `runx-bin` belongs to
+another maintainer; the generated manifest is only a handoff artifact. Neither
+channel can silently weaken or block verification of the synchronous release
+set.
 
 The crates.io package is not a CLI release channel. `runx-cli` depends on the
 internal Rust crate graph, whose versions move under a separate, explicit
@@ -35,11 +40,13 @@ the binary was installed.
 
 ## Versioning model
 
-The source tree keeps its development version; release jobs **stamp** the tag
-version, they never commit it. `cli-vX.Y.Z` is the CLI distribution version, not
-a workspace-wide library-crate release. One command stamps only the CLI package
-surfaces: npm `package.json` + its `optionalDependencies`, `runx-cli`, and the
-`runx-cli` lockfile entry.
+The source tree carries the reviewed CLI candidate version. The release profile
+requires that committed version to match the requested release before approval;
+the tag workflow then re-stamps and verifies the same value in each ephemeral
+checkout. `cli-vX.Y.Z` is the CLI distribution version, not a workspace-wide
+library-crate release. One command updates only the CLI package surfaces: npm
+`package.json` + its `optionalDependencies`, `runx-cli`, the execution-runtime
+release identity, and the `runx-cli` lockfile entry.
 
 ```bash
 pnpm exec tsx scripts/set-release-version.ts X.Y.Z          # write
@@ -83,10 +90,10 @@ channel that downloads its archives):
    (`build-channel-input.mjs`), render Homebrew / Scoop / winget / AUR manifests
    (`gen-channel-manifests.ts`), verify them against the actual release archive
    contents (`check-channel-manifests.mjs`), and attach them to the Release.
-7. **publish-{homebrew,scoop,winget,aur}** — push to the owned registries when
-   their credentials are configured; otherwise skipped with a warning. winget
-   submits the validated `channels/winget/` manifest set directly; it must not
-   use a generator that guesses archive nesting.
+7. **publish-{homebrew,scoop}** — update the required package-manager channels.
+   **publish-winget** submits the validated `channels/winget/` manifest set
+   asynchronously; it must not use a generator that guesses archive nesting.
+   The AUR manifest remains a handoff artifact until Runx owns `runx-bin`.
 8. **publish-docker** — multi-arch GHCR image (pulls the musl archive from the
    Release; no Rust toolchain in the image build).
 
@@ -127,25 +134,23 @@ version-compatible worker is absent.
 > `runx.ai/install.ps1` → raw `scripts/install.ps1` (302 or pass-through). Keep
 > the path extensionless for the shell installer.
 
-## Required secrets
+## Channel credentials
 
-Each registry job is gated on its secret and reports a warning when the secret
-is absent. A skipped channel leaves the release unverified: the canonical
-release skill does not claim completion until independent readback proves every
-required channel.
+Missing credentials for the required synchronous channels fail publication or
+independent verification. Optional asynchronous channels never masquerade as
+verified release evidence.
 
-| Secret | Channel | Required for |
+| Secret | Channel | Role |
 | --- | --- | --- |
-| `NPM_TOKEN` | npm | selector + native packages |
-| `HOMEBREW_TAP_TOKEN` | Homebrew | push to `runxhq/homebrew-tap` |
-| `SCOOP_BUCKET_TOKEN` | Scoop | push to `runxhq/scoop-bucket` |
-| `WINGET_TOKEN` | winget | PR to `microsoft/winget-pkgs` |
-| `AUR_SSH_PRIVATE_KEY` | AUR | push `runx-bin` |
+| `NPM_TOKEN` | npm | required selector + native package publication |
+| `HOMEBREW_TAP_TOKEN` | Homebrew | required push to `runxhq/homebrew-tap` |
+| `SCOOP_BUCKET_TOKEN` | Scoop | required push to `runxhq/scoop-bucket` |
+| `WINGET_TOKEN` | winget | optional asynchronous PR to `microsoft/winget-pkgs` |
 | `GITHUB_TOKEN` | GitHub Release, GHCR | provided automatically |
 
-External repos to create before enabling those channels: `runxhq/homebrew-tap`,
-`runxhq/scoop-bucket`, and the `runxhq.runx` winget package / `runx-bin` AUR
-package.
+Runx owns `runxhq/homebrew-tap` and `runxhq/scoop-bucket`. The winget package is
+tracked through its upstream PR. Do not configure an AUR key for a package
+owned by an unrelated maintainer.
 
 ## Cutting a release
 

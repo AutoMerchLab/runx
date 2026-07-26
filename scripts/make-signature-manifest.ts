@@ -32,7 +32,7 @@ const sha256 = createHash("sha256").update(readFileSync(binaryPath)).digest("hex
 const workerSha256 = createHash("sha256").update(readFileSync(workerPath)).digest("hex");
 
 const signatureManifest = {
-  schema: "runx.rust_cli_artifact_signatures.v2",
+  schema: "runx.rust_cli_artifact_signatures.v1",
   package: `${manifest.name}-${options.platform}`,
   version: manifest.version,
   platform: options.platform,
