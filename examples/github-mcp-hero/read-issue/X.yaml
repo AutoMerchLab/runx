@@ -12,6 +12,12 @@ runners:
     arguments:
       repository: "{{repository}}"
       number: "{{issue_number}}"
+    outputs:
+      repository: string
+      number: string
+      title: string
+      state: string
+      body: string
     timeout_seconds: 15
     sandbox:
       profile: network

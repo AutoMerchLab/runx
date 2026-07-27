@@ -1108,6 +1108,11 @@ fn write_operator_context_skill(root: &Path) -> Result<PathBuf, Box<dyn std::err
       "type": "string",
       "required": true
     }
+  },
+  "artifacts": {
+    "named_emits": {
+      "decision": "decision"
+    }
   }
 }
 "#,

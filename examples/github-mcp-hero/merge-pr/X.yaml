@@ -12,6 +12,10 @@ runners:
     arguments:
       repository: "{{repository}}"
       number: "{{pr_number}}"
+    outputs:
+      repository: string
+      number: string
+      merge_commit_sha: string
     timeout_seconds: 15
     sandbox:
       profile: network

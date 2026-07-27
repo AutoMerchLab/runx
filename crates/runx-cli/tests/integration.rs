@@ -22,6 +22,7 @@ mod locality;
 mod mcp_dogfood;
 mod native_no_ts;
 mod new_skill_authoring;
+mod official_skill_admission;
 mod operator_journeys;
 mod parser;
 mod policy;
