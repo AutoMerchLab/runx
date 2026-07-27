@@ -496,7 +496,7 @@ function runJson(runx, args) {
     cwd: root,
     encoding: "utf8",
     maxBuffer: 32 * 1024 * 1024,
-    env: { ...process.env, NO_COLOR: "1" },
+    env: { ...process.env, INIT_CWD: root, PWD: root, NO_COLOR: "1" },
   });
   if (result.error) throw result.error;
   if (result.status !== 0) {

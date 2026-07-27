@@ -9,7 +9,9 @@ inputs:
     kind: issues
     filters: { limit: 1 }
     mutations:
-      - { ref: "issue:241", op: add_label, digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+      - ref: issues/241
+        op: update
+        payload: { labels: [triage] }
   scope: read
 expect:
   status: sealed

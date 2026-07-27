@@ -75,6 +75,7 @@ fn provider_operation_authenticates_and_returns_bounded_readback() {
             grant_id: "grant_slack_1".to_owned(),
             operation: "thread.reply".to_owned(),
             target: "slack://T/C/2".to_owned(),
+            scopes: vec!["thread.reply".to_owned()],
             input: JsonObject::from([(
                 "idempotency_key".to_owned(),
                 JsonValue::String("runx:test-operation".to_owned()),
@@ -89,6 +90,22 @@ fn provider_operation_authenticates_and_returns_bounded_readback() {
         Some("slack")
     );
     assert_eq!(transport.requests.borrow().len(), 2);
+    let request_body: JsonValue = serde_json::from_str(
+        transport.requests.borrow()[1]
+            .body
+            .as_deref()
+            .expect("provider operation body"),
+    )
+    .expect("provider operation JSON");
+    let request_body = request_body
+        .as_object()
+        .expect("provider operation body must be an object");
+    assert_eq!(
+        request_body.get("scopes"),
+        Some(&JsonValue::Array(vec![JsonValue::String(
+            "thread.reply".to_owned(),
+        )]))
+    );
 }
 
 #[test]
@@ -155,6 +172,7 @@ fn provider_operation_rejects_mismatched_readback() {
         grant_id: "grant_github_1".to_owned(),
         operation: "issue.read".to_owned(),
         target: "github://runxhq/runx/issues/1".to_owned(),
+        scopes: vec!["repo.read".to_owned()],
         input: JsonObject::new(),
         expected_access: Some(ProviderOperationAccess::Read),
     };
@@ -178,6 +196,7 @@ fn provider_operation_rejects_mismatched_access_before_trusting_result() {
         grant_id: "grant_slack_1".to_owned(),
         operation: "thread.reply".to_owned(),
         target: "slack://T/C/2".to_owned(),
+        scopes: vec!["thread.reply".to_owned()],
         input: JsonObject::new(),
         expected_access: Some(ProviderOperationAccess::Read),
     };
@@ -202,6 +221,7 @@ fn provider_operation_requires_explicit_success_status() {
         grant_id: "grant_slack_1".to_owned(),
         operation: "thread.read".to_owned(),
         target: "slack://T/C/2".to_owned(),
+        scopes: vec!["thread.read".to_owned()],
         input: JsonObject::new(),
         expected_access: Some(ProviderOperationAccess::Read),
     };
@@ -226,6 +246,7 @@ fn provider_operation_requires_readback_evidence() {
         grant_id: "grant_slack_1".to_owned(),
         operation: "thread.read".to_owned(),
         target: "slack://T/C/2".to_owned(),
+        scopes: vec!["thread.read".to_owned()],
         input: JsonObject::new(),
         expected_access: Some(ProviderOperationAccess::Read),
     };
@@ -251,6 +272,7 @@ fn provider_mutation_requires_matching_runtime_idempotency_evidence() {
         grant_id: "grant_slack_1".to_owned(),
         operation: "thread.reply".to_owned(),
         target: "slack://T/C/2".to_owned(),
+        scopes: vec!["thread.reply".to_owned()],
         input: JsonObject::from([(
             "idempotency_key".to_owned(),
             JsonValue::String("runx:expected".to_owned()),

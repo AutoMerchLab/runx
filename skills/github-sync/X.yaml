@@ -1,5 +1,5 @@
 skill: github-sync
-version: "0.3.1"
+version: "0.4.0"
 
 catalog:
   kind: skill
@@ -37,7 +37,7 @@ runners:
       resources:
         type: json
         required: true
-        description: Bounded issue, PR, or thread selector and digest-only mutations.
+        description: Bounded issue, PR, or thread selector and at most one typed mutation.
       scope:
         type: string
         required: true
@@ -105,11 +105,11 @@ runners:
       resources:
         type: json
         required: true
-        description: Bounded digest-addressed issue, PR, or thread mutations.
+        description: Bounded selector with exactly one typed issue, PR, or thread mutation.
       idempotency_key:
         type: string
         required: true
-        description: Stable retry key for this exact mutation set.
+        description: Stable retry key for this exact mutation.
     graph:
       name: github-sync-push
       result_from: [readback]
@@ -131,13 +131,13 @@ runners:
             packets:
               sync_plan: runx.github_sync.v1
 
-        - id: digest-mutations
+        - id: digest-mutation
           when:
             field: plan.sync_plan.data.decision
             equals: ready_for_approval
           tool: data.digest
           context:
-            value: plan.sync_plan.data.diff_summary
+            value: plan.sync_plan.data.mutation
 
         - id: push
           when:
@@ -152,12 +152,12 @@ runners:
             provider_permission:
               verb: write
           inputs:
-            expected_provider: github
             target: $input.repo
+            expected_provider: github
             idempotency_key: $input.idempotency_key
             expected_result:
               repository: $input.repo
-            result_fields: [repository, sync_ref, mutation_digest, resources]
+            result_fields: [repository, sync_ref, mutation_digest, resources, idempotency_key]
           context:
             operation: plan.sync_plan.data.provider_operation
             input: plan.sync_plan.data
@@ -169,7 +169,7 @@ runners:
           tool: data.compare
           context:
             actual: push.provider_operation.data.result.mutation_digest
-            expected: digest-mutations.digest_result.data.digest
+            expected: digest-mutation.digest_result.data.digest
 
         - id: readback
           when:
@@ -223,7 +223,7 @@ runners:
       resources:
         type: json
         required: true
-        description: Bounded selector and digest-only mutation plan.
+        description: Bounded selector and optional single typed mutation.
       scope:
         type: string
         required: true

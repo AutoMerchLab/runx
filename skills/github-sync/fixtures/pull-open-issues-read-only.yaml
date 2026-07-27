@@ -7,7 +7,7 @@ inputs:
   direction: pull
   resources:
     kind: issues
-    filters: { state: open, label: triage, limit: 25 }
+    filters: { state: open, labels: [triage], limit: 25 }
   scope: read
 expect:
   status: sealed
@@ -15,7 +15,7 @@ expect:
     subset:
       sync_plan:
         decision: ready
-        scope_used: repo:read
+        scope_used: repo.read
         resources_touched: []
         provider_status: not_called
         gates: { approval_required: false, approval_ref: "" }

@@ -9,7 +9,9 @@ inputs:
     kind: issues
     filters: { limit: 1 }
     mutations:
-      - { ref: "issue:241", op: add_label, digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa }
+      - ref: issues/241
+        op: update
+        payload: { labels: [triage] }
   scope: write
 expect:
   status: sealed
@@ -17,7 +19,11 @@ expect:
     subset:
       sync_plan:
         decision: ready_for_approval
-        scope_used: repo:write
+        scope_used: repo.write
+        mutation:
+          ref: issues/241
+          op: update
+          payload: { labels: [triage] }
         provider_status: not_called
         gates: { approval_required: true, approval_ref: "" }
   receipt: { schema: runx.receipt.v1 }

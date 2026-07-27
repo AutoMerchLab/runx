@@ -14,7 +14,7 @@ inputs:
   direction: pull
   resources:
     kind: issues
-    filters: { state: open, label: triage, limit: 25 }
+    filters: { state: open, labels: [triage], limit: 25 }
   scope: read
 expect:
   status: sealed

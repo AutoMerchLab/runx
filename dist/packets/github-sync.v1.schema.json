@@ -18,6 +18,10 @@
       "type": "array",
       "items": { "type": "object", "additionalProperties": true }
     },
+    "mutation": {
+      "type": ["object", "null"],
+      "additionalProperties": true
+    },
     "diff_summary": {
       "type": "array",
       "items": { "type": "object", "additionalProperties": true }
@@ -34,6 +38,7 @@
     "direction",
     "resource_selector",
     "resources_touched",
+    "mutation",
     "diff_summary",
     "provider_operation",
     "scope_used",

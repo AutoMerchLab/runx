@@ -48,6 +48,7 @@ pub(super) fn invoke_provider_tool(
             grant_id: input.grant_id.clone(),
             operation: input.operation.clone(),
             target: input.target.clone(),
+            scopes: input.admission.required_scopes.clone(),
             input: input.payload,
             expected_access: Some(provider_operation_access(access)),
         },

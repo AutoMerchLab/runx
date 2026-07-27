@@ -15,6 +15,7 @@ pub struct ProviderOperationRequest {
     pub grant_id: String,
     pub operation: String,
     pub target: String,
+    pub scopes: Vec<String>,
     pub input: JsonObject,
     pub expected_access: Option<ProviderOperationAccess>,
 }
@@ -119,6 +120,9 @@ pub fn invoke_provider_operation<T: Transport + ?Sized>(
 ) -> Result<JsonObject, ProviderOperationError> {
     validate_provider_grant_id(&request.grant_id)?;
     validate_provider_operation(&request.operation)?;
+    if request.scopes.is_empty() || request.scopes.iter().any(|scope| scope.trim().is_empty()) {
+        return Err(ProviderOperationError::InvalidScopes);
+    }
     let mut body = JsonObject::from([
         (
             "grant_id".to_owned(),
@@ -131,6 +135,17 @@ pub fn invoke_provider_operation<T: Transport + ?Sized>(
         (
             "target".to_owned(),
             JsonValue::String(request.target.clone()),
+        ),
+        (
+            "scopes".to_owned(),
+            JsonValue::Array(
+                request
+                    .scopes
+                    .iter()
+                    .cloned()
+                    .map(JsonValue::String)
+                    .collect(),
+            ),
         ),
         ("input".to_owned(), JsonValue::Object(request.input.clone())),
     ]);
