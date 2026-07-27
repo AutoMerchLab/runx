@@ -182,7 +182,7 @@ function rejectUnknown(value, allowed, label, blockers) {
 }
 
 function optionalText(value, maximum, label, blockers, nonBlank = false) {
-  if (value === undefined || value === null) return;
+  if (value === undefined) return;
   if (
     typeof value !== "string"
     || value.length > maximum
