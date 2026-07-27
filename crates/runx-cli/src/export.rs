@@ -129,6 +129,7 @@ pub fn run_export_command(
 ) -> Result<ExportReport, ExportError> {
     validate_export_plan(plan)?;
     let root = canonicalize(cwd, "canonicalizing export root")?;
+    validate_full_export_root(plan, &root)?;
     let runx_bin = exported_runx_binary(env)?;
     let skills = runx_runtime::export::load_export_skills_with_options(RunxExportLoadOptions {
         root: &root,
@@ -144,12 +145,13 @@ pub fn run_export_command(
         &skill_dir,
         &runx_bin,
     );
+    managed::validate_write_targets(plan.target, &files, &root, plan.refs.is_empty())?;
+    managed::write_files(&files)?;
     let pruned = if plan.refs.is_empty() {
-        managed::prune_managed_files(plan.target, &skill_dir, &files)?
+        managed::prune_managed_files(plan.target, &skill_dir, &files, &root)?
     } else {
         Vec::new()
     };
-    managed::write_files(&files)?;
     let rules_file = if plan.target == Target::Codex && !plan.project {
         Some(managed::merge_codex_rules(
             &codex_rules_file(env, cwd),
@@ -224,6 +226,16 @@ fn validate_export_plan(plan: &ExportPlan) -> Result<(), ExportError> {
         return Err(ExportError::Unsupported(
             "runx export codex --project is not supported until Codex project skill and rules paths are verified".to_owned(),
         ));
+    }
+    Ok(())
+}
+
+fn validate_full_export_root(plan: &ExportPlan, root: &Path) -> Result<(), ExportError> {
+    if plan.refs.is_empty() && !root.join("SKILL.md").is_file() && !root.join("skills").is_dir() {
+        return Err(ExportError::InvalidArgs(format!(
+            "{} is not a skill workspace; run a full export from a directory containing SKILL.md or skills/, or name the skill refs to export",
+            display_path(root)
+        )));
     }
     Ok(())
 }

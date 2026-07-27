@@ -347,12 +347,23 @@ fn reexport_prunes_only_marked_generated_files() -> Result<(), Box<dyn std::erro
     let fixture = ExportFixture::new("runx-export-prune")?;
     fixture.write_skill("visible", None)?;
     let managed = fixture.home.join(".claude/skills/stale/SKILL.md");
+    let foreign = fixture.home.join(".claude/skills/foreign/SKILL.md");
     let manual = fixture.home.join(".claude/skills/manual/SKILL.md");
     fs::create_dir_all(managed.parent().ok_or("managed parent")?)?;
+    fs::create_dir_all(foreign.parent().ok_or("foreign parent")?)?;
     fs::create_dir_all(manual.parent().ok_or("manual parent")?)?;
     fs::write(
         &managed,
-        "---\nname: stale\n---\n<!-- runx-export:claude source=/missing - generated, do not edit -->\n",
+        format!(
+            "---\nname: stale\n---\n<!-- runx-export:claude source={} - generated, do not edit -->\n",
+            fs::canonicalize(&fixture.project)?
+                .join("skills/stale")
+                .display()
+        ),
+    )?;
+    fs::write(
+        &foreign,
+        "---\nname: foreign\n---\n<!-- runx-export:claude source=/another/workspace/skills/foreign - generated, do not edit -->\n",
     )?;
     fs::write(&manual, "---\nname: manual\n---\n# Hand-authored\n")?;
 
@@ -369,7 +380,79 @@ fn reexport_prunes_only_marked_generated_files() -> Result<(), Box<dyn std::erro
 
     assert_eq!(report.pruned.len(), 1);
     assert!(!managed.exists());
+    assert!(foreign.exists());
     assert!(manual.exists());
+    Ok(())
+}
+
+#[test]
+fn full_export_outside_a_skill_workspace_fails_before_pruning()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = ExportFixture::new("runx-export-invalid-root")?;
+    let unrelated = fixture.project.join("unrelated");
+    let managed = fixture.home.join(".codex/skills/existing/SKILL.md");
+    fs::create_dir_all(&unrelated)?;
+    fs::create_dir_all(managed.parent().ok_or("managed parent")?)?;
+    fs::write(
+        &managed,
+        format!(
+            "---\nname: existing\n---\n<!-- runx-export:codex source={} - generated, do not edit -->\n",
+            fixture.project.join("skills/existing").display()
+        ),
+    )?;
+
+    let error = run_export_command(
+        &ExportPlan {
+            target: Target::Codex,
+            refs: Vec::new(),
+            project: false,
+            json: false,
+        },
+        &unrelated,
+        &fixture.env,
+    )
+    .expect_err("an unrelated directory must not become a destructive full export");
+
+    match error {
+        ExportError::InvalidArgs(message) => {
+            assert!(message.contains("is not a skill workspace"));
+        }
+        other => return Err(format!("unexpected error: {other}").into()),
+    }
+    assert!(managed.exists());
+    Ok(())
+}
+
+#[test]
+fn export_refuses_to_overwrite_an_unmanaged_skill() -> Result<(), Box<dyn std::error::Error>> {
+    let fixture = ExportFixture::new("runx-export-unmanaged-collision")?;
+    fixture.write_skill("visible", None)?;
+    let manual = fixture.home.join(".codex/skills/visible/SKILL.md");
+    fs::create_dir_all(manual.parent().ok_or("manual parent")?)?;
+    fs::write(&manual, "---\nname: visible\n---\n# Hand-authored\n")?;
+
+    let error = run_export_command(
+        &ExportPlan {
+            target: Target::Codex,
+            refs: Vec::new(),
+            project: false,
+            json: false,
+        },
+        &fixture.project,
+        &fixture.env,
+    )
+    .expect_err("an unmanaged skill collision must fail closed");
+
+    match error {
+        ExportError::InvalidArgs(message) => {
+            assert!(message.contains("is not managed by this export"));
+        }
+        other => return Err(format!("unexpected error: {other}").into()),
+    }
+    assert_eq!(
+        fs::read_to_string(manual)?,
+        "---\nname: visible\n---\n# Hand-authored\n"
+    );
     Ok(())
 }
 
