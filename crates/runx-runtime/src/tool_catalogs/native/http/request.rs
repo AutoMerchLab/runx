@@ -195,6 +195,7 @@ mod tests {
         let effects = RuntimeEffectRegistry::default();
         let invocation = NativeInvocation {
             inputs: &inputs,
+            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,
@@ -245,6 +246,7 @@ mod tests {
         let effects = RuntimeEffectRegistry::default();
         let invocation = NativeInvocation {
             inputs: &inputs,
+            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,

@@ -24,6 +24,7 @@ pub(super) fn prepare(
     let cwd = working_directory(&invocation.inputs.cwd, &repo_root)?;
     let cwd_relative = relative_path(&repo_root, &cwd)?;
     let explicit_env = explicit_env(&invocation.inputs.env)?;
+    let network = network(invocation.inputs.network, invocation.scopes)?;
     let timeout_ms = timeout_ms(invocation.inputs.timeout_ms)?;
     let output_mode = output_mode(&invocation.inputs.output_mode)?;
     let command_identity = command_identity(
@@ -31,6 +32,7 @@ pub(super) fn prepare(
         &args,
         &cwd_relative,
         &explicit_env,
+        network,
         timeout_ms,
         output_mode,
     );
@@ -46,6 +48,7 @@ pub(super) fn prepare(
         cwd,
         cwd_relative,
         explicit_env,
+        network,
         timeout_ms,
         output_mode,
         command_digest,
@@ -57,6 +60,7 @@ fn command_identity(
     args: &[String],
     cwd_relative: &str,
     explicit_env: &BTreeMap<String, String>,
+    network: bool,
     timeout_ms: u64,
     output_mode: OutputMode,
 ) -> JsonValue {
@@ -76,6 +80,7 @@ fn command_identity(
                     .collect(),
             ),
         ),
+        ("network".to_owned(), JsonValue::Bool(network)),
         (
             "timeout_ms".to_owned(),
             JsonValue::Number(JsonNumber::U64(timeout_ms)),
@@ -85,6 +90,19 @@ fn command_identity(
             JsonValue::String(output_mode.as_str().to_owned()),
         ),
     ]))
+}
+
+fn network(enabled: bool, scopes: &[String]) -> Result<bool, RuntimeError> {
+    if enabled && !scopes.iter().any(|scope| scope == super::NETWORK_SCOPE) {
+        return Err(invalid_input(
+            TOOL,
+            format!(
+                "network access requires the exact {} step scope",
+                super::NETWORK_SCOPE
+            ),
+        ));
+    }
+    Ok(enabled)
 }
 
 fn validate_expected_digest(

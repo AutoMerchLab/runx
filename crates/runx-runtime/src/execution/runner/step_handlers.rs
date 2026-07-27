@@ -1281,6 +1281,7 @@ where
             tool_ref: Cow::Borrowed(tool_ref),
             inputs: Cow::Owned(inputs),
             resolved_inputs: Cow::Owned(JsonObject::new()),
+            scopes: &step.scopes,
             env: &runtime.options.env,
             skill_directory: graph_dir,
             credential_delivery: &runtime.options.credential_delivery,

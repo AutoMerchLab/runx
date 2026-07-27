@@ -249,6 +249,7 @@ impl<T: RuntimeHttpTransport + Clone> AgentResolver for AnthropicAgentResolver<T
                 .allowed_tools
                 .iter()
                 .map(|tool| tool.as_str().to_owned()),
+            envelope.requirements.declaration.scopes.clone(),
         );
         let config = AgentLoopConfig {
             max_rounds: self.max_rounds,

@@ -81,6 +81,7 @@ fn capability_registry_dispatch_projects_only_declared_inputs() {
         tool_ref: "data.digest",
         observed_at: "2026-07-20T00:00:00Z",
         inputs,
+        scopes: &[],
         data_source_binding: None,
         env: &BTreeMap::new(),
         skill_directory: std::path::Path::new("."),

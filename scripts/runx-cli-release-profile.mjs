@@ -46,7 +46,7 @@ async function prepare() {
     throw new Error(
       "GHCR must be publicly pullable before publication; make the runxhq/runx "
       + "container package public at "
-      + "https://github.com/orgs/runxhq/packages/container/package/runx/settings"
+      + "https://github.com/orgs/runxhq/packages/container/runx/settings"
       + `: ${ghcrAccess.detail}`,
     );
   }

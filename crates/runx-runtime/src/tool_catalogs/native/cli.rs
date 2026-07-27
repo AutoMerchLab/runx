@@ -197,6 +197,7 @@ mod tests {
         let effects = RuntimeEffectRegistry::default();
         let output = capture_help(&NativeInvocation {
             inputs: &inputs,
+            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,
@@ -230,6 +231,7 @@ mod tests {
         let effects = RuntimeEffectRegistry::default();
         let error = capture_help(&NativeInvocation {
             inputs: &inputs,
+            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,

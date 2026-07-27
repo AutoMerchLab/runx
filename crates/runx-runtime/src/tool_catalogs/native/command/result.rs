@@ -120,6 +120,7 @@ pub(super) fn render_execution(
             JsonValue::String(command.command_digest),
         ),
         ("cwd".to_owned(), JsonValue::String(command.cwd_relative)),
+        ("network".to_owned(), JsonValue::Bool(command.network)),
         ("exit_code".to_owned(), exit_code(observation.exit_code)),
         (
             "timed_out".to_owned(),

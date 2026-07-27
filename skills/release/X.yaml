@@ -1,5 +1,5 @@
 skill: release
-version: "0.3.1"
+version: "0.4.0"
 
 catalog:
   kind: graph
@@ -51,6 +51,7 @@ runners:
             packets: { release_context: runx.release.context.v1 }
         - id: plan-prepare
           tool: command.plan
+          scopes: [net:process]
           inputs:
             output_mode: json
           context:
@@ -59,9 +60,11 @@ runners:
             args: inspect-profile.release_context.data.commands.prepare.args
             cwd: inspect-profile.release_context.data.commands.prepare.cwd
             env: inspect-profile.release_context.data.commands.prepare.env
+            network: inspect-profile.release_context.data.commands.prepare.network
             timeout_ms: inspect-profile.release_context.data.commands.prepare.timeout_ms
         - id: plan-publish
           tool: command.plan
+          scopes: [net:process]
           inputs:
             output_mode: json
           context:
@@ -70,9 +73,11 @@ runners:
             args: inspect-profile.release_context.data.commands.publish.args
             cwd: inspect-profile.release_context.data.commands.publish.cwd
             env: inspect-profile.release_context.data.commands.publish.env
+            network: inspect-profile.release_context.data.commands.publish.network
             timeout_ms: inspect-profile.release_context.data.commands.publish.timeout_ms
         - id: plan-verify
           tool: command.plan
+          scopes: [net:process]
           inputs:
             output_mode: json
           context:
@@ -81,11 +86,12 @@ runners:
             args: inspect-profile.release_context.data.commands.verify.args
             cwd: inspect-profile.release_context.data.commands.verify.cwd
             env: inspect-profile.release_context.data.commands.verify.env
+            network: inspect-profile.release_context.data.commands.verify.network
             timeout_ms: inspect-profile.release_context.data.commands.verify.timeout_ms
         - id: execute-prepare
           tool: command.execute
           mutation: true
-          scopes: [process.exec, runx:release:prepare]
+          scopes: [process.exec, net:process, runx:release:prepare]
           inputs:
             output_mode: json
           context:
@@ -94,6 +100,7 @@ runners:
             args: inspect-profile.release_context.data.commands.prepare.args
             cwd: inspect-profile.release_context.data.commands.prepare.cwd
             env: inspect-profile.release_context.data.commands.prepare.env
+            network: inspect-profile.release_context.data.commands.prepare.network
             timeout_ms: inspect-profile.release_context.data.commands.prepare.timeout_ms
             expected_command_digest: plan-prepare.command_plan.data.command_digest
         - id: interpret-prepare
@@ -198,7 +205,7 @@ runners:
         - id: execute-publish
           tool: command.execute
           mutation: true
-          scopes: [process.exec, runx:release:publish]
+          scopes: [process.exec, net:process, runx:release:publish]
           inputs:
             output_mode: json
           context:
@@ -207,6 +214,7 @@ runners:
             args: prepare.release_context.data.commands.publish.args
             cwd: prepare.release_context.data.commands.publish.cwd
             env: prepare.release_context.data.commands.publish.env
+            network: prepare.release_context.data.commands.publish.network
             timeout_ms: prepare.release_context.data.commands.publish.timeout_ms
             expected_command_digest: prepare.release_context.data.commands.publish.command_digest
         - id: interpret-publish
@@ -224,7 +232,7 @@ runners:
             packets: { publication: runx.release.phase_result.v1 }
         - id: execute-verify
           tool: command.execute
-          scopes: [process.exec, runx:release:verify]
+          scopes: [process.exec, net:process, runx:release:verify]
           inputs:
             output_mode: json
           context:
@@ -233,6 +241,7 @@ runners:
             args: prepare.release_context.data.commands.verify.args
             cwd: prepare.release_context.data.commands.verify.cwd
             env: prepare.release_context.data.commands.verify.env
+            network: prepare.release_context.data.commands.verify.network
             timeout_ms: prepare.release_context.data.commands.verify.timeout_ms
             expected_command_digest: prepare.release_context.data.commands.verify.command_digest
         - id: interpret-verify

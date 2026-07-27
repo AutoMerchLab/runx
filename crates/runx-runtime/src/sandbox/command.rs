@@ -335,6 +335,8 @@ mod tests {
         assert!(mounts.contains(&PathBuf::from("/usr")));
         assert!(mounts.contains(&PathBuf::from("/lib")));
         assert!(mounts.contains(&PathBuf::from("/etc/ld.so.cache")));
+        assert!(mounts.contains(&PathBuf::from("/etc/passwd")));
+        assert!(mounts.contains(&PathBuf::from("/etc/group")));
         assert!(!mounts.contains(&PathBuf::from("/etc")));
         assert!(!mounts.contains(&PathBuf::from("/opt")));
         assert!(!mounts.contains(&PathBuf::from("/nix")));

@@ -119,6 +119,7 @@ fn capability_index() -> &'static CapabilityIndex {
 pub(super) struct NativeInvocation<'a, I: ?Sized = JsonObject> {
     pub inputs: &'a I,
     pub observed_at: &'a str,
+    pub scopes: &'a [String],
     /// Runtime-owned binding resolved before native dispatch. Capability input
     /// schemas must never expose this routing state to an operator or agent.
     pub data_source_binding: Option<&'a JsonObject>,
@@ -135,6 +136,7 @@ pub(crate) struct NativeToolInvocation<'a> {
     pub tool_ref: &'a str,
     pub observed_at: &'a str,
     pub inputs: JsonObject,
+    pub scopes: &'a [String],
     pub data_source_binding: Option<JsonObject>,
     pub env: &'a BTreeMap<String, String>,
     pub skill_directory: &'a Path,
@@ -149,6 +151,7 @@ pub(crate) fn invoke(request: NativeToolInvocation<'_>) -> Option<Result<JsonVal
     if let Some(tool) = definition(request.tool_ref) {
         let invocation = RawNativeInvocation {
             inputs: request.inputs,
+            scopes: request.scopes,
             data_source_binding: request.data_source_binding,
             observed_at: request.observed_at,
             env: request.env,

@@ -1177,6 +1177,7 @@ fn invoke_with_resolved_in_directory(
             tool_ref: Cow::Borrowed(tool_ref),
             inputs: Cow::Owned(inputs),
             resolved_inputs: Cow::Owned(resolved_inputs),
+            scopes: &[],
             env: &env,
             skill_directory: &skill_directory,
             credential_delivery: &credential_delivery,

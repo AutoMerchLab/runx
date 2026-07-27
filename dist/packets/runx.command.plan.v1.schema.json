@@ -7,6 +7,7 @@
     "schema",
     "command_digest",
     "cwd",
+    "network",
     "timeout_ms",
     "output_mode",
     "env_names"
@@ -15,6 +16,7 @@
     "schema": { "const": "runx.command.plan.v1" },
     "command_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
     "cwd": { "type": "string", "minLength": 1 },
+    "network": { "type": "boolean" },
     "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 900000 },
     "output_mode": { "enum": ["digest", "text", "json"] },
     "env_names": {

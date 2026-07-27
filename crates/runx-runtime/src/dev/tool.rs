@@ -102,6 +102,7 @@ fn run_tool_fixture_inner(
             tool_ref: Cow::Borrowed(fixture.target().reference.as_str()),
             inputs: Cow::Owned(inputs),
             resolved_inputs: Cow::Owned(JsonObject::new()),
+            scopes: &[],
             env: &env,
             skill_directory: tool_dir,
             credential_delivery: &credential_delivery,

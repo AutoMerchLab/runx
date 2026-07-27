@@ -13,6 +13,17 @@ use crate::sandbox::prepare_mcp_process_sandbox;
 #[derive(Clone, Copy, Debug, Default)]
 pub(crate) struct SandboxServices;
 
+#[cfg(feature = "cli-tool")]
+pub(crate) struct NativeCommandSandboxRequest<'a> {
+    pub(crate) command: String,
+    pub(crate) args: Vec<String>,
+    pub(crate) cwd: &'a Path,
+    pub(crate) workspace_root: &'a Path,
+    pub(crate) explicit_env: &'a BTreeMap<String, String>,
+    pub(crate) network: bool,
+    pub(crate) base_env: &'a BTreeMap<String, String>,
+}
+
 impl SandboxServices {
     #[cfg(feature = "cli-tool")]
     pub(crate) fn child_base_env(
@@ -43,20 +54,16 @@ impl SandboxServices {
     #[cfg(feature = "cli-tool")]
     pub(crate) fn native_command_plan(
         self,
-        command: String,
-        args: Vec<String>,
-        cwd: &Path,
-        workspace_root: &Path,
-        explicit_env: &BTreeMap<String, String>,
-        base_env: &BTreeMap<String, String>,
+        request: NativeCommandSandboxRequest<'_>,
     ) -> Result<SandboxPlan, RuntimeError> {
         crate::sandbox::prepare_native_command_sandbox(
-            command,
-            args,
-            cwd,
-            workspace_root,
-            explicit_env,
-            base_env,
+            request.command,
+            request.args,
+            request.cwd,
+            request.workspace_root,
+            request.explicit_env,
+            request.network,
+            request.base_env,
         )
     }
 

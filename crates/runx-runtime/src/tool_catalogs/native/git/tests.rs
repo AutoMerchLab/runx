@@ -144,6 +144,7 @@ fn invoke_tool<I, O: serde::Serialize>(
     let effects = RuntimeEffectRegistry::default();
     let output = tool(&NativeInvocation {
         inputs: &inputs,
+        scopes: &[],
         observed_at: "2026-01-01T00:00:00Z",
         data_source_binding: None,
         env: &env,

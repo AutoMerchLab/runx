@@ -64,18 +64,48 @@
     },
     "publish_intent": {
       "type": "object",
-      "required": ["command_digest", "approval_status"],
+      "required": [
+        "command_digest",
+        "command",
+        "args",
+        "cwd",
+        "network",
+        "timeout_ms",
+        "env_names",
+        "approval_status"
+      ],
       "properties": {
         "command_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "command": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "cwd": { "type": "string", "minLength": 1 },
+        "network": { "type": "boolean" },
+        "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "env_names": { "type": "array", "items": { "type": "string" } },
         "approval_status": { "type": "string", "const": "pending" }
       },
       "additionalProperties": false
     },
     "verification_intent": {
       "type": "object",
-      "required": ["command_digest", "required_status"],
+      "required": [
+        "command_digest",
+        "command",
+        "args",
+        "cwd",
+        "network",
+        "timeout_ms",
+        "env_names",
+        "required_status"
+      ],
       "properties": {
         "command_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+        "command": { "type": "string", "minLength": 1 },
+        "args": { "type": "array", "items": { "type": "string" } },
+        "cwd": { "type": "string", "minLength": 1 },
+        "network": { "type": "boolean" },
+        "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "env_names": { "type": "array", "items": { "type": "string" } },
         "required_status": { "type": "string", "const": "verified" }
       },
       "additionalProperties": false

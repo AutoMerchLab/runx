@@ -82,6 +82,7 @@ fn classify_runner(
 }
 
 fn classify_graph_step(step: &runx_parser::GraphStep, usage: &mut CandidateResourceUsage) {
+    classify_scopes(&step.scopes, usage);
     if let Some(tool) = &step.tool {
         classify_native_tool(tool, usage);
     }
@@ -97,6 +98,10 @@ fn classify_graph_step(step: &runx_parser::GraphStep, usage: &mut CandidateResou
         .and_then(|sandbox| sandbox.network)
         .unwrap_or(false);
     classify_source(source.source_type, network, usage);
+}
+
+fn classify_scopes(scopes: &[String], usage: &mut CandidateResourceUsage) {
+    usage.network |= scopes.iter().any(|scope| scope == "net:process");
 }
 
 fn classify_source(kind: SourceKind, network: bool, usage: &mut CandidateResourceUsage) {
@@ -160,7 +165,7 @@ pub(super) fn validate_architecture_resources(
 
 #[cfg(test)]
 mod tests {
-    use super::{CandidateResourceUsage, classify_native_tool};
+    use super::{CandidateResourceUsage, classify_native_tool, classify_scopes};
 
     #[test]
     fn supplied_evidence_indexing_does_not_claim_network_access() {
@@ -178,5 +183,15 @@ mod tests {
             classify_native_tool(tool, &mut usage);
             assert!(usage.network, "{tool} must consume the network budget");
         }
+    }
+
+    #[test]
+    fn process_network_scope_claims_network_access() {
+        let mut usage = CandidateResourceUsage::default();
+        let scopes = vec!["net:process".to_owned()];
+
+        classify_scopes(&scopes, &mut usage);
+
+        assert!(usage.network);
     }
 }

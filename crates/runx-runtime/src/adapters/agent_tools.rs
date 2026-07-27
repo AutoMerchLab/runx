@@ -32,6 +32,7 @@ pub struct RuntimeToolExecutor {
     effects: RuntimeEffectRegistry,
     observed_at: String,
     allowed_tools: BTreeSet<String>,
+    scopes: Vec<String>,
     javascript: crate::adapters::javascript::JavaScriptAdapter,
     local_artifacts: crate::services::LocalArtifactService,
 }
@@ -45,6 +46,7 @@ impl RuntimeToolExecutor {
         effects: RuntimeEffectRegistry,
         observed_at: impl Into<String>,
         allowed_tools: impl IntoIterator<Item = String>,
+        scopes: Vec<String>,
     ) -> Self {
         Self {
             env,
@@ -53,6 +55,7 @@ impl RuntimeToolExecutor {
             effects,
             observed_at: observed_at.into(),
             allowed_tools: allowed_tools.into_iter().collect(),
+            scopes,
             javascript: crate::adapters::javascript::JavaScriptAdapter::default(),
             local_artifacts: crate::services::LocalArtifactService::default(),
         }
@@ -94,6 +97,7 @@ impl ToolExecutor for RuntimeToolExecutor {
             tool_ref: Cow::Borrowed(tool),
             inputs: Cow::Owned(inputs.clone()),
             resolved_inputs: Cow::Owned(inputs),
+            scopes: &self.scopes,
             env: &self.env,
             skill_directory: &self.skill_directory,
             credential_delivery: &self.credential_delivery,
@@ -134,6 +138,7 @@ mod tests {
             RuntimeEffectRegistry::default(),
             "2026-01-01T00:00:00Z",
             ["git.status".to_owned()],
+            Vec::new(),
         );
 
         let output = executor.execute("git.status", &JsonValue::Object(Default::default()))?;
@@ -156,6 +161,7 @@ mod tests {
             RuntimeEffectRegistry::default(),
             "2026-01-01T00:00:00Z",
             ["definitely-not-a-real-tool".to_owned()],
+            Vec::new(),
         );
         let result = executor.execute("definitely-not-a-real-tool", &JsonValue::Null);
         assert!(
@@ -173,6 +179,7 @@ mod tests {
             RuntimeEffectRegistry::default(),
             "2026-01-01T00:00:00Z",
             ["fs.read".to_owned()],
+            Vec::new(),
         );
         let result = executor.execute("git.status", &JsonValue::Null);
         assert!(
@@ -190,6 +197,7 @@ mod tests {
             RuntimeEffectRegistry::default(),
             "2026-01-01T00:00:00Z",
             ["/tmp/manifest.json".to_owned()],
+            Vec::new(),
         );
         let result = executor.execute("/tmp/manifest.json", &JsonValue::Null);
         assert!(

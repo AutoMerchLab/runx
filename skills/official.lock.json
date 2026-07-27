@@ -344,8 +344,8 @@
   },
   {
     "skill_id": "runx/release",
-    "version": "sha-976d3b8c3695",
-    "digest": "e28d9e028016a54591cb6c37c93742e4a157b7524a27836a873725ea70217e3a",
+    "version": "sha-17c0f920398d",
+    "digest": "8c93b5496e35fde09c1e08d5e213deec354305db76efe9ef97aba05a781a1a76",
     "catalog_visibility": "public",
     "catalog_role": "canonical"
   },

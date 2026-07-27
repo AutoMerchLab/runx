@@ -54,13 +54,15 @@ pub(crate) const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV: &str =
 // command needs inside bubblewrap. Every consumer uses `--ro-bind-try`, so
 // merged-/usr layouts and distributions without one of these paths remain
 // portable without widening the sandbox to the host root.
-const LINUX_RUNTIME_READONLY_PATHS: [&str; 6] = [
+const LINUX_RUNTIME_READONLY_PATHS: [&str; 8] = [
     "/usr",
     "/bin",
     "/sbin",
     "/lib",
     "/lib64",
     "/etc/ld.so.cache",
+    "/etc/passwd",
+    "/etc/group",
 ];
 
 #[derive(Clone, Debug, PartialEq)]
@@ -183,9 +185,10 @@ pub(crate) fn prepare_native_command_sandbox(
     cwd: &Path,
     workspace_root: &Path,
     explicit_env: &BTreeMap<String, String>,
+    network: bool,
     base_env: &BTreeMap<String, String>,
 ) -> Result<SandboxPlan, RuntimeError> {
-    let sandbox = native_command_sandbox(workspace_root);
+    let sandbox = native_command_sandbox(workspace_root, network);
     validate_sandbox(Some(&sandbox))?;
 
     let writable_paths = resolved_writable_paths(Some(&sandbox), &JsonObject::new(), base_env);
@@ -220,7 +223,7 @@ pub(crate) fn prepare_native_command_sandbox(
         skill_directory: workspace_root,
         workspace_cwd: workspace_root,
         writable_paths: &validated_writable_paths,
-        network: false,
+        network,
         private_tmp: cleanup_paths.first().map(PathBuf::as_path),
     });
     Ok(SandboxPlan {
@@ -240,11 +243,11 @@ pub(crate) fn prepare_native_command_sandbox(
 }
 
 #[cfg(feature = "cli-tool")]
-fn native_command_sandbox(workspace_root: &Path) -> SkillSandbox {
+fn native_command_sandbox(workspace_root: &Path, network: bool) -> SkillSandbox {
     SkillSandbox {
         profile: SandboxProfile::WorkspaceWrite,
         cwd_policy: Some(CwdPolicy::Workspace),
-        network: Some(false),
+        network: Some(network),
         writable_paths: vec![workspace_root.to_string_lossy().into_owned()],
         require_enforcement: Some(true),
         approved_escalation: None,

@@ -28,6 +28,7 @@ pub(super) fn decode_typed_output<O: CapabilityOutput>(
 
 pub(super) struct RawNativeInvocation<'a> {
     pub(super) inputs: JsonObject,
+    pub(super) scopes: &'a [String],
     pub(super) data_source_binding: Option<JsonObject>,
     pub(super) observed_at: &'a str,
     pub(super) env: &'a std::collections::BTreeMap<String, String>,
@@ -102,6 +103,7 @@ where
         let inputs = self.contract.decode_inputs(invocation.inputs)?;
         let invocation = NativeInvocation {
             inputs: &inputs,
+            scopes: invocation.scopes,
             data_source_binding: invocation.data_source_binding.as_ref(),
             observed_at: invocation.observed_at,
             env: invocation.env,

@@ -29,6 +29,7 @@ fn reads_and_digests_one_contained_file() -> Result<(), Box<dyn std::error::Erro
     let effects = RuntimeEffectRegistry::default();
     let output = json_output(read(&NativeInvocation {
         inputs: &inputs,
+        scopes: &[],
         observed_at: "2026-01-01T00:00:00Z",
         data_source_binding: None,
         env: &env,
@@ -73,6 +74,7 @@ fn reads_and_digests_a_bounded_file_bundle() -> Result<(), Box<dyn std::error::E
     let effects = RuntimeEffectRegistry::default();
     let output = json_output(read_bundle(&NativeInvocation {
         inputs: &inputs,
+        scopes: &[],
         observed_at: "2026-01-01T00:00:00Z",
         data_source_binding: None,
         env: &env,
@@ -125,6 +127,7 @@ fn rejects_a_symlink_that_escapes_the_root() -> Result<(), Box<dyn std::error::E
     let effects = RuntimeEffectRegistry::default();
     let error = read(&NativeInvocation {
         inputs: &inputs,
+        scopes: &[],
         observed_at: "2026-01-01T00:00:00Z",
         data_source_binding: None,
         env: &env,
@@ -161,6 +164,7 @@ fn writes_and_proves_one_contained_file() -> Result<(), Box<dyn std::error::Erro
     let effects = RuntimeEffectRegistry::default();
     let output = json_output(write(&NativeInvocation {
         inputs: &inputs,
+        scopes: &[],
         observed_at: "2026-01-01T00:00:00Z",
         data_source_binding: None,
         env: &env,
@@ -221,6 +225,7 @@ fn write_rejects_a_symlink_that_escapes_the_root() -> Result<(), Box<dyn std::er
     let effects = RuntimeEffectRegistry::default();
     let error = write(&NativeInvocation {
         inputs: &inputs,
+        scopes: &[],
         observed_at: "2026-01-01T00:00:00Z",
         data_source_binding: None,
         env: &env,

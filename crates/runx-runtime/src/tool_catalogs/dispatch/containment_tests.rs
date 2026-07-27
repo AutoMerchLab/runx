@@ -33,6 +33,7 @@ fn invoke(
             tool_ref: Cow::Borrowed(tool_ref),
             inputs: Cow::Owned(inputs),
             resolved_inputs: Cow::Owned(JsonObject::new()),
+            scopes: &[],
             env: &env,
             skill_directory: workspace,
             credential_delivery: &credential_delivery,

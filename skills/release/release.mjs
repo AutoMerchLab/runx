@@ -165,8 +165,14 @@ export function finalizeBrief(inputs) {
         observed: preparation.observed,
       },
       release_notes: normalizedNotes,
-      publish_intent: { command_digest: context.commands.publish.command_digest, approval_status: "pending" },
-      verification_intent: { command_digest: context.commands.verify.command_digest, required_status: "verified" },
+      publish_intent: {
+        ...commandIntent(context.commands.publish),
+        approval_status: "pending",
+      },
+      verification_intent: {
+        ...commandIntent(context.commands.verify),
+        required_status: "verified",
+      },
       findings,
       proof_boundary: {
         publication_status: "not_started",
@@ -174,6 +180,19 @@ export function finalizeBrief(inputs) {
         agent_authored_effects_accepted: false,
       },
     },
+  };
+}
+
+function commandIntent(value) {
+  const command = object(value);
+  return {
+    command_digest: text(command.command_digest, 80),
+    command: text(command.command, 2_000),
+    args: list(command.args, 64, 2_000),
+    cwd: text(command.cwd, 512),
+    network: command.network === true,
+    timeout_ms: Number(command.timeout_ms),
+    env_names: Object.keys(object(command.env)).sort().slice(0, 64),
   };
 }
 
@@ -196,10 +215,15 @@ function normalizeCommand(value, phase, identity) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 900_000) {
     throw new Error(`commands.${phase}.timeout_ms must be 1000-900000`);
   }
+  const network = value.network ?? false;
+  if (typeof network !== "boolean") {
+    throw new Error(`commands.${phase}.network must be a boolean`);
+  }
   return {
     command: argv[0],
     args: argv.slice(1),
     cwd,
+    network,
     timeout_ms: timeoutMs,
     env: {
       RUNX_RELEASE_PHASE: phase,
