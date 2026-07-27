@@ -217,6 +217,9 @@ pub(super) fn sandbox_exec_profile(
         "(version 1)",
         "(deny default)",
         "(allow process*)",
+        // Process supervisors need to terminate their own descendants; the
+        // target filter prevents signalling processes outside this sandbox.
+        "(allow signal (target same-sandbox))",
         "(allow sysctl*)",
         "(allow file-read*)",
         "(allow file-write* (literal \"/dev/null\"))",

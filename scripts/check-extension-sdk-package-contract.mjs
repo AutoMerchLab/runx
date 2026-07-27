@@ -13,7 +13,14 @@ const extensionRoot = path.join(workspaceRoot, "packages", "extension-sdk");
 const contractsRoot = path.join(workspaceRoot, "packages", "contracts");
 const npm = process.platform === "win32" ? "npm.cmd" : "npm";
 const tar = process.platform === "win32" ? "tar.exe" : "tar";
-const exec = { timeout: 120_000, maxBuffer: 2 * 1024 * 1024 };
+const exec = {
+  timeout: 120_000,
+  maxBuffer: 2 * 1024 * 1024,
+  env: {
+    ...process.env,
+    npm_config_cache: path.join(workspaceRoot, ".runx", "cache", "npm"),
+  },
+};
 
 await assertRetiredAuthoringPackage();
 await execFileAsync(process.execPath, ["scripts/build-workspace.mjs", "--pack"], {

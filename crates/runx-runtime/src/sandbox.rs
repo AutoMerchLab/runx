@@ -594,7 +594,33 @@ mod tests {
         );
 
         assert!(profile.contains("(allow file-write* (literal \"/workspace/logs/output\"))"));
+        assert!(profile.contains("(allow signal (target same-sandbox))"));
         assert!(!profile.contains("(allow network*)"));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn sandbox_exec_profile_allows_descendant_supervision() -> Result<(), String> {
+        let profile = sandbox_exec_profile(Path::new("/"), &[], false, None);
+        let output = std::process::Command::new("/usr/bin/sandbox-exec")
+            .args([
+                "-p",
+                &profile,
+                "/bin/sh",
+                "-c",
+                "sleep 30 & child=$!; kill -TERM \"$child\" || exit 1; \
+                 wait \"$child\"; code=$?; [ \"$code\" -eq 143 ]",
+            ])
+            .output()
+            .map_err(|source| source.to_string())?;
+
+        if !output.status.success() {
+            return Err(format!(
+                "sandboxed descendant supervision failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        Ok(())
     }
 
     #[test]
