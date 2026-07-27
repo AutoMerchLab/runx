@@ -401,7 +401,7 @@ fn full_export_outside_a_skill_workspace_fails_before_pruning()
         ),
     )?;
 
-    let error = run_export_command(
+    let Err(error) = run_export_command(
         &ExportPlan {
             target: Target::Codex,
             refs: Vec::new(),
@@ -410,8 +410,9 @@ fn full_export_outside_a_skill_workspace_fails_before_pruning()
         },
         &unrelated,
         &fixture.env,
-    )
-    .expect_err("an unrelated directory must not become a destructive full export");
+    ) else {
+        return Err("an unrelated directory must not become a destructive full export".into());
+    };
 
     match error {
         ExportError::InvalidArgs(message) => {
@@ -431,7 +432,7 @@ fn export_refuses_to_overwrite_an_unmanaged_skill() -> Result<(), Box<dyn std::e
     fs::create_dir_all(manual.parent().ok_or("manual parent")?)?;
     fs::write(&manual, "---\nname: visible\n---\n# Hand-authored\n")?;
 
-    let error = run_export_command(
+    let Err(error) = run_export_command(
         &ExportPlan {
             target: Target::Codex,
             refs: Vec::new(),
@@ -440,8 +441,9 @@ fn export_refuses_to_overwrite_an_unmanaged_skill() -> Result<(), Box<dyn std::e
         },
         &fixture.project,
         &fixture.env,
-    )
-    .expect_err("an unmanaged skill collision must fail closed");
+    ) else {
+        return Err("an unmanaged skill collision must fail closed".into());
+    };
 
     match error {
         ExportError::InvalidArgs(message) => {
