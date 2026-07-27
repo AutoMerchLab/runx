@@ -1,0 +1,25 @@
+name: github-sync-blocks-numeric-pull-base
+kind: skill
+target: ..
+runner: github-sync
+inputs:
+  repo: runxhq/runx
+  direction: push
+  resources:
+    kind: prs
+    filters: { limit: 1 }
+    mutations:
+      - ref: pulls/241
+        op: update
+        payload:
+          base: 123
+  scope: write
+expect:
+  status: sealed
+  output:
+    subset:
+      sync_plan:
+        decision: blocked
+        provider_status: not_called
+  receipt: { schema: runx.receipt.v1 }
+metadata: { public_skill: github-sync, source_case: numeric-pull-base, source: skills-fixture }

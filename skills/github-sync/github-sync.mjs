@@ -150,7 +150,13 @@ function validatePullMutation(ref, op, payload, blockers) {
   optionalText(payload.title, MAX_TITLE_LENGTH, "payload.title", blockers, true);
   optionalText(payload.body, MAX_BODY_LENGTH, "payload.body", blockers);
   optionalEnum(payload.state, ["open", "closed"], "payload.state", blockers);
-  if (payload.base !== undefined && !/^[A-Za-z0-9._/-]{1,255}$/u.test(String(payload.base))) {
+  if (
+    payload.base !== undefined
+    && (
+      typeof payload.base !== "string"
+      || !/^[A-Za-z0-9._/-]{1,255}$/u.test(payload.base)
+    )
+  ) {
     blockers.push("payload.base must be a valid branch name");
   }
   if (payload.maintainer_can_modify !== undefined && typeof payload.maintainer_can_modify !== "boolean") {
