@@ -82,7 +82,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/github-sync",
-        version: "sha-e89b3db60f13",
+        version: "sha-4ed9c3730613",
         digest: "fe2faca53fc7d341aee952c4885a5a7ee5f59a6e46b295502040f831b89633f0",
     },
     OfficialSkillLockEntry {
