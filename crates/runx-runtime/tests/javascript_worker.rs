@@ -138,7 +138,9 @@ fn javascript_session_isolates_concurrent_invocations_in_bounded_workers()
                     ),
                     (
                         "rounds".to_owned(),
-                        JsonValue::Number(JsonNumber::U64(100_000)),
+                        // Keep the four invocations overlapping without making
+                        // scheduler contention compete with the wall-limit contract.
+                        JsonValue::Number(JsonNumber::U64(25_000)),
                     ),
                 ]))
             })
