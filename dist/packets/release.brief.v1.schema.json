@@ -80,7 +80,7 @@
         "args": { "type": "array", "items": { "type": "string" } },
         "cwd": { "type": "string", "minLength": 1 },
         "network": { "type": "boolean" },
-        "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 3600000 },
         "env_names": { "type": "array", "items": { "type": "string" } },
         "approval_status": { "type": "string", "const": "pending" }
       },
@@ -104,7 +104,7 @@
         "args": { "type": "array", "items": { "type": "string" } },
         "cwd": { "type": "string", "minLength": 1 },
         "network": { "type": "boolean" },
-        "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 900000 },
+        "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 3600000 },
         "env_names": { "type": "array", "items": { "type": "string" } },
         "required_status": { "type": "string", "const": "verified" }
       },

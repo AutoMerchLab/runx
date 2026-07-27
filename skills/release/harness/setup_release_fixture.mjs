@@ -33,7 +33,7 @@ const profile = {
   commands: {
     prepare: { argv: ["node", "./provider.mjs", "prepare"], cwd: ".", timeout_ms: 10000 },
     publish: { argv: ["node", "./provider.mjs", "publish"], cwd: ".", timeout_ms: 10000 },
-    verify: { argv: ["node", "./provider.mjs", "verify"], cwd: ".", timeout_ms: 10000 }
+    verify: { argv: ["node", "./provider.mjs", "verify"], cwd: ".", timeout_ms: 3600000 }
   }
 };
 const profilePath = path.join(project, "release-profile.json");
