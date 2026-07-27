@@ -55,7 +55,11 @@ async function prepare() {
     timeout: 300_000,
   });
   run("pnpm", ["exec", "tsx", "scripts/set-release-version.ts", "--check", version]);
-  run("pnpm", ["verify:fast"], { cleanRunxEnvironment: true, timeout: 840_000 });
+  run("pnpm", ["verify:fast"], {
+    cleanRunxEnvironment: true,
+    environment: { CARGO_TARGET_DIR: ".runx/cache/release-target" },
+    timeout: 840_000,
+  });
   assertCleanCheckout();
 
   emit({
@@ -219,6 +223,7 @@ function run(command, args, options = {}) {
     encoding: "utf8",
     env: {
       ...(options.cleanRunxEnvironment ? withoutRunxEnvironment() : process.env),
+      ...(options.environment ?? {}),
       CI: "true",
     },
     maxBuffer: 16 * 1024 * 1024,
