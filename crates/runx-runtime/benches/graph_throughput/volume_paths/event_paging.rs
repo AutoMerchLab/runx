@@ -79,6 +79,7 @@ impl EventFixture {
                 "data.append_event".to_owned(),
                 "data.read_events".to_owned(),
             ],
+            Vec::new(),
         );
         let aggregate_id = format!("stream-{event_count}");
         for version in 0..event_count {

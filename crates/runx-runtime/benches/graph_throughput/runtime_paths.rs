@@ -137,6 +137,7 @@ impl RuntimePathFixtures {
             RuntimeEffectRegistry::default(),
             CREATED_AT,
             ["data.digest".to_owned()],
+            Vec::new(),
         );
         let native_input = JsonValue::Object(JsonObject::from([(
             "value".to_owned(),

@@ -51,7 +51,9 @@ async function prepare() {
     );
   }
 
-  run("pnpm", ["install", "--frozen-lockfile"], { timeout: 300_000 });
+  run("pnpm", ["install", "--frozen-lockfile", "--store-dir", ".runx/cache/pnpm"], {
+    timeout: 300_000,
+  });
   run("pnpm", ["exec", "tsx", "scripts/set-release-version.ts", "--check", version]);
   run("pnpm", ["verify:fast"], { cleanRunxEnvironment: true, timeout: 840_000 });
   assertCleanCheckout();

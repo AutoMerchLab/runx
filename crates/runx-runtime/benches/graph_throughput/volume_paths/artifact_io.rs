@@ -80,6 +80,7 @@ impl ArtifactFixture {
             RuntimeEffectRegistry::default(),
             "2026-07-20T00:00:00Z",
             ["artifact.admit".to_owned(), "artifact.read".to_owned()],
+            Vec::new(),
         );
         let admit_input = JsonValue::Object(JsonObject::from([
             (
