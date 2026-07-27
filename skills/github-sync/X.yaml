@@ -157,7 +157,7 @@ runners:
             idempotency_key: $input.idempotency_key
             expected_result:
               repository: $input.repo
-            result_fields: [repository, sync_ref, mutation_digest, resources]
+            result_fields: [repository, sync_ref, mutation_digest, mutation, resources]
           context:
             operation: plan.sync_plan.data.provider_operation
             input: plan.sync_plan.data
@@ -185,7 +185,7 @@ runners:
             operation: sync.read
             target: $input.repo
             expected_provider: github
-            result_fields: [repository, sync_ref, mutation_digest, resources]
+            result_fields: [repository, sync_ref, mutation_digest, mutation, resources]
           context:
             expected_result: push.provider_operation.data.result
             input: push.provider_operation.data.result
