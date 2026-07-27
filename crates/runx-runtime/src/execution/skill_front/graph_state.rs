@@ -157,6 +157,8 @@ pub(super) fn read_graph_state(
     receipts: &ReceiptServices,
     run_id: &str,
     runner_name: &str,
+    package_digest: &str,
+    execution_closure_digest: &str,
 ) -> Result<GraphSkillRunState, SkillRunError> {
     let path = graph_state_path(request, workspace, receipts, run_id);
     let raw = fs::read_to_string(&path)
@@ -183,6 +185,18 @@ pub(super) fn read_graph_state(
         return Err(invalid(format!(
             "graph state runner_name mismatch for run {run_id}: expected {runner_name}, got {}",
             state.runner_name
+        )));
+    }
+    if state.package_digest != package_digest {
+        return Err(invalid(format!(
+            "graph state package_digest mismatch for run {run_id}: expected {package_digest}, got {}",
+            state.package_digest
+        )));
+    }
+    if state.execution_closure_digest != execution_closure_digest {
+        return Err(invalid(format!(
+            "graph state execution_closure_digest mismatch for run {run_id}: expected {execution_closure_digest}, got {}",
+            state.execution_closure_digest
         )));
     }
     Ok(state)

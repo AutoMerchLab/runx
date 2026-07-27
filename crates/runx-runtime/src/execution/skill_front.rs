@@ -6,6 +6,7 @@
 //! one of the source-type "fronts" from `plans/governed-execution-layer.md`;
 //! the act engine (`execution::runner`) owns admit -> execute -> seal.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -228,6 +229,17 @@ fn execute_skill_run_with_resolved_trust(
         prepare_skill_execution(request, runner, trusted_prepared)?;
     let request = &request;
     let skill_env = workspace.skill_env_for_skill(skill_dir);
+    if !trusted_prepared {
+        load_skill_operator_context_chain(
+            skill_dir,
+            Some(&runner.name),
+            SkillOperatorContextOptions::new(
+                workspace.env().clone(),
+                workspace.cwd().to_path_buf(),
+            )
+            .with_effects(effects.clone()),
+        )?;
+    }
     validate_declared_credential(
         manifest,
         runner,
@@ -264,12 +276,54 @@ fn execute_skill_run_with_resolved_trust(
         runner.source.source_type,
         runx_parser::SourceKind::Agent | runx_parser::SourceKind::AgentStep
     ) {
-        return execute_adapter_skill_run(
-            request, &workspace, &receipts, manifest, runner, invocation,
-        );
+        return execute_adapter_skill_run(&context, invocation);
     }
 
     execute_agent_skill_run(&context, invocation)
+}
+
+#[derive(Serialize)]
+struct GeneratedRunIdentity<'a> {
+    schema: &'static str,
+    skill: &'a str,
+    runner: &'a str,
+    source_type: &'a str,
+    request_id: Option<&'a str>,
+    inputs: &'a BTreeMap<String, JsonValue>,
+    package_digest: &'a str,
+    execution_closure_digest: &'a str,
+}
+
+fn generated_run_id(
+    segment: &str,
+    manifest: &SkillRunnerManifest,
+    runner: &SkillRunnerDefinition,
+    request_id: Option<&str>,
+    inputs: &BTreeMap<String, JsonValue>,
+    package_digest: &str,
+    execution_closure_digest: Option<&str>,
+) -> Result<String, SkillRunError> {
+    let execution_closure_digest = execution_closure_digest
+        .ok_or_else(|| invalid("generated run identity requires an execution-closure digest"))?;
+    let skill = manifest.skill.as_deref().unwrap_or(&runner.name);
+    let identity = GeneratedRunIdentity {
+        schema: "runx.skill_run_identity.v1",
+        skill,
+        runner: &runner.name,
+        source_type: runner.source.source_type.as_str(),
+        request_id,
+        inputs,
+        package_digest,
+        execution_closure_digest,
+    };
+    let bytes = serde_json::to_vec(&identity)
+        .map_err(|error| invalid(format!("failed to derive skill run identity: {error}")))?;
+    let digest = runx_contracts::sha256_prefixed(&bytes);
+    let suffix = digest
+        .strip_prefix("sha256:")
+        .and_then(|value| value.get(..16))
+        .ok_or_else(|| invalid("failed to derive skill run identity digest"))?;
+    Ok(format!("run_{}_{}", identifier_segment(segment), suffix))
 }
 
 fn prepare_skill_execution(
@@ -902,4 +956,109 @@ fn contract_json_value(value: &impl serde::Serialize) -> Result<JsonValue, Skill
 
 fn invalid(message: impl Into<String>) -> SkillRunError {
     SkillRunError::Invalid(message.into())
+}
+
+#[cfg(test)]
+mod run_identity_tests {
+    use super::*;
+
+    fn manifest() -> Result<SkillRunnerManifest, Box<dyn std::error::Error>> {
+        let raw = runx_parser::parse_runner_manifest_yaml(
+            r#"
+skill: identity-test
+runners:
+  execute:
+    default: true
+    type: agent-task
+    agent: reviewer
+    task: review
+    outputs:
+      result: object
+"#,
+        )?;
+        Ok(runx_parser::validate_runner_manifest(raw)?)
+    }
+
+    #[test]
+    fn generated_run_identity_binds_package_and_execution_closure()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let manifest = manifest()?;
+        let runner = manifest
+            .runners
+            .get("execute")
+            .ok_or("missing execute runner")?;
+        let inputs = BTreeMap::from([(
+            "claim_id".to_owned(),
+            JsonValue::String("claim-1".to_owned()),
+        )]);
+        let baseline = generated_run_id(
+            "execute",
+            &manifest,
+            runner,
+            None,
+            &inputs,
+            "sha256:package-a",
+            Some("sha256:closure-a"),
+        )?;
+        let same = generated_run_id(
+            "execute",
+            &manifest,
+            runner,
+            None,
+            &inputs,
+            "sha256:package-a",
+            Some("sha256:closure-a"),
+        )?;
+        let changed_package = generated_run_id(
+            "execute",
+            &manifest,
+            runner,
+            None,
+            &inputs,
+            "sha256:package-b",
+            Some("sha256:closure-a"),
+        )?;
+        let changed_closure = generated_run_id(
+            "execute",
+            &manifest,
+            runner,
+            None,
+            &inputs,
+            "sha256:package-a",
+            Some("sha256:closure-b"),
+        )?;
+
+        assert_eq!(baseline, same);
+        assert_ne!(baseline, changed_package);
+        assert_ne!(baseline, changed_closure);
+        Ok(())
+    }
+
+    #[test]
+    fn generated_run_identity_refuses_unbound_execution() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let manifest = manifest()?;
+        let runner = manifest
+            .runners
+            .get("execute")
+            .ok_or("missing execute runner")?;
+        let error = generated_run_id(
+            "execute",
+            &manifest,
+            runner,
+            None,
+            &BTreeMap::new(),
+            "sha256:package",
+            None,
+        )
+        .err()
+        .ok_or("unbound generated run identity did not fail")?;
+
+        assert!(
+            error
+                .to_string()
+                .contains("requires an execution-closure digest")
+        );
+        Ok(())
+    }
 }

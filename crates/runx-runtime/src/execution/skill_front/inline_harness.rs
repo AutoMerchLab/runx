@@ -48,6 +48,7 @@ fn run_loaded_inline_harness_with_effects(
 
     let workspace = WorkspaceEnv::from_admitted(env.clone()).map_err(RuntimeError::from)?;
     let context = InlineHarnessContext {
+        loaded,
         skill_dir: &loaded.directory,
         case_receipt_root,
         output_receipt_dir,
@@ -61,6 +62,7 @@ fn run_loaded_inline_harness_with_effects(
 
 #[derive(Clone, Copy)]
 struct InlineHarnessContext<'a> {
+    loaded: &'a crate::LoadedSkillPackage,
     skill_dir: &'a Path,
     case_receipt_root: Option<&'a Path>,
     output_receipt_dir: Option<&'a Path>,
@@ -185,6 +187,7 @@ fn execute_inline_harness_case(
                 is_graph,
                 receipt_id,
                 assertion_error: inline_harness_expectation_error(
+                    context.loaded,
                     request,
                     case,
                     is_graph,
@@ -258,18 +261,20 @@ fn receipt_id_from_output(output: &JsonValue) -> Option<String> {
 }
 
 fn inline_harness_expectation_error(
+    loaded: &crate::LoadedSkillPackage,
     request: &SkillRunRequest,
     case: &RunnerHarnessCase,
     is_graph: bool,
     runner_name: &str,
     output: &JsonValue,
 ) -> Option<String> {
-    assert_inline_harness_expectations(request, case, is_graph, runner_name, output)
+    assert_inline_harness_expectations(loaded, request, case, is_graph, runner_name, output)
         .err()
         .map(|error| format!("{}: {error}", case.name))
 }
 
 fn assert_inline_harness_expectations(
+    loaded: &crate::LoadedSkillPackage,
     request: &SkillRunRequest,
     case: &RunnerHarnessCase,
     is_graph: bool,
@@ -351,13 +356,28 @@ fn assert_inline_harness_expectations(
                 message: "skill run output omitted its run id".to_owned(),
             })?;
         let (receipts, workspace) = harness_receipt_services(request)?;
+        let closure = crate::skill_package::inspect_loaded_execution_closure_binding(
+            loaded.clone(),
+            runner_name,
+        )
+        .map_err(|error| HarnessReplayError::InvalidReplayMetadata {
+            field: "execution_closure_digest".to_owned(),
+            message: error.to_string(),
+        })?;
         Some(
-            read_graph_state(request, &workspace, &receipts, run_id, runner_name).map_err(
-                |error| HarnessReplayError::InvalidReplayMetadata {
-                    field: "graph_state".to_owned(),
-                    message: error.to_string(),
-                },
-            )?,
+            read_graph_state(
+                request,
+                &workspace,
+                &receipts,
+                run_id,
+                runner_name,
+                &loaded.package.package_digest,
+                &closure.digest,
+            )
+            .map_err(|error| HarnessReplayError::InvalidReplayMetadata {
+                field: "graph_state".to_owned(),
+                message: error.to_string(),
+            })?,
         )
     };
     for (step_id, expectation) in &case.expect.step_outputs {

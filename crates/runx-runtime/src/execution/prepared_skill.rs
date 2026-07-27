@@ -873,7 +873,7 @@ mod tests {
         write_manual(&child, "data-store", "# Data store")?;
         fs::write(
             child.join("X.yaml"),
-            "skill: data-store\nrunners:\n  read:\n    default: true\n    type: javascript\n    module: run.mjs\n",
+            "skill: data-store\nrunners:\n  read:\n    default: true\n    type: javascript\n    module: run.mjs\n    outputs:\n      version:\n        type: integer\n        required: true\n",
         )?;
         fs::write(
             child.join("run.mjs"),
@@ -1129,6 +1129,51 @@ mod tests {
     }
 
     #[test]
+    fn prepared_skill_blocks_missing_result_contract_before_mutating_tool()
+    -> Result<(), Box<dyn Error>> {
+        let temp = tempdir()?;
+        let sentinel = temp.path().join("tool-ran");
+        write_manual(temp.path(), "prepared", "# Prepared")?;
+        fs::create_dir_all(temp.path().join("tools/example/record"))?;
+        fs::write(
+            temp.path().join("tools/example/record/manifest.json"),
+            r#"{
+  "schema": "runx.tool.manifest.v1",
+  "name": "example.record",
+  "source": {
+    "type": "cli-tool",
+    "command": "sh",
+    "args": ["-c", "touch \"$RUNX_CWD/tool-ran\""],
+    "input_mode": "none"
+  },
+  "mutating": true
+}
+"#,
+        )?;
+        fs::write(
+            temp.path().join("X.yaml"),
+            "skill: prepared\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: prepared\n      result_from: [record]\n      steps:\n        - id: record\n          tool: example.record\n          mutation: true\n          idempotency_key: record-1\n",
+        )?;
+
+        let prepared = prepare_skill_run(
+            request(temp.path()),
+            None,
+            PreparedEntryProvenance::default(),
+        )?;
+
+        assert_eq!(prepared.report().status, PreparedSkillRunStatus::Blocked);
+        assert!(
+            prepared
+                .report()
+                .blocked_reason
+                .as_deref()
+                .is_some_and(|reason| reason.contains("declares no semantic output contract"))
+        );
+        assert!(!sentinel.exists(), "preparation executed the mutating tool");
+        Ok(())
+    }
+
+    #[test]
     fn prepared_governance_consumes_typed_graph_step_contract() -> Result<(), Box<dyn Error>> {
         let temp = tempdir()?;
         write_manual(temp.path(), "prepared", "# Prepared")?;
@@ -1320,7 +1365,7 @@ runners:
         )?;
         fs::write(
             entry.join("X.yaml"),
-            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      result_from: [child]\n      steps:\n        - id: child\n          skill: ./child\n",
+            "skill: entry\nrunners:\n  main:\n    default: true\n    type: graph\n    graph:\n      name: entry\n      result_from: [child]\n      steps:\n        - id: child\n          skill: ./child\n          artifacts:\n            wrap_as: child_result\n",
         )?;
         let mut prepared =
             prepare_skill_run(request(&entry), None, PreparedEntryProvenance::default())?;

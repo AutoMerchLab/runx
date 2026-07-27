@@ -1,7 +1,9 @@
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::PathBuf;
 
 use runx_runtime::load_validated_skill_package;
+use runx_runtime::skill_front::{SkillOperatorContextOptions, load_skill_operator_context_chain};
 
 #[test]
 fn validated_skill_package_loads_one_digest_bound_aggregate()
@@ -100,6 +102,40 @@ fn official_skill_packages_validate_through_the_aggregate() -> Result<(), Box<dy
     assert!(
         failures.is_empty(),
         "official skill packages must share one aggregate contract:\n{}",
+        failures.join("\n")
+    );
+    Ok(())
+}
+
+#[test]
+fn critical_operator_skills_prepare_every_runner() -> Result<(), Box<dyn std::error::Error>> {
+    let repo_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let mut failures = Vec::new();
+
+    for skill_name in ["nitrosend", "twitter"] {
+        let directory = repo_root.join("skills").join(skill_name);
+        let loaded = load_validated_skill_package(&directory)?;
+        let runner_names = loaded
+            .manifest()
+            .ok_or("critical operator skill is missing its root manifest")?
+            .runners
+            .keys()
+            .cloned()
+            .collect::<Vec<_>>();
+        for runner_name in runner_names {
+            if let Err(error) = load_skill_operator_context_chain(
+                &directory,
+                Some(&runner_name),
+                SkillOperatorContextOptions::new(BTreeMap::new(), repo_root.clone()),
+            ) {
+                failures.push(format!("{skill_name}#{runner_name}: {error}"));
+            }
+        }
+    }
+
+    assert!(
+        failures.is_empty(),
+        "critical operator runners must remain executable through canonical admission:\n{}",
         failures.join("\n")
     );
     Ok(())

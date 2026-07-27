@@ -13,6 +13,26 @@ use runx_parser::SkillArtifactContract;
 use crate::RuntimeError;
 use crate::adapter::{CONTRACT_VERIFICATION_METADATA, InvocationOutput};
 
+/// Whether a successful producer declares any addressable semantic output.
+///
+/// This is the admission-time counterpart to [`project_declared_output_claim`].
+/// Keep both paths on the same typed contracts so preflight cannot approve a
+/// producer that execution would later project as transport-only.
+#[must_use]
+pub(crate) fn declares_output_contract(
+    raw_output: Option<&JsonObject>,
+    artifacts: Option<&SkillArtifactContract>,
+) -> bool {
+    raw_output.is_some_and(|outputs| !outputs.is_empty())
+        || artifacts.is_some_and(|artifacts| {
+            artifacts.wrap_as.is_some()
+                || artifacts
+                    .named_emits
+                    .as_ref()
+                    .is_some_and(|outputs| !outputs.is_empty())
+        })
+}
+
 /// Project the exact semantic claim a successful producer declared.
 ///
 /// The claim is one shared contract surface for graph state, effect admission,
@@ -233,6 +253,31 @@ mod tests {
             wrap_as: wrap_as.map(str::to_owned),
             packet: None,
         }
+    }
+
+    #[test]
+    fn result_admission_matches_addressable_output_declarations() {
+        let wrapped = artifacts(Some("result"), &[]);
+        let named = artifacts(None, &[("result", "runx.test.result.v1")]);
+        let transport_only = SkillArtifactContract {
+            emits: Some(vec!["result".to_owned()]),
+            named_emits: None,
+            packets: None,
+            wrap_as: None,
+            packet: None,
+        };
+
+        assert!(!declares_output_contract(None, None));
+        assert!(!declares_output_contract(None, Some(&transport_only)));
+        assert!(declares_output_contract(
+            Some(&JsonObject::from([(
+                "result".to_owned(),
+                JsonValue::String("object".to_owned())
+            )])),
+            None,
+        ));
+        assert!(declares_output_contract(None, Some(&wrapped)));
+        assert!(declares_output_contract(None, Some(&named)));
     }
 
     #[test]

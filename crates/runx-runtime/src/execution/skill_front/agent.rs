@@ -1,7 +1,7 @@
 use super::{
     SkillExecutionContext, SkillRunError, SkillSealContext, agent_invocation_source_type,
-    agent_request, answer_disposition, contract_json_value, domain_act_frame, identifier_segment,
-    invalid, needs_agent_output, read_answer, sealed_output,
+    agent_request, answer_disposition, contract_json_value, domain_act_frame, generated_run_id,
+    identifier_segment, invalid, needs_agent_output, read_answer, sealed_output,
 };
 
 use runx_contracts::{ClosureDisposition, JsonObject, JsonValue};
@@ -43,12 +43,19 @@ pub(super) fn execute_agent_skill_run(
         receipts,
         manifest,
         runner,
-        package_digest: _,
-        execution_closure_digest: _,
+        package_digest,
+        execution_closure_digest,
     } = *context;
     let source_type = agent_invocation_source_type(runner.source.source_type.as_str())?;
     let request_id = agent_act_invocation_id(&invocation, source_type);
-    let run_id = agent_run_id(request, manifest, runner, &request_id)?;
+    let run_id = agent_run_id(
+        request,
+        manifest,
+        runner,
+        &request_id,
+        package_digest,
+        execution_closure_digest,
+    )?;
     invocation.env.insert(
         crate::execution::runner::RUNX_RUN_ID_ENV.to_owned(),
         run_id.clone(),
@@ -358,6 +365,8 @@ fn agent_run_id(
     manifest: &SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
     request_id: &str,
+    package_digest: &str,
+    execution_closure_digest: Option<&str>,
 ) -> Result<String, SkillRunError> {
     match (&request.run_id, &request.answers_path) {
         (Some(run_id), Some(_)) => Ok(run_id.clone()),
@@ -367,41 +376,15 @@ fn agent_run_id(
         (None, Some(_)) => Err(invalid(
             "skill continuation requires both run_id and answers",
         )),
-        (None, None) => {
-            let identity = JsonValue::Object(JsonObject::from([
-                (
-                    "schema".to_owned(),
-                    JsonValue::String("runx.agent_run_identity.v1".to_owned()),
-                ),
-                (
-                    "skill".to_owned(),
-                    JsonValue::String(
-                        manifest
-                            .skill
-                            .clone()
-                            .unwrap_or_else(|| runner.name.clone()),
-                    ),
-                ),
-                ("runner".to_owned(), JsonValue::String(runner.name.clone())),
-                (
-                    "request_id".to_owned(),
-                    JsonValue::String(request_id.to_owned()),
-                ),
-                (
-                    "inputs".to_owned(),
-                    JsonValue::Object(request.inputs.clone()),
-                ),
-            ]));
-            let identity = serde_json::to_vec(&identity).map_err(|error| {
-                invalid(format!("failed to derive agent run identity: {error}"))
-            })?;
-            let digest = runx_contracts::sha256_prefixed(&identity);
-            let suffix = digest
-                .strip_prefix("sha256:")
-                .and_then(|value| value.get(..16))
-                .ok_or_else(|| invalid("failed to derive agent run identity digest"))?;
-            Ok(format!("run_{}_{}", identifier_segment(request_id), suffix))
-        }
+        (None, None) => generated_run_id(
+            request_id,
+            manifest,
+            runner,
+            Some(request_id),
+            &request.inputs,
+            package_digest,
+            execution_closure_digest,
+        ),
     }
 }
 

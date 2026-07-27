@@ -59,8 +59,9 @@ pub(crate) use event_store::{
 pub(super) use input::{invalid_input, required_string};
 pub(super) use workspace::resolve_repo_root_for;
 
+pub(crate) use catalog::artifacts;
 #[cfg(feature = "catalog")]
-pub(crate) use catalog::{artifacts, inventory};
+pub(crate) use catalog::inventory;
 pub(crate) use catalog::{inspect, list_items, search};
 
 const CAPABILITY_GROUPS: &[&[&dyn NativeCapability]] = &[

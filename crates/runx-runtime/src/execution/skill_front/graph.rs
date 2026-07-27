@@ -5,7 +5,8 @@
 use super::contract_json_value;
 use super::{
     GRAPH_SKILL_STATE_SCHEMA, SkillExecutionContext, SkillRunError, SkillSourceAdapter,
-    build_domain_act_frame, identifier_segment, invalid, needs_agent_output, sealed_output,
+    build_domain_act_frame, generated_run_id, identifier_segment, invalid, needs_agent_output,
+    sealed_output,
 };
 
 use std::collections::BTreeMap;
@@ -13,7 +14,7 @@ use std::path::PathBuf;
 
 use runx_contracts::{
     ClosureDisposition, JsonObject, JsonValue, ResolutionRequest, ResolutionResponse,
-    ResolutionResponseActor, sha256_hex,
+    ResolutionResponseActor,
 };
 use runx_core::state_machine::GraphStatus;
 use runx_parser::{ExecutionGraph, SkillRunnerDefinition, SkillRunnerManifest};
@@ -66,7 +67,15 @@ pub(super) fn execute_graph_skill_run(
         .iter()
         .map(|(key, value)| (key.clone(), value.clone()))
         .collect::<JsonObject>();
-    let run_id = graph_run_id(request, runner)?;
+    let run_id = graph_run_id(
+        request,
+        manifest,
+        runner,
+        package_digest,
+        execution_closure_digest,
+    )?;
+    let execution_closure_digest = execution_closure_digest
+        .ok_or_else(|| invalid("graph execution requires an execution-closure digest"))?;
     let skill_dir = crate::skill_package::resolve_skill_package_directory(&request.skill_path)?;
     let mut env = workspace.skill_env_for_skill(&skill_dir);
     env.insert(RUNX_RUN_ID_ENV.to_owned(), run_id.clone());
@@ -116,6 +125,8 @@ pub(super) fn execute_graph_skill_run(
             receipts,
             &run_id,
             &runner.name,
+            package_digest,
+            execution_closure_digest,
         )?)
     } else {
         None
@@ -186,6 +197,8 @@ pub(super) fn execute_graph_skill_run(
                             schema: GRAPH_SKILL_STATE_SCHEMA.to_owned(),
                             run_id: run_id.clone(),
                             runner_name: runner.name.clone(),
+                            package_digest: package_digest.to_owned(),
+                            execution_closure_digest: execution_closure_digest.to_owned(),
                             graph_inputs: graph_inputs.clone(),
                             checkpoint: completed_checkpoint,
                         },
@@ -211,6 +224,8 @@ pub(super) fn execute_graph_skill_run(
                         schema: GRAPH_SKILL_STATE_SCHEMA.to_owned(),
                         run_id: run_id.clone(),
                         runner_name: runner.name.clone(),
+                        package_digest: package_digest.to_owned(),
+                        execution_closure_digest: execution_closure_digest.to_owned(),
                         graph_inputs: graph_inputs.clone(),
                         checkpoint: next_checkpoint.clone(),
                     },
@@ -227,6 +242,8 @@ pub(super) fn execute_graph_skill_run(
                         schema: GRAPH_SKILL_STATE_SCHEMA.to_owned(),
                         run_id: run_id.clone(),
                         runner_name: runner.name.clone(),
+                        package_digest: package_digest.to_owned(),
+                        execution_closure_digest: execution_closure_digest.to_owned(),
                         graph_inputs: graph_inputs.clone(),
                         checkpoint: previous_checkpoint,
                     },
@@ -242,7 +259,7 @@ pub(super) fn execute_graph_skill_run(
                     runner,
                     graph: &graph,
                     package_digest,
-                    execution_closure_digest,
+                    execution_closure_digest: Some(execution_closure_digest),
                     run_id: &run_id,
                     request_id,
                 })?;
@@ -494,6 +511,8 @@ pub(super) struct GraphSkillRunState {
     pub(super) schema: String,
     pub(super) run_id: String,
     pub(super) runner_name: String,
+    pub(super) package_digest: String,
+    pub(super) execution_closure_digest: String,
     #[serde(default)]
     pub(super) graph_inputs: JsonObject,
     pub(super) checkpoint: GraphCheckpoint,
@@ -666,7 +685,10 @@ fn resolution_request_id(request: &ResolutionRequest) -> &str {
 
 fn graph_run_id(
     request: &SkillRunRequest,
+    manifest: &SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
+    package_digest: &str,
+    execution_closure_digest: Option<&str>,
 ) -> Result<String, SkillRunError> {
     match (&request.run_id, &request.answers_path) {
         (Some(run_id), Some(_)) => Ok(run_id.clone()),
@@ -676,15 +698,15 @@ fn graph_run_id(
         (None, Some(_)) => Err(invalid(
             "skill continuation requires both run_id and answers",
         )),
-        (None, None) => {
-            let input_bytes = serde_json::to_vec(&request.inputs).unwrap_or_default();
-            let digest = sha256_hex(&input_bytes);
-            Ok(format!(
-                "run_{}_{}",
-                identifier_segment(&runner.name),
-                digest.chars().take(12).collect::<String>()
-            ))
-        }
+        (None, None) => generated_run_id(
+            &runner.name,
+            manifest,
+            runner,
+            None,
+            &request.inputs,
+            package_digest,
+            execution_closure_digest,
+        ),
     }
 }
 

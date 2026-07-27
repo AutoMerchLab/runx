@@ -1,13 +1,10 @@
 use super::{
-    SkillRunError, SkillSealContext, SkillSourceAdapter, identifier_segment, invalid, sealed_output,
+    SkillExecutionContext, SkillRunError, SkillSealContext, SkillSourceAdapter, generated_run_id,
+    invalid, sealed_output,
 };
 
 use std::collections::BTreeMap;
 use std::path::Path;
-
-use runx_contracts::{JsonObject, JsonValue};
-use runx_parser::{SkillRunnerDefinition, SkillRunnerManifest};
-use sha2::{Digest, Sha256};
 
 use crate::adapter::{InvocationOutput, SkillAdapter, SkillInvocation};
 use crate::execution::orchestrator::SkillRunRequest;
@@ -15,6 +12,8 @@ use crate::output_contract::{attach_verified_metadata, verified_runner_metadata_
 use crate::receipts::StepSealClosure;
 use crate::services::{ReceiptServices, WorkspaceEnv};
 use runx_contracts::ClosureDisposition;
+use runx_contracts::{JsonObject, JsonValue};
+use runx_parser::{SkillRunnerDefinition, SkillRunnerManifest};
 
 #[cfg(test)]
 mod credential_tests;
@@ -105,22 +104,36 @@ pub(super) fn credential_delivery_from_invocation(
 }
 
 pub(super) fn execute_adapter_skill_run(
-    request: &SkillRunRequest,
-    workspace: &WorkspaceEnv,
-    receipts: &ReceiptServices,
-    manifest: &SkillRunnerManifest,
-    runner: &SkillRunnerDefinition,
+    context: &SkillExecutionContext<'_>,
     invocation: SkillInvocation,
 ) -> Result<JsonValue, SkillRunError> {
+    let SkillExecutionContext {
+        request,
+        workspace,
+        receipts,
+        manifest,
+        runner,
+        package_digest,
+        execution_closure_digest,
+        ..
+    } = *context;
     if request.answers_path.is_some() {
         return Err(invalid(
             "native adapter runners do not support continuation answers",
         ));
     }
-    let run_id = request
-        .run_id
-        .clone()
-        .unwrap_or_else(|| adapter_run_id(runner, &request.inputs));
+    let run_id = match &request.run_id {
+        Some(run_id) => run_id.clone(),
+        None => generated_run_id(
+            &runner.name,
+            manifest,
+            runner,
+            None,
+            &request.inputs,
+            package_digest,
+            execution_closure_digest,
+        )?,
+    };
     let AdapterOutput {
         output,
         payload,
@@ -195,22 +208,4 @@ pub(super) fn write_skill_receipt(
     receipts
         .write_local_receipt(receipt, &receipt_path)
         .map_err(Into::into)
-}
-
-fn adapter_run_id(runner: &SkillRunnerDefinition, inputs: &BTreeMap<String, JsonValue>) -> String {
-    let input_bytes = serde_json::to_vec(inputs).unwrap_or_default();
-    let digest = Sha256::digest(input_bytes);
-    format!(
-        "run_{}_{}",
-        identifier_segment(&runner.name),
-        hex_prefix(&digest, 12)
-    )
-}
-
-fn hex_prefix(bytes: &[u8], chars: usize) -> String {
-    let full = bytes
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect::<String>();
-    full.chars().take(chars).collect()
 }

@@ -121,7 +121,9 @@ native execution boundary, persists them in pause checkpoints, and rejects a
 resume whose supplied bindings disagree with that checkpoint. These flags bind
 execution; they are never skill inputs. The closure digest includes the
 immutable Runx release identity, so a pending continuation cannot silently
-cross a runtime upgrade.
+cross a runtime upgrade. Runx-generated run ids and durable graph state bind
+the same package and execution-closure digests, so changing a skill, transitive
+child package, or runtime closure cannot merge incompatible checkpoint history.
 
 Execution ceilings remain owned by the capability they constrain rather than
 being flattened into one misleading global number: an MCP call timeout, an
@@ -456,7 +458,11 @@ step's complete declared contract, including packet envelopes. Approvals and
 intermediate evidence remain in the separate operator context and signed
 receipts. Multiple names are for mutually exclusive result branches or
 deliberately combined, non-overlapping contracts; two successful producers may
-not emit the same key.
+not emit the same key. Preparation resolves every result producer through its
+exact runner, tool manifest, or nested skill and rejects a missing semantic
+output contract before any step executes. Declare `run.outputs`,
+`artifacts.wrap_as`, or `artifacts.named_emits`; transport output is never an
+implicit graph result.
 
 Public catalog packages must keep examples in standalone fixtures, not inline
 manifest harness blocks. The package should contain only the files the skill

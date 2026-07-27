@@ -1016,6 +1016,49 @@ fn native_graph_skill_run_pauses_and_resumes_agent_task() -> Result<(), Box<dyn 
     );
     fs::write(&state_path, &original_state)?;
 
+    let original_state_value: JsonValue = serde_json::from_str(&original_state)?;
+    let original_state_object = object(&original_state_value, "graph state")?;
+    assert!(
+        string_field(original_state_object, "package_digest").is_some(),
+        "graph state must bind its skill package"
+    );
+    assert!(
+        string_field(original_state_object, "execution_closure_digest").is_some(),
+        "graph state must bind its full execution closure"
+    );
+
+    let bad_answers_path = temp.path().join("bad-graph-answers.json");
+    fs::write(&bad_answers_path, "{}")?;
+    let mut mismatched_binding: JsonValue = serde_json::from_str(&original_state)?;
+    object_mut(&mut mismatched_binding, "graph state")?.insert(
+        "package_digest".to_owned(),
+        JsonValue::String("sha256:stale-package".to_owned()),
+    );
+    fs::write(
+        &state_path,
+        serde_json::to_string_pretty(&mismatched_binding)?,
+    )?;
+    let binding_mismatch = match run_skill(SkillRunRequest {
+        skill_path: skill_dir.clone(),
+        receipt_dir: Some(receipt_dir.clone()),
+        run_id: Some(run_id.to_owned()),
+        answers_path: Some(bad_answers_path.clone()),
+        inputs: inputs.clone(),
+        env: BTreeMap::new(),
+        cwd: temp.path().to_path_buf(),
+        managed_agent: Default::default(),
+        local_credential: None,
+    }) {
+        Ok(_) => return Err("graph state with a stale package binding should fail".into()),
+        Err(error) => error,
+    };
+    assert!(
+        binding_mismatch
+            .to_string()
+            .contains("graph state package_digest mismatch")
+    );
+    fs::write(&state_path, &original_state)?;
+
     let mut mismatched_state: JsonValue = serde_json::from_str(&original_state)?;
     object_mut(&mut mismatched_state, "graph state")?.insert(
         "runner_name".to_owned(),
@@ -1025,8 +1068,6 @@ fn native_graph_skill_run_pauses_and_resumes_agent_task() -> Result<(), Box<dyn 
         &state_path,
         serde_json::to_string_pretty(&mismatched_state)?,
     )?;
-    let bad_answers_path = temp.path().join("bad-graph-answers.json");
-    fs::write(&bad_answers_path, "{}")?;
     let mismatch = match run_skill(SkillRunRequest {
         skill_path: skill_dir.clone(),
         receipt_dir: Some(receipt_dir.clone()),
