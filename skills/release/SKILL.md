@@ -34,7 +34,9 @@ approval. Publication is never inferred from an agent answer or a zero exit code
 
 ## Project profile
 
-`profile_ref` must name a JSON file inside `project_root`:
+`project_root` is resolved inside the current Runx workspace and must be a
+relative directory (normally `.` when Runx is invoked from the project root).
+`profile_ref` must name a JSON file inside that directory:
 
 ```json
 {

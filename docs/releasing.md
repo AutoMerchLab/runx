@@ -163,7 +163,7 @@ node scripts/check-runx-cli-release-notes.mjs --version X.Y.Z
 #    canonical governed release lane. This prepares, obtains approval for, and
 #    pushes the exact tag, then independently verifies every required channel.
 runx skill skills/release release \
-  -i project_root="$PWD" \
+  -i project_root=. \
   -i profile_ref=release/runx-cli.json \
   -i channel=runx-cli \
   -i version=X.Y.Z \

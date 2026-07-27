@@ -15,7 +15,7 @@ runners:
   prepare:
     type: graph
     inputs:
-      project_root: { type: string, required: true, description: Existing project directory. }
+      project_root: { type: string, required: true, description: Existing project directory relative to the Runx workspace. }
       profile_ref: { type: string, required: true, description: JSON release profile inside project_root. }
       channel: { type: string, required: true, description: Release channel declared by the profile. }
       version: { type: string, required: true, description: Exact SemVer release version. }
@@ -166,7 +166,7 @@ runners:
     default: true
     type: graph
     inputs:
-      project_root: { type: string, required: true, description: Existing project directory. }
+      project_root: { type: string, required: true, description: Existing project directory relative to the Runx workspace. }
       profile_ref: { type: string, required: true, description: JSON release profile inside project_root. }
       channel: { type: string, required: true, description: Release channel declared by the profile. }
       version: { type: string, required: true, description: Exact SemVer release version. }
