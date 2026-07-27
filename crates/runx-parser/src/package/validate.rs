@@ -13,7 +13,9 @@ mod tools;
 
 use contract::{required_text_file, validate_manual, validate_package_identity, validate_profiles};
 use modules::validate_modules;
-use references::{collect_package_references, validate_context_skill_sources};
+use references::{
+    collect_harness_fixture_references, collect_package_references, validate_context_skill_sources,
+};
 use support::{
     validate_execution_files, validate_harness_fixtures, validate_harness_support_files,
     validate_nested_package_consumed_files, validate_operator_reference_files,
@@ -28,7 +30,10 @@ pub fn validate_skill_package(
     let skill = validate_manual(&manual_markdown)?;
     let profiles = validate_profiles(&source)?;
     validate_package_identity(&skill, profiles.get("X.yaml"))?;
-    let references = collect_package_references(&profiles, &source)?;
+    let harness_fixtures = validate_harness_fixtures(&source)?;
+    let mut references = collect_package_references(&profiles, &source)?;
+    let harness_fixture_files =
+        collect_harness_fixture_references(&harness_fixtures, &source, &mut references)?;
     let tools = validate_package_tools(&source)?;
     validate_context_skill_sources(&source, &references.context_refs)?;
     let mut execution_files = references.execution_files;
@@ -37,7 +42,8 @@ pub fn validate_skill_package(
         execution_files.extend(package_tool.source_files.iter().cloned());
     }
     validate_execution_files(&source, &execution_files)?;
-    let harness_files = validate_harness_support_files(&source, &profiles)?;
+    let mut harness_files = validate_harness_support_files(&source, &profiles)?;
+    harness_files.extend(harness_fixture_files);
     let mut context_skill_refs = references
         .context_refs
         .into_iter()
@@ -46,7 +52,6 @@ pub fn validate_skill_package(
     context_skill_refs.sort();
     context_skill_refs.dedup();
     let javascript_modules = validate_modules(&source, references.module_roots, &execution_files)?;
-    let harness_fixtures = validate_harness_fixtures(&source)?;
     let mut consumed_files = BTreeSet::from(["SKILL.md".to_owned()]);
     consumed_files.extend(profiles.keys().cloned());
     consumed_files.extend(javascript_modules.keys().cloned());

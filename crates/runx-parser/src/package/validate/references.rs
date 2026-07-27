@@ -1,10 +1,11 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::harness_fixture::{HarnessFixture, HarnessFixtureKind};
 use crate::{
     ExecutionGraph, SkillExternalAdapterManifest, SkillRunnerManifest, SkillSource, SourceKind,
 };
 
-use super::super::path::normalize_context_ref;
+use super::super::path::{normalize_context_ref, validate_package_path};
 use super::super::{SkillPackageError, SkillPackageSource};
 use super::contract::{text_file, validate_manual};
 
@@ -40,6 +41,60 @@ pub(super) struct ContextReference {
     field: String,
     profile_dir: String,
     pub(super) reference: String,
+}
+
+pub(super) fn collect_harness_fixture_references(
+    fixtures: &BTreeMap<String, HarnessFixture>,
+    package: &SkillPackageSource,
+    references: &mut PackageReferences,
+) -> Result<BTreeSet<String>, SkillPackageError> {
+    let mut files = BTreeSet::new();
+    for (fixture_path, fixture) in fixtures {
+        files.insert(fixture_path.clone());
+        for receipt_path in &fixture.setup.receipts {
+            if !package.files.contains_key(receipt_path) {
+                return Err(SkillPackageError::invalid(
+                    fixture_path,
+                    format!("setup receipt {receipt_path:?} is missing from the skill package"),
+                ));
+            }
+            files.insert(receipt_path.clone());
+        }
+        if fixture.kind != HarnessFixtureKind::Graph {
+            continue;
+        }
+        let target = resolve_fixture_target(fixture_path, &fixture.target)?;
+        let contents = package.files.get(&target).ok_or_else(|| {
+            SkillPackageError::invalid(
+                fixture_path,
+                format!(
+                    "graph target {:?} resolves to missing file {target}",
+                    fixture.target
+                ),
+            )
+        })?;
+        let graph = crate::validate_graph(
+            crate::parse_graph_yaml(text_file(&target, contents)?).map_err(|source| {
+                SkillPackageError::Parse {
+                    path: target.clone(),
+                    source,
+                }
+            })?,
+        )
+        .map_err(|source| SkillPackageError::Validation {
+            path: target.clone(),
+            source,
+        })?;
+        collect_graph_references(
+            &format!("{fixture_path}.target"),
+            package_directory(&target),
+            &graph,
+            package,
+            references,
+        )?;
+        files.insert(target);
+    }
+    Ok(files)
 }
 
 fn collect_source_references(
@@ -243,6 +298,49 @@ fn profile_directory(path: &str) -> &str {
 
 fn package_directory(path: &str) -> &str {
     path.rsplit_once('/').map_or("", |(directory, _)| directory)
+}
+
+fn resolve_fixture_target(
+    fixture_path: &str,
+    reference: &str,
+) -> Result<String, SkillPackageError> {
+    if reference.trim() != reference
+        || reference.is_empty()
+        || reference.starts_with('/')
+        || reference.contains('\\')
+    {
+        return Err(SkillPackageError::invalid(
+            fixture_path,
+            format!("graph target {reference:?} must be a relative POSIX path"),
+        ));
+    }
+    let mut segments = package_directory(fixture_path)
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect::<Vec<_>>();
+    for segment in reference.split('/') {
+        match segment {
+            "." => {}
+            ".." => {
+                if segments.pop().is_none() {
+                    return Err(SkillPackageError::invalid(
+                        fixture_path,
+                        format!("graph target {reference:?} escapes the skill package"),
+                    ));
+                }
+            }
+            "" => {
+                return Err(SkillPackageError::invalid(
+                    fixture_path,
+                    format!("graph target {reference:?} contains an empty path segment"),
+                ));
+            }
+            value => segments.push(value),
+        }
+    }
+    let resolved = segments.join("/");
+    validate_package_path(&resolved)?;
+    Ok(resolved)
 }
 
 fn package_relative(directory: &str, path: &str) -> String {

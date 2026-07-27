@@ -449,6 +449,56 @@ expect:
 }
 
 #[test]
+fn skill_package_consumes_conventional_graph_harness_closure() {
+    let source = package([
+        ("SKILL.md", manual("operator")),
+        (
+            "X.yaml",
+            "skill: operator\nrunners:\n  inspect:\n    type: agent\n".to_owned(),
+        ),
+        (
+            "fixtures/inspect.yaml",
+            r#"name: inspect
+kind: graph
+target: ../harness/inspect.graph.yaml
+expect:
+  status: sealed
+"#
+            .to_owned(),
+        ),
+        (
+            "harness/inspect.graph.yaml",
+            r#"name: inspect
+steps:
+  - id: setup
+    run:
+      type: cli-tool
+      command: node
+      args: [./setup.mjs]
+"#
+            .to_owned(),
+        ),
+        (
+            "harness/setup.mjs",
+            "process.stdout.write('{}\\n');\n".to_owned(),
+        ),
+    ]);
+
+    let validated = validate_skill_package(source).expect("harness closure must validate");
+
+    for path in [
+        "fixtures/inspect.yaml",
+        "harness/inspect.graph.yaml",
+        "harness/setup.mjs",
+    ] {
+        assert!(
+            validated.consumed_files.contains(path),
+            "{path} is missing from parser-owned package material",
+        );
+    }
+}
+
+#[test]
 fn skill_package_admits_explicit_profile_relative_harness_files() {
     let source = package([
         ("SKILL.md", manual("operator")),
