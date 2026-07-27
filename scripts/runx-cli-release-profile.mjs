@@ -215,7 +215,10 @@ function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: process.cwd(),
     encoding: "utf8",
-    env: options.cleanRunxEnvironment ? withoutRunxEnvironment() : process.env,
+    env: {
+      ...(options.cleanRunxEnvironment ? withoutRunxEnvironment() : process.env),
+      CI: "true",
+    },
     maxBuffer: 16 * 1024 * 1024,
     timeout: options.timeout ?? 120_000,
   });
