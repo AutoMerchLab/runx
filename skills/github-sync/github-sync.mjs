@@ -173,7 +173,12 @@ function validateThreadMutation(ref, op, payload, blockers) {
     blockers.push("thread mutation op must be comment or update");
   }
   rejectUnknown(payload, ["body"], "thread mutation payload", blockers);
-  if (typeof payload.body !== "string" || !payload.body.trim() || payload.body.length > MAX_BODY_LENGTH) {
+  if (
+    typeof payload.body !== "string"
+    || !payload.body.trim()
+    || payload.body.length > MAX_BODY_LENGTH
+    || payload.body.includes("\u0000")
+  ) {
     blockers.push(`payload.body must be non-empty text of at most ${MAX_BODY_LENGTH} characters`);
   }
 }
@@ -208,7 +213,11 @@ function optionalStrings(value, maximum, label, blockers) {
   if (
     !Array.isArray(value)
     || value.length > maximum
-    || value.some((entry) => typeof entry !== "string" || !entry.trim() || entry.length > 100)
+    || value.some((entry) =>
+      typeof entry !== "string"
+      || !entry.trim()
+      || entry.length > 100
+      || entry.includes("\u0000"))
     || new Set(value).size !== value.length
   ) {
     blockers.push(`${label} must contain at most ${maximum} unique non-empty strings`);
