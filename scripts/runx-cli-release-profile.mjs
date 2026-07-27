@@ -2,6 +2,7 @@ import { spawnSync } from "node:child_process";
 
 import {
   checkRunxGhcrAnonymousAccess,
+  githubActionsSkipDirective,
   observeRunxCliRelease,
 } from "./lib/runx-cli-release-evidence.mjs";
 
@@ -40,6 +41,7 @@ async function prepare() {
   assertCleanCheckout();
   run("git", ["fetch", "origin", "main", "--tags"]);
   assertMainCommit();
+  assertTagTriggeredReleaseCommit();
   assertRemoteTagCompatible();
   run("node", ["scripts/check-runx-cli-release-notes.mjs", "--version", version]);
   const ghcrAccess = await checkRunxGhcrAnonymousAccess();
@@ -189,6 +191,16 @@ function assertMainCommit() {
   const mainCommit = run("git", ["rev-parse", "origin/main"]);
   if (mainCommit !== commit) {
     throw new Error(`release HEAD ${commit} does not match origin/main ${mainCommit}`);
+  }
+}
+
+function assertTagTriggeredReleaseCommit() {
+  const message = run("git", ["show", "-s", "--format=%B", commit]);
+  const directive = githubActionsSkipDirective(message);
+  if (directive) {
+    throw new Error(
+      `release commit contains '${directive}', which suppresses the tag-triggered GitHub workflow`,
+    );
   }
 }
 

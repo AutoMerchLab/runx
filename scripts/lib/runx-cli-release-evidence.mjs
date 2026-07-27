@@ -44,6 +44,26 @@ export const RUNX_CLI_RELEASE_NOTE_SECTIONS = Object.freeze([
   "Contributors",
 ]);
 
+const GITHUB_ACTIONS_SKIP_MARKERS = Object.freeze([
+  "[skip ci]",
+  "[ci skip]",
+  "[no ci]",
+  "[skip actions]",
+  "[actions skip]",
+]);
+
+export function githubActionsSkipDirective(commitMessage) {
+  if (typeof commitMessage !== "string") {
+    throw new Error("commit message must be a string");
+  }
+  const normalized = commitMessage.toLowerCase();
+  const marker = GITHUB_ACTIONS_SKIP_MARKERS.find((candidate) =>
+    normalized.includes(candidate)
+  );
+  if (marker) return marker;
+  return /^skip-checks:\s*true\s*$/imu.test(commitMessage) ? "skip-checks: true" : "";
+}
+
 /**
  * @param {{ body: string; version: string; previousTag: string }} options
  */

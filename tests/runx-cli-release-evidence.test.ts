@@ -5,6 +5,7 @@ import {
   RUNX_CLI_RELEASE_NOTE_SECTIONS,
   RUNX_CLI_REQUIRED_RELEASE_CHANNELS,
   RUNX_CLI_REQUIRED_RELEASE_CHECKS,
+  githubActionsSkipDirective,
   observeRunxCliRelease,
   validateRunxCliReleaseNotes,
 } from "../scripts/lib/runx-cli-release-evidence.mjs";
@@ -14,6 +15,22 @@ const tag = `cli-v${version}`;
 const commit = "a".repeat(40);
 
 describe("Runx CLI release evidence", () => {
+  it("recognizes every GitHub Actions skip directive that suppresses tag pushes", () => {
+    expect(githubActionsSkipDirective("docs: update [skip ci]")).toBe("[skip ci]");
+    expect(githubActionsSkipDirective("docs: update [CI SKIP]")).toBe("[ci skip]");
+    expect(githubActionsSkipDirective("docs: update [no ci]")).toBe("[no ci]");
+    expect(githubActionsSkipDirective("docs: update [skip actions]")).toBe("[skip actions]");
+    expect(githubActionsSkipDirective("docs: update [actions skip]")).toBe("[actions skip]");
+    expect(githubActionsSkipDirective("docs: update\n\nskip-checks:true")).toBe(
+      "skip-checks: true",
+    );
+    expect(githubActionsSkipDirective("docs: update\n\nskip-checks: true")).toBe(
+      "skip-checks: true",
+    );
+    expect(githubActionsSkipDirective("docs: update\n\nskip-checks: false")).toBe("");
+    expect(githubActionsSkipDirective("fix(release): publish 0.8.1")).toBe("");
+  });
+
   it("requires independent evidence for every public release channel", async () => {
     const evidence = await observeRunxCliRelease({
       version,
