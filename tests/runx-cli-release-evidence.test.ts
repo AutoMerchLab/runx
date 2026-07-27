@@ -37,6 +37,35 @@ describe("Runx CLI release evidence", () => {
       .toBe(true);
   });
 
+  it("scopes authenticated readback to GitHub API requests", async () => {
+    const requests: Array<{ url: string; authorization: string | null }> = [];
+    const providerFetch = releaseFetch();
+    const fetchImpl: typeof fetch = async (input, init) => {
+      requests.push({
+        url: String(input),
+        authorization: new Headers(init?.headers).get("authorization"),
+      });
+      return providerFetch(input, init);
+    };
+
+    const evidence = await observeRunxCliRelease({
+      version,
+      expectedCommit: commit,
+      fetchImpl,
+      githubToken: "github-readback-token",
+    });
+
+    expect(evidence.ready).toBe(true);
+    const githubRequests = requests.filter(({ url }) => url.startsWith("https://api.github.com/"));
+    expect(githubRequests).toHaveLength(3);
+    expect(githubRequests.every(({ authorization }) =>
+      authorization === "Bearer github-readback-token"
+    )).toBe(true);
+    expect(requests
+      .filter(({ url }) => !url.startsWith("https://api.github.com/"))
+      .every(({ authorization }) => authorization !== "Bearer github-readback-token")).toBe(true);
+  });
+
   it("refuses workflow, npm-latest, and anonymous-container drift", async () => {
     const evidence = await observeRunxCliRelease({
       version,

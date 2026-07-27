@@ -134,7 +134,7 @@ const FIELDS: &[CapabilityField] = &[
     },
     CapabilityField {
         name: "timeout_ms",
-        description: "Execution timeout from 1000 to 900000 milliseconds.",
+        description: "Execution timeout from 1000 to 3600000 milliseconds.",
     },
     CapabilityField {
         name: "output_mode",

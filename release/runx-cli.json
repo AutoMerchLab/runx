@@ -19,7 +19,7 @@
       "argv": ["node", "scripts/runx-cli-release-profile.mjs", "verify"],
       "cwd": ".",
       "network": true,
-      "timeout_ms": 900000
+      "timeout_ms": 3600000
     }
   }
 }

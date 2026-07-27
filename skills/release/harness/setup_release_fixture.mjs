@@ -8,7 +8,8 @@ const inputs = process.env.RUNX_INPUTS_PATH
   : JSON.parse(process.env.RUNX_INPUTS_JSON || "{}");
 const prepareStatus = inputs.prepare_status === "blocked" ? "blocked" : "ready";
 const root = path.resolve(process.env.RUNX_CWD || process.cwd());
-const project = path.join(root, "release-fixture-project");
+const project = path.join(root, ".runx", "cache", "harness", "release-fixture-project");
+fs.rmSync(project, { recursive: true, force: true });
 fs.mkdirSync(project, { recursive: true });
 const provider = [
   "#!/usr/bin/env node",

@@ -212,8 +212,8 @@ function normalizeCommand(value, phase, identity) {
     throw new Error(`commands.${phase}.cwd must stay inside project_root`);
   }
   const timeoutMs = Number(value.timeout_ms ?? 120_000);
-  if (!Number.isInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 900_000) {
-    throw new Error(`commands.${phase}.timeout_ms must be 1000-900000`);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 3_600_000) {
+    throw new Error(`commands.${phase}.timeout_ms must be 1000-3600000`);
   }
   const network = value.network ?? false;
   if (typeof network !== "boolean") {

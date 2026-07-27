@@ -6,6 +6,7 @@ import {
 } from "./lib/runx-cli-release-evidence.mjs";
 
 const repository = "runxhq/runx";
+const RELEASE_VERIFY_DEADLINE_MS = 55 * 60_000;
 
 const phase = process.argv[2];
 const version = requiredEnvironment("RUNX_RELEASE_VERSION");
@@ -118,10 +119,11 @@ function publish() {
 }
 
 async function verify() {
-  const deadline = Date.now() + 840_000;
+  const githubToken = githubApiToken();
+  const deadline = Date.now() + RELEASE_VERIFY_DEADLINE_MS;
   let observation;
   while (Date.now() < deadline) {
-    observation = await releaseObservation();
+    observation = await releaseObservation(githubToken);
     if (observation.ready) break;
     await new Promise((resolve) => setTimeout(resolve, 15_000));
   }
@@ -144,10 +146,11 @@ async function verify() {
   });
 }
 
-async function releaseObservation() {
+async function releaseObservation(githubToken) {
   const observation = await observeRunxCliRelease({
     version,
     expectedCommit: commit,
+    githubToken,
   });
   const remoteTagMatches = remoteTagCommit() === commit;
   const remoteTagCheck = {
@@ -165,6 +168,16 @@ async function releaseObservation() {
       ? observation.missing
       : [`remote_tag: ${remoteTagCheck.detail}`, ...observation.missing],
   };
+}
+
+function githubApiToken() {
+  const environmentToken = process.env.GH_TOKEN?.trim() || process.env.GITHUB_TOKEN?.trim();
+  if (environmentToken) return environmentToken;
+  const result = tryRun("gh", ["auth", "token"]);
+  if (!result.ok || !result.stdout) {
+    throw new Error("GitHub API authentication is required for release verification");
+  }
+  return result.stdout;
 }
 
 function assertCleanCheckout() {

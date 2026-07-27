@@ -28,7 +28,7 @@ use result::{observe_command, render_execution};
 
 const TOOL: &str = "command.execute";
 const MIN_TIMEOUT_MS: u64 = 1_000;
-const MAX_TIMEOUT_MS: u64 = 900_000;
+const MAX_TIMEOUT_MS: u64 = 3_600_000;
 const OUTPUT_LIMIT_BYTES: usize = STANDARD_PROCESS_OUTPUT_BYTES;
 const MAX_COMMAND_ARGS: usize = 128;
 const MAX_COMMAND_ARG_BYTES: usize = 8 * 1024;
@@ -323,6 +323,53 @@ mod tests {
             .and_then(JsonValue::as_str)
             .ok_or("missing offline command digest")?;
         assert_ne!(network_digest, offline_digest);
+        Ok(())
+    }
+
+    #[test]
+    fn accepts_hour_long_operator_commands_without_unbounded_timeouts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let workspace = tempfile::tempdir()?;
+        let env = BTreeMap::from([(
+            RUNX_CWD_ENV.to_owned(),
+            workspace.path().to_string_lossy().into_owned(),
+        )]);
+        let delivery = CredentialDelivery::none();
+        #[cfg(feature = "catalog")]
+        let effects = RuntimeEffectRegistry::default();
+        let mut inputs = fixture_input::<CommandInput>(JsonObject::from([(
+            "command".to_owned(),
+            JsonValue::String("true".to_owned()),
+        )]))?;
+        inputs.timeout_ms = 3_600_000;
+        plan(&NativeInvocation {
+            inputs: &inputs,
+            scopes: &[],
+            observed_at: "2026-01-01T00:00:00Z",
+            data_source_binding: None,
+            env: &env,
+            skill_directory: workspace.path(),
+            credential_delivery: &delivery,
+            local_artifacts: crate::tool_catalogs::native::fixture_local_artifacts(),
+            #[cfg(feature = "catalog")]
+            effects: &effects,
+        })?;
+
+        inputs.timeout_ms = 3_600_001;
+        let error = plan(&NativeInvocation {
+            inputs: &inputs,
+            scopes: &[],
+            observed_at: "2026-01-01T00:00:00Z",
+            data_source_binding: None,
+            env: &env,
+            skill_directory: workspace.path(),
+            credential_delivery: &delivery,
+            local_artifacts: crate::tool_catalogs::native::fixture_local_artifacts(),
+            #[cfg(feature = "catalog")]
+            effects: &effects,
+        })
+        .expect_err("timeouts above one hour must remain bounded");
+        assert!(error.to_string().contains("3600000"));
         Ok(())
     }
 
