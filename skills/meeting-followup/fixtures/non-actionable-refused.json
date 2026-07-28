@@ -1,5 +1,0 @@
-{
-  "case": "meeting-followup-non-actionable-refused",
-  "transcript": "Alice: We chatted about the roadmap.\nBen: There are several options.\nChen: Let's revisit later when we have more data.",
-  "attendees": ["Alice", "Ben", "Chen"]
-}

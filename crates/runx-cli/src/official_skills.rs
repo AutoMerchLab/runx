@@ -152,8 +152,8 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/meeting-followup",
-        version: "sha-7fd67e6ae6b4",
-        digest: "353633b7ecf48bbd68532fd25fb85d3f5e50ee2ad160fc139553bf9e3bb0ca17",
+        version: "sha-b49853ab512d",
+        digest: "2076f10968ed5781b57306715934e52241851733401ebd67ed4fbcedba2a6edd",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/messageboard",
