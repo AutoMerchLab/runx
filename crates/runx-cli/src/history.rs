@@ -513,27 +513,10 @@ mod tests {
     }
 
     #[test]
-    // Function rationale: the CLI execute oracle test keeps
-    // its ledger fixture, command invocation, and typed output assertions in
-    // one place so the parity case remains readable.
-    fn executes_history_json_against_cli_parity_oracle() -> Result<(), io::Error> {
+    fn executes_history_json_with_pending_run() -> Result<(), io::Error> {
         let temp = tempfile_dir()?;
         let receipt_dir = temp.join("receipts");
         write_needs_agent_ledger(&receipt_dir)?;
-        let oracle: CliParityOracle = serde_json::from_str(include_str!(
-            "../../../fixtures/cli-parity/cases/oracle.json"
-        ))
-        .map_err(|error| io::Error::other(error.to_string()))?;
-        let execute_case = oracle
-            .cases
-            .iter()
-            .find(|case| case.id == "history.execute")
-            .ok_or_else(|| {
-                io::Error::new(
-                    io::ErrorKind::InvalidData,
-                    "missing history.execute oracle case",
-                )
-            })?;
 
         let mut env = BTreeMap::new();
         env.insert("RUNX_CWD".to_owned(), temp.to_string_lossy().to_string());
@@ -557,18 +540,9 @@ mod tests {
             )
         })?;
 
-        assert_eq!(
-            output.pending_runs.len(),
-            execute_case.expect.pending_runs as usize
-        );
-        assert_eq!(
-            first_pending_run.id,
-            execute_case.expect.first_pending_run_id
-        );
-        assert_eq!(
-            first_pending_run.status,
-            execute_case.expect.first_pending_run_status
-        );
+        assert_eq!(output.pending_runs.len(), 1);
+        assert_eq!(first_pending_run.id, "gx_needs_agent_oracle");
+        assert_eq!(first_pending_run.status, "paused");
         assert_eq!(
             first_pending_run.selected_runner,
             Some("agent-task".to_owned())
@@ -772,29 +746,6 @@ mod tests {
         assert!(!result.output.contains("structured_output"));
         assert!(!result.output.contains("stderr"));
         Ok(())
-    }
-
-    #[derive(serde::Deserialize)]
-    struct CliParityOracle {
-        cases: Vec<CliParityCase>,
-    }
-
-    #[derive(serde::Deserialize)]
-    struct CliParityCase {
-        id: String,
-        #[serde(default)]
-        expect: CliParityExpectation,
-    }
-
-    #[derive(Default, serde::Deserialize)]
-    #[serde(rename_all = "camelCase")]
-    struct CliParityExpectation {
-        #[serde(default)]
-        pending_runs: u64,
-        #[serde(default)]
-        first_pending_run_id: String,
-        #[serde(default)]
-        first_pending_run_status: String,
     }
 
     #[derive(serde::Deserialize)]

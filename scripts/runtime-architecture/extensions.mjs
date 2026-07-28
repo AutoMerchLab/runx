@@ -52,12 +52,12 @@ export function checkExternalAdapterOwnership(findings) {
     findings.push(`${relative(langChainBridgePath)} retains a nonfunctional catalog-adapter compatibility API`);
   }
 
-  const parityGeneratorPath = path.join(workspaceRoot, "scripts/generate-cli-feature-parity.ts");
-  const parityGenerator = existsSync(parityGeneratorPath)
-    ? readFileSync(parityGeneratorPath, "utf8")
+  const parityContractPath = path.join(workspaceRoot, "tests/cli-feature-parity-contract.ts");
+  const parityContract = existsSync(parityContractPath)
+    ? readFileSync(parityContractPath, "utf8")
     : "";
-  if (/adapter-catalog|runx-runtime catalog adapter/u.test(parityGenerator)) {
-    findings.push(`${relative(parityGeneratorPath)} retains the displaced catalog adapter as a parity surface`);
+  if (/adapter-catalog|runx-runtime catalog adapter/u.test(parityContract)) {
+    findings.push(`${relative(parityContractPath)} retains the displaced catalog adapter as a parity surface`);
   }
 }
 

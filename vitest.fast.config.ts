@@ -10,6 +10,7 @@ export default defineConfig({
     include: [
       "packages/**/*.test.ts",
       "tests/kernel-parity-fixtures.test.ts",
+      "tests/cli-feature-parity.test.ts",
       "tests/least-privilege-scope.test.ts",
       "tests/policy-author-validation.test.ts",
       "tests/runx-cli-release-evidence.test.ts",

@@ -24,7 +24,7 @@ export function checkCliCommandOwnership(findings) {
     findings.push(`${relative(catalogPath)} must own root help and the complete native option catalog`);
   }
 
-  const parityPath = path.join(workspaceRoot, "scripts/generate-cli-feature-parity.ts");
+  const parityPath = path.join(workspaceRoot, "tests/cli-feature-parity-contract.ts");
   const parity = existsSync(parityPath) ? readFileSync(parityPath, "utf8") : "";
   for (const token of [
     "command(\"",
@@ -40,11 +40,20 @@ export function checkCliCommandOwnership(findings) {
   }
   for (const required of [
     'spawnSync(runx, ["--help", "--json"]',
-    'sourceOfTruth: "runx --help --json"',
-    "bindNativeCommands(readNativeCommandCatalog(), commandAnnotations)",
+    "bindNativeCommands(readNativeCommandCatalog(runx), commandAnnotations)",
   ]) {
     if (!parity.includes(required)) {
       findings.push(`${relative(parityPath)} must consume the native JSON command catalog (${required})`);
+    }
+  }
+  for (const relPath of [
+    "scripts/generate-cli-feature-parity.ts",
+    "fixtures/cli-parity/commands.json",
+    "fixtures/cli-parity/runtime-surfaces.json",
+    "fixtures/cli-parity/cases/oracle.json",
+  ]) {
+    if (existsSync(path.join(workspaceRoot, relPath))) {
+      findings.push(`${relPath} is a generated CLI parity projection over the native command catalog`);
     }
   }
   const cliManifestPath = path.join(workspaceRoot, "crates/runx-cli/Cargo.toml");
@@ -63,7 +72,7 @@ export function checkCliCommandOwnership(findings) {
 
   const packagePath = path.join(workspaceRoot, "package.json");
   const packageSource = existsSync(packagePath) ? readFileSync(packagePath, "utf8") : "";
-  if (/fixtures:cli-help:check|check-help-coverage|canonical-only/u.test(packageSource)) {
+  if (/fixtures:cli-help:check|fixtures:cli-parity:check|check-help-coverage|canonical-only/u.test(packageSource)) {
     findings.push(`${relative(packagePath)} retains a redundant CLI help/parity validation path`);
   }
 

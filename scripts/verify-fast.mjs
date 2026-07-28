@@ -106,7 +106,6 @@ if (rustBuild.status === 0) {
       step("fixtures:doctor:check", "pnpm", ["fixtures:doctor:check"]),
       step("fixtures:fanout:check", "pnpm", ["fixtures:fanout:check"]),
       step("fixtures:tool-catalog:check", "pnpm", ["fixtures:tool-catalog:check"]),
-      step("fixtures:cli-parity:check", "pnpm", ["fixtures:cli-parity:check"]),
       step("packet contracts", "pnpm", ["packet-schemas:check"]),
       step("docs:api:check", "pnpm", ["docs:api:check"]),
       step("docs:exit-codes", "pnpm", ["docs:exit-codes"]),
