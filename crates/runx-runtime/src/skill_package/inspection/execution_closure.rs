@@ -2,7 +2,7 @@
 // registry-edge classification, cycle detection, and summary projection in one
 // canonical walk.
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Path, PathBuf};
+use std::path::{Component, Path, PathBuf};
 use std::sync::Arc;
 
 use runx_contracts::{JsonValue, sha256_prefixed};
@@ -168,6 +168,7 @@ impl<'a> ExecutionClosureInspector<'a> {
             .insert(format!("{profile_path}#{runner_name}"));
         self.walk_source(
             loaded.clone(),
+            &profile_path,
             &runner.source,
             runner.artifacts.is_some(),
             edge_depth,
@@ -178,6 +179,7 @@ impl<'a> ExecutionClosureInspector<'a> {
     fn walk_source(
         &mut self,
         loaded: Arc<LoadedSkillPackage>,
+        profile_path: &str,
         source: &runx_parser::SkillSource,
         declared_artifact: bool,
         edge_depth: EdgeDepth,
@@ -193,7 +195,9 @@ impl<'a> ExecutionClosureInspector<'a> {
                     if let Some(tool) = &step.tool {
                         walk.closure.components.insert(format!("tool:{tool}"));
                     }
-                    if let Some(resolved) = self.resolve_step_skill(loaded.clone(), step)? {
+                    if let Some(resolved) =
+                        self.resolve_step_skill(loaded.clone(), profile_path, step)?
+                    {
                         let ResolvedStepSkill {
                             edge,
                             static_external_name,
@@ -226,6 +230,7 @@ impl<'a> ExecutionClosureInspector<'a> {
                     if let Some(run_source) = step.run.as_ref().and_then(|run| run.source()) {
                         self.walk_source(
                             loaded.clone(),
+                            profile_path,
                             run_source,
                             step.artifacts.is_some(),
                             edge_depth,
@@ -275,6 +280,7 @@ impl<'a> ExecutionClosureInspector<'a> {
     fn resolve_step_skill(
         &mut self,
         loaded: Arc<LoadedSkillPackage>,
+        profile_path: &str,
         step: &GraphStep,
     ) -> Result<Option<ResolvedStepSkill>, SkillInspectionError> {
         let Some(reference) = step.skill.as_deref() else {
@@ -307,10 +313,14 @@ impl<'a> ExecutionClosureInspector<'a> {
             crate::execution::graph::select_step_runner(manifest, step.runner.as_deref())?
                 .name
                 .clone();
-        let nested_profile = nested
-            .profile_path
-            .clone()
-            .unwrap_or_else(|| "X.yaml".to_owned());
+        let nested_profile = if is_registry_step_ref(reference) {
+            nested
+                .profile_path
+                .clone()
+                .unwrap_or_else(|| "X.yaml".to_owned())
+        } else {
+            nested_profile_path(profile_path, reference)?
+        };
         Ok(Some(ResolvedStepSkill {
             edge: format!("{}#{nested_runner}", nested.package.skill.name),
             static_external_name: None,
@@ -444,6 +454,39 @@ fn is_registry_step_ref(reference: &str) -> bool {
     reference.starts_with("registry:")
         || reference.starts_with("runx-registry:")
         || reference.starts_with("runx://skill/")
+}
+
+fn nested_profile_path(
+    current_profile: &str,
+    reference: &str,
+) -> Result<String, SkillInspectionError> {
+    let current_dir = Path::new(current_profile)
+        .parent()
+        .unwrap_or_else(|| Path::new(""));
+    normalize_relative_path(current_dir.join(reference).join("X.yaml")).ok_or_else(|| {
+        SkillInspectionError::ProfileEscape {
+            reference: reference.to_owned(),
+        }
+    })
+}
+
+fn normalize_relative_path(path: PathBuf) -> Option<String> {
+    let mut normalized: Vec<String> = Vec::new();
+    for component in path.components() {
+        match component {
+            Component::Normal(value) => normalized.push(value.to_string_lossy().into_owned()),
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if normalized.last().is_some_and(|segment| segment != "..") {
+                    normalized.pop();
+                } else {
+                    normalized.push("..".to_owned());
+                }
+            }
+            Component::Prefix(_) | Component::RootDir => return None,
+        }
+    }
+    Some(normalized.join("/"))
 }
 
 fn execution_summary(components: &[String], agent_acts: usize, declared_artifact: bool) -> String {

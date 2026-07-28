@@ -48,6 +48,8 @@ pub enum SkillInspectionError {
         #[source]
         source: std::io::Error,
     },
+    #[error("sub-skill reference {reference} escapes the inspected execution closure")]
+    ProfileEscape { reference: String },
     #[error("{context}: {source}")]
     Json {
         context: &'static str,
