@@ -63,6 +63,13 @@ describe("Rust CLI cutover scripts", () => {
     expect(workflow).toContain("node scripts/record-deterministic-module-platform-evidence.mjs");
     expect(workflow).toContain('--decision "docs/architecture/deterministic-module-engine.json"');
     expect(workflow).toContain('--worker "crates/target/${{ matrix.target }}/release/${{ matrix.worker }}"');
+    const smokeJob = workflow.slice(
+      workflow.indexOf("\n  smoke:\n"),
+      workflow.indexOf("\n  github-release:\n"),
+    );
+    expect(smokeJob).toContain("- name: Install Linux sandbox");
+    expect(smokeJob).toContain("if: contains(matrix.target, 'musl')");
+    expect(smokeJob).toContain("uses: ./.github/actions/setup-linux-sandbox");
     expect(workflow).not.toContain(".scafld/");
   });
 

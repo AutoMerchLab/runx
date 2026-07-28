@@ -204,6 +204,9 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
+      - name: Install Linux sandbox
+        if: contains(matrix.target, 'musl')
+        uses: ./.github/actions/setup-linux-sandbox
       - name: Download built archive
         uses: actions/download-artifact@v8
         with:
