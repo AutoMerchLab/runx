@@ -9,7 +9,7 @@ The package manifests are authoritative; regenerate this page with `pnpm docs:ap
 
 Runx CLI - native governed runtime for agent skills, tools, graphs, and packets.
 
-Version: `0.8.1`
+Version: `0.8.2`
 
 | Import | Types | Runtime |
 | --- | --- | --- |
