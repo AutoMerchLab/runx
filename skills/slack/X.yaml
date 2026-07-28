@@ -22,7 +22,7 @@ runners:
       query:
         type: object
         required: true
-        description: Bounded Slack search fields; requires author_external_id, mentions_connected_subject, or keywords.
+        description: Bounded Slack search object; requires author_external_id (member-id string), mentions_connected_subject (boolean), or keywords (one phrase string, never an array).
     graph:
       name: slack-search
       result_from: [search]

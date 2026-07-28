@@ -414,8 +414,8 @@
   },
   {
     "skill_id": "runx/slack",
-    "version": "sha-2258bbb37a56",
-    "digest": "7f0453023afd67f1e1195940f775eb8bfbd25d5c60e64c564265ec6fa38f090d",
+    "version": "sha-1e0b07ef7fa4",
+    "digest": "2c4e6acb9cb413f4acf45c7388e3e7239c58412ef3ba67cc6c1ac84def855d09",
     "catalog_visibility": "public",
     "catalog_role": "branded"
   },

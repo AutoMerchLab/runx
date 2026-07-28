@@ -30,11 +30,24 @@ state belongs in a higher-level operator skill and normally composes
 
 `search` reads one bounded Slack search page. Supply a `query` object with at
 least one of `author_external_id`, `mentions_connected_subject`, or `keywords`.
-It may also contain `after`, `before`, `channel_types`, `limit`, and a provider
-cursor. The provider enforces exact search syntax, a maximum page of 20, and
-returns normalized locators and bounded previews rather than a raw Slack
-response. Continue only from `next_cursor`; one page is never proof that a
-workspace scan is complete.
+The exact fields are:
+
+- `author_external_id`: one Slack member id string, such as `U123ABC`
+- `mentions_connected_subject`: a boolean selecting messages that mention the
+  member bound to the Connect grant
+- `keywords`: one keyword-mode search phrase string, not an array and not raw
+  Slack search syntax
+- `after` and `before`: ISO-8601 timestamp strings, with `after` earlier than
+  `before`
+- `channel_types`: a non-empty array drawn from `public_channel`,
+  `private_channel`, `mpim`, and `im`
+- `limit`: an integer from 1 through 20
+- `cursor`: the opaque `next_cursor` from the preceding page
+
+The provider rejects embedded Slack modifiers in `keywords`, enforces the
+maximum page, and returns normalized locators and bounded previews rather than
+a raw Slack response. Continue only from `next_cursor`; one page is never proof
+that a workspace scan is complete.
 
 `read_thread` reads one bounded thread page from an exact
 `slack://workspace/channel/timestamp` locator. The limit is capped at 15 because
