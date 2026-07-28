@@ -37,8 +37,6 @@ pub enum SkillInspectionError {
     ClosureDigestMismatch { expected: String, received: String },
     #[error("sub-skill {path} has no executable manifest")]
     SubSkillManifestMissing { path: PathBuf },
-    #[error("sub-skill {path} has no selected runner for step {step}")]
-    SubSkillRunnerMissing { path: PathBuf, step: String },
     #[error("sub-skill {path} has no selected runner {runner}")]
     SubSkillNamedRunnerMissing { path: PathBuf, runner: String },
     #[error("graph source omitted its validated graph")]
@@ -50,15 +48,6 @@ pub enum SkillInspectionError {
         #[source]
         source: std::io::Error,
     },
-    #[error("loading referenced sub-skill {reference} from {from}: {source}")]
-    ReferencedSkill {
-        reference: String,
-        from: PathBuf,
-        #[source]
-        source: Box<RuntimeError>,
-    },
-    #[error("sub-skill reference {reference} escapes the inspected execution closure")]
-    ProfileEscape { reference: String },
     #[error("{context}: {source}")]
     Json {
         context: &'static str,
@@ -112,7 +101,7 @@ pub(crate) fn inspect_loaded_skill_package(
         }
         (None, None) => None,
     };
-    let mut execution_closures = inspect_execution_closures(loaded.clone())?;
+    let mut execution_closures = inspect_execution_closures(loaded.clone(), None)?;
     if let Some(manifest) = manifest {
         output.insert(
             "runner_inspections".to_owned(),
@@ -162,8 +151,9 @@ pub(crate) struct InspectedExecutionClosureBinding {
 pub(crate) fn inspect_loaded_execution_closure_binding(
     loaded: LoadedSkillPackage,
     selected_runner: &str,
+    env: &std::collections::BTreeMap<String, String>,
 ) -> Result<InspectedExecutionClosureBinding, SkillInspectionError> {
-    let mut closures = inspect_execution_closures(Arc::new(loaded))?;
+    let mut closures = inspect_execution_closures(Arc::new(loaded), Some(env))?;
     let closure =
         closures
             .remove(selected_runner)

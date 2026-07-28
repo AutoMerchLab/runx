@@ -359,6 +359,7 @@ fn assert_inline_harness_expectations(
         let closure = crate::skill_package::inspect_loaded_execution_closure_binding(
             loaded.clone(),
             runner_name,
+            &request.env,
         )
         .map_err(|error| HarnessReplayError::InvalidReplayMetadata {
             field: "execution_closure_digest".to_owned(),

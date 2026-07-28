@@ -39,6 +39,7 @@ impl LoadedSkillPackage {
 pub(crate) fn verify_loaded_execution_binding(
     loaded: LoadedSkillPackage,
     runner: &str,
+    env: &std::collections::BTreeMap<String, String>,
     expected_package_digest: Option<&str>,
     expected_execution_closure_digest: Option<&str>,
 ) -> Result<Option<String>, SkillInspectionError> {
@@ -50,7 +51,7 @@ pub(crate) fn verify_loaded_execution_binding(
             received: loaded.package.package_digest,
         });
     }
-    let closure = inspect_loaded_execution_closure_binding(loaded, runner)?;
+    let closure = inspect_loaded_execution_closure_binding(loaded, runner, env)?;
     if let Some(expected) = expected_execution_closure_digest {
         if !closure.fully_bound {
             return Err(SkillInspectionError::ClosureNotFullyBound {

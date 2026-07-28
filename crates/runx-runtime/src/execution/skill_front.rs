@@ -145,9 +145,14 @@ pub(crate) fn execute_skill_run_with_overrides(
     // Every run binds its execution closure natively, so a paused run can
     // always prove and resume the exact closure it prepared; the caller-bound
     // path only adds expected-digest verification on top of the same binding.
-    let execution_closure_digest =
-        crate::skill_package::verify_loaded_execution_binding(loaded, &runner.name, None, None)
-            .map_err(|error| invalid(error.to_string()))?;
+    let execution_closure_digest = crate::skill_package::verify_loaded_execution_binding(
+        loaded,
+        &runner.name,
+        &request.env,
+        None,
+        None,
+    )
+    .map_err(|error| invalid(error.to_string()))?;
     execute_skill_run_with_resolved(ResolvedSkillRun {
         request,
         overrides,
@@ -180,6 +185,7 @@ pub(crate) fn execute_bound_skill_run_with_overrides(
     let execution_closure_digest = crate::skill_package::verify_loaded_execution_binding(
         loaded,
         &runner.name,
+        &request.env,
         expected_package_digest,
         expected_execution_closure_digest,
     )

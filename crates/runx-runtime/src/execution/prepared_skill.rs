@@ -264,6 +264,7 @@ impl PreparedSkillRun {
         crate::skill_package::verify_loaded_execution_binding(
             loaded,
             &self.selected_runner,
+            &self.request.env,
             Some(&self.package_digest),
             self.execution_closure_digest(),
         )
@@ -324,6 +325,7 @@ pub(crate) fn prepare_skill_run_with_effects(
     let execution_closure_digest = crate::skill_package::verify_loaded_execution_binding(
         loaded,
         &runner.name,
+        &request.env,
         entry.package_digest.as_deref(),
         entry.execution_closure_digest.as_deref(),
     )
@@ -886,6 +888,7 @@ mod tests {
         let closure = crate::skill_package::inspect_loaded_execution_closure_binding(
             crate::load_validated_skill_package(&entry)?,
             "inspect",
+            &BTreeMap::new(),
         )?;
         assert!(closure.fully_bound);
         let prepared = prepare_skill_run(
@@ -950,8 +953,11 @@ mod tests {
         write_skill(temp.path(), "", "# Prepared")?;
         let loaded = crate::load_validated_skill_package(temp.path())?;
         let package_digest = loaded.package.package_digest.clone();
-        let closure =
-            crate::skill_package::inspect_loaded_execution_closure_binding(loaded, "main")?;
+        let closure = crate::skill_package::inspect_loaded_execution_closure_binding(
+            loaded,
+            "main",
+            &BTreeMap::new(),
+        )?;
         assert!(closure.fully_bound);
         let closure = closure.digest;
         let receipt_dir = temp.path().join("receipts");

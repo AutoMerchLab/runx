@@ -49,6 +49,11 @@ struct ResolvedStepSkillDirectory {
     registry: Option<LoadedStepSkillRegistryProvenance>,
 }
 
+pub(crate) struct LoadedStepSkillPackage {
+    pub(crate) package: crate::LoadedSkillPackage,
+    pub(crate) registry: Option<LoadedStepSkillRegistryProvenance>,
+}
+
 #[derive(Default)]
 pub(crate) struct StepSkillCache {
     loaded: BTreeMap<String, LoadedStepSkill>,
@@ -165,8 +170,8 @@ pub(crate) fn load_step_skill(
     step: &GraphStep,
     options: StepSkillLoadOptions<'_>,
 ) -> Result<LoadedStepSkill, RuntimeError> {
-    let resolved = resolve_step_skill_directory(graph_dir, step, options)?;
-    let package = crate::load_validated_skill_package(&resolved.directory)?;
+    let resolved = load_step_skill_package(graph_dir, step, options)?;
+    let package = resolved.package;
     let manifest = package
         .manifest()
         .ok_or_else(|| RuntimeError::InvalidRunStep {
@@ -184,14 +189,16 @@ pub(crate) fn load_step_skill(
     let requirements = manifest.execution_requirements(&runner);
     let directory = package.directory.clone();
     let manual_path = package.package_root.join("SKILL.md");
+    let manual_markdown = package.package.manual_markdown.clone().into();
+    let manual_digest = package.package.manual_digest.clone();
     let loaded = LoadedStepSkill {
         skill_name,
         runner,
         requirements,
         directory,
         manual_path: manual_path.clone(),
-        manual_markdown: package.package.manual_markdown.into(),
-        manual_digest: package.package.manual_digest,
+        manual_markdown,
+        manual_digest,
         registry: resolved.registry,
     };
     for path in [loaded.directory.join("X.yaml"), manual_path] {
@@ -202,7 +209,19 @@ pub(crate) fn load_step_skill(
     Ok(loaded)
 }
 
-fn select_step_runner<'a>(
+pub(crate) fn load_step_skill_package(
+    graph_dir: &Path,
+    step: &GraphStep,
+    options: StepSkillLoadOptions<'_>,
+) -> Result<LoadedStepSkillPackage, RuntimeError> {
+    let resolved = resolve_step_skill_directory(graph_dir, step, options)?;
+    Ok(LoadedStepSkillPackage {
+        package: crate::load_validated_skill_package(&resolved.directory)?,
+        registry: resolved.registry,
+    })
+}
+
+pub(crate) fn select_step_runner<'a>(
     manifest: &'a SkillRunnerManifest,
     requested_runner: Option<&str>,
 ) -> Result<&'a SkillRunnerDefinition, RuntimeError> {

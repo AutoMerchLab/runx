@@ -2,7 +2,7 @@
 // registry-edge classification, cycle detection, and summary projection in one
 // canonical walk.
 use std::collections::{BTreeMap, BTreeSet};
-use std::path::{Component, Path, PathBuf};
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use runx_contracts::{JsonValue, sha256_prefixed};
@@ -69,12 +69,13 @@ impl EdgeDepth {
 
 pub(super) fn inspect_execution_closures(
     loaded: Arc<LoadedSkillPackage>,
+    env: Option<&BTreeMap<String, String>>,
 ) -> Result<BTreeMap<String, JsonValue>, SkillInspectionError> {
     let runner_names = loaded
         .manifest()
         .map(|manifest| manifest.runners.keys().cloned().collect::<Vec<_>>())
         .unwrap_or_default();
-    let mut inspector = ExecutionClosureInspector::new(loaded)?;
+    let mut inspector = ExecutionClosureInspector::new(loaded, env)?;
     runner_names
         .into_iter()
         .map(|runner_name| {
@@ -84,23 +85,25 @@ pub(super) fn inspect_execution_closures(
         .collect()
 }
 
-struct ExecutionClosureInspector {
+struct ExecutionClosureInspector<'a> {
     root: Arc<LoadedSkillPackage>,
     root_directory: PathBuf,
     package_root: PathBuf,
-    loaded_by_directory: BTreeMap<PathBuf, Arc<LoadedSkillPackage>>,
+    env: Option<&'a BTreeMap<String, String>>,
 }
 
-impl ExecutionClosureInspector {
-    fn new(root: Arc<LoadedSkillPackage>) -> Result<Self, SkillInspectionError> {
+impl<'a> ExecutionClosureInspector<'a> {
+    fn new(
+        root: Arc<LoadedSkillPackage>,
+        env: Option<&'a BTreeMap<String, String>>,
+    ) -> Result<Self, SkillInspectionError> {
         let root_directory = canonical_directory(&root.directory, "inspected skill")?;
         let package_root = canonical_directory(&root.package_root, "inspected package")?;
-        let loaded_by_directory = BTreeMap::from([(root_directory.clone(), root.clone())]);
         Ok(Self {
             root,
             root_directory,
             package_root,
-            loaded_by_directory,
+            env,
         })
     }
 
@@ -165,7 +168,6 @@ impl ExecutionClosureInspector {
             .insert(format!("{profile_path}#{runner_name}"));
         self.walk_source(
             loaded.clone(),
-            &profile_path,
             &runner.source,
             runner.artifacts.is_some(),
             edge_depth,
@@ -176,7 +178,6 @@ impl ExecutionClosureInspector {
     fn walk_source(
         &mut self,
         loaded: Arc<LoadedSkillPackage>,
-        profile_path: &str,
         source: &runx_parser::SkillSource,
         declared_artifact: bool,
         edge_depth: EdgeDepth,
@@ -192,9 +193,7 @@ impl ExecutionClosureInspector {
                     if let Some(tool) = &step.tool {
                         walk.closure.components.insert(format!("tool:{tool}"));
                     }
-                    if let Some(resolved) =
-                        self.resolve_step_skill(loaded.clone(), profile_path, step)?
-                    {
+                    if let Some(resolved) = self.resolve_step_skill(loaded.clone(), step)? {
                         let ResolvedStepSkill {
                             edge,
                             static_external_name,
@@ -227,7 +226,6 @@ impl ExecutionClosureInspector {
                     if let Some(run_source) = step.run.as_ref().and_then(|run| run.source()) {
                         self.walk_source(
                             loaded.clone(),
-                            profile_path,
                             run_source,
                             step.artifacts.is_some(),
                             edge_depth,
@@ -277,35 +275,42 @@ impl ExecutionClosureInspector {
     fn resolve_step_skill(
         &mut self,
         loaded: Arc<LoadedSkillPackage>,
-        profile_path: &str,
         step: &GraphStep,
     ) -> Result<Option<ResolvedStepSkill>, SkillInspectionError> {
         let Some(reference) = step.skill.as_deref() else {
             return Ok(None);
         };
         let requested_runner = step.runner.as_deref().unwrap_or("default");
-        let Some((canonical_directory, nested)) =
-            self.load_local_referenced_skill(&loaded, reference)?
-        else {
+        if reference.starts_with('$') || (is_registry_step_ref(reference) && self.env.is_none()) {
             return Ok(Some(ResolvedStepSkill {
                 edge: format!("{reference}#{requested_runner}"),
                 static_external_name: registry_skill_name(reference),
                 nested: None,
             }));
-        };
-        let nested_profile = nested_profile_path(profile_path, reference)?;
-        let nested_runner = select_inspection_runner_name(
+        }
+        let empty_env = BTreeMap::new();
+        let env = self.env.unwrap_or(&empty_env);
+        let loaded_step = crate::execution::graph::load_step_skill_package(
+            &loaded.directory,
+            step,
+            crate::execution::graph::StepSkillLoadOptions { env },
+        )?;
+        let nested = Arc::new(loaded_step.package);
+        let canonical_directory = canonical_directory(&nested.directory, "referenced sub-skill")?;
+        let manifest =
             nested
                 .manifest()
                 .ok_or_else(|| SkillInspectionError::SubSkillManifestMissing {
                     path: nested.directory.clone(),
-                })?,
-            step.runner.as_deref(),
-        )
-        .ok_or_else(|| SkillInspectionError::SubSkillRunnerMissing {
-            path: nested.directory.clone(),
-            step: step.id.clone(),
-        })?;
+                })?;
+        let nested_runner =
+            crate::execution::graph::select_step_runner(manifest, step.runner.as_deref())?
+                .name
+                .clone();
+        let nested_profile = nested
+            .profile_path
+            .clone()
+            .unwrap_or_else(|| "X.yaml".to_owned());
         Ok(Some(ResolvedStepSkill {
             edge: format!("{}#{nested_runner}", nested.package.skill.name),
             static_external_name: None,
@@ -316,41 +321,6 @@ impl ExecutionClosureInspector {
                 runner_name: nested_runner,
             }),
         }))
-    }
-
-    fn load_local_referenced_skill(
-        &mut self,
-        loaded: &LoadedSkillPackage,
-        reference: &str,
-    ) -> Result<Option<(PathBuf, Arc<LoadedSkillPackage>)>, SkillInspectionError> {
-        if is_external_or_dynamic_skill_reference(reference) {
-            return Ok(None);
-        }
-        let candidate = loaded.directory.join(reference);
-        let directory =
-            super::super::resolve_skill_package_directory(&candidate).map_err(|source| {
-                SkillInspectionError::ReferencedSkill {
-                    reference: reference.to_owned(),
-                    from: loaded.directory.clone(),
-                    source: Box::new(source),
-                }
-            })?;
-        let canonical_directory = canonical_directory(&directory, "referenced sub-skill")?;
-        if let Some(cached) = self.loaded_by_directory.get(&canonical_directory) {
-            return Ok(Some((canonical_directory, cached.clone())));
-        }
-        let nested = Arc::new(
-            super::super::load_validated_skill_package(&canonical_directory).map_err(|source| {
-                SkillInspectionError::ReferencedSkill {
-                    reference: reference.to_owned(),
-                    from: loaded.directory.clone(),
-                    source: Box::new(source),
-                }
-            })?,
-        );
-        self.loaded_by_directory
-            .insert(canonical_directory.clone(), nested.clone());
-        Ok(Some((canonical_directory, nested)))
     }
 }
 
@@ -459,7 +429,7 @@ fn append_digest_field(target: &mut Vec<u8>, value: &[u8]) {
 }
 
 fn registry_skill_name(reference: &str) -> Option<String> {
-    if !is_external_or_dynamic_skill_reference(reference) || reference.starts_with('$') {
+    if !is_registry_step_ref(reference) {
         return None;
     }
     crate::registry::parse_registry_ref(reference)
@@ -470,66 +440,10 @@ fn registry_skill_name(reference: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn is_external_or_dynamic_skill_reference(reference: &str) -> bool {
-    reference.starts_with('$')
-        || reference.starts_with("registry:")
+fn is_registry_step_ref(reference: &str) -> bool {
+    reference.starts_with("registry:")
         || reference.starts_with("runx-registry:")
         || reference.starts_with("runx://skill/")
-}
-
-fn nested_profile_path(
-    current_profile: &str,
-    reference: &str,
-) -> Result<String, SkillInspectionError> {
-    let current_dir = Path::new(current_profile)
-        .parent()
-        .unwrap_or_else(|| Path::new(""));
-    normalize_relative_path(current_dir.join(reference).join("X.yaml")).ok_or_else(|| {
-        SkillInspectionError::ProfileEscape {
-            reference: reference.to_owned(),
-        }
-    })
-}
-
-fn normalize_relative_path(path: PathBuf) -> Option<String> {
-    let mut normalized: Vec<String> = Vec::new();
-    for component in path.components() {
-        match component {
-            Component::Normal(value) => normalized.push(value.to_string_lossy().into_owned()),
-            Component::CurDir => {}
-            Component::ParentDir => {
-                if normalized.last().is_some_and(|segment| segment != "..") {
-                    normalized.pop();
-                } else {
-                    normalized.push("..".to_owned());
-                }
-            }
-            Component::Prefix(_) | Component::RootDir => return None,
-        }
-    }
-    Some(normalized.join("/"))
-}
-
-fn select_inspection_runner_name(
-    manifest: &runx_parser::SkillRunnerManifest,
-    selected: Option<&str>,
-) -> Option<String> {
-    if let Some(selected) = selected {
-        return manifest
-            .runners
-            .contains_key(selected)
-            .then(|| selected.to_owned());
-    }
-    manifest
-        .runners
-        .values()
-        .find(|runner| runner.default)
-        .or_else(|| {
-            (manifest.runners.len() == 1)
-                .then(|| manifest.runners.values().next())
-                .flatten()
-        })
-        .map(|runner| runner.name.clone())
 }
 
 fn execution_summary(components: &[String], agent_acts: usize, declared_artifact: bool) -> String {
