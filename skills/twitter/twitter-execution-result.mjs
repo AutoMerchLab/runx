@@ -61,9 +61,19 @@ function consumeContiguousResults(plan, execution, responseById) {
     const responses = array(group.request_ids)
       .map((id) => responseById.get(String(id)))
       .filter(Boolean);
-    const failedResponse = responses.find((response) => response.ok !== true)
+    const directFailure = responses.find((response) => response.ok !== true);
+    const failedResponse = directFailure
       ?? (responses.length === 0 ? lastFailure(execution.responses) : null);
     if (failedResponse || responses.length === 0) {
+      const satisfied = directFailure
+        ? terminalProviderState(group, directFailure)
+        : null;
+      if (satisfied) {
+        state.results.push(satisfied);
+        state.activeThread = null;
+        state.nextActIndex += 1;
+        break;
+      }
       state.rateResponse = number(failedResponse?.status, 0) === 429 ? failedResponse : null;
       state.rateLimited = Boolean(state.rateResponse);
       state.failure = failedResponse
@@ -83,6 +93,22 @@ function consumeContiguousResults(plan, execution, responseById) {
     state.nextActIndex += 1;
   }
   return state;
+}
+
+function terminalProviderState(group, response) {
+  if (
+    group.kind !== "unfollow"
+    || number(response?.status, 0) !== 400
+    || providerError(response) !== "You cannot unfollow an account that is not active."
+  ) {
+    return null;
+  }
+  return result(
+    group,
+    "done",
+    group.fallback_provider_ref ?? null,
+    "Target account is inactive; the requested not-following state is already satisfied.",
+  );
 }
 
 function completedResult(group, responses) {
