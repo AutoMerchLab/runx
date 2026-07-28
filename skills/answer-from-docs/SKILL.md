@@ -1,94 +1,106 @@
 ---
 name: answer-from-docs
-description: Answer a question strictly from a bounded corpus, returning citations for grounded answers and refusing unsupported questions with knowledge-base gaps.
-source:
-  type: cli-tool
-  command: node
-  args:
-    - run.mjs
-  timeout_seconds: 15
-inputs:
-  question:
-    type: string
-    required: true
-    description: The user question to answer from the supplied corpus.
-  corpus:
-    type: json
-    required: true
-    description: Bounded documentation corpus array with id, title, and text fields.
-runx:
-  category: ops
-  input_resolution:
-    required:
-      - question
-      - corpus
-  artifacts:
-    named_emits:
-      grounded_answer: runx.grounded_answer.v1
+description: Answer one question strictly from a small, caller-supplied documentation corpus, with exact supporting quotations or an explicit account of what the corpus cannot answer.
 ---
 
 # Answer From Docs
 
-`answer-from-docs` answers one question from a bounded documentation corpus. It
-does not fetch live docs, search the web, call a retrieval system, mutate state,
-or infer product behavior outside the supplied corpus.
+Use this skill when the source material is already in hand and the operator
+needs one answer that can be checked against it. The corpus is the complete
+evidence boundary for the run. The skill does not search the web, fetch current
+documentation, consult private state, or fill gaps from the agent's general
+knowledge.
 
-## Use This Skill When
+The useful result is not merely fluent text. A grounded result binds the corpus
+through a native digest, names the source for every citation, and preserves an
+exact quotation that the deterministic finalizer can find in that source. An
+unsupported result is also useful: it says what evidence is absent instead of
+turning a plausible guess into product documentation.
 
-- A team needs a checkable answer from a small, supplied knowledge base.
-- A workflow needs citation-backed answers that can be audited from the run
-  input alone.
-- Unsupported questions should be refused instead of answered from general
-  knowledge.
+## Evidence boundary
 
-## Do Not Use This Skill For
+Supply:
 
-- Live retrieval, external documentation search, or connector-backed Q&A.
-- Answering from private state not present in `corpus`.
-- Guessing missing limits, pricing, security posture, roadmap, or policy.
+- `question`: one concrete question.
+- `corpus`: a small, bounded array of source objects. Every source needs a
+  stable `id`, a human-readable `title`, and non-empty `text`.
 
-## Inputs
+Keep only material relevant to the question in the corpus. Runner inputs are
+control data, not a document store. Admit large immutable files with Runx's
+artifact tools, retrieve the necessary bounded pages, and then call this skill
+with the resulting small source packet. Use `extract` first when the material
+must be cleaned or structured. Use `knowledge-router`, `research`, or
+`deep-research` when the sources still need to be found.
 
-- `question`: the question to answer.
-- `corpus`: an array of documentation items. Each item should include `id`,
-  `title`, and `text`.
+Source order is not authority. Prefer direct, specific language over a vague
+summary. If two sources disagree, preserve the conflict and refuse a single
+unqualified answer unless the corpus itself establishes precedence.
 
-## Outputs
+## Decision procedure
 
-- `answer`: object with `text` and `citations`.
-- `kb_gaps`: missing evidence needed to answer unsupported questions.
-- `grounded`: boolean verdict.
+1. Read the question literally. Do not broaden it to a nearby question the
+   corpus happens to answer.
+2. Treat the supplied sources as exhaustive for this run. Outside knowledge can
+   help interpret language, but it cannot support a claim.
+3. Find the smallest set of passages that directly supports the answer.
+4. Draft a concise answer. Every material statement needs a citation with the
+   source `id` and an exact quotation copied from that source's `text`.
+5. Use `unsupported` when the evidence is absent or too weak. Name the missing
+   policy, limit, procedure, or source in `kb_gaps`.
+6. Use `conflicted` when supplied sources materially disagree. Record the
+   conflict and the evidence needed to resolve it.
+7. Let the deterministic finalizer verify corpus shape, source membership,
+   exact quotations, the native corpus digest, and terminal result shape.
+   Invalid evidence cannot seal as a grounded answer.
 
-## Procedure
+Lexical overlap is not proof. A sentence that repeats words from the question
+but addresses a different rule, product, time period, or actor does not support
+the answer.
 
-1. Validate that `question` is non-empty and `corpus` contains at least one
-   readable item.
-2. Split each corpus item into citeable sentences.
-3. Score sentences by overlap with meaningful question terms.
-4. Answer only when at least one sentence has enough overlap to support the
-   question.
-5. Attach citations to every answer sentence using the source corpus item id,
-   title, and sentence index.
-6. If the corpus does not support the question, emit `grounded: false`,
-   an empty answer, and specific `kb_gaps`.
+## Result contract
 
-## Refusal Conditions
+The terminal `grounded_answer` contains:
 
-- `question` is empty or missing.
-- `corpus` is missing, empty, or contains no readable text.
-- No corpus sentence provides enough evidence for the question.
+- `decision`: `answered`, `unsupported`, or `conflicted`.
+- `grounded`: true only for a validated `answered` result.
+- `answer.text`: the supported answer, empty for a refusal.
+- `answer.citations`: canonical source ids, titles, and exact quotations.
+- `kb_gaps`: evidence needed before the question can be answered.
+- `conflicts`: material disagreements in the supplied corpus.
+- `corpus_digest`: the native digest of the exact corpus used for the run.
+- `validation`: pass or fail with deterministic findings.
 
-## Output Schema (`grounded_answer`)
+A sealed refusal proves the lane completed honestly. It does not mean the
+product lacks the requested capability; it means this corpus did not prove it.
 
-```yaml
-answer:
-  text: string
-  citations:
-    - source_id: string
-      title: string
-      sentence_index: number
-      quote: string
-kb_gaps:
-  - string
-grounded: boolean
-```
+## Stop and recovery
+
+Stop when the question is missing, the corpus is malformed, a cited quotation
+is not present in its named source, or the evidence cannot support the answer.
+Do not weaken the wording, invent a citation, or silently answer from memory.
+
+Recover by narrowing the question, correcting malformed source objects, adding
+the missing authoritative material, or routing source discovery to the
+appropriate research skill. Rerun from the complete corrected corpus so the
+new digest represents the whole evidence boundary.
+
+## Agent task contract
+
+### `answer-from-docs-synthesize`
+
+Return exactly one `answer_draft` object.
+
+For a supported answer, set `decision` to `answered`; provide non-empty
+`answer.text`, one or more citations, and empty `kb_gaps` and `conflicts`.
+Every citation contains only `source_id` and `quote`. Copy `quote` verbatim
+from the `text` of the named supplied source.
+
+When the corpus cannot answer the question, set `decision` to `unsupported`;
+leave `answer.text` empty, provide no citations, and name at least one specific
+gap in `kb_gaps`. When sources materially disagree, use `conflicted`, leave the
+answer empty, provide no citations, and describe the disagreement in
+`conflicts`.
+
+Do not retrieve, use outside knowledge as evidence, manufacture source ids,
+paraphrase quotations, claim external effects, or include fields outside the
+contract.

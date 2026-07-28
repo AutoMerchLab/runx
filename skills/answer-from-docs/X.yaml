@@ -1,68 +1,117 @@
 skill: answer-from-docs
-version: "0.1.0"
+version: "0.2.0"
 
 catalog:
-  kind: skill
+  kind: graph
   audience: public
   visibility: public
-  role: canonical
-
-policy:
-  allow:
-    - provider: bounded-corpus
-      method: READ
-      scope: runx:docs:read
-  deny:
-    - network_read
-    - network_mutation
-    - credential_material
-    - live_retrieval
-    - live_write
-
-emits:
-  - name: grounded_answer
-    packet: runx.grounded_answer.v1
+  role: context
+  execution: read
+  completion: runtime_receipt
+  requires_adapter: false
+  approval: none
 
 harness:
   cases:
-    - name: answer-from-docs-grounded-retention
-      runner: default
+    - name: answer-from-docs-grounds-supported-answer
       inputs:
         question: How long are audit logs retained and who can export them?
-        corpus:
-          - id: audit-logs
-            title: Audit Log Policy
-            text: Audit logs are retained for 180 days. Workspace admins can export audit logs from the compliance page. Exports include actor, action, timestamp, and target resource.
-          - id: billing
-            title: Billing Notes
-            text: Billing invoices are generated monthly and are visible to billing admins.
-      expect:
-        status: sealed
-        receipt:
-          schema: runx.receipt.v1
-          state: sealed
-          disposition: closed
-
-    - name: answer-from-docs-refuses-unsupported-sso
-      runner: default
-      inputs:
-        question: Does the product support SCIM provisioning for enterprise SSO?
         corpus:
           - id: audit-logs
             title: Audit Log Policy
             text: Audit logs are retained for 180 days. Workspace admins can export audit logs from the compliance page.
           - id: billing
             title: Billing Notes
-            text: Billing invoices are generated monthly and are visible to billing admins.
+            text: Billing invoices are generated monthly.
+      caller:
+        answers:
+          agent_task.answer-from-docs-synthesize.output:
+            answer_draft:
+              decision: answered
+              answer:
+                text: Audit logs are retained for 180 days, and workspace admins can export them from the compliance page.
+                citations:
+                  - source_id: audit-logs
+                    quote: Audit logs are retained for 180 days.
+                  - source_id: audit-logs
+                    quote: Workspace admins can export audit logs from the compliance page.
+              kb_gaps: []
+              conflicts: []
       expect:
         status: sealed
-        receipt:
-          schema: runx.receipt.v1
-          state: sealed
-          disposition: closed
+        steps: [digest, synthesize, finalize]
+        step_outputs:
+          finalize:
+            subset:
+              grounded_answer:
+                data:
+                  decision: answered
+                  grounded: true
+                  validation: { status: pass, findings: [] }
+        receipt: { schema: runx.receipt.v1 }
+
+    - name: answer-from-docs-refuses-unsupported-question
+      inputs:
+        question: Does the product support SCIM provisioning?
+        corpus:
+          - id: audit-logs
+            title: Audit Log Policy
+            text: Audit logs are retained for 180 days.
+      caller:
+        answers:
+          agent_task.answer-from-docs-synthesize.output:
+            answer_draft:
+              decision: unsupported
+              answer: { text: "", citations: [] }
+              kb_gaps:
+                - Documentation describing identity provisioning support.
+              conflicts: []
+      expect:
+        status: sealed
+        steps: [digest, synthesize, finalize]
+        step_outputs:
+          finalize:
+            subset:
+              grounded_answer:
+                data:
+                  decision: unsupported
+                  grounded: false
+                  validation: { status: pass, findings: [] }
+        receipt: { schema: runx.receipt.v1 }
+
+    - name: answer-from-docs-rejects-invented-quotation
+      inputs:
+        question: How long are audit logs retained?
+        corpus:
+          - id: audit-logs
+            title: Audit Log Policy
+            text: Audit logs are retained for 180 days.
+      caller:
+        answers:
+          agent_task.answer-from-docs-synthesize.output:
+            answer_draft:
+              decision: answered
+              answer:
+                text: Audit logs are retained forever.
+                citations:
+                  - source_id: audit-logs
+                    quote: Audit logs are retained forever.
+              kb_gaps: []
+              conflicts: []
+      expect:
+        status: sealed
+        steps: [digest, synthesize, finalize]
+        step_outputs:
+          finalize:
+            subset:
+              grounded_answer:
+                data:
+                  decision: unsupported
+                  grounded: false
+                  validation: { status: fail }
+        receipt: { schema: runx.receipt.v1 }
 
     - name: answer-from-docs-needs-question
-      runner: default
       inputs:
         corpus:
           - id: docs
@@ -72,22 +121,58 @@ harness:
         status: failure
 
 runners:
-  default:
+  answer:
     default: true
-    type: cli-tool
-    command: node
-    args:
-      - run.mjs
-    timeout_seconds: 15
-    artifacts:
-      named_emits:
-        grounded_answer: runx.grounded_answer.v1
+    type: graph
     inputs:
       question:
         type: string
         required: true
-        description: The user question to answer from the bounded corpus.
+        description: One concrete question to answer from the supplied corpus.
       corpus:
         type: json
         required: true
-        description: Array of corpus items with id, title, and text fields.
+        description: Small bounded array of source objects with stable id, title, and text fields.
+    graph:
+      name: answer-from-docs
+      result_from: [finalize]
+      steps:
+        - id: digest
+          tool: data.digest
+          inputs:
+            value: $input.corpus
+
+        - id: synthesize
+          label: draft an evidence-bound answer or refusal
+          inputs:
+            question: $input.question
+            corpus: $input.corpus
+          context:
+            corpus_digest: digest.digest_result.data.digest
+          run:
+            type: agent-task
+            agent: researcher
+            task: answer-from-docs-synthesize
+            outputs:
+              answer_draft: object
+          artifacts:
+            named_emits:
+              answer_draft: answer_draft
+
+        - id: finalize
+          label: validate citations and package the grounded answer
+          inputs:
+            question: $input.question
+            corpus: $input.corpus
+          context:
+            corpus_digest: digest.digest_result.data.digest
+            answer_draft: synthesize.answer_draft.data
+          run:
+            type: javascript
+            module: answer-from-docs.mjs
+            export: finalizeGroundedAnswer
+            outputs:
+              grounded_answer: object
+          artifacts:
+            named_emits:
+              grounded_answer: grounded_answer
