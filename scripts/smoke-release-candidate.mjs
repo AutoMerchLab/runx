@@ -438,6 +438,12 @@ async function proveInterruption() {
   if (process.platform === "win32") {
     return "covered_by_windows_process_containment";
   }
+  const blockingWorker = ["/usr/bin/wc", "/bin/wc"].find((candidate) =>
+    existsSync(candidate),
+  );
+  if (!blockingWorker) {
+    throw new Error("interruption probe requires an absolute wc executable");
+  }
   const skill = path.join(root, "interrupt-probe");
   writeSkill(
     skill,
@@ -447,38 +453,94 @@ runners:
   run:
     default: true
     type: javascript
-    module: loop.mjs
+    module: interrupt.mjs
     timeout_seconds: 30
 `,
   );
-  writeFileSync(path.join(skill, "loop.mjs"), "export default () => { while (true) {} };\n");
+  writeFileSync(path.join(skill, "interrupt.mjs"), "export default () => ({});\n");
   const child = spawn(
     runx,
     ["skill", skill, "--receipt-dir", receipts, "--json"],
     {
       cwd: root,
-      env: isolatedEnvironment(),
+      env: {
+        ...isolatedEnvironment(),
+        RUNX_JS_WORKER_PATH: blockingWorker,
+      },
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  await new Promise((resolve) => setTimeout(resolve, 500));
-  const startedAt = Date.now();
-  child.kill("SIGINT");
-  const result = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => {
-      child.kill("SIGKILL");
-      reject(new Error("candidate did not stop after SIGINT"));
-    }, 5_000);
-    child.once("error", reject);
+  let closedResult;
+  const closed = new Promise((resolve) => {
+    child.once("error", (error) => {
+      closedResult = { error };
+      resolve(closedResult);
+    });
     child.once("close", (code, signal) => {
-      clearTimeout(timer);
-      resolve({ code, signal });
+      closedResult = { code, signal };
+      resolve(closedResult);
     });
   });
-  if (Date.now() - startedAt >= 5_000 || (result.code === 0 && !result.signal)) {
-    throw new Error("candidate treated interruption as successful completion");
+  await waitForDirectChildProcess(child, blockingWorker, () => closedResult);
+  const startedAt = Date.now();
+  if (!child.kill("SIGINT")) {
+    throw new Error("candidate exited before SIGINT could be delivered");
+  }
+  let timeout;
+  const result = await Promise.race([
+    closed,
+    new Promise((resolve) => {
+      timeout = setTimeout(() => {
+        child.kill("SIGKILL");
+        resolve({ timeout: true });
+      }, 5_000);
+    }),
+  ]);
+  clearTimeout(timeout);
+  if (result.timeout) {
+    throw new Error("candidate did not stop after SIGINT");
+  }
+  if (result.error) {
+    throw result.error;
+  }
+  if (Date.now() - startedAt >= 5_000 || result.code !== 130 || result.signal) {
+    throw new Error(
+      `candidate did not close interruption with exit 130: ${JSON.stringify(result)}`,
+    );
   }
   return true;
+}
+
+async function waitForDirectChildProcess(child, expectedCommand, closed) {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    if (closed()) {
+      const result = closed();
+      throw new Error(
+        `candidate exited before its JavaScript context became active: ${JSON.stringify(result)}`,
+      );
+    }
+    const processes = spawnSync("ps", ["-axo", "ppid=,pid=,command="], {
+      encoding: "utf8",
+    });
+    if (processes.error) throw processes.error;
+    if (processes.status !== 0) {
+      throw new Error(
+        `ps failed while observing the active candidate: ${processes.stderr}`,
+      );
+    }
+    if (
+      processes.stdout.split("\n").some((line) => {
+        const [parent, _processId, ...command] = line.trim().split(/\s+/u);
+        return Number(parent) === child.pid && command.join(" ").includes(expectedCommand);
+      })
+    ) {
+      return;
+    }
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  child.kill("SIGKILL");
+  throw new Error("candidate did not start its JavaScript worker before SIGINT");
 }
 
 function writeSkill(directory, name, profile, manualBody = "") {
