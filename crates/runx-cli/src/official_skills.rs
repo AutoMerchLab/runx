@@ -151,6 +151,11 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
         digest: "9e3370c09616f2ae0490bfacbf9e944a4631f3e9569c71f2d00133ee1c939afe",
     },
     OfficialSkillLockEntry {
+        skill_id: "runx/meeting-followup",
+        version: "sha-7fd67e6ae6b4",
+        digest: "353633b7ecf48bbd68532fd25fb85d3f5e50ee2ad160fc139553bf9e3bb0ca17",
+    },
+    OfficialSkillLockEntry {
         skill_id: "runx/messageboard",
         version: "sha-ff13c7ccaab5",
         digest: "2fb6945dd0de73e074ab9b1ad8083bee427615029a2c3d7b64e78a31b8b358b4",
@@ -307,8 +312,8 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/skill-lab",
-        version: "sha-40082cd92695",
-        digest: "bbb6d0bb59d00b0d432705ae77d94f1c43d5e5e52ac96307f2d2edb9d45f77f6",
+        version: "sha-2e570405958b",
+        digest: "b200379bf179e2d438325ed1bf6e5fcfc403b7b3560648ea2d38afef6bf034f7",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/slack",

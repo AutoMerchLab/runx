@@ -48,6 +48,18 @@ approval rules.
 
 ## Authoring rules
 
+- Start from the operator's recurring job, not the requested package name,
+  bounty wording, provider, or implementation sketch. Establish what becomes
+  materially easier or newly possible for the operator, what judgment the
+  skill contributes, and what durable result it returns. A package that merely
+  restates ordinary agent behavior, renames one native call, or produces a
+  document with no usable next step is not a valuable skill even when every
+  contract and harness passes.
+- Treat prior implementations, accepted bounty text, issue suggestions, and
+  named integrations as evidence about the intended capability, not binding
+  architecture. Preserve the real user outcome and compatibility obligations;
+  replace stale ownership, unnecessary providers, and accidental workflow
+  shapes when the current catalog has a cleaner canonical route.
 - Treat `SKILL.md` as the product manual for both the human operator and the
   operating agent. A person opening it cold must understand what the capability
   does, why and when to use it, what happens end to end, and where it stops.
@@ -73,6 +85,41 @@ approval rules.
   registry in `SKILL.md`: native execution-closure inspection owns the exact
   edge set and operator preflight surfaces it. Prose explains why the chain
   exists; the runtime proves what it actually calls.
+- Design capability chains by responsibility, not by whichever integration is
+  easiest to name:
+  - The domain skill owns domain evidence, interpretation, policy, and the
+    truthful domain result.
+  - A canonical capability or authority skill owns a reusable decision such as
+    authorizing a send, spending funds, or preparing a release.
+  - A provider adapter owns the bounded external API effect and independent
+    readback.
+  Do not collapse these roles into one package, and do not make a provider
+  adapter a required part of a provider-neutral capability. Pin an adapter only
+  when the objective genuinely requires provider-specific behavior; otherwise
+  return a stable handoff that an operator can route to the selected adapter.
+  For example, a meeting skill may produce grounded task proposals and a
+  follow-up message; communication then goes through `send-as`, while task
+  creation goes through the operator's selected task adapter. n8n, Zapier, or
+  any other automation provider is optional unless the requested capability is
+  explicitly about that provider.
+- Search the catalog by operator outcome and authority owner, not only by words
+  present in the request. Consider every material result independently: a
+  workflow may need different next lanes for a message, task proposal, payment,
+  publication, or unresolved ambiguity. Reuse the canonical capability at each
+  boundary and explain why it owns that decision. Do not hide an unhandled
+  outcome behind a generic "handoff" claim.
+- Preserve the context that makes the next operator or skill intelligent.
+  Handoffs carry the bounded evidence, decision rationale, unresolved
+  ambiguity, stable content or proposal, intended audience or target, and
+  effect status needed by the next lane. Do not squash these into a digest,
+  terse status, or provider payload. Digests bind context; they do not replace
+  it. Conversely, do not forward unrelated source material or secrets.
+- Make finality explicit at every boundary. Distinguish observed evidence,
+  model interpretation, draft, proposal, authorized action, attempted effect,
+  provider-confirmed effect, and independently read-back effect. A downstream
+  route is not proof it ran; a sealed plan is not approval; an adapter request
+  is not delivery. The public result and operator guide must say what actually
+  happened and what still has to happen.
 - A skill declares domain procedure and policy. Runx owns generic input,
   packet, evidence, approval, request, credential, effect, and receipt mechanics.
 - Place the capability in its real owner before choosing an implementation.
@@ -201,6 +248,12 @@ approval rules.
   State that exception at the computation boundary.
 - Keep packages concise: normally `SKILL.md`, `X.yaml`, and focused fixtures;
   add narrowly scoped references, assets, tools, or domain code only when consumed.
+- Judge the whole capability, not proxy metrics. Native reuse, fewer files,
+  shorter code, green harnesses, and low resource ceilings are valuable only
+  when the result remains understandable, useful, truthful, and complete.
+  Keep JavaScript when it performs irreducible domain computation; remove it
+  when it reimplements runtime mechanics. Never trade away domain semantics or
+  operator context merely to reduce line count.
 - Keep shared computation DRY. A helper used by multiple skills belongs in its
   existing native owner or a justified shared primitive, never copied scripts.
 - Count the whole replacement and delete displaced scripts, manifests, schemas,
@@ -219,6 +272,26 @@ approval rules.
 - Prefer extending an existing owner over adding a near-duplicate skill.
 - Include a realistic happy path and refusal, stop, or error path.
 - Never treat supplied agent answers as provider-effect proof.
+
+Before admitting an architecture, perform a cold-operator trial against the
+actual proposed result:
+
+1. Can the operator tell what the skill concluded and which evidence supports
+   it?
+2. Can they distinguish missing or ambiguous information from a negative
+   result?
+3. Can they tell which effects happened, which are only proposed or
+   authorized, and which remain unattempted?
+4. Can they continue each material outcome through the correct canonical skill
+   and the declared provider-selection boundary without reconstructing lost
+   context?
+5. Does one clear owner hold each decision, approval, mutation, and readback?
+6. Would this still be the architecture chosen from scratch against the current
+   Runx catalog?
+
+If any answer is no, the package is not ready even if its schemas, tests, and
+budgets pass. Fix the capability design or return `no_skill`/`needs_core`;
+do not compensate with more fixtures, prose padding, or a bespoke wrapper.
 
 ## Outputs
 
@@ -263,7 +336,14 @@ do not silently rename the package from its target path.
 
 Declare effects, authority scopes, approval meaning, provider boundary, skill
 routes, resource ceilings, preservation obligations, exact intended deletions,
-and a proof plan. Classify every potentially large value as control input,
+and a proof plan. For every skill route, state the domain result being handed
+off, the canonical capability or authority owner, whether a provider adapter is
+required or operator-selected, the context that must survive the boundary, and
+the truthful effect state before and after that route. Cover every material
+outcome independently. Reject an unnecessary provider pin even when it appears
+in prior work or the request's implementation sketch. Apply the cold-operator
+trial to the proposed public result and chain before choosing a disposition.
+Classify every potentially large value as control input,
 immutable artifact, durable cursor/projection, or bounded domain result, and
 name its production owner plus small/large proof. Reads, drafts, local
 validation, and reversible package writes do not gain ceremonial human
@@ -297,7 +377,9 @@ decision, not a second source of package identity.
 
 Put static operating knowledge and task-specific agent rules in `SKILL.md` and
 execution structure in `X.yaml`. Compose selected native capabilities and
-declared skill routes first. Add a domain module only when the architecture
+declared skill routes first. Ensure the manual explains what each route is for,
+what context crosses it, and what remains unperformed; do not substitute an
+adapter name for that explanation. Add a domain module only when the architecture
 admits it, and keep the module inside its stated computation boundary. Include
 focused proof for a useful path and a stop, refusal, or regression path. In
 `harness` mode, every write or delete must be under `fixtures/*.yaml`. Preserve

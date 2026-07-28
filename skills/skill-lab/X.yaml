@@ -1,5 +1,5 @@
 skill: skill-lab
-version: "0.8.4"
+version: "0.8.5"
 
 catalog:
   kind: graph
@@ -58,7 +58,7 @@ harness:
                 context_skills:
                   - release
                 routes:
-                  - Route approved release execution back to the canonical release skill.
+                  - Hand the bounded release-note artifact and source change set to the canonical release skill; it owns release authority and execution, no provider adapter is selected here, and publication remains unattempted until that lane completes its own approval and readback.
               resource_budget:
                 max_files: 20
                 max_executable_lines: 0
