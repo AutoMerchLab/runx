@@ -46,6 +46,17 @@ invoking the mutating runner. Publication, installation, provider effects, and
 other consequential boundaries remain outside this skill and keep their own
 approval rules.
 
+A validated local write is not a published skill. For a shared or public
+package, the validated `X.yaml` identity and the exact `target_dir` and
+`package_digest` in `apply_result` form the publication candidate. When the
+operator's objective includes shipping or registry availability, continue that
+exact candidate through the repository's canonical registry operator: publish
+under the intended existing owner/name, then independently read back the same
+version and digest. Do not call the work shipped while that sync is pending or
+unverified. Publication remains a separate authenticated act so Skill Lab
+never receives registry credentials or hides a remote mutation inside local
+authoring.
+
 ## Authoring rules
 
 - Start from the operator's recurring job, not the requested package name,
@@ -270,6 +281,12 @@ approval rules.
   substantive. Do not pad prose to satisfy a word floor or turn natural
   operating guidance into a template checklist.
 - Prefer extending an existing owner over adding a near-duplicate skill.
+- Preserve registry identity as part of capability ownership. Inspect the live
+  registry before publishing a shared package; update the intended existing
+  owner/name rather than creating a first-party neighbor beside an older name.
+  A deliberate rename must migrate or retire the prior identity through the
+  registry operator. Never overwrite a contributor's community-owned row with
+  the hardened first-party package.
 - Include a realistic happy path and refusal, stop, or error path.
 - Never treat supplied agent answers as provider-effect proof.
 
@@ -304,6 +321,8 @@ do not compensate with more fixtures, prose padding, or a bespoke wrapper.
   the plan and draft.
 - `apply_result`: unchanged, needs-core, or validated-and-applied, with exact
   changed/deleted paths, package digest, focused proof, and line/file deltas.
+  For a shared/public package, this is the exact local half of the registry
+  publication handoff; registry publish and readback evidence remain separate.
 
 ## Inputs
 
@@ -354,6 +373,12 @@ Budgets are operational ceilings, not guesses to be widened after validation.
 Do not write files, calculate a digest, invent provider proof, or solve an
 ownership gap with package code.
 
+For a shared/public package, also preserve its intended registry identity and
+state whether registry availability is in scope. If it is, the plan ends local
+authoring at the exact applied package and names the canonical registry
+operator as the separate publish-and-readback boundary. Do not plan embedded
+registry HTTP, credentials, auto-publish, or an adjacent owner/name.
+
 For `improve`, diagnose only from supplied receipt or harness evidence and
 distinguish contract, implementation, fixture, environment, and operator
 failures. When evidence cannot justify a change, choose `extend_existing` and
@@ -386,3 +411,6 @@ focused proof for a useful path and a stop, refusal, or regression path. In
 useful behavior and delete superseded implementation in the same draft. Never
 add auxiliary docs, generated state, credentials, placeholder modules,
 duplicated generic Runx mechanics, or an undeclared provider boundary.
+Registry publication code, credentials, and live-state claims are likewise
+outside the authored package; preserve only the canonical package identity
+needed by the later registry operator.
