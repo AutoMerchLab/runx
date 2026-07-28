@@ -65,6 +65,23 @@ The full DCO text (reproduced here for reference):
 
 The native Rust CLI needs Rust 1.97 or newer and stays useful without Node, pnpm, tsx, or TypeScript installed. The workspace and the npm wrapper need Node.js 20 or newer and pnpm 10 or newer.
 
+### macOS Developer Tools permission
+
+On macOS 26, the application that launches a Rust build must be enabled under
+**System Settings → Privacy & Security → Developer Tools**. Enable Terminal for
+Terminal shells, Visual Studio Code for its integrated terminal and Codex, or
+the equivalent host application you use. Add the application with **+** if it
+is not listed, then restart that application so existing processes inherit the
+permission. Apple documents the setting in
+[Control the ability of apps to run software that doesn't meet the system's security policy on Mac](https://support.apple.com/guide/mac-help/mchlc5fb7f9c/mac).
+
+Without this permission, `cargo` or `rustc` can appear to stall after a
+`Compiling ...` line while loading locally built procedural-macro libraries;
+even `codesign` inspection of the generated library may stall. Fix the host
+application's permission. Do not mask the problem by disabling incremental
+compilation, downgrading Rust, changing target directories, or stripping file
+metadata.
+
 From the OSS workspace:
 
 ```bash

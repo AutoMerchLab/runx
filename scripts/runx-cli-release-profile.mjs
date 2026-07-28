@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import {
   checkRunxGhcrAnonymousAccess,
   githubActionsSkipDirective,
+  observeRunxCliCandidateChecks,
   observeRunxCliRelease,
 } from "./lib/runx-cli-release-evidence.mjs";
 
@@ -43,6 +44,15 @@ async function prepare() {
   assertMainCommit();
   assertTagTriggeredReleaseCommit();
   assertRemoteTagCompatible();
+  const candidate = await observeRunxCliCandidateChecks({
+    commit,
+    githubToken: githubApiToken(),
+  });
+  if (!candidate.ready) {
+    throw new Error(
+      `exact candidate commit has not passed release checks: ${candidate.missing.join(", ")}`,
+    );
+  }
   run("node", ["scripts/check-runx-cli-release-notes.mjs", "--version", version]);
   const ghcrAccess = await checkRunxGhcrAnonymousAccess();
   if (ghcrAccess.status !== "passed") {
@@ -73,6 +83,7 @@ async function prepare() {
     checks: {
       clean_checkout: true,
       head_matches_origin_main: true,
+      exact_commit_ci: true,
       manifests_match_version: true,
       release_notes: true,
       verify_fast: true,

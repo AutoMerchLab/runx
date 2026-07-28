@@ -107,6 +107,10 @@ Build the native CLI from source when working on Runx itself:
 cargo build --manifest-path crates/Cargo.toml -p runx-cli
 ```
 
+On macOS 26, complete the
+[Developer Tools permission prerequisite](CONTRIBUTING.md#macos-developer-tools-permission)
+if this build stalls.
+
 The npm package distributes the same Rust-owned behavior; it is not a second
 runtime.
 

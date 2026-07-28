@@ -203,6 +203,7 @@ jobs:
       matrix: ${{ fromJSON(needs.prepare.outputs.platform_matrix) }}
     runs-on: ${{ matrix.runner }}
     steps:
+      - uses: actions/checkout@v7
       - name: Download built archive
         uses: actions/download-artifact@v8
         with:
@@ -227,6 +228,9 @@ jobs:
             *"${{ needs.prepare.outputs.version }}"*) echo "smoke ok" ;;
             *) echo "::error::version mismatch: $out"; exit 1 ;;
           esac
+          node scripts/smoke-release-candidate.mjs \
+            --runx-bin "dist/${stem}/${{ matrix.binary }}" \
+            --expected-version "${{ needs.prepare.outputs.version }}"
 
   github-release:
     needs: [prepare, build, smoke]

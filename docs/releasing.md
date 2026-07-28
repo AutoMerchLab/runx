@@ -78,9 +78,16 @@ channel that downloads its archives):
    into the signed npm artifact, raw archive, and Linux `.deb`, and record
    digest-bound worker evidence.
 3. **smoke** (5-platform matrix) — downloads each built archive and runs
-   `runx --version` on the real OS after checking the matching worker is present.
-   Gates the release: a broken, incomplete, or wrong-arch archive fails before
-   anything is published. Runs in dry-runs too.
+   the extracted `runx` beside its matching worker on the real OS. In addition
+   to version and archive-shape checks, the packaged candidate must execute a
+   nested signed-registry skill, pass declared workspace environment into
+   frozen JavaScript context, deliver complete digest-bound `SKILL.md` context
+   beyond one megabyte, preserve opaque scopes, close one human approval
+   without a duplicate gate, and terminate active JavaScript work on
+   interruption. Windows process-tree interruption remains covered by the
+   dedicated Windows containment gate. A broken, incomplete, wrong-arch, or
+   semantically incomplete archive fails before anything is published. The
+   same smoke runs in dry-runs.
 4. **github-release** — assemble `checksums.txt`, generate a CycloneDX SBOM, emit
    build-provenance attestations for the binaries, stage the install scripts, and
    publish the Release with all archives. This is the hub.
@@ -178,13 +185,15 @@ pnpm release:check:live
 ```
 
 The release profile refuses a dirty checkout, a commit that differs from
-`origin/main`, an existing tag bound to another commit, or a GHCR package that
-is not anonymously pullable. It also requires a complete versioned release-note
-file; the tag workflow publishes that exact reviewed body instead of reconstructing
-a partial changelog from pull requests. Use `workflow_dispatch` with a version
-only when a release-pipeline change needs a no-publish matrix rehearsal. Do not
-duplicate the complete platform build for an ordinary release: the governed tag
-publish starts the workflow that builds and smokes every target.
+`origin/main`, an exact candidate commit without successful `checks` and
+`gitleaks` results, an existing tag bound to another commit, or a GHCR package
+that is not anonymously pullable. It also requires a complete versioned
+release-note file; the tag workflow publishes that exact reviewed body instead
+of reconstructing a partial changelog from pull requests. Use
+`workflow_dispatch` with a version only when a release-pipeline change needs a
+no-publish matrix rehearsal. Do not duplicate the complete platform build for
+an ordinary release: the governed tag publish starts the workflow that builds
+and smokes every target.
 
 Never move a published semver tag. Never bump a new patch just to repair channel
 drift; fix the existing channel artifact or workflow unless the binary itself is

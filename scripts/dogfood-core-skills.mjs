@@ -1,12 +1,9 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { generateKeyPairSync, sign } from "node:crypto";
 import {
   mkdirSync,
   mkdtempSync,
-  readdirSync,
-  readFileSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -14,6 +11,11 @@ import {
 import os from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+import {
+  createRegistryTestSigningKey,
+  signSingleRegistryVersion,
+} from "./lib/registry-test-signing.mjs";
 
 const workspaceRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const pnpm = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
@@ -138,11 +140,30 @@ function runRegistryResolverDogfood() {
     writeFileSync(skillDirPath(skillDir, "SKILL.md"), "---\nname: echo\n---\n# Echo\n", "utf8");
     writeFileSync(
       skillDirPath(skillDir, "X.yaml"),
-      "skill: echo\nrunners:\n  default:\n    type: agent\n    default: true\n",
+      [
+        "skill: echo",
+        "harness:",
+        "  cases:",
+        "    - name: registry-agent-boundary",
+        "      runner: default",
+        "      expect: { status: needs_agent }",
+        "runners:",
+        "  default:",
+        "    type: agent",
+        "    default: true",
+        "    agent: fixture",
+        "    task: echo",
+        "    outputs:",
+        "      result: object",
+        "",
+      ].join("\n"),
       "utf8",
     );
 
-    const signingKey = testManifestSigningKey();
+    const signingKey = createRegistryTestSigningKey({
+      keyId: "runx-dogfood-registry-ed25519",
+      signerId: "runx-dogfood-registry",
+    });
     const env = {
       ...dogfoodEnv,
       RUNX_HOME: path.join(root, "home"),
@@ -168,7 +189,7 @@ function runRegistryResolverDogfood() {
       ],
       env,
     });
-    signPublishedRegistryEntry(registryDir, signingKey);
+    signSingleRegistryVersion(registryDir, signingKey);
 
     const result = spawnSync(
       rustKernelBin,
@@ -221,64 +242,4 @@ function runStep(step) {
 
 function skillDirPath(skillDir, file) {
   return path.join(skillDir, file);
-}
-
-function testManifestSigningKey() {
-  const keyPair = generateKeyPairSync("ed25519");
-  const publicKeyDer = keyPair.publicKey.export({ format: "der", type: "spki" });
-  return {
-    keyId: "runx-dogfood-registry-ed25519",
-    signerId: "runx-dogfood-registry",
-    publicKeyBase64: Buffer.from(publicKeyDer).subarray(-32).toString("base64"),
-    privateKey: keyPair.privateKey,
-  };
-}
-
-function signPublishedRegistryEntry(registryDir, signingKey) {
-  const entryPath = findSingleRegistryEntry(registryDir);
-  const entry = JSON.parse(readFileSync(entryPath, "utf8"));
-  const payload =
-    "runx.registry.signed_manifest.v1\n" +
-    `skill_id=${entry.skill_id}\n` +
-    `version=${entry.version}\n` +
-    `digest=${entry.digest}\n` +
-    `profile_digest=${entry.profile_digest ?? ""}\n` +
-    `signer_id=${signingKey.signerId}\n` +
-    `key_id=${signingKey.keyId}\n`;
-  entry.signed_manifest = {
-    schema: "runx.registry.signed_manifest.v1",
-    skill_id: entry.skill_id,
-    version: entry.version,
-    digest: entry.digest,
-    ...(entry.profile_digest ? { profile_digest: entry.profile_digest } : {}),
-    signer: {
-      id: signingKey.signerId,
-      key_id: signingKey.keyId,
-    },
-    signature: {
-      alg: "ed25519",
-      value: `base64:${sign(null, Buffer.from(payload), signingKey.privateKey).toString("base64")}`,
-    },
-  };
-  writeFileSync(entryPath, `${JSON.stringify(entry, null, 2)}\n`, "utf8");
-}
-
-function findSingleRegistryEntry(root) {
-  const matches = [];
-  const walk = (dir) => {
-    for (const entry of readdirSync(dir)) {
-      const entryPath = path.join(dir, entry);
-      const stats = statSync(entryPath);
-      if (stats.isDirectory()) {
-        walk(entryPath);
-      } else if (entryPath.endsWith(".json")) {
-        matches.push(entryPath);
-      }
-    }
-  };
-  walk(root);
-  if (matches.length !== 1) {
-    throw new Error(`expected one registry fixture entry, found ${matches.length}`);
-  }
-  return matches[0];
 }

@@ -17,6 +17,10 @@ Build the native CLI from the OSS workspace:
 cargo build --manifest-path crates/Cargo.toml -p runx-cli
 ```
 
+On macOS 26, complete the
+[Developer Tools permission prerequisite](../CONTRIBUTING.md#macos-developer-tools-permission)
+before troubleshooting a stalled Rust build.
+
 ## Run The Example
 
 Run the skill directly through the CLI:

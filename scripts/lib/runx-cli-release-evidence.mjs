@@ -44,6 +44,11 @@ export const RUNX_CLI_RELEASE_NOTE_SECTIONS = Object.freeze([
   "Contributors",
 ]);
 
+export const RUNX_CLI_REQUIRED_CANDIDATE_CHECKS = Object.freeze([
+  "checks",
+  "gitleaks",
+]);
+
 const GITHUB_ACTIONS_SKIP_MARKERS = Object.freeze([
   "[skip ci]",
   "[ci skip]",
@@ -190,6 +195,51 @@ export async function observeRunxCliRelease(options) {
 }
 
 /**
+ * Prove that the exact candidate commit passed the repository's required
+ * pre-release checks. A green branch is not sufficient: releases bind to one
+ * immutable commit, so the evidence must do the same.
+ *
+ * @param {{
+ *   commit: string;
+ *   fetchImpl?: typeof fetch;
+ *   githubToken?: string;
+ * }} options
+ */
+export async function observeRunxCliCandidateChecks({
+  commit,
+  fetchImpl = globalThis.fetch,
+  githubToken = process.env.GH_TOKEN ?? process.env.GITHUB_TOKEN,
+}) {
+  if (!/^[0-9a-f]{40}$/u.test(commit ?? "")) {
+    throw new Error(`invalid candidate commit: ${commit ?? "<unset>"}`);
+  }
+  if (typeof fetchImpl !== "function") {
+    throw new Error("candidate evidence requires a fetch implementation");
+  }
+
+  const endpoint =
+    `https://api.github.com/repos/${REPOSITORY}/commits/${commit}/check-runs`
+    + "?filter=latest&per_page=100";
+  const headers = {
+    accept: "application/vnd.github+json",
+    ...(githubToken ? { authorization: `Bearer ${githubToken}` } : {}),
+  };
+
+  try {
+    const response = await fetchImpl(endpoint, { headers });
+    if (!response.ok) {
+      const detail = `candidate check lookup returned HTTP ${response.status}`;
+      return candidateCheckEvidence(commit, [], detail);
+    }
+    const body = await response.json();
+    const runs = Array.isArray(body.check_runs) ? body.check_runs : [];
+    return candidateCheckEvidence(commit, runs);
+  } catch (error) {
+    return candidateCheckEvidence(commit, [], errorMessage(error));
+  }
+}
+
+/**
  * @param {{ fetchImpl?: typeof fetch; version?: string }} [options]
  */
 export async function checkRunxGhcrAnonymousAccess({
@@ -239,6 +289,36 @@ function releaseNoteSection(body, heading) {
   return body
     .slice(contentIndex, nextHeadingIndex < 0 ? body.length : nextHeadingIndex)
     .trim();
+}
+
+function candidateCheckEvidence(commit, runs, lookupFailure = "") {
+  const checks = RUNX_CLI_REQUIRED_CANDIDATE_CHECKS.map((name) => {
+    const matching = runs.filter((run) => stringField(run?.name) === name);
+    const passed = matching.length > 0 && matching.every((run) =>
+      stringField(run?.status) === "completed"
+      && stringField(run?.conclusion) === "success"
+    );
+    const observed = matching
+      .map((run) =>
+        `${stringField(run?.status) || "unknown"}/${stringField(run?.conclusion) || "unknown"}`
+      )
+      .join(", ");
+    return check(
+      `candidate_${name}`,
+      passed,
+      passed
+        ? `${name} passed for ${commit}`
+        : `${name} ${lookupFailure || observed || "is missing"} for ${commit}`,
+    );
+  });
+  return {
+    ready: checks.every((entry) => entry.status === "passed"),
+    commitRef: commit,
+    checks,
+    missing: checks
+      .filter((entry) => entry.status === "failed")
+      .map((entry) => `${entry.id}: ${entry.detail}`),
+  };
 }
 
 async function observeGitHubRelease({ version, tag, fetchImpl, githubHeaders }) {
