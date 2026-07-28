@@ -341,6 +341,8 @@ pub struct ValidatedSkill {
     pub category: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runx_category: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub registry_owner: Option<String>,
     pub body: String,
     pub source: SkillSource,
     pub inputs: BTreeMap<String, SkillInput>,

@@ -88,12 +88,14 @@ pub fn validate_skill_with_options(
     let governance = validate_skill_governance(&raw, runx.as_ref(), risk.as_ref())?;
     let category = validate_portable_skill_category(&raw)?;
     let runx_category = validate_runx_skill_category(runx.as_ref())?;
+    let registry_owner = validate_registry_owner(&raw)?;
 
     Ok(ValidatedSkill {
         name: FIELDS.required_string(raw.frontmatter.get("name"), "name")?,
         description: FIELDS.optional_string(raw.frontmatter.get("description"), "description")?,
         category,
         runx_category,
+        registry_owner,
         body: raw.body.clone(),
         source: validate_source(&source, runx.as_ref())?,
         inputs: validate_inputs(
@@ -113,6 +115,24 @@ pub fn validate_skill_with_options(
         runx,
         raw,
     })
+}
+
+fn validate_registry_owner(raw: &RawSkillIr) -> Result<Option<String>, ValidationError> {
+    let owner = FIELDS.optional_string(raw.frontmatter.get("registry_owner"), "registry_owner")?;
+    let Some(owner) = owner else {
+        return Ok(None);
+    };
+    if owner != owner.to_ascii_lowercase()
+        || owner.starts_with('-')
+        || owner.ends_with('-')
+        || !owner.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || matches!(byte, b'.' | b'_' | b'-')
+        })
+    {
+        return Err(FIELDS
+            .validation_error("registry_owner must be a canonical lowercase registry namespace."));
+    }
+    Ok(Some(owner))
 }
 
 fn validate_portable_skill_category(raw: &RawSkillIr) -> Result<Option<String>, ValidationError> {

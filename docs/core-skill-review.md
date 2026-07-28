@@ -1,12 +1,13 @@
 # Core Skill Product Review
 
-Human-reviewed product decision record, dated 2026-07-20. This document is not
+Human-reviewed product decision record, dated 2026-07-20 and updated
+2026-07-29 for the accepted contributor packages. This document is not
 regenerated from a parallel JavaScript model of Runx execution; current
 structural truth comes from native package validation, operator-context
 expansion, the official lock, and package harnesses.
 
-**Status: implemented.** At review time, this covered all 77 top-level skill
-packages: 69 public and 8 internal.
+**Status: implemented.** This covers all 79 top-level skill packages: 71 public
+and 8 internal.
 No additional package is removed or hidden by this review. Improvement recommendations preserve the capability until a separate product decision approves a migration.
 
 ## Product bar
@@ -51,20 +52,20 @@ The official lock, generated Rust catalog, packet schemas, documentation, and co
 
 ## Evidence recorded at review time
 
-- Top-level core packages: 77
-- Public packages: 69; internal packages: 8
-- Packages containing agent work: 45
+- Top-level core packages: 79
+- Public packages: 71; internal packages: 8
+- Packages containing agent work: 47
 - Agent-only default closures: 2
 - Packages without operation proof: 7
 - Packages without semantic output proof: 3
-- Replayable multi-step operator journeys: 123
+- Replayable multi-step operator journeys: 136
 - Packages without any replayable contract proof: 3
 - Public manuals failing the cold-operator floor: 0
 - Public manuals missing a composed-skill relationship: 0
-- Public harness trials: 69 passed, 0 failed, 0 unproven
-- Public packages currently meeting their complete archetype bar: 48
-- Recommendations: improve=20, internal_fixture=3, internal_runtime=5, keep=49
-- Archetypes: artifact=12, builder=8, context=2, operation=27, runtime=8, workflow=20
+- Public harness trials: 71 passed, 0 failed, 0 unproven
+- Public packages currently meeting their complete archetype bar: 50
+- Recommendations: improve=20, internal_fixture=3, internal_runtime=5, keep=51
+- Archetypes: artifact=12, builder=8, context=3, operation=27, runtime=8, workflow=21
 
 The detailed per-fixture results are not checked in as a generated mirror; the
 fixtures and native harness are the replayable source of truth. Two safe live
@@ -88,6 +89,7 @@ read-only observations supported the provider claims in this review:
 | Skill | Archetype | Catalog role | Default execution shape | Evidence | Decision | Rationale | Improvement |
 |---|---|---|---|---|---|---|---|
 | agency | workflow | public/canonical | javascript, tool:data.append_event, tool:data.read_events; 1 agent act -> declared artifact | complete archetype bar | keep | Persistent governed cases and scoped member dispatch are proven as one replayable open, advance, and status journey with agent decision, durable transition, and readback evidence. | none |
+| answer-from-docs | context | public/context | javascript, tool:data.digest; 1 agent act -> declared artifact | complete archetype bar | keep | The contributor-owned documentation lane binds one supplied corpus by native digest, requires exact source quotations, and seals unsupported or conflicted outcomes instead of answering from outside knowledge; four focused journeys prove grounded answers, honest refusal, invented-quotation rejection, and missing-input handling. | none |
 | audit-receipt | workflow | public/canonical | javascript, tool:receipt.query; 1 agent act -> declared artifact | complete archetype bar | keep | Authority-versus-evidence judgment now consumes Runx's native redacted receipt detail; caller summaries are supplemental and missing detail fails closed. | none |
 | brand-voice | context | public/context | javascript, tool:data.digest; 1 agent act -> declared artifact | complete archetype bar | keep | The evidence-bound voice packet now has four focused journeys covering safe claims, missing inputs, unknown bindings, and forwarding the exact packet digest into both Ghostwrite and Twitter planning without granting downstream authority. | none |
 | business-ops | workflow | public/canonical | javascript | complete archetype bar | keep | This is featured dogfood for routing a business signal through governed lanes and durable state, with truthful capability metadata and deterministic route/readback proof. | none |
@@ -114,6 +116,7 @@ read-only observations supported the provider claims in this review:
 | lead-router | workflow | public/context | javascript, tool:data.digest; 1 agent act -> declared artifact | complete archetype bar | keep | Validated enrichment evidence and consent now bind every route; do-not-contact deterministically records a hold only in the signed Runx receipt, outreach emits the exact canonical send-as input contract, and four focused journeys prove forward compatibility and invented-evidence refusal without claiming delivery. | none |
 | least-privilege | operation | public/canonical | javascript, tool:receipt.query | complete archetype bar | keep | The auditor now compares the caller's grant baseline with normalized exercised scopes from native redacted receipt detail and defers when that evidence is absent. | none |
 | ledger | operation | public/canonical | javascript, tool:receipt.query | complete archetype bar | keep | Cross-run receipt queries and chain verification run through the direct native reader; isolated production-signed trials prove bounded result limits and fail-closed broken-chain reporting. | none |
+| meeting-followup | workflow | public/context | javascript, tool:data.digest; 1 agent act -> declared artifact | complete archetype bar | keep | The contributor-owned meeting lane turns a bounded transcript into evidence-quoted decisions, action items, unsent follow-up copy, and explicitly uncreated task proposals; nine focused journeys prove owner and date ambiguity, injection resistance, exact evidence, non-actionable discussion, and missing-input stops without embedding a provider adapter. | none |
 | messageboard | workflow | public/canonical | 1 agent act -> declared artifact | complete archetype bar | keep | The distinct bounty lifecycle is proven from post through moderation, claim, delivery, acceptance, durable readback, and payout authorization without claiming payment execution. | none |
 | mock-charge | runtime | internal/harness-fixture | tool:payment.charge_challenge, tool:payment.charge_plan, tool:payment.charge_price, tool:payment.charge_verification_request | internal; 0 blocking finding(s); not trialled | internal_fixture | Deterministic charge fixture retained for canonical payment integration and recovery tests. | none |
 | mock-pay | runtime | internal/harness-fixture | tool:payment.quote, tool:payment.reserve; 1 agent act -> declared artifact | internal; 0 blocking finding(s); not trialled | internal_fixture | Deterministic payment fixture retained for canonical payment integration and recovery tests. | none |

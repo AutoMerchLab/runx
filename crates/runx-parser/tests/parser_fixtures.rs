@@ -186,6 +186,28 @@ fn skill_category_accepts_runx_catalog_override() -> Result<(), String> {
 }
 
 #[test]
+fn skill_registry_owner_preserves_contributor_namespace() -> Result<(), String> {
+    let skill = validate_skill(parse_skill_markdown(
+        "---\nname: docs-demo\ndescription: Demo skill.\nregistry_owner: zhtwangk\n---\n# Demo\n",
+    ).map_err(|error| error.to_string())?)
+    .map_err(|error| error.to_string())?;
+
+    assert_eq!(skill.registry_owner.as_deref(), Some("zhtwangk"));
+    Ok(())
+}
+
+#[test]
+fn skill_registry_owner_rejects_noncanonical_namespace() -> Result<(), String> {
+    let raw = parse_skill_markdown(
+        "---\nname: docs-demo\ndescription: Demo skill.\nregistry_owner: ZHTWangK\n---\n# Demo\n",
+    )
+    .map_err(|error| error.to_string())?;
+
+    assert!(validate_skill(raw).is_err());
+    Ok(())
+}
+
+#[test]
 fn runner_manifest_fixtures_match_typescript() -> Result<(), String> {
     for fixture_json in RUNNER_MANIFEST_FIXTURES {
         let fixture: RunnerManifestFixture =

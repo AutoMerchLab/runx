@@ -278,6 +278,14 @@ public runner crosses an adapter boundary; and `approval` reflects the strictest
 human gate required by those runners. The default runner remains the concise
 entry path and is reported separately in catalog reviews.
 
+Registry ownership is provenance, not a maintainer convenience. A public
+package accepted from a contributor preserves that publisher namespace in
+`SKILL.md` frontmatter as `registry_owner`; packages without the field belong
+to the first-party `runx` namespace. The field guides repository release
+tooling but grants no publish authority. Moving a package between namespaces
+requires an explicit ownership transfer, never an automatic rewrite during
+merge or hardening.
+
 The catalog gate blocks structural dishonesty and unusable packages:
 
 - unresolved or cyclic default closures;

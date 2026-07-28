@@ -579,14 +579,15 @@ function officialSkills() {
   }
   return lock
     .map((entry) => {
-      if (typeof entry?.skill_id !== "string" || !entry.skill_id.startsWith("runx/")) {
+      const parts = typeof entry?.skill_id === "string" ? entry.skill_id.split("/") : [];
+      if (parts.length !== 2 || !parts[0] || !parts[1]) {
         throw new Error(`invalid official skill entry: ${JSON.stringify(entry)}`);
       }
       if (!["internal", "public"].includes(entry.catalog_visibility)) {
         throw new Error(`invalid official skill visibility: ${JSON.stringify(entry)}`);
       }
       return {
-        name: entry.skill_id.slice("runx/".length),
+        name: parts[1],
         visibility: entry.catalog_visibility,
       };
     })

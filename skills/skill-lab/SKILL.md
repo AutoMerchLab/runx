@@ -284,9 +284,12 @@ authoring.
 - Preserve registry identity as part of capability ownership. Inspect the live
   registry before publishing a shared package; update the intended existing
   owner/name rather than creating a first-party neighbor beside an older name.
+  Preserve an accepted contributor's namespace in the `registry_owner`
+  field of `SKILL.md` frontmatter; absence means the Runx-owned `runx`
+  namespace.
   A deliberate rename must migrate or retire the prior identity through the
-  registry operator. Never overwrite a contributor's community-owned row with
-  the hardened first-party package.
+  registry operator. Never transfer a contributor's community-owned row into
+  the first-party namespace unless that ownership transfer is explicit.
 - Include a realistic happy path and refusal, stop, or error path.
 - Never treat supplied agent answers as provider-effect proof.
 

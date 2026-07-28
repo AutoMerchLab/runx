@@ -145,6 +145,10 @@ runx treats it like every other governed action, with no special-casing:
   same allowlisted package files that hosted runx validated. Signed run receipts
   and hosted verified-run evidence are separate signals recorded when the skill
   is executed.
+- When a contributor-owned package is accepted into the Runx repository,
+  `registry_owner` in `SKILL.md` frontmatter preserves that contributor's
+  namespace for later hardened versions. Repository inclusion does not silently
+  transfer the registry row to `runx/*`; such a transfer must be explicit.
 
 ## After you publish
 

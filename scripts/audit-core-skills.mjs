@@ -169,10 +169,14 @@ function readOfficialLock() {
 }
 
 function officialName(record) {
-  if (typeof record?.skill_id !== "string" || !record.skill_id.startsWith("runx/")) {
+  if (typeof record?.skill_id !== "string") {
     throw new Error(`invalid official skill record: ${JSON.stringify(record)}`);
   }
-  return record.skill_id.slice("runx/".length);
+  const parts = record.skill_id.split("/");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) {
+    throw new Error(`invalid official skill record: ${JSON.stringify(record)}`);
+  }
+  return parts[1];
 }
 
 function readProductReview() {

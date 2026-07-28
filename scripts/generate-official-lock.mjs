@@ -64,7 +64,7 @@ function buildOfficialSkillLockRecord(markdown, profileDocument, skill, manifest
     }))
     .digest("hex");
   return {
-    skill_id: `runx/${slugifyOfficialSkillName(skill.name)}`,
+    skill_id: `${skill.registryOwner ?? "runx"}/${slugifyOfficialSkillName(skill.name)}`,
     version: `sha-${versionSeed.slice(0, 12)}`,
     digest,
     catalog_visibility: manifest.catalog?.visibility ?? "internal",
@@ -117,8 +117,8 @@ function rustOfficialLock(entries) {
     "        entry.skill_id == normalized",
     "            || entry",
     "                .skill_id",
-    "                .strip_prefix(\"runx/\")",
-    "                .is_some_and(|skill_name| skill_name == normalized)",
+    "                .rsplit_once('/')",
+    "                .is_some_and(|(_, skill_name)| skill_name == normalized)",
     "    })",
     "}",
     "",

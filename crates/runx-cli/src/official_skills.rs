@@ -16,9 +16,9 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
         digest: "66db0e30af53394728876dc5c6df833f231c7f7b8ae13d3893acb35177675af8",
     },
     OfficialSkillLockEntry {
-        skill_id: "runx/answer-from-docs",
-        version: "sha-c2b31df26486",
-        digest: "ee6a6fdfb94485b17d369b857658d1c0c29378510902b5fd5b5402acb6d3e42f",
+        skill_id: "zhtwangk/answer-from-docs",
+        version: "sha-d135e2c3bda6",
+        digest: "55b3d2e3558bca9ac6a68f21ecc01865a21781a94a1b7c87719bb11985774faa",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/audit-receipt",
@@ -151,9 +151,9 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
         digest: "9e3370c09616f2ae0490bfacbf9e944a4631f3e9569c71f2d00133ee1c939afe",
     },
     OfficialSkillLockEntry {
-        skill_id: "runx/meeting-followup",
-        version: "sha-b49853ab512d",
-        digest: "2076f10968ed5781b57306715934e52241851733401ebd67ed4fbcedba2a6edd",
+        skill_id: "zhtwangk/meeting-followup",
+        version: "sha-3c08f6fbaf92",
+        digest: "85a1476c09e4f4c68b21f97c61a260eaff2e29dd3dc19b92deb3f9dfc6871c08",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/messageboard",
@@ -312,8 +312,8 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/skill-lab",
-        version: "sha-6f0ed5d3c7d4",
-        digest: "d3a729a3010c3ce8556a235136db7da764ca30b96bf3c43b1120c5ef0c8f3e1d",
+        version: "sha-27d15b56ffa2",
+        digest: "104eadf244f3cb62e936a90261113a1eec6d47c607c163620900e10d5184b184",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/slack",
@@ -413,7 +413,7 @@ pub(crate) fn official_skill_entry_by_name(name: &str) -> Option<&'static Offici
         entry.skill_id == normalized
             || entry
                 .skill_id
-                .strip_prefix("runx/")
-                .is_some_and(|skill_name| skill_name == normalized)
+                .rsplit_once('/')
+                .is_some_and(|(_, skill_name)| skill_name == normalized)
     })
 }
