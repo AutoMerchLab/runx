@@ -1,5 +1,5 @@
 skill: skill-lab
-version: "0.8.3"
+version: "0.8.4"
 
 catalog:
   kind: graph

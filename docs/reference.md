@@ -20,6 +20,10 @@ crates/target/debug/runx skill examples/hello-world \
   --json
 ```
 
+On macOS 26, complete the
+[Developer Tools permission prerequisite](../CONTRIBUTING.md#macos-developer-tools-permission)
+if the initial build stalls.
+
 When no production signer environment is configured, local `runx skill` and
 inline `runx harness` runs seal local-development receipts. Publishing and
 hosted verification require real authority.
@@ -114,6 +118,34 @@ runx config set agent.provider openai
 runx config set agent.model gpt-5.1
 printf '%s' "$OPENAI_API_KEY" | runx config set agent.api_key --from-stdin
 ```
+
+The resume file keeps agent work and human authorization distinct:
+
+```json
+{
+  "answers": {
+    "agent_task.example.output": {
+      "result": {}
+    }
+  },
+  "approvals": {
+    "provider-effect:example": {
+      "approved": true,
+      "reason": "I authorize this exact provider action."
+    }
+  }
+}
+```
+
+Only entries under `approvals` carry host-attested human approval provenance.
+The local CLI cannot authenticate a person from JSON: by placing a decision
+there, the host asserts that a human approved the exact pending gate. An agent
+must never author or promote that entry; it returns the pending approval to its
+human or to an integrated host that authenticates the decision. Never place a
+consequential decision under `answers`; that section records agent or
+caller-supplied work and cannot resolve an approval gate. Runx rejects an agent
+response presented to an approval request. The pending run's `answers_template`
+contains the exact request ids to resolve.
 
 Hosted and replay drivers may bind `runx skill` or `runx resume` with
 `--package-digest` and `--execution-closure-digest`. Runx recomputes both at the

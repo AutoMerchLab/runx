@@ -36,9 +36,8 @@ use crate::journal::{PausedRunCheckpoint, append_paused_run_checkpoint};
 use crate::receipts::{DomainActReceiptRequest, RuntimeReceiptSignatureConfig, domain_act_receipt};
 use crate::services::{ReceiptServices, WorkspaceEnv};
 
-use super::graph_state::{
-    GraphResolutionAnswers, read_answers, read_graph_state, write_graph_state,
-};
+use super::graph_state::{read_graph_state, write_graph_state};
+use super::resolution_answers::{ResolutionAnswers, read_answers};
 use super::runner_manifest::{credential_delivery_from_invocation, write_skill_receipt};
 
 // Function rationale: graph-backed skill execution keeps
@@ -112,10 +111,10 @@ pub(super) fn execute_graph_skill_run(
     let seeded = overrides.seeded_answers.clone();
     let resume = request.answers_path.is_some() && seeded.is_none();
     let answers = match &seeded {
-        Some(seeded) => GraphResolutionAnswers::agent(seeded.clone()),
+        Some(seeded) => seeded.clone(),
         None => match &request.answers_path {
             Some(path) => read_answers(path)?,
-            None => GraphResolutionAnswers::default(),
+            None => ResolutionAnswers::default(),
         },
     };
     let mut resumed_state = if resume {
@@ -164,7 +163,7 @@ pub(super) fn execute_graph_skill_run(
             Ok(next_checkpoint) => {
                 if next_checkpoint.state.status == GraphStatus::Succeeded {
                     let completed_checkpoint = next_checkpoint.clone();
-                    let mut final_host = SkillRunGraphHost::new(GraphResolutionAnswers::default());
+                    let mut final_host = SkillRunGraphHost::new(ResolutionAnswers::default());
                     let run = runtime.seal_completed_graph_checkpoint_with_host(
                         graph.clone(),
                         next_checkpoint,
@@ -464,7 +463,7 @@ struct TerminalGraphSkillRun<'a> {
 fn seal_terminal_graph_skill_run(
     context: TerminalGraphSkillRun<'_>,
 ) -> Result<JsonValue, SkillRunError> {
-    let mut final_host = SkillRunGraphHost::new(GraphResolutionAnswers::default());
+    let mut final_host = SkillRunGraphHost::new(ResolutionAnswers::default());
     let run = match context.cause {
         GraphTerminalCause::Blocked => context.runtime.seal_blocked_graph_checkpoint_with_host(
             context.graph,
@@ -601,13 +600,13 @@ impl InlineResolver {
 }
 
 struct SkillRunGraphHost {
-    answers: GraphResolutionAnswers,
+    answers: ResolutionAnswers,
     pending: Vec<(String, JsonValue)>,
     inline: Option<InlineResolver>,
 }
 
 impl SkillRunGraphHost {
-    fn new(answers: GraphResolutionAnswers) -> Self {
+    fn new(answers: ResolutionAnswers) -> Self {
         Self {
             answers,
             pending: Vec::new(),
@@ -615,7 +614,7 @@ impl SkillRunGraphHost {
         }
     }
 
-    fn with_inline(answers: GraphResolutionAnswers, inline: InlineResolver) -> Self {
+    fn with_inline(answers: ResolutionAnswers, inline: InlineResolver) -> Self {
         Self {
             answers,
             pending: Vec::new(),
@@ -1141,7 +1140,7 @@ steps:
             error,
         )
         .at_graph_step("compose");
-        let mut host = SkillRunGraphHost::new(GraphResolutionAnswers::default());
+        let mut host = SkillRunGraphHost::new(ResolutionAnswers::default());
         let run = runtime.seal_failed_graph_checkpoint_with_host(
             graph,
             checkpoint,

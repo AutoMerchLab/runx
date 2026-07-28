@@ -148,7 +148,7 @@ pub enum ProviderEffectError {
     DraftCannotExecute,
     #[error("provider mutation requires exact approval")]
     ApprovalRequired,
-    #[error("provider mutation approval must come from an authenticated human")]
+    #[error("provider mutation approval must come from a host-attested human")]
     HumanApprovalRequired,
     #[error("provider {class:?} must not carry an approval")]
     GratuitousApproval { class: ProviderEffectClass },

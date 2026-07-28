@@ -5,7 +5,7 @@ use super::{
 use std::collections::BTreeMap;
 use std::path::Path;
 
-use runx_contracts::{JsonObject, JsonValue, Receipt};
+use runx_contracts::{JsonValue, Receipt};
 use runx_parser::harness_fixture::HarnessExpectedStatus;
 use runx_parser::{HarnessCallerFixture, RunnerHarnessCase, SkillRunnerManifest};
 
@@ -17,6 +17,7 @@ use crate::execution::orchestrator::SkillRunRequest;
 use crate::services::{ReceiptServices, WorkspaceEnv};
 
 use super::graph_state::read_graph_state;
+use super::resolution_answers::ResolutionAnswers;
 use super::runner_manifest::selected_runner;
 
 mod package;
@@ -149,9 +150,13 @@ fn run_inline_harness_case(
         case,
         context.cwd,
     );
+    let seeded_answers = match seeded_answers_from_caller(&case.caller) {
+        Ok(answers) => answers,
+        Err(error) => return inline_harness_case_error(&case.name, error),
+    };
     let overrides = SkillRunOverrides {
         runner: case.runner.clone(),
-        seeded_answers: seeded_answers_from_caller(&case.caller),
+        seeded_answers,
     };
     execute_inline_harness_case(context, &request, receipt_dir, case, runner, &overrides)
 }
@@ -471,22 +476,28 @@ fn inline_harness_execution_error(
     }
 }
 
-// Merge a harness case's caller answers + approvals into one map keyed by
-// resolution request id, the shape the seeded agent/graph answer lookup expects.
-// Approvals are recorded as booleans under their gate id.
-fn seeded_answers_from_caller(caller: &HarnessCallerFixture) -> Option<JsonObject> {
-    let mut merged = caller.answers.clone().unwrap_or_default();
-    if let Some(approvals) = &caller.approvals {
-        for (gate, approved) in approvals {
-            merged
-                .entry(gate.clone())
-                .or_insert_with(|| JsonValue::Bool(*approved));
-        }
-    }
-    if merged.is_empty() {
-        None
+// Preserve the harness caller's answer lanes while keying both by resolution
+// request id. Inline execution must exercise the same approval provenance as a
+// live resume file.
+fn seeded_answers_from_caller(
+    caller: &HarnessCallerFixture,
+) -> Result<Option<ResolutionAnswers>, SkillRunError> {
+    let answers = caller.answers.clone().unwrap_or_default();
+    let approvals = caller
+        .approvals
+        .clone()
+        .unwrap_or_default()
+        .into_iter()
+        .map(|(gate, approved)| (gate, JsonValue::Bool(approved)));
+    if answers.is_empty()
+        && caller
+            .approvals
+            .as_ref()
+            .is_none_or(|approvals| approvals.is_empty())
+    {
+        Ok(None)
     } else {
-        Some(merged)
+        ResolutionAnswers::from_lanes(answers, approvals).map(Some)
     }
 }
 
@@ -513,5 +524,36 @@ fn inline_harness_actual_status(output: &JsonValue) -> HarnessExpectedStatus {
             HarnessExpectedStatus::Failure
         }
         _ => HarnessExpectedStatus::Sealed,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use runx_contracts::{JsonObject, JsonValue};
+    use runx_parser::HarnessCallerFixture;
+
+    use super::seeded_answers_from_caller;
+
+    #[test]
+    fn inline_harness_keeps_approval_provenance_separate_from_agent_answers() -> Result<(), String>
+    {
+        let approval_id = "provider.write.approval";
+        let caller = HarnessCallerFixture {
+            answers: Some(JsonObject::from([(
+                "agent.plan".to_owned(),
+                JsonValue::String("ready".to_owned()),
+            )])),
+            approvals: Some(BTreeMap::from([(approval_id.to_owned(), true)])),
+        };
+        let answers = seeded_answers_from_caller(&caller)
+            .map_err(|error| error.to_string())?
+            .ok_or("expected seeded answers")?;
+
+        assert!(answers.is_human_approval(approval_id));
+        assert!(!answers.is_human_approval("agent.plan"));
+        assert_eq!(answers.get(approval_id), Some(&JsonValue::Bool(true)));
+        Ok(())
     }
 }

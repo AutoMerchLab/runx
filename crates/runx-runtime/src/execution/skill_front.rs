@@ -38,6 +38,7 @@ mod graph;
 mod graph_state;
 #[cfg(feature = "cli-tool")]
 mod inline_harness;
+mod resolution_answers;
 pub(crate) mod runner_manifest;
 mod source_adapter;
 
@@ -90,10 +91,10 @@ pub enum SkillRunError {
 pub(crate) struct SkillRunOverrides {
     /// Select a runner by name instead of the manifest default.
     pub(crate) runner: Option<String>,
-    /// Answers seeded for a single fresh run, keyed by resolution request id.
-    /// Drives agent/graph runs to completion in one pass; `None` keeps the
-    /// `answers_path` (resume-from-checkpoint) behavior.
-    pub(crate) seeded_answers: Option<JsonObject>,
+    /// Resolution values seeded for a single fresh run, with human approvals
+    /// kept distinct from agent answers. `None` keeps the `answers_path`
+    /// (resume-from-checkpoint) behavior.
+    pub(crate) seeded_answers: Option<resolution_answers::ResolutionAnswers>,
 }
 
 pub(crate) struct ResolvedSkillRun<'a> {

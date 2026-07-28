@@ -292,6 +292,12 @@ fn documented_command_help_is_native() {
         "runx login [--provider github|google|gitlab] [--for default|publish] [--from-gh] [--api-base-url url] [--allow-local-api] [-j|--json]",
     );
     assert!(!connect_help_text().contains("connect invoke"));
+    let resume_help = command_help_text("resume").expect("resume help");
+    assert!(resume_help.contains("Put agent/task responses under"));
+    assert!(
+        resume_help
+            .contains("this is a host attestation that a human approved the exact pending gate")
+    );
     assert_help_line(
         &registry_help_text(),
         "runx registry search <query> [--registry url|path] [--registry-dir dir] [--limit n] [-j|--json]",

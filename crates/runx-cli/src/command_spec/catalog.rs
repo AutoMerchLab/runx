@@ -87,7 +87,10 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         usage: &[
             "runx resume <run-id> <answers.json> [-R dir] [--package-digest sha256] [--execution-closure-digest sha256] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]",
         ],
-        notes: &[],
+        notes: &[
+            "Put agent/task responses under {\"answers\": {...}}.",
+            "Put explicit human decisions under {\"approvals\": {\"<request-id>\": {\"approved\": true, \"reason\": \"...\"}}}; this is a host attestation that a human approved the exact pending gate. Agents must never author it.",
+        ],
         options: &[
             "-R, --receipts dir",
             "--receipt-dir dir",

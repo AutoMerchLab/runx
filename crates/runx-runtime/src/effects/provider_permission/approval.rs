@@ -161,7 +161,7 @@ fn request_exact_provider_approval(
             family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
             verb: AuthorityVerb::Write,
             message: format!(
-                "provider mutation for step '{}' requires authenticated human approval",
+                "provider mutation for step '{}' requires host-attested human approval",
                 step.id
             ),
         }),

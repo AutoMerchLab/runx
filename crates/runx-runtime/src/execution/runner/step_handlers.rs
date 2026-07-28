@@ -1545,6 +1545,9 @@ pub(super) fn approval_outputs(
         "gate_id".to_owned(),
         JsonValue::String(gate.id.as_str().to_owned()),
     );
+    if let Some(gate_type) = &gate.gate_type {
+        data.insert("gate_type".to_owned(), JsonValue::String(gate_type.clone()));
+    }
     data.insert(
         "idempotency_key".to_owned(),
         JsonValue::String(resolution.idempotency_key().to_owned()),

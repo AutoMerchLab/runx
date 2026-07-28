@@ -2068,20 +2068,12 @@ fn native_graph_skill_run_requires_declared_graph_inputs() -> Result<(), Box<dyn
 #[test]
 fn native_graph_skill_resume_applies_approval_before_completing_step()
 -> Result<(), Box<dyn std::error::Error>> {
-    for (case, answers) in [
-        (
-            "approvals-field",
-            serde_json::json!({
-                "approvals": { "approval-resume.approve": true }
-            }),
-        ),
-        (
-            "answers-field",
-            serde_json::json!({
-                "answers": { "approval-resume.approve": true }
-            }),
-        ),
-    ] {
+    for (case, answers) in [(
+        "approvals-field",
+        serde_json::json!({
+            "approvals": { "approval-resume.approve": true }
+        }),
+    )] {
         let temp = tempdir()?;
         let skill_dir = write_graph_approval_resume_skill(temp.path())?;
         let receipt_dir = temp.path().join(format!("receipts-{case}"));
@@ -2124,7 +2116,59 @@ fn native_graph_skill_resume_applies_approval_before_completing_step()
         let approval_data = object_field(approval_packet, "data").ok_or("missing approval data")?;
         assert_eq!(approval_data.get("approved"), Some(&JsonValue::Bool(true)));
         assert_eq!(string_field(approval_data, "status"), Some("approved"));
+        assert_eq!(
+            string_field(approval_data, "gate_type"),
+            Some("test.claim-bound")
+        );
     }
+
+    Ok(())
+}
+
+#[test]
+fn native_graph_skill_resume_rejects_agent_answer_for_approval()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let skill_dir = write_graph_approval_resume_skill(temp.path())?;
+    let receipt_dir = temp.path().join("receipts-agent-approval");
+    let answers_path = temp.path().join("answers-agent-approval.json");
+    fs::write(
+        &answers_path,
+        serde_json::json!({
+            "answers": { "approval-resume.approve": true }
+        })
+        .to_string(),
+    )?;
+
+    let pending = run_skill(SkillRunRequest {
+        skill_path: skill_dir.clone(),
+        receipt_dir: Some(receipt_dir.clone()),
+        run_id: None,
+        answers_path: None,
+        inputs: BTreeMap::new(),
+        env: BTreeMap::new(),
+        cwd: temp.path().to_path_buf(),
+        managed_agent: Default::default(),
+        local_credential: None,
+    })?;
+    let pending_output = object(&pending.output, "pending approval result")?;
+    let run_id = string_field(pending_output, "run_id")
+        .ok_or("pending approval result missing run_id")?
+        .to_owned();
+
+    let error = run_skill(SkillRunRequest {
+        skill_path: skill_dir,
+        receipt_dir: Some(receipt_dir),
+        run_id: Some(run_id),
+        answers_path: Some(answers_path),
+        inputs: BTreeMap::new(),
+        env: BTreeMap::new(),
+        cwd: temp.path().to_path_buf(),
+        managed_agent: Default::default(),
+        local_credential: None,
+    })
+    .expect_err("agent answer must not resolve an approval gate");
+    assert!(error.to_string().contains("host-attested human"));
 
     Ok(())
 }
@@ -3295,6 +3339,7 @@ runners:
             type: approval
           inputs:
             gate_id: approval-resume.approve
+            gate_type: test.claim-bound
             reason: approve the test graph
           artifacts:
             wrap_as: approval_decision

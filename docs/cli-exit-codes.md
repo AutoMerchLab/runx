@@ -56,6 +56,13 @@ Common fixes:
 runx resume <run-id> answers.json
 ```
 
+Use the pending run's `answers_template`. Put agent or task responses under
+`answers`, and explicit human decisions under `approvals`. Only the latter
+carries host-attested human approval provenance and can resolve an approval
+gate. An agent response under `answers` is rejected at that boundary. The host
+must authenticate the human decision; an agent must never author an
+`approvals` entry.
+
 For required input, pass the missing `--input` value or the corresponding
 kebab-case CLI flag.
 

@@ -180,7 +180,7 @@ fn provider_effect_receipts_reads_do_not_request_approval() {
 }
 
 #[test]
-fn provider_effect_mutations_require_authenticated_human_approval() {
+fn provider_effect_mutations_require_host_attested_human_approval() {
     let inputs = provider_inputs(PROVIDER_MUTATE_TOOL, JsonObject::new());
     let step = provider_step(PROVIDER_MUTATE_TOOL, "write", true);
     let env = provider_env();
@@ -200,7 +200,7 @@ fn provider_effect_mutations_require_authenticated_human_approval() {
         )
         .expect_err("agent approval must not authorize a provider mutation");
 
-    assert!(error.to_string().contains("authenticated human approval"));
+    assert!(error.to_string().contains("host-attested human"));
     assert_eq!(host.requests.len(), 1);
 }
 

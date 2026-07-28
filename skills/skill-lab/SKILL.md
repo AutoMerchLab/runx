@@ -96,6 +96,17 @@ approval rules.
   project their result. Pass mutation retry identity through the native
   `idempotency_key` input; do not copy it into the provider payload. Never add a
   package token loader or request client.
+- Never model human authority as a caller-supplied approval string, boolean, or
+  reference. A native approval gate must summarize the exact target and effect;
+  its host-attested packet is the only approval input a credentialed provider
+  tool may accept. If a provider API requires its own approval reference, derive
+  the claim- or resource-bound value inside that tool after verifying
+  `approved: true`, `actor: human`, the exact gate id, and the action-specific
+  gate type. An agent-authored `answers` value must fail before provider
+  execution.
+- `run: approval` is a human gate. Agent provenance is rejected by the runtime;
+  use `agent-task` for model judgment and keep its result distinct from human
+  authority.
 - Search the inspected native-tool and skill catalogs before designing files.
   Prefer an existing core tool or canonical skill over executable package code.
 - Express orchestration through `X.yaml`; keep all static agent operating
