@@ -292,7 +292,7 @@ fn documented_command_help_is_native() {
         "runx login [--provider github|google|gitlab] [--for default|publish] [--from-gh] [--api-base-url url] [--allow-local-api] [-j|--json]",
     );
     assert!(!connect_help_text().contains("connect invoke"));
-    let resume_help = command_help_text("resume").expect("resume help");
+    let resume_help = command_help_text("resume").unwrap_or_default();
     assert!(resume_help.contains("Put agent/task responses under"));
     assert!(
         resume_help
