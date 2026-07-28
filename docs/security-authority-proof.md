@@ -141,7 +141,12 @@ canonical body digests, content-addressed ids, linked-tree parent/child
 integrity, scope adherence for privileged effects, and — when
 `RUNX_RECEIPT_VERIFY_KID` and
 `RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64` are set — production Ed25519
-signatures against the operator-trusted key. Store mode groups receipts into
+signatures against the operator-trusted key. When those explicit verifier
+variables are absent, a complete `RUNX_RECEIPT_SIGN_*` identity supplies its
+own public verifier; explicit verifier configuration always takes precedence.
+This lets the signing operator verify its own local store without duplicating
+key configuration while independent verifiers need only the public key. Store
+mode groups receipts into
 trees by lineage; a chain that points at a receipt missing from the store is
 reported as incomplete and fails verification. Single-receipt mode emits one
 `runx.verify_verdict.v1` JSON verdict suitable for hosted notaries and other
@@ -170,8 +175,8 @@ view before exercising privileged effects. It reports:
 - receipt signer readiness, naming `RUNX_RECEIPT_SIGN_KID`,
   `RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64`, and
   `RUNX_RECEIPT_SIGN_ISSUER_TYPE`
-- receipt verification readiness, naming `RUNX_RECEIPT_VERIFY_KID` and
-  `RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64`
+- receipt verification readiness and whether it resolves from the explicit
+  `RUNX_RECEIPT_VERIFY_*` pair or the complete signing identity
 - the resolved effect-state path when configured
 - the consequence when `RUNX_EFFECT_STATE_PATH` is unset: cross-run spend caps,
   payment idempotency, and effect replay recovery are not durable without a

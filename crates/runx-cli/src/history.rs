@@ -9,9 +9,9 @@ use runx_runtime::journal::{
     inspect_local_receipt_with_policy, list_local_history, list_local_history_with_policy,
 };
 use runx_runtime::{
-    Ed25519ReceiptVerifier, LocalReceiptStore, RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
-    RUNX_RECEIPT_VERIFY_KID_ENV, ReceiptPathInputs, ResolvedReceiptPath, RuntimeReceiptConfig,
-    RuntimeReceiptSignaturePolicy, resolve_receipt_path,
+    Ed25519ReceiptVerifier, LocalReceiptStore, ReceiptPathInputs, ResolvedReceiptPath,
+    RuntimeReceiptConfig, RuntimeReceiptSignaturePolicy, receipt_verifier_from_env,
+    resolve_receipt_path,
 };
 
 // Module rationale: the native history CLI slice keeps
@@ -67,7 +67,9 @@ pub fn run_history_command(
         cwd,
     });
     let store = LocalReceiptStore::new(&resolved.path);
-    let verifier = history_production_verifier(env)?;
+    let verifier = receipt_verifier_from_env(env)
+        .map(|resolved| resolved.map(|verifier| verifier.into_verifier()))
+        .map_err(|error| HistoryCliError::InvalidReceiptVerifier(error.to_string()))?;
     if parsed.detail {
         return run_receipt_detail(&parsed, &store, &resolved, verifier.as_ref());
     }
@@ -159,36 +161,6 @@ fn successful_result(output: String) -> HistoryCliResult {
         output,
         error_is_usage: false,
     }
-}
-
-fn history_production_verifier(
-    env: &BTreeMap<String, String>,
-) -> Result<Option<Ed25519ReceiptVerifier>, HistoryCliError> {
-    let kid = non_empty_env(env, RUNX_RECEIPT_VERIFY_KID_ENV);
-    let public_key = non_empty_env(env, RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV);
-    match (kid, public_key) {
-        (None, None) => Ok(None),
-        (Some(kid), Some(public_key)) => Ed25519ReceiptVerifier::from_public_key_base64(
-            kid.to_owned(),
-            public_key,
-        )
-        .map(Some)
-        .map_err(|_| {
-            HistoryCliError::InvalidReceiptVerifier(format!(
-                "{RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV} is not valid Ed25519 public key material"
-            ))
-        }),
-        _ => Err(HistoryCliError::InvalidReceiptVerifier(format!(
-            "{RUNX_RECEIPT_VERIFY_KID_ENV} and {RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV} must be set together"
-        ))),
-    }
-}
-
-fn non_empty_env<'a>(env: &'a BTreeMap<String, String>, key: &str) -> Option<&'a str> {
-    env.get(key)
-        .map(String::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
 }
 
 // Function rationale: this mirrors the public history CLI
@@ -461,7 +433,12 @@ mod tests {
     use super::*;
     use runx_contracts::ReceiptIssuerType;
     use runx_runtime::receipts::step_receipt_with_signature_policy;
-    use runx_runtime::{Ed25519ReceiptSigner, InvocationOutput, RuntimeError};
+    use runx_runtime::{
+        Ed25519ReceiptSigner, InvocationOutput, RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
+        RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV, RUNX_RECEIPT_SIGN_KID_ENV,
+        RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV, RUNX_RECEIPT_VERIFY_KID_ENV,
+        RuntimeError,
+    };
 
     #[test]
     fn parses_history_args_without_comparing_against_runtime_constants() -> Result<(), io::Error> {
@@ -648,7 +625,7 @@ mod tests {
     }
 
     #[test]
-    fn history_json_reports_production_verified_receipts_when_verifier_env_is_configured()
+    fn history_json_reports_production_verified_receipts_from_verifier_or_signer_environment()
     -> Result<(), io::Error> {
         let temp = tempfile_dir()?;
         let receipt_dir = temp.join("receipts");
@@ -664,37 +641,29 @@ mod tests {
             )
             .map_err(|error| io::Error::other(error.to_string()))?;
 
-        let mut env = BTreeMap::new();
-        env.insert("RUNX_CWD".to_owned(), temp.to_string_lossy().to_string());
-        env.insert(
-            RUNX_RECEIPT_VERIFY_KID_ENV.to_owned(),
-            FIXTURE_KID.to_owned(),
-        );
-        env.insert(
-            RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV.to_owned(),
-            base64_standard(signer.public_key()),
-        );
-
-        let result = run_history_command(
-            &[
-                "history".into(),
-                receipt.id.to_string().into(),
-                "--receipt-dir".into(),
-                receipt_dir.into_os_string(),
-                "--json".into(),
-            ],
-            &env,
-            &temp,
-        )
-        .map_err(|error| io::Error::other(error.to_string()))?;
-        let output: HistoryOutput = serde_json::from_str(&result.output)
+        for mut env in [verifier_env(&signer), signer_env()] {
+            env.insert("RUNX_CWD".to_owned(), temp.to_string_lossy().to_string());
+            let result = run_history_command(
+                &[
+                    "history".into(),
+                    receipt.id.to_string().into(),
+                    "--receipt-dir".into(),
+                    receipt_dir.clone().into_os_string(),
+                    "--json".into(),
+                ],
+                &env,
+                &temp,
+            )
             .map_err(|error| io::Error::other(error.to_string()))?;
-        let first_receipt = output.receipts.first().ok_or_else(|| {
-            io::Error::new(io::ErrorKind::InvalidData, "history output has no receipt")
-        })?;
+            let output: HistoryOutput = serde_json::from_str(&result.output)
+                .map_err(|error| io::Error::other(error.to_string()))?;
+            let first_receipt = output.receipts.first().ok_or_else(|| {
+                io::Error::new(io::ErrorKind::InvalidData, "history output has no receipt")
+            })?;
 
-        assert_eq!(first_receipt.id, receipt.id.to_string());
-        assert_eq!(first_receipt.verification.status, "verified");
+            assert_eq!(first_receipt.id, receipt.id.to_string());
+            assert_eq!(first_receipt.verification.status, "verified");
+        }
         Ok(())
     }
 
@@ -831,6 +800,33 @@ mod tests {
 
     fn fixture_signer() -> Result<Ed25519ReceiptSigner, runx_runtime::RuntimeReceiptSigningError> {
         Ed25519ReceiptSigner::from_seed(FIXTURE_KID, ReceiptIssuerType::Hosted, &FIXTURE_SEED)
+    }
+
+    fn verifier_env(signer: &Ed25519ReceiptSigner) -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (
+                RUNX_RECEIPT_VERIFY_KID_ENV.to_owned(),
+                FIXTURE_KID.to_owned(),
+            ),
+            (
+                RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV.to_owned(),
+                base64_standard(signer.public_key()),
+            ),
+        ])
+    }
+
+    fn signer_env() -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (RUNX_RECEIPT_SIGN_KID_ENV.to_owned(), FIXTURE_KID.to_owned()),
+            (
+                RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV.to_owned(),
+                "hosted".to_owned(),
+            ),
+            (
+                RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV.to_owned(),
+                base64_standard(&FIXTURE_SEED),
+            ),
+        ])
     }
 
     fn production_signed_receipt(

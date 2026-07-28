@@ -17,7 +17,8 @@ use runx_receipts::{
 use runx_runtime::{
     Ed25519ReceiptVerifier, RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
     RUNX_RECEIPT_VERIFY_KID_ENV, ReceiptPathInputs, ReceiptTreeConfig, RuntimeReceiptConfig,
-    RuntimeReceiptSignaturePolicy, resolve_receipt_path, verify_runtime_receipt_tree_with_policy,
+    RuntimeReceiptSignaturePolicy, receipt_verifier_from_env, resolve_receipt_path,
+    verify_runtime_receipt_tree_with_policy,
 };
 use serde::Serialize;
 
@@ -890,36 +891,16 @@ fn render_notary_verdict(verdict: &NotaryVerifyVerdict) -> String {
     output
 }
 
-fn production_verifier(
-    env: &BTreeMap<String, String>,
-) -> Result<Option<Ed25519ReceiptVerifier>, VerifyCliError> {
-    let kid = non_empty_env(env, RUNX_RECEIPT_VERIFY_KID_ENV);
-    let public_key = non_empty_env(env, RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV);
-    match (kid, public_key) {
-        (None, None) => Ok(None),
-        (Some(kid), Some(public_key)) => {
-            Ed25519ReceiptVerifier::from_public_key_base64(kid.to_owned(), public_key)
-                .map(Some)
-                .map_err(|_| {
-                    VerifyCliError::InvalidReceiptVerifier(format!(
-                        "{RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV} is not valid Ed25519 public key material"
-                    ))
-                })
-        }
-        _ => Err(VerifyCliError::InvalidReceiptVerifier(format!(
-            "set both {RUNX_RECEIPT_VERIFY_KID_ENV} and {RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV} for production verification"
-        ))),
-    }
-}
-
 fn receipt_verifier(
     env: &BTreeMap<String, String>,
     allow_local_development_signatures: bool,
 ) -> Result<Option<Ed25519ReceiptVerifier>, VerifyCliError> {
-    let verifier = production_verifier(env)?;
+    let verifier = receipt_verifier_from_env(env)
+        .map(|resolved| resolved.map(|verifier| verifier.into_verifier()))
+        .map_err(|error| VerifyCliError::InvalidReceiptVerifier(error.to_string()))?;
     if verifier.is_none() && !allow_local_development_signatures {
         return Err(VerifyCliError::InvalidReceiptVerifier(format!(
-            "runx verify requires trusted receipt verification keys. Set both {RUNX_RECEIPT_VERIFY_KID_ENV} and {RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV}, or pass --allow-local-development-signatures for local fixture receipts only."
+            "runx verify requires a trusted receipt verifier. Set both {RUNX_RECEIPT_VERIFY_KID_ENV} and {RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV}, configure a complete RUNX_RECEIPT_SIGN_* identity, or pass --allow-local-development-signatures for local fixture receipts only."
         )));
     }
     Ok(verifier)
@@ -1238,12 +1219,6 @@ impl SignatureVerifier for LocalDevelopmentReceiptVerifier {
     }
 }
 
-fn non_empty_env<'a>(env: &'a BTreeMap<String, String>, key: &str) -> Option<&'a str> {
-    env.get(key)
-        .map(|value| value.trim())
-        .filter(|value| !value.is_empty())
-}
-
 fn single_receipt_too_large() -> VerifyCliError {
     invalid_args(format!(
         "--receipt input exceeds {SINGLE_RECEIPT_MAX_BYTES} bytes"
@@ -1263,7 +1238,11 @@ mod tests {
     use ring::signature::KeyPair;
     use runx_contracts::ReceiptIssuerType;
     use runx_runtime::receipts::step_receipt_with_signature_policy;
-    use runx_runtime::{Ed25519ReceiptSigner, InvocationOutput, LocalReceiptStore, RuntimeError};
+    use runx_runtime::{
+        Ed25519ReceiptSigner, InvocationOutput, LocalReceiptStore,
+        RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV, RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
+        RUNX_RECEIPT_SIGN_KID_ENV, RuntimeError,
+    };
     use serde::Deserialize;
     use serde_json as test_json;
 
@@ -1288,7 +1267,8 @@ mod tests {
     }
 
     #[test]
-    fn verifies_production_signed_receipt_store() -> Result<(), io::Error> {
+    fn verifies_production_signed_receipt_store_from_verifier_or_signer_environment()
+    -> Result<(), io::Error> {
         let temp = tempfile_dir()?;
         let receipt_dir = temp.join("receipts");
         let signer = fixture_signer().map_err(io::Error::other)?;
@@ -1302,27 +1282,29 @@ mod tests {
             )
             .map_err(|error| io::Error::other(error.to_string()))?;
 
-        let env = verifier_env(&signer);
-        let result = run_verify_command(
-            &[
-                "verify".into(),
-                "--receipt-dir".into(),
-                receipt_dir.clone().into_os_string(),
-                "--json".into(),
-            ],
-            &env,
-            &temp,
-        )
-        .map_err(|error| io::Error::other(error.to_string()))?;
+        for env in [verifier_env(&signer), signer_env()] {
+            let result = run_verify_command(
+                &[
+                    "verify".into(),
+                    "--receipt-dir".into(),
+                    receipt_dir.clone().into_os_string(),
+                    "--json".into(),
+                ],
+                &env,
+                &temp,
+            )
+            .map_err(|error| io::Error::other(error.to_string()))?;
 
-        assert!(
-            !result.failed,
-            "expected clean verification: {}",
-            result.output
-        );
-        let report: JsonValue = serde_json::from_str(&result.output).map_err(io::Error::other)?;
-        assert_eq!(report["valid"], JsonValue::Bool(true));
-        assert_eq!(report["signature_mode"], "production");
+            assert!(
+                !result.failed,
+                "expected clean verification: {}",
+                result.output
+            );
+            let report: JsonValue =
+                serde_json::from_str(&result.output).map_err(io::Error::other)?;
+            assert_eq!(report["valid"], JsonValue::Bool(true));
+            assert_eq!(report["signature_mode"], "production");
+        }
         Ok(())
     }
 
@@ -1577,7 +1559,7 @@ mod tests {
             Err(error) => error,
         };
         assert!(
-            matches!(error, VerifyCliError::InvalidReceiptVerifier(message) if message.contains("requires trusted receipt verification keys"))
+            matches!(error, VerifyCliError::InvalidReceiptVerifier(message) if message.contains("requires a trusted receipt verifier"))
         );
         Ok(())
     }
@@ -1990,6 +1972,20 @@ mod tests {
             (
                 RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV.to_owned(),
                 base64_standard(signer.public_key()),
+            ),
+        ])
+    }
+
+    fn signer_env() -> BTreeMap<String, String> {
+        BTreeMap::from([
+            (RUNX_RECEIPT_SIGN_KID_ENV.to_owned(), FIXTURE_KID.to_owned()),
+            (
+                RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV.to_owned(),
+                "hosted".to_owned(),
+            ),
+            (
+                RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV.to_owned(),
+                base64_standard(&FIXTURE_SEED),
             ),
         ])
     }

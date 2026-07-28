@@ -15,9 +15,10 @@ use runx_pay::effect_state::{
 use runx_runtime::{
     HostedApiEnvironment, PROVIDER_PERMISSION_GRANT_ID_ENV, PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
     PROVIDER_PERMISSION_PRINCIPAL_REF_ENV, RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
-    RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV, RUNX_RECEIPT_SIGN_KID_ENV, RuntimeError, WorkspaceEnv,
+    RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV, RUNX_RECEIPT_SIGN_KID_ENV, RuntimeError,
+    RuntimeReceiptSignatureConfig, RuntimeReceiptVerifierSource, WorkspaceEnv,
     decode_provider_scopes_env, default_doctor_options, load_runx_config_file,
-    resolve_runx_home_dir, run_doctor,
+    receipt_verifier_from_env, resolve_runx_home_dir, run_doctor,
 };
 
 use crate::registry::{self, RegistryAction, RegistryPlan};
@@ -558,27 +559,8 @@ fn registry_remote_install_diagnostic(
 
 fn run_authority_doctor(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorReport {
     let diagnostics = vec![
-        readiness_diagnostic(
-            "runx.authority.signer",
-            "Receipt signer",
-            &[
-                RUNX_RECEIPT_SIGN_KID_ENV,
-                RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
-                RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
-            ],
-            env,
-            Some(RUNX_RECEIPT_SIGN_KID_ENV),
-        ),
-        readiness_diagnostic(
-            "runx.authority.verify_key",
-            "Receipt verification key",
-            &[
-                RUNX_RECEIPT_VERIFY_KID_ENV,
-                RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
-            ],
-            env,
-            Some(RUNX_RECEIPT_VERIFY_KID_ENV),
-        ),
+        receipt_signer_diagnostic(env),
+        receipt_verification_diagnostic(env),
         effect_state_diagnostic(env, cwd),
         provider_grant_diagnostic(env, cwd),
     ];
@@ -587,6 +569,138 @@ fn run_authority_doctor(env: &BTreeMap<String, String>, cwd: &Path) -> DoctorRep
         status: DoctorStatus::Success,
         summary: summary(&diagnostics),
         diagnostics,
+    }
+}
+
+fn receipt_signer_diagnostic(env: &BTreeMap<String, String>) -> DoctorDiagnostic {
+    const ENV_NAMES: &[&str] = &[
+        RUNX_RECEIPT_SIGN_KID_ENV,
+        RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
+        RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
+    ];
+
+    let resolution = RuntimeReceiptSignatureConfig::from_env(env);
+    let configured = resolution.is_ok();
+    let message = match resolution {
+        Ok(_) => format!(
+            "Receipt signer configured; key id: {}.",
+            env.get(RUNX_RECEIPT_SIGN_KID_ENV)
+                .map_or("<missing>", String::as_str)
+        ),
+        Err(error) => format!("Receipt signer not ready: {error}."),
+    };
+
+    DoctorDiagnostic {
+        id: "runx.authority.signer".to_owned(),
+        instance_id: "runx:doctor-authority:runx.authority.signer".to_owned(),
+        severity: if configured {
+            DoctorDiagnosticSeverity::Info
+        } else {
+            DoctorDiagnosticSeverity::Warning
+        },
+        title: "Receipt signer".to_owned(),
+        message,
+        target: object([
+            ("kind", string_value("authority")),
+            ("ref", string_value("runx.authority.signer")),
+        ]),
+        location: DoctorLocation {
+            path: "environment".to_owned(),
+            json_pointer: None,
+        },
+        evidence: Some(authority_evidence(
+            ENV_NAMES,
+            configured,
+            configured.then_some(RUNX_RECEIPT_SIGN_KID_ENV),
+        )),
+        repairs: if configured {
+            Vec::new()
+        } else {
+            vec![manual_env_repair(
+                "runx.authority.signer.configure_env",
+                ENV_NAMES,
+                "Configure one complete valid receipt signing identity.",
+                DoctorRepairRisk::Sensitive,
+            )]
+        },
+    }
+}
+
+fn receipt_verification_diagnostic(env: &BTreeMap<String, String>) -> DoctorDiagnostic {
+    const VERIFY_ENV: &[&str] = &[
+        RUNX_RECEIPT_VERIFY_KID_ENV,
+        RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
+    ];
+    const ALL_ENV: &[&str] = &[
+        RUNX_RECEIPT_VERIFY_KID_ENV,
+        RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
+        RUNX_RECEIPT_SIGN_KID_ENV,
+        RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64_ENV,
+        RUNX_RECEIPT_SIGN_ISSUER_TYPE_ENV,
+    ];
+
+    let resolution = receipt_verifier_from_env(env);
+    let configured = matches!(&resolution, Ok(Some(_)));
+    let (source, source_label, key_id_env) = match resolution
+        .as_ref()
+        .ok()
+        .and_then(Option::as_ref)
+        .map(|resolved| resolved.source())
+    {
+        Some(RuntimeReceiptVerifierSource::ExplicitVerifier) => (
+            "explicit_verifier",
+            "explicit verifier",
+            Some(RUNX_RECEIPT_VERIFY_KID_ENV),
+        ),
+        Some(RuntimeReceiptVerifierSource::SigningIdentity) => (
+            "signing_identity",
+            "signing identity",
+            Some(RUNX_RECEIPT_SIGN_KID_ENV),
+        ),
+        None => ("unavailable", "unavailable source", None),
+    };
+    let message = match resolution {
+        Ok(Some(_)) => format!(
+            "Receipt verification configured from {source_label}; key id: {}.",
+            key_id_env
+                .and_then(|name| env.get(name))
+                .map_or("<missing>", String::as_str)
+        ),
+        Ok(None) => "Receipt verification not configured; set an explicit public verifier or a complete signing identity.".to_owned(),
+        Err(error) => format!("Receipt verification configuration is invalid: {error}."),
+    };
+    let mut evidence = authority_evidence(ALL_ENV, configured, key_id_env);
+    evidence.insert("source".to_owned(), string_value(source));
+
+    DoctorDiagnostic {
+        id: "runx.authority.verify_key".to_owned(),
+        instance_id: "runx:doctor-authority:runx.authority.verify_key".to_owned(),
+        severity: if configured {
+            DoctorDiagnosticSeverity::Info
+        } else {
+            DoctorDiagnosticSeverity::Warning
+        },
+        title: "Receipt verification key".to_owned(),
+        message,
+        target: object([
+            ("kind", string_value("authority")),
+            ("ref", string_value("runx.authority.verify_key")),
+        ]),
+        location: DoctorLocation {
+            path: "environment".to_owned(),
+            json_pointer: None,
+        },
+        evidence: Some(evidence),
+        repairs: if configured {
+            Vec::new()
+        } else {
+            vec![manual_env_repair(
+                "runx.authority.verify_key.configure_env",
+                VERIFY_ENV,
+                "Set an independent public verifier, or configure the complete receipt signing identity already used by this operator.",
+                DoctorRepairRisk::Sensitive,
+            )]
+        },
     }
 }
 
@@ -847,62 +961,6 @@ fn effect_state_diagnostic(env: &BTreeMap<String, String>, cwd: &Path) -> Doctor
 
 fn effect_state_unset_consequence() -> &'static str {
     "Cross-run spend caps, payment idempotency, and effect replay recovery are not durable without a configured state path."
-}
-
-fn readiness_diagnostic(
-    id: &str,
-    title: &str,
-    env_names: &[&str],
-    env: &BTreeMap<String, String>,
-    key_id_env: Option<&str>,
-) -> DoctorDiagnostic {
-    let missing = env_names
-        .iter()
-        .filter(|name| !env_contains_non_empty(env, name))
-        .copied()
-        .collect::<Vec<_>>();
-    let configured = missing.is_empty();
-    let message = if configured {
-        match key_id_env
-            .and_then(|name| env.get(name))
-            .map(String::as_str)
-        {
-            Some(key_id) => format!("{title} configured; key id: {key_id}."),
-            None => format!("{title} configured."),
-        }
-    } else {
-        format!("{title} not configured; set {}.", missing.join(", "))
-    };
-    DoctorDiagnostic {
-        id: id.to_owned(),
-        instance_id: format!("runx:doctor-authority:{id}"),
-        severity: if configured {
-            DoctorDiagnosticSeverity::Info
-        } else {
-            DoctorDiagnosticSeverity::Warning
-        },
-        title: title.to_owned(),
-        message,
-        target: object([
-            ("kind", string_value("authority")),
-            ("ref", string_value(id)),
-        ]),
-        location: DoctorLocation {
-            path: "environment".to_owned(),
-            json_pointer: None,
-        },
-        evidence: Some(authority_evidence(env_names, configured, key_id_env)),
-        repairs: if configured {
-            Vec::new()
-        } else {
-            vec![manual_env_repair(
-                &format!("{id}.configure_env"),
-                &missing,
-                &format!("Set {} in the operator environment.", missing.join(", ")),
-                DoctorRepairRisk::Sensitive,
-            )]
-        },
-    }
 }
 
 fn manual_env_repair(

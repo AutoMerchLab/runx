@@ -9,8 +9,8 @@ use crate::receipts::paths::{
 };
 use crate::receipts::store::{LocalReceiptStore, ReceiptStoreError};
 use crate::receipts::{
-    Ed25519ReceiptVerifier, RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV,
-    RUNX_RECEIPT_VERIFY_KID_ENV, RuntimeReceiptSignatureConfig, RuntimeReceiptSigningError,
+    Ed25519ReceiptVerifier, RuntimeReceiptSignatureConfig, RuntimeReceiptSigningError,
+    receipt_verifier_from_env,
 };
 use crate::services::WorkspaceEnv;
 
@@ -115,26 +115,9 @@ impl ReceiptServices {
 pub(crate) fn production_receipt_verifier(
     env: &BTreeMap<String, String>,
 ) -> Result<Option<Ed25519ReceiptVerifier>, RuntimeError> {
-    let kid = non_empty_env(env, RUNX_RECEIPT_VERIFY_KID_ENV);
-    let public_key = non_empty_env(env, RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64_ENV);
-    match (kid, public_key) {
-        (None, None) => Ok(None),
-        (Some(kid), Some(public_key)) => {
-            Ed25519ReceiptVerifier::from_public_key_base64(kid.to_owned(), public_key)
-                .map(Some)
-                .map_err(|_| receipt_read_error("receipt verification public key is malformed"))
-        }
-        _ => Err(receipt_read_error(
-            "receipt verification key id and public key must be configured together",
-        )),
-    }
-}
-
-fn non_empty_env<'a>(env: &'a BTreeMap<String, String>, key: &str) -> Option<&'a str> {
-    env.get(key)
-        .map(String::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
+    receipt_verifier_from_env(env)
+        .map(|resolved| resolved.map(|verifier| verifier.into_verifier()))
+        .map_err(|error| receipt_read_error(error.to_string()))
 }
 
 fn receipt_read_error(message: impl Into<String>) -> RuntimeError {

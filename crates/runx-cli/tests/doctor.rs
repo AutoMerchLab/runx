@@ -68,13 +68,11 @@ fn doctor_authority_json_redacts_secret_values_and_reports_state_path()
     let output = authority_doctor_command()
         .args(["doctor", "authority", "--json"])
         .env("RUNX_RECEIPT_SIGN_KID", "kid_prod")
-        .env("RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64", "super-secret-seed")
-        .env("RUNX_RECEIPT_SIGN_ISSUER_TYPE", "hosted")
-        .env("RUNX_RECEIPT_VERIFY_KID", "kid_prod")
         .env(
-            "RUNX_RECEIPT_VERIFY_ED25519_PUBLIC_KEY_BASE64",
-            "public-key-material",
+            "RUNX_RECEIPT_SIGN_ED25519_SEED_BASE64",
+            "QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI=",
         )
+        .env("RUNX_RECEIPT_SIGN_ISSUER_TYPE", "hosted")
         .env(
             "RUNX_EFFECT_STATE_PATH",
             "/Users/kam/private/effect-state.json",
@@ -96,7 +94,8 @@ fn doctor_authority_json_redacts_secret_values_and_reports_state_path()
     assert_eq!(report["summary"]["infos"], 4);
     let rendered = serde_json::to_string(&report)?;
     assert!(rendered.contains("kid_prod"));
-    assert!(!rendered.contains("super-secret-seed"));
+    assert!(rendered.contains("signing_identity"));
+    assert!(!rendered.contains("QkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkJCQkI="));
     assert!(rendered.contains("/Users/kam/private/effect-state.json"));
     assert!(!rendered.contains("repo.read"));
     assert!(!rendered.contains("grant_prod"));
