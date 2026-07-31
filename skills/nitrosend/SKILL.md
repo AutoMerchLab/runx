@@ -20,7 +20,8 @@ work. Those are product-operator concerns owned by the Nitrosend repository.
 - `status` (default): live account, brand, sender, domain, provider, warmup, and
   deliverability readiness.
 - `analytics`: live account, campaign, flow, or message insights.
-- `review-delivery`: read-only content and preflight review.
+- `review-delivery`: read-only content and preflight review. Flow review requires
+  the exact immutable `revision_id`; campaigns and templates do not.
 - `plan-campaign`, `plan-flow`, `plan-transactional`, and `plan-import`:
   bounded agent judgment that produces a reviewable request without provider
   completion.
@@ -29,11 +30,12 @@ work. Those are product-operator concerns owned by the Nitrosend repository.
   It never persists a draft or gains delivery authority.
 - `apply-draft`: apply exact reviewed arguments for a campaign, flow, template,
   or segment draft. It never sends or activates.
-- `approve-delivery`: approve a reviewed campaign or flow without delivering.
+- `approve-delivery`: approve a reviewed campaign or an exact flow revision
+  without delivering.
 - `send-campaign`: send or schedule an already-approved campaign after a fresh
   provider review and explicit approval.
-- `activate-flow`: activate an already-approved flow after a fresh review and
-  explicit approval.
+- `activate-flow`: publish an exact already-approved flow revision after a
+  fresh review and explicit approval.
 - `send-transactional`: dry-run or send one idempotent message to one recipient.
 - `import-contacts`: dry-run or import at most 100 inline consented records.
 - `import-contacts-csv`: validate or upload a local CSV through Nitrosend's
@@ -57,8 +59,10 @@ into another repo-local skill.
    planning, use the matching planning runner.
 3. Apply only validated arguments through `apply-draft`; that separate runner
    retains the approval gate and is the first persistence boundary.
-4. Run `review-delivery` before approval. Use `approve-delivery` separately so
-   retries never combine approval-state mutation with recipient delivery.
+4. Run `review-delivery` before approval. For flows, carry the exact current
+   `revision_id` unchanged through review, approval, and activation. Use
+   `approve-delivery` separately so retries never combine approval-state
+   mutation with recipient delivery.
 5. Use `send-campaign` or `activate-flow` only after provider approval state is
    established. A fresh review and Runx approval gate are mandatory.
 6. Give every real transactional send, campaign delivery, and import a stable

@@ -151,6 +151,9 @@ function validate(mode, operation, args) {
     if (!["template", "flow", "campaign"].includes(args.target_type) || !positiveInteger(args.target_id)) {
       return ["review_delivery requires a valid target_type and integer target_id"];
     }
+    if (args.target_type === "flow" && !positiveInteger(args.revision_id)) {
+      return ["review_delivery requires arguments.revision_id for flows"];
+    }
   }
   if (mode === "read" && operation === "import_status" && !positiveInteger(args.import_id)) {
     return ["import_status requires arguments.import_id"];
@@ -188,6 +191,13 @@ function validate(mode, operation, args) {
   if (mode === "act" && operation === "control_delivery") {
     if (!["flow", "campaign"].includes(args.target_type) || !positiveInteger(args.target_id) || !DELIVERY_OPERATIONS.has(args.operation)) {
       return ["control_delivery requires a valid target_type, integer target_id, and lifecycle operation"];
+    }
+    if (
+      args.target_type === "flow" &&
+      ["approve", "reject", "live"].includes(args.operation) &&
+      !positiveInteger(args.revision_id)
+    ) {
+      return [`control_delivery requires arguments.revision_id for flow ${args.operation}`];
     }
     if (args.operation === "schedule" && !text(args.scheduled_at)) {
       return ["scheduled campaign delivery requires arguments.scheduled_at"];
@@ -248,7 +258,11 @@ function providerPayload(response) {
 }
 
 function parseToolContent(payload) {
-  if (payload.error) throw new Error(payload.error.message || "Nitrosend MCP request failed");
+  if (payload.error) {
+    const message = text(payload.error.message) || "Nitrosend MCP request failed";
+    const detail = text(payload.error.data);
+    throw new Error(detail && detail !== message ? `${message}: ${detail}` : message);
+  }
   const content = payload.result?.content;
   if (!Array.isArray(content)) return payload.result ?? {};
   const value = content.find((item) => item?.type === "text")?.text;

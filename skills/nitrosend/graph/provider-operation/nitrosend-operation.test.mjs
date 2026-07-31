@@ -56,6 +56,69 @@ test("blocks malformed arguments and non-positive provider ids before HTTP", () 
   }
 });
 
+test("requires exact flow revisions before review or publish transport", () => {
+  for (const revision_id of [undefined, "", 0, -1, 1.5]) {
+    const review = prepareOperation({
+      mode: "read",
+      operation: "review_delivery",
+      arguments: { target_type: "flow", target_id: 12334, revision_id },
+    }).operation_plan;
+    assert.equal(review.decision, "needs_input");
+    assert.deepEqual(review.requests, []);
+
+    for (const operation of ["approve", "reject", "live"]) {
+      const control = prepareOperation({
+        mode: "act",
+        operation: "control_delivery",
+        arguments: { target_type: "flow", target_id: 12334, operation, revision_id },
+      }).operation_plan;
+      assert.equal(control.decision, "needs_input");
+      assert.deepEqual(control.requests, []);
+    }
+  }
+});
+
+test("threads exact flow revisions and preserves campaign lifecycle behavior", () => {
+  const review = prepareOperation({
+    mode: "read",
+    operation: "review_delivery",
+    arguments: { target_type: "flow", target_id: 12334, revision_id: 7 },
+  }).operation_plan;
+  assert.equal(review.decision, "ready");
+  assert.deepEqual(review.requests[0].body.params.arguments, {
+    target_type: "flow",
+    target_id: 12334,
+    revision_id: 7,
+  });
+
+  const publish = prepareOperation({
+    mode: "act",
+    operation: "control_delivery",
+    arguments: { target_type: "flow", target_id: 12334, operation: "live", revision_id: 7 },
+  }).operation_plan;
+  assert.equal(publish.decision, "ready");
+  assert.deepEqual(publish.requests[0].body.params.arguments, {
+    target_type: "flow",
+    target_id: 12334,
+    operation: "live",
+    revision_id: 7,
+  });
+
+  const campaignReview = prepareOperation({
+    mode: "read",
+    operation: "review_delivery",
+    arguments: { target_type: "campaign", target_id: 42 },
+  }).operation_plan;
+  assert.equal(campaignReview.decision, "ready");
+
+  const campaignApprove = prepareOperation({
+    mode: "act",
+    operation: "control_delivery",
+    arguments: { target_type: "campaign", target_id: 42, operation: "approve" },
+  }).operation_plan;
+  assert.equal(campaignApprove.decision, "ready");
+});
+
 test("maps consented inline imports without forwarding audit-only fields", () => {
   const { operation_plan: plan } = prepareOperation({
     mode: "act",
@@ -113,6 +176,36 @@ test("projects credential rejection and local validation as bounded evidence", (
   const blocked = blockedOperation({ operation_plan: blockedPlan }).provider_evidence;
   assert.equal(blocked.decision, "needs_input");
   assert.equal(blocked.evidence, null);
+});
+
+test("preserves redacted MCP error detail as provider evidence", () => {
+  const plan = prepareOperation({ mode: "act", operation: "compose_flow", arguments: {} }).operation_plan;
+  const returnedSecret = ["nskey", "live", "secret"].join("_");
+  const failed = normalizeOperation({
+    operation_plan: plan,
+    http_execution: {
+      responses: [{
+        id: "nitrosend-compose_flow",
+        status: 200,
+        ok: true,
+        body_digest: "sha256:error",
+        json: {
+          jsonrpc: "2.0",
+          id: "nitrosend-compose_flow",
+          error: {
+            code: -32603,
+            message: "Internal error",
+            data: `Lock wait timeout; token=${returnedSecret}`,
+          },
+        },
+      }],
+    },
+  }).provider_evidence;
+
+  assert.equal(failed.decision, "provider_error");
+  assert.equal(failed.result, null);
+  assert.equal(failed.blockers[0], "Internal error: Lock wait timeout; token=[REDACTED]");
+  assert.equal(JSON.stringify(failed).includes(returnedSecret), false);
 });
 
 test("admits only non-persisting campaign composition reads", () => {

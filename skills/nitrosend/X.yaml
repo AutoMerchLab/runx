@@ -1,5 +1,5 @@
 skill: nitrosend
-version: "0.2.3"
+version: "0.2.4"
 catalog:
   kind: skill
   audience: public
@@ -53,6 +53,10 @@ runners:
         type: number
         required: true
         description: Nitrosend entity ID.
+      revision_id:
+        type: number
+        required: false
+        description: Required for flows; exact immutable flow revision to review.
       brand_sid:
         type: string
         required: false
@@ -69,6 +73,7 @@ runners:
             arguments:
               target_type: "$input.target_type"
               target_id: "$input.target_id"
+              revision_id: "$input.revision_id"
             brand_sid: "$input.brand_sid"
   import-status:
     type: graph
@@ -108,6 +113,10 @@ runners:
         type: number
         required: true
         description: Nitrosend entity ID.
+      revision_id:
+        type: number
+        required: false
+        description: Required for flows; exact current draft revision to review and approve.
       brand_sid:
         type: string
         required: false
@@ -124,6 +133,7 @@ runners:
             arguments:
               target_type: "$input.target_type"
               target_id: "$input.target_id"
+              revision_id: "$input.revision_id"
             brand_sid: "$input.brand_sid"
         - id: approve
           run:
@@ -144,6 +154,7 @@ runners:
               target_type: "$input.target_type"
               target_id: "$input.target_id"
               operation: approve
+              revision_id: "$input.revision_id"
             brand_sid: "$input.brand_sid"
     policy:
       guards:
@@ -235,6 +246,10 @@ runners:
         type: number
         required: true
         description: Approved Nitrosend flow ID.
+      revision_id:
+        type: number
+        required: true
+        description: Exact approved flow draft revision to review and publish.
       brand_sid:
         type: string
         required: false
@@ -251,6 +266,7 @@ runners:
             arguments:
               target_type: flow
               target_id: "$input.flow_id"
+              revision_id: "$input.revision_id"
             brand_sid: "$input.brand_sid"
         - id: approve-live
           run:
@@ -271,6 +287,7 @@ runners:
               target_type: flow
               target_id: "$input.flow_id"
               operation: live
+              revision_id: "$input.revision_id"
             brand_sid: "$input.brand_sid"
     policy:
       guards:
