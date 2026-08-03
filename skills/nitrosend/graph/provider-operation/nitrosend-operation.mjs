@@ -299,34 +299,42 @@ function parseToolContent(payload, operation) {
     throw new Error(detail && detail !== message ? `${message}: ${detail}` : message);
   }
   const content = payload.result?.content;
-  if (!Array.isArray(content)) return payload.result ?? {};
+  if (!Array.isArray(content)) return providerResult(payload.result ?? {});
   const value = content.find((item) => item?.type === "text")?.text;
-  if (typeof value !== "string") return payload.result ?? {};
+  if (typeof value !== "string") return providerResult(payload.result ?? {});
+  let parsed;
   try {
-    const parsed = JSON.parse(value);
-    if (parsed && typeof parsed === "object" && parsed.meta?.tool && Object.hasOwn(parsed, "result")) {
-      if (!["sender_settings", "configure_sender"].includes(operation)) return parsed.result;
-      const result = record(parsed.result);
-      const sender = record(result.sender);
-      const currentBrand = record(parsed.meta.current_brand);
-      return {
-        ...result,
-        current_brand: parsed.meta.current_brand ?? null,
-        sender_settings: {
-          brand_sid: text(currentBrand.sid) || null,
-          from_name: text(sender.from_name) || null,
-          from_email: text(sender.from_email) || null,
-          reply_to: text(sender.reply_to) || null,
-          test_email_recipients: Array.isArray(result.test_email_recipients)
-            ? result.test_email_recipients
-            : [],
-        },
-      };
-    }
-    return parsed;
+    parsed = JSON.parse(value);
   } catch {
     return { message: value };
   }
+  if (isRecord(parsed) && parsed.meta?.tool && Object.hasOwn(parsed, "result")) {
+    if (!["sender_settings", "configure_sender"].includes(operation)) {
+      return providerResult(parsed.result);
+    }
+    const result = record(parsed.result);
+    const sender = record(result.sender);
+    const currentBrand = record(parsed.meta.current_brand);
+    return {
+      ...result,
+      current_brand: parsed.meta.current_brand ?? null,
+      sender_settings: {
+        brand_sid: text(currentBrand.sid) || null,
+        from_name: text(sender.from_name) || null,
+        from_email: text(sender.from_email) || null,
+        reply_to: text(sender.reply_to) || null,
+        test_email_recipients: Array.isArray(result.test_email_recipients)
+          ? result.test_email_recipients
+          : [],
+      },
+    };
+  }
+  return providerResult(parsed);
+}
+
+function providerResult(value) {
+  if (isRecord(value)) return value;
+  throw new Error("Nitrosend returned a non-object tool result");
 }
 
 function evidence(plan, decision, response, result, blockers) {

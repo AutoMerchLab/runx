@@ -34,8 +34,8 @@
       "properties": {
         "status": { "type": "string", "enum": ["ready", "failed"] },
         "command_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-        "evidence": { "type": "object" },
-        "observed": { "type": "object" }
+        "evidence": { "type": "object", "additionalProperties": true },
+        "observed": { "type": "object", "additionalProperties": true }
       },
       "additionalProperties": false
     },
@@ -106,7 +106,18 @@
       },
       "additionalProperties": false
     },
-    "findings": { "type": "array", "items": { "type": "object" } },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": { "type": "string", "minLength": 1 },
+          "message": { "type": "string", "minLength": 1 },
+          "path": { "type": "string" }
+        },
+        "additionalProperties": true
+      }
+    },
     "proof_boundary": {
       "type": "object",
       "required": ["publication_status", "verification_status", "agent_authored_effects_accepted"],

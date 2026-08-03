@@ -30,25 +30,32 @@
       ],
       "properties": {
         "classify": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": true
         },
         "docs": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": true
         },
         "release": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": true
         },
         "issue": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": true
         },
         "send": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": true
         },
         "spend": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": true
         },
         "audit": {
-          "type": "object"
+          "type": "object",
+          "additionalProperties": true
         }
       }
     }

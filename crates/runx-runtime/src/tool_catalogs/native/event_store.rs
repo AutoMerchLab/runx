@@ -1,7 +1,7 @@
 //! Typed event-store capabilities. The public operation contract lives here;
 //! storage selection remains a runtime-owned binding decision.
 
-use runx_contracts::{JsonObject, JsonValue};
+use runx_contracts::{DataOperationResult, JsonObject, JsonValue};
 
 use crate::{
     CapabilityAdmission, CapabilityApproval, CapabilityArtifacts, CapabilityDefinition,
@@ -25,7 +25,6 @@ pub use migration::{
     EventStoreMigrationProof, EventStoreMigrationRequest, EventStoreMigrationStatus,
     migrate_event_store,
 };
-use model::DataOperationResult;
 #[cfg(feature = "catalog")]
 pub(crate) use prepare::{PreparedOperation, prepare_operation};
 

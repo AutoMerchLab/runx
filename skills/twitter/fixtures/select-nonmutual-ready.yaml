@@ -24,9 +24,9 @@ expect:
             scanned: 3
             twitter_plan:
               acts:
-                - act_id: unf-111
+                - act_id: act-unf-111
                   kind: unfollow
-                - act_id: unf-333
+                - act_id: act-unf-333
                   kind: unfollow
   receipt:
     schema: runx.receipt.v1

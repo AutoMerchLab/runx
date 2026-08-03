@@ -3,9 +3,10 @@
 use super::{
     AttenuationRequest, AuthorityTerm, Decision, DecisionChoice, DecisionInputs,
     DecisionJustification, EffectToolRequest, Intent, IsoDateTime, JsonObject, JsonValue,
-    PaymentBoundsComparator, PaymentPlanningError, Reference, ReferenceType, invalid, json_bytes,
-    mint_attenuated, object_value, optional_u64, required_array, required_object, required_string,
-    required_typed, required_u64, sha256_hex, single_string, typed_value,
+    PaymentBoundsComparator, PaymentPlanningError, PaymentQuotePacket, PaymentReservationPacket,
+    Reference, ReferenceType, invalid, json_bytes, mint_attenuated, object_value, optional_u64,
+    required_array, required_object, required_string, required_typed, required_u64, sha256_hex,
+    single_string, typed_value, validate_typed_output,
 };
 
 mod authority;
@@ -107,7 +108,7 @@ pub(super) fn quote(request: EffectToolRequest<'_>) -> Result<JsonValue, Payment
             |challenge| format!("signal:{challenge}"),
         );
 
-    Ok(JsonValue::Object(JsonObject::from([
+    let packet = JsonValue::Object(JsonObject::from([
         (
             "payment_quote".to_owned(),
             object_value(serde_json::json!({
@@ -135,7 +136,9 @@ pub(super) fn quote(request: EffectToolRequest<'_>) -> Result<JsonValue, Payment
         ),
         ("risk_notes".to_owned(), JsonValue::Array(Vec::new())),
         ("open_questions".to_owned(), JsonValue::Array(Vec::new())),
-    ])))
+    ]));
+    validate_typed_output::<PaymentQuotePacket>(&packet, "payment quote")?;
+    Ok(packet)
 }
 
 // Function rationale: reservation recomputes attenuation and binds the single-use capability, downstream act, and replay posture in one transaction.
@@ -234,7 +237,7 @@ pub(super) fn reserve(request: EffectToolRequest<'_>) -> Result<JsonValue, Payme
         "consumed_spend_capability_refs": [],
     });
 
-    Ok(JsonValue::Object(JsonObject::from([
+    let packet = JsonValue::Object(JsonObject::from([
         ("payment_decision".to_owned(), typed_value(&decision)?),
         (
             "reserved_payment_authority".to_owned(),
@@ -273,5 +276,7 @@ pub(super) fn reserve(request: EffectToolRequest<'_>) -> Result<JsonValue, Payme
             ),
         ),
         ("open_questions".to_owned(), JsonValue::Array(Vec::new())),
-    ])))
+    ]));
+    validate_typed_output::<PaymentReservationPacket>(&packet, "payment reservation")?;
+    Ok(packet)
 }

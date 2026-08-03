@@ -1,12 +1,14 @@
 use std::num::NonZeroU64;
 
 use runx_contracts::schema::{BoundedString, BoundedVec};
-use runx_contracts::{AuthorityTerm, CurrencyCode, JsonObject, PaymentSignal, Reference};
+use runx_contracts::{AuthorityTerm, JsonObject, Reference};
 use runx_runtime::{
     CapabilityAdmission, CapabilityApproval, CapabilityArtifacts, CapabilityDefinition,
     CapabilityEffect, CapabilityField, CapabilityInput, TypedCapability,
 };
 use serde::{Deserialize, Serialize};
+
+use crate::contracts::{CurrencyCode, PaymentSignal};
 
 pub(crate) const QUOTE_TOOL: &str = "payment.quote";
 pub(crate) const RESERVE_TOOL: &str = "payment.reserve";

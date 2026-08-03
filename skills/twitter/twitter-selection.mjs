@@ -86,7 +86,7 @@ export function selectArchivePage(inputs) {
       break;
     }
     acts.push({
-      act_id: `del-${String(id)}`,
+      act_id: `act-del-${String(id)}`,
       kind: "delete_post",
       params: { post_id: String(id) },
       consequence: "live_mutation",
@@ -214,7 +214,7 @@ function selectUsers(plan, bundle, predicate, maxActs) {
   }
   const rationale = `Matched the operator predicate ${JSON.stringify(predicate)}.`;
   const acts = selected.slice(0, maxActs).map((id) => ({
-    act_id: `unf-${id}`,
+    act_id: `act-unf-${id}`,
     kind: "unfollow",
     params: { target_user_id: id },
     consequence: "live_mutation",

@@ -7,7 +7,10 @@ inputs:
   composition_intent:
     decision: ok
     provider: nitrosend
+    mode: read
     operation: compose_campaign_intent
+    tool: nitro_compose_campaign
+    provider_ref: null
     result:
       composition_status: intent_ready
       contract_id: ecc_newsletter_fixture
@@ -26,6 +29,8 @@ inputs:
             creative_route_id: product_update
             concrete_anchor: Two shipped improvements
             why_this_earns_the_inbox: It tells customers exactly what changed.
+    evidence: null
+    blockers: []
   operator_context: Design and validate only; never persist or send.
 caller:
   answers:

@@ -16,6 +16,10 @@ use serde::de::DeserializeOwned;
 use thiserror::Error;
 
 use crate::authority::PaymentBoundsComparator;
+use crate::contracts::{
+    PaymentChargePlan, PaymentChargeVerificationRequest, PaymentInvoiceSettlementPlan,
+    PaymentQuotePacket, PaymentRefundPlan, PaymentReservationPacket,
+};
 use crate::refunds::{
     RefundAdmissionDecision, RefundAdmissionInput, RefundRefusalCode, RefundRequest,
     RefundableCharge, admit_refund,
@@ -84,6 +88,17 @@ fn is_sha256(value: &str) -> bool {
     value.strip_prefix("sha256:").is_some_and(|digest| {
         digest.len() == 64 && digest.bytes().all(|byte| byte.is_ascii_hexdigit())
     })
+}
+
+fn validate_typed_output<T>(value: &JsonValue, label: &str) -> Result<(), PaymentPlanningError>
+where
+    T: DeserializeOwned,
+{
+    value
+        .clone()
+        .deserialize_into::<T>()
+        .map(|_| ())
+        .map_err(|source| invalid(format!("{label} violated its canonical contract: {source}")))
 }
 
 fn finding(code: impl Into<String>, message: impl Into<String>) -> JsonValue {

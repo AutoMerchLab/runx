@@ -71,11 +71,45 @@ runners:
               decision: string
               location: string
               horizon: string
-              forecast_packet: object
-              provider_evidence: object
+              forecast_packet:
+                type: object
+                schema:
+                  required: [summary, periods, hazards, confidence, generated_at]
+                  additionalProperties: false
+                  properties:
+                    summary: { type: string }
+                    periods:
+                      type: array
+                      items:
+                        type: object
+                        properties:
+                          name: { type: string }
+                          label: { type: string }
+                          forecast: { type: string }
+                          wind: { type: string }
+                        additionalProperties: true
+                    hazards: { type: array, items: { type: string } }
+                    confidence: { type: string }
+                    generated_at: { type: string }
+              provider_evidence:
+                type: object
+                schema:
+                  required: [provider, source_refs, receipt_refs]
+                  additionalProperties: false
+                  properties:
+                    provider: { type: string }
+                    source_refs: { type: array, items: { type: string }, uniqueItems: true }
+                    receipt_refs: { type: array, items: { type: string }, uniqueItems: true }
               safety_notes: array
               stop_conditions: array
-              receipt_notes: object
+              receipt_notes:
+                type: object
+                schema:
+                  required: [authority, mutation]
+                  additionalProperties: false
+                  properties:
+                    authority: { const: context-only }
+                    mutation: { const: false }
           artifacts:
             wrap_as: weather_forecast_packet
             packet: runx.context.weather_forecast.v1

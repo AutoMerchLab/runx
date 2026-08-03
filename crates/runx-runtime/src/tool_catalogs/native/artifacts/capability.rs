@@ -1,4 +1,4 @@
-use runx_contracts::{JsonNumber, JsonObject, JsonValue};
+use runx_contracts::{JsonNumber, JsonObject, JsonValue, LocalArtifact, LocalArtifactPage};
 use serde::{Deserialize, Serialize};
 
 use crate::services::DEFAULT_ARTIFACT_PAGE_BYTES;
@@ -59,36 +59,11 @@ impl CapabilityInput for ArtifactReadInput {
     }
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
-#[serde(deny_unknown_fields)]
-pub(super) struct ArtifactAdmitOutput {
-    pub(super) artifact_ref: String,
-    pub(super) media_type: String,
-    pub(super) bytes: u64,
-    pub(super) whole_digest: String,
-}
+pub(super) type ArtifactAdmitOutput = LocalArtifact;
+pub(super) type ArtifactReadOutput = LocalArtifactPage;
 
-impl CapabilityOutput for ArtifactAdmitOutput {}
-
-#[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
-#[serde(deny_unknown_fields)]
-pub(super) struct ArtifactReadOutput {
-    pub(super) artifact_ref: String,
-    pub(super) media_type: String,
-    pub(super) offset: u64,
-    pub(super) length: u64,
-    pub(super) next_offset: u64,
-    pub(super) eof: bool,
-    pub(super) range_digest: String,
-    pub(super) whole_digest: String,
-    pub(super) encoding: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(super) data: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub(super) records: Vec<String>,
-}
-
-impl CapabilityOutput for ArtifactReadOutput {}
+impl CapabilityOutput for LocalArtifact {}
+impl CapabilityOutput for LocalArtifactPage {}
 
 const ADMIT_FIELDS: &[CapabilityField] = &[
     CapabilityField {

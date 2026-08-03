@@ -28,7 +28,7 @@
     "purpose": { "type": "string" },
     "ttl": { "type": "string" },
     "ttl_minutes": { "type": "integer", "minimum": 0, "maximum": 60 },
-    "scope": { "type": "object" },
+    "scope": { "type": "object", "additionalProperties": true },
     "principal": { "type": "string" },
     "gates": {
       "type": "object",

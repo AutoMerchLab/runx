@@ -11,7 +11,6 @@ export function indexIssues(inputs) {
   const snapshotDigest = requiredDigest(inputs.snapshot_digest, "snapshot_digest");
   return {
     issue_index: {
-      schema: "runx.issue.snapshot_index.v1",
       query,
       issues,
       source_count: issues.length,
@@ -67,7 +66,6 @@ export function admitIssue(inputs) {
   const snapshotDigest = requiredDigest(inputs.snapshot_digest, "snapshot_digest");
   return {
     issue_evidence: {
-      schema: "runx.issue.snapshot.v1",
       ...evidence,
       source_ref: text(issue.source_ref)
         || text(providerOperation.readback_ref)

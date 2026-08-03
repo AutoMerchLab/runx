@@ -2,10 +2,10 @@ use super::refund_proof::resolve_refund_proof;
 use super::{
     AuthorityCapability, AuthorityEffectCredentialForm, AuthorityResourceFamily, AuthorityTerm,
     AuthorityVerb, EffectToolRequest, JsonObject, JsonValue, PaymentPlanningError,
-    RefundAdmissionDecision, RefundAdmissionInput, RefundRefusalCode, RefundRequest,
-    RefundableCharge, admit_opaque, admit_refund, finding, invalid, is_opaque_reference,
-    json_bytes, object_value, payment_limit, required_object, required_string, required_typed,
-    required_u64, sha256_hex,
+    PaymentRefundPlan, RefundAdmissionDecision, RefundAdmissionInput, RefundRefusalCode,
+    RefundRequest, RefundableCharge, admit_opaque, admit_refund, finding, invalid,
+    is_opaque_reference, json_bytes, object_value, payment_limit, required_object, required_string,
+    required_typed, required_u64, sha256_hex, validate_typed_output,
 };
 
 // Function rationale: refund admission binds original finality, remaining refundable amount, authority, payer, rail, and idempotency before any adapter handoff.
@@ -197,6 +197,7 @@ pub(super) fn refund_plan(
     plan.insert("money_moved".to_owned(), JsonValue::Bool(false));
     plan.insert("findings".to_owned(), JsonValue::Array(findings));
     plan.insert("plan_digest".to_owned(), JsonValue::String(plan_digest));
+    validate_typed_output::<PaymentRefundPlan>(&JsonValue::Object(plan.clone()), "refund plan")?;
     Ok(JsonValue::Object(JsonObject::from([(
         "refund_plan".to_owned(),
         JsonValue::Object(plan),

@@ -309,14 +309,34 @@ runners:
         type: object
         required: false
         description: Portable source thread when the objective came from an existing conversation.
+        schema:
+          additionalProperties: true
       change_set:
         type: object
         required: false
         description: Parent change artifact from issue-intake or a workspace supervisor.
+        schema:
+          required: [change_set_id, shared_invariants, success_criteria]
+          properties:
+            change_set_id: { type: string, minLength: 1, maxLength: 256 }
+            action_decision: { type: string, enum: [proceed_to_plan, needs_clarification, hold] }
+            commence_decision: { type: string, enum: [approve, hold] }
+            thread_locator: { type: string, minLength: 1, maxLength: 2048 }
+            shared_invariants:
+              type: array
+              maxItems: 100
+              items: { type: string, minLength: 1, maxLength: 4000 }
+            success_criteria:
+              type: array
+              maxItems: 100
+              items: { type: string, minLength: 1, maxLength: 4000 }
+          additionalProperties: true
       harness_context:
         type: object
         required: false
         description: Optional captured control context to pass through unchanged.
+        schema:
+          additionalProperties: true
       repo_root:
         type: string
         required: false

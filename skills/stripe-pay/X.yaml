@@ -35,6 +35,8 @@ runners:
         type: object
         required: false
         description: Hosted payment admission token and settlement identity.
+        schema:
+          additionalProperties: true
       realm:
         type: string
         required: false

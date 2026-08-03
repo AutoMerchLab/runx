@@ -625,8 +625,9 @@ its Rust package implications.
 
 For advertised native runtime and CLI paths, Rust owns local parsing, policy,
 authority, configuration, graph execution, receipt, registry, tool, adapter,
-and process-supervision decisions. `crates/runx-contracts` carries the portable
-wire contracts and generated schema source. Checked-in fixtures are
+and process-supervision decisions. `crates/runx-contracts` carries the
+domain-neutral portable wire contracts and shared schema mechanics; domain
+crates contribute their own contract artifacts. Checked-in fixtures are
 conformance evidence, not an alternate implementation.
 External execution-adapter authors target language-neutral contracts and do not
 need Rust or a core fork to add integrations. Non-execution extension lanes have

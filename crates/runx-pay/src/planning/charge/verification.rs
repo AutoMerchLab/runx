@@ -112,7 +112,7 @@ pub(in crate::planning) fn charge_verification_request(
         "request_digest".to_owned(),
         JsonValue::String(request_digest),
     );
-    Ok(JsonValue::Object(JsonObject::from([
+    let output = JsonValue::Object(JsonObject::from([
         (
             "verification_request".to_owned(),
             JsonValue::Object(verification_request),
@@ -137,5 +137,10 @@ pub(in crate::planning) fn charge_verification_request(
             JsonValue::String("not_forwarded".to_owned()),
         ),
         ("open_questions".to_owned(), JsonValue::Array(findings)),
-    ])))
+    ]));
+    super::super::validate_typed_output::<super::super::PaymentChargeVerificationRequest>(
+        &output,
+        "charge verification request",
+    )?;
+    Ok(output)
 }

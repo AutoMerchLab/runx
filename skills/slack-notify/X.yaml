@@ -85,8 +85,6 @@ runners:
           artifacts:
             named_emits:
               slack_context: slack_context
-            packets:
-              slack_context: runx.slack.notification_context.v1
         - id: authorize
           when:
             field: bind-content.slack_context.data.decision

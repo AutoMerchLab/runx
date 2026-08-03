@@ -67,6 +67,10 @@ pub(in crate::planning) fn charge_plan(
             .to_owned(),
         ),
     );
+    super::super::validate_typed_output::<super::super::PaymentChargePlan>(
+        &JsonValue::Object(plan.clone()),
+        "charge plan",
+    )?;
     Ok(JsonValue::Object(JsonObject::from([(
         "charge_plan".to_owned(),
         JsonValue::Object(plan),

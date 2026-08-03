@@ -208,7 +208,9 @@ For the `plan` runner, build `twitter_plan` this way:
   `objective`, `principal`, `acts[]` (`act_id`, `kind`, `params`,
   `consequence`, `rationale`), `gates`
   (`human_approval_required`, `approval_ref`), `evidence_refs[]`,
-  `open_questions[]`, `blockers[]`, `success_checkpoint`.
+  optional `context_bindings[]` (`packet_digest`, `applied_rules[]`) preserving
+  the exact brand or taste context applied by the planner, `open_questions[]`,
+  `blockers[]`, `success_checkpoint`.
 - `twitter.selection.v1`: `decision`, `objective`, `principal`, `predicate`,
   `matched`, `scanned`, `truncated`, `twitter_plan` (a `twitter.plan.v1`),
   `plan_digest`, `blockers[]`. The `twitter_plan` is what a driver hands to

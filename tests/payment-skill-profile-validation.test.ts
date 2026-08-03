@@ -483,7 +483,7 @@ function validateGraphFieldReference(
   if (declaration.packet?.startsWith("runx.payment.") && !packetIds.has(declaration.packet)) {
     return `unknown packet ${declaration.packet}`;
   }
-  if (declaration.packet === "runx.payment.approval.v1" && payloadPath[0] !== "approved") {
+  if (declaration.packet === "runx.approval.decision.v1" && payloadPath[0] !== "approved") {
     return `approval transition must read approved from ${stepId}.${outputName}.data.approved`;
   }
   return undefined;

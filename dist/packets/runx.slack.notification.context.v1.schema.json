@@ -1,7 +1,0 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.runx.ai/runx/slack/notification_context/v1.json",
-  "x-runx-packet-id": "runx.slack.notification_context.v1",
-  "x-runx-generated-from": "skills/slack-notify/X.yaml#root.runners.plan.graph.steps.2",
-  "type": "object"
-}

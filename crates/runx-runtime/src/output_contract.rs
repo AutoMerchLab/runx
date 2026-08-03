@@ -6,7 +6,8 @@ use std::collections::BTreeMap;
 use std::path::Path;
 
 use runx_contracts::{
-    JsonObject, JsonValue, Output, OutputField, output_contract_digest, validate_output_value,
+    JsonObject, JsonValue, OutputField, output_contract_digest,
+    parse_output_contract as parse_contract_outputs, validate_output_value,
 };
 use runx_parser::SkillArtifactContract;
 
@@ -219,11 +220,9 @@ pub(crate) fn attach_verified_metadata(
 pub(crate) fn parse_output_contract(
     raw: &JsonObject,
 ) -> Result<BTreeMap<String, OutputField>, RuntimeError> {
-    let value = serde_json::to_value(JsonValue::Object(raw.clone()))
-        .map_err(|source| RuntimeError::json("serializing runner output contract", source))?;
-    let Output(output) = serde_json::from_value(value)
-        .map_err(|source| RuntimeError::json("parsing runner output contract", source))?;
-    Ok(output)
+    parse_contract_outputs(raw).map_err(|source| RuntimeError::ReceiptInvalid {
+        message: format!("runner output contract is invalid: {source}"),
+    })
 }
 
 fn artifact_packet_contracts(artifacts: Option<&SkillArtifactContract>) -> bool {

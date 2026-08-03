@@ -203,6 +203,23 @@ operator.
   validation, inspection, export, harness, and registry packaging;
 - consumers never copy packet schemas, and a weak canonical packet contract is
   fixed at its producer before downstream adoption;
+- a runner-specific nested value remains an inline schema; `packet` is reserved
+  for the complete value at a named reusable skill, runtime, SDK, provider,
+  receipt, or registry boundary, never as a way to make inspection richer;
+- graph intermediates and one-run implementation values do not mint packet ids;
+  every distributed packet has an active producer and consumer or an explicit
+  public native owner, and generated artifacts are removed with that ownership;
+- a named packet describes its semantic fields or references a canonical typed
+  contract; bare `type: object`, unconstrained `{}`, and opaque bags do not pass
+  as complete inspection merely because a packet id exists. Open JSON is valid
+  only as a named protocol extension or generic data payload inside an otherwise
+  bounded semantic envelope;
+- object explicitness is recursive: every nested `type: object` declares
+  properties or an explicit `additionalProperties` policy. Use `type: json` for
+  deliberately arbitrary JSON instead of presenting it as a typed object;
+- a producing output's inline `schema` owns nested properties, required fields,
+  enums, and bounds once; parser admission, agent context, runtime validation,
+  packet distribution, exports, and harness replay consume that declaration;
 
 - runners, typed inputs and outputs, and default selection;
 - agent-versus-deterministic step boundaries;
@@ -255,6 +272,11 @@ Skill authoring must decide ownership before it writes files:
   vocabulary, evaluator, or report. Trusted host processes remain explicitly
   trusted because a portable harness cannot prove the absence of arbitrary
   filesystem, network, or syscall access.
+- Tool fixtures resolve the canonical manifest, execute under its declared
+  scopes, and validate every declared packet through the production packet
+  verifier. `expect.output.matches_packet` is only for a whole self-described
+  output packet; do not repeat named artifact checks that the manifest already
+  owns.
 - Add package executable code only for irreducible domain computation. Its
   admission names the domain boundary, why the graph cannot express it, and
   which existing owners and tools were inspected.

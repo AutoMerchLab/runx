@@ -1174,7 +1174,7 @@ mod tests {
         assert!(
             receipts
                 .iter()
-                .any(|receipt| receipt.id.to_string() == refusal_receipt_id),
+                .any(|receipt| receipt.id.as_str() == refusal_receipt_id),
             "blocked preparation did not persist its refusal receipt"
         );
         Ok(())

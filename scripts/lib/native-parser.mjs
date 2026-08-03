@@ -35,28 +35,31 @@ export function evaluateParserRequestResults(inputs, env = process.env) {
   return invokeNativeParser({ inputs, returnErrors: true }, inputs.length, env);
 }
 
+export function listToolPacketDeclarations(env = process.env) {
+  const report = invokeNativeJson(["list", "tools", "--json"], undefined, env);
+  if (!Array.isArray(report?.items)) {
+    throw new Error("native Runx tool catalog returned an invalid report");
+  }
+  return report.items.flatMap((item) => {
+    if (item?.status !== "ok" || !Array.isArray(item.emits)) return [];
+    return item.emits.map((emit) => {
+      if (typeof emit?.packet !== "string" || emit.packet.length === 0) {
+        throw new Error(`native Runx tool '${String(item?.name ?? "unknown")}' exposed an invalid packet declaration`);
+      }
+      return {
+        packetId: emit.packet,
+        source: String(item.path ?? item.name ?? "native tool catalog"),
+      };
+    });
+  });
+}
+
 function invokeNativeParser(document, expectedLength, env) {
   const request = JSON.stringify(document);
   const cached = cache.get(request);
   if (cached) return cached;
 
-  const result = spawnSync(
-    resolveNativeRunxBinary(env),
-    ["parser", "eval", "--input", "-", "--json"],
-    {
-      cwd: workspaceRoot,
-      encoding: "utf8",
-      env,
-      input: request,
-      maxBuffer: 32 * 1024 * 1024,
-    },
-  );
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error(parserFailureMessage(result.stdout, result.stderr));
-  }
-
-  const envelope = JSON.parse(result.stdout);
+  const envelope = invokeNativeJson(["parser", "eval", "--input", "-", "--json"], request, env);
   const values = envelope?.result?.value;
   if (envelope?.status !== "success" || !Array.isArray(values) || values.length !== expectedLength) {
     throw new Error("native Runx parser returned an invalid batch response");
@@ -68,6 +71,25 @@ function invokeNativeParser(document, expectedLength, env) {
     });
   }
   return values;
+}
+
+function invokeNativeJson(args, input, env) {
+  const result = spawnSync(resolveNativeRunxBinary(env), args, {
+    cwd: workspaceRoot,
+    encoding: "utf8",
+    env,
+    input,
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (result.error) throw result.error;
+  if (result.status !== 0) {
+    throw new Error(parserFailureMessage(result.stdout, result.stderr));
+  }
+  try {
+    return JSON.parse(result.stdout);
+  } catch {
+    throw new Error("native Runx command returned invalid JSON");
+  }
 }
 
 export function validateSkillMarkdownBatch(markdowns, env = process.env) {

@@ -1,5 +1,4 @@
-use runx_contracts::{JsonObject, JsonValue};
-use serde::{Deserialize, Serialize};
+use runx_contracts::{DataOperationResult, JsonObject, JsonValue};
 
 use crate::{CapabilityOutput, RuntimeError};
 
@@ -13,57 +12,7 @@ use crate::tool_catalogs::native::event_store::input::SourceIdentity;
 const PROVIDER: &str = "sqlite-event-store";
 const ADAPTER: &str = "data.sqlite";
 
-#[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
-#[serde(deny_unknown_fields)]
-pub(in crate::tool_catalogs::native::event_store) struct DataOperationResult {
-    pub(in crate::tool_catalogs::native::event_store) schema: String,
-    pub(in crate::tool_catalogs::native::event_store) data_source_ref: String,
-    pub(in crate::tool_catalogs::native::event_store) provider: String,
-    pub(in crate::tool_catalogs::native::event_store) operation: String,
-    pub(in crate::tool_catalogs::native::event_store) resource: String,
-    pub(in crate::tool_catalogs::native::event_store) aggregate_id: String,
-    pub(in crate::tool_catalogs::native::event_store) status: OperationStatus,
-    pub(in crate::tool_catalogs::native::event_store) before_version: u64,
-    pub(in crate::tool_catalogs::native::event_store) after_version: u64,
-    pub(in crate::tool_catalogs::native::event_store) idempotency_key: Option<String>,
-    pub(in crate::tool_catalogs::native::event_store) event_ref: Option<String>,
-    pub(in crate::tool_catalogs::native::event_store) event_digest: Option<String>,
-    pub(in crate::tool_catalogs::native::event_store) result_digest: String,
-    pub(in crate::tool_catalogs::native::event_store) projection_digest: String,
-    pub(in crate::tool_catalogs::native::event_store) projection: Option<JsonObject>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::tool_catalogs::native::event_store) limit: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::tool_catalogs::native::event_store) next_after_version: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub(in crate::tool_catalogs::native::event_store) has_more: Option<bool>,
-    pub(in crate::tool_catalogs::native::event_store) events: Vec<JsonValue>,
-    pub(in crate::tool_catalogs::native::event_store) rows: Vec<JsonValue>,
-    pub(in crate::tool_catalogs::native::event_store) redactions: Vec<JsonValue>,
-    pub(in crate::tool_catalogs::native::event_store) stop_conditions: Vec<StopCondition>,
-    pub(in crate::tool_catalogs::native::event_store) provider_evidence: JsonObject,
-}
-
 impl CapabilityOutput for DataOperationResult {}
-
-#[derive(
-    Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq, runx_contracts::schema::RunxSchema,
-)]
-#[serde(rename_all = "snake_case")]
-pub(in crate::tool_catalogs::native::event_store) enum OperationStatus {
-    Committed,
-    IdempotentReplay,
-    Read,
-    Conflict,
-    ProviderUnavailable,
-}
-
-#[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
-#[serde(deny_unknown_fields)]
-pub(in crate::tool_catalogs::native::event_store) struct StopCondition {
-    pub(in crate::tool_catalogs::native::event_store) code: String,
-    pub(in crate::tool_catalogs::native::event_store) message: String,
-}
 
 pub(in crate::tool_catalogs::native::event_store) fn append_result(
     source: SourceIdentity<'_>,

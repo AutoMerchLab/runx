@@ -209,7 +209,62 @@ runners:
             type: javascript
             module: governed-outbound.mjs
             outputs:
-              outbound_plan: object
+              outbound_plan:
+                type: object
+                schema:
+                  required: [decision, completion, provider_delivery, principal, audience, source, redaction, approval, provider_actions, send_plan]
+                  additionalProperties: false
+                  properties:
+                    decision: { const: ready }
+                    completion: { const: plan_only }
+                    provider_delivery: { const: not_executed }
+                    principal: { type: string, minLength: 1 }
+                    audience: { type: string, minLength: 1 }
+                    source:
+                      type: object
+                      required: [final_url, digest, fetched_at]
+                      additionalProperties: false
+                      properties:
+                        final_url: { type: string, format: uri }
+                        digest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+                        fetched_at: { type: string }
+                    redaction:
+                      type: object
+                      required: [digest, source_digest]
+                      additionalProperties: false
+                      properties:
+                        digest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+                        source_digest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+                    approval:
+                      type: object
+                      required: [approved, gate_id]
+                      additionalProperties: false
+                      properties:
+                        approved: { const: true }
+                        gate_id: { type: string, minLength: 1 }
+                    provider_actions: { type: array, items: { type: string }, uniqueItems: true }
+                    send_plan:
+                      type: object
+                      required: [decision, principal, audience, content, success_checkpoint]
+                      properties:
+                        decision: { const: ready }
+                        principal:
+                          type: object
+                          required: [ref]
+                          properties: { ref: { type: string, minLength: 1 } }
+                        audience:
+                          type: object
+                          required: [ref]
+                          properties: { ref: { type: string, minLength: 1 } }
+                        content:
+                          type: object
+                          required: [digest]
+                          properties: { digest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' } }
+                        success_checkpoint:
+                          type: object
+                          required: [milestone]
+                          properties: { milestone: { const: provider_delivery_required } }
+                      additionalProperties: true
           artifacts:
             wrap_as: outbound_plan_packet
             packet: runx.governed_outbound.plan.v1

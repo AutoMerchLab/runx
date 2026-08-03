@@ -292,5 +292,6 @@
     "residual_risks"
   ],
   "type": "object",
+  "x-runx-packet": true,
   "x-runx-schema": "runx.skill.apply_result.v1"
 }

@@ -454,6 +454,8 @@ runners:
         type: object
         required: true
         description: Exact arguments produced by the matching planning runner and current Nitrosend schema.
+        schema:
+          additionalProperties: true
       brand_sid:
         type: string
         required: false
@@ -493,7 +495,48 @@ runners:
     agent: builder
     task: send-campaign
     outputs:
-      campaign_plan: object
+      campaign_plan:
+        type: object
+        schema:
+          required: [decision]
+          additionalProperties: false
+          properties:
+            decision: { type: string, enum: [ready, needs_input, reject] }
+            canonical_skill: { type: string }
+            provider: { type: string }
+            channel: { type: string }
+            audience:
+              type: object
+              required: [type, ref, requires_reconfirmation]
+              additionalProperties: false
+              properties:
+                type: { type: string }
+                ref: { type: string }
+                requires_reconfirmation: { type: boolean }
+            schedule: { type: string }
+            rationale: { type: string }
+            ordered_tool_calls:
+              type: array
+              items:
+                type: object
+                required: [tool, purpose, requires_confirmation]
+                additionalProperties: false
+                properties:
+                  tool: { type: string, minLength: 1 }
+                  purpose: { type: string, minLength: 1 }
+                  requires_confirmation: { type: boolean }
+            human_actions: { type: array, items: { type: string } }
+            blockers: { type: array, items: { type: string } }
+            needs_input: { type: array, items: { type: string } }
+            unsupported_requirements: { type: array, items: { type: string } }
+            rejection_reason: { type: string }
+            success_checkpoint:
+              type: object
+              required: [milestone, description]
+              additionalProperties: false
+              properties:
+                milestone: { type: string, minLength: 1 }
+                description: { type: string, minLength: 1 }
     artifacts:
       wrap_as: campaign_plan_packet
       packet: nitrosend.campaign_plan.v1
@@ -529,7 +572,53 @@ runners:
     agent: builder
     task: build-flow-plan
     outputs:
-      flow_plan: object
+      flow_plan:
+        type: object
+        schema:
+          required: [decision]
+          additionalProperties: false
+          properties:
+            decision: { type: string, enum: [ready, needs_input, reject] }
+            flow_type: { type: string }
+            trigger:
+              type: object
+              required: [event, ref]
+              additionalProperties: false
+              properties:
+                event: { type: string }
+                ref: { type: string }
+            steps:
+              type: array
+              items:
+                type: object
+                required: [type, summary]
+                additionalProperties: false
+                properties:
+                  type: { type: string }
+                  summary: { type: string }
+            rationale: { type: string }
+            ordered_tool_calls:
+              type: array
+              items:
+                type: object
+                required: [tool, purpose, requires_confirmation]
+                additionalProperties: false
+                properties:
+                  tool: { type: string, minLength: 1 }
+                  purpose: { type: string, minLength: 1 }
+                  requires_confirmation: { type: boolean }
+            human_actions: { type: array, items: { type: string } }
+            blockers: { type: array, items: { type: string } }
+            needs_input: { type: array, items: { type: string } }
+            unsupported_requirements: { type: array, items: { type: string } }
+            rejection_reason: { type: string }
+            success_checkpoint:
+              type: object
+              required: [milestone, description]
+              additionalProperties: false
+              properties:
+                milestone: { type: string, minLength: 1 }
+                description: { type: string, minLength: 1 }
     artifacts:
       wrap_as: flow_packet
       packet: nitrosend.flow.v1
@@ -565,7 +654,38 @@ runners:
     agent: builder
     task: send-transactional-plan
     outputs:
-      transactional_plan: object
+      transactional_plan:
+        type: object
+        schema:
+          required: [decision]
+          additionalProperties: false
+          properties:
+            decision: { type: string, enum: [ready, needs_input, reject] }
+            channel: { type: string }
+            recipient: { type: string }
+            idempotency_key: { type: string }
+            ordered_tool_calls:
+              type: array
+              items:
+                type: object
+                required: [tool, purpose, requires_confirmation]
+                additionalProperties: false
+                properties:
+                  tool: { type: string, minLength: 1 }
+                  purpose: { type: string, minLength: 1 }
+                  requires_confirmation: { type: boolean }
+            human_actions: { type: array, items: { type: string } }
+            blockers: { type: array, items: { type: string } }
+            needs_input: { type: array, items: { type: string } }
+            unsupported_requirements: { type: array, items: { type: string } }
+            rejection_reason: { type: string }
+            success_checkpoint:
+              type: object
+              required: [milestone, description]
+              additionalProperties: false
+              properties:
+                milestone: { type: string, minLength: 1 }
+                description: { type: string, minLength: 1 }
     artifacts:
       wrap_as: transactional_packet
       packet: nitrosend.transactional.v1
@@ -627,6 +747,8 @@ runners:
         type: object
         required: false
         description: Transactional merge variables.
+        schema:
+          additionalProperties: true
       dry_run:
         type: boolean
         required: false
@@ -767,7 +889,8 @@ runners:
         required: true
         description: One bounded email objective.
       composition_intent:
-        type: object
+        type: json
+        packet: nitrosend.provider_evidence.v1
         required: true
         description: Authoritative provider evidence from compose_campaign_intent, supplied directly or as graph context.
       operator_context:
@@ -778,9 +901,16 @@ runners:
       - objective: Announce the August product update to engaged customers.
         composition_intent:
           decision: ok
+          provider: nitrosend
+          mode: read
+          operation: compose_campaign_intent
+          tool: nitro_compose_campaign
+          provider_ref: null
           result:
             authoring_contract: { design_mode: premium_minimal }
             brand_context: { name: Example }
+          evidence: null
+          blockers: []
         operator_context: Produce a candidate only; do not persist or deliver.
   analytics:
     type: graph
@@ -792,8 +922,8 @@ runners:
         description: Optional human-readable analytics objective retained in the receipt.
       scope:
         type: string
-        required: true
-        description: account, campaign, flow, or message.
+        required: false
+        description: account, campaign, flow, or message; omission returns a bounded needs-input result.
         schema: { enum: [account, campaign, flow, message] }
       entity_id:
         type: number
@@ -833,7 +963,39 @@ runners:
     agent: builder
     task: import-contacts-plan
     outputs:
-      import_plan: object
+      import_plan:
+        type: object
+        schema:
+          required: [decision]
+          additionalProperties: false
+          properties:
+            decision: { type: string, enum: [ready, needs_input, reject] }
+            source: { type: string }
+            record_count: { type: integer, minimum: 0 }
+            channels: { type: array, items: { type: string }, uniqueItems: true }
+            compliance_checks: { type: array, items: { type: string } }
+            ordered_tool_calls:
+              type: array
+              items:
+                type: object
+                required: [tool, purpose, requires_confirmation]
+                additionalProperties: false
+                properties:
+                  tool: { type: string, minLength: 1 }
+                  purpose: { type: string, minLength: 1 }
+                  requires_confirmation: { type: boolean }
+            human_actions: { type: array, items: { type: string } }
+            blockers: { type: array, items: { type: string } }
+            needs_input: { type: array, items: { type: string } }
+            unsupported_requirements: { type: array, items: { type: string } }
+            rejection_reason: { type: string }
+            success_checkpoint:
+              type: object
+              required: [milestone, description]
+              additionalProperties: false
+              properties:
+                milestone: { type: string, minLength: 1 }
+                description: { type: string, minLength: 1 }
     artifacts:
       wrap_as: import_packet
       packet: nitrosend.import.v1
@@ -967,6 +1129,9 @@ runners:
         type: object
         required: false
         description: Optional CSV column mapping.
+        schema:
+          maxProperties: 64
+          additionalProperties: { type: string, minLength: 1, maxLength: 128 }
       list_ids:
         type: array
         required: false
@@ -1032,7 +1197,33 @@ runners:
     agent: builder
     task: segment-from-prose-plan
     outputs:
-      segment_plan: object
+      segment_plan:
+        type: object
+        schema:
+          required: [decision, rationale, unsupported_requirements]
+          additionalProperties: false
+          properties:
+            decision: { type: string, enum: [ready, needs_input, reject] }
+            rationale: { type: string }
+            unsupported_requirements: { type: array, items: { type: string } }
+            rejection_reason: { type: string }
+            segment_request:
+              type: object
+              required: [name, preview_only, filters]
+              additionalProperties: false
+              properties:
+                name: { type: string, minLength: 1 }
+                preview_only: { type: boolean }
+                filters:
+                  type: array
+                  items:
+                    type: object
+                    required: [name, predicate, value]
+                    additionalProperties: false
+                    properties:
+                      name: { type: string, minLength: 1 }
+                      predicate: { type: string, minLength: 1 }
+                      value: { type: [string, number, boolean] }
     artifacts:
       wrap_as: segment_from_prose_packet
       packet: nitrosend.segment_from_prose.v1

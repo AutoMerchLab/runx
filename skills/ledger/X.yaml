@@ -89,10 +89,48 @@ runners:
             module: ledger.mjs
             export: finalizeLedger
             outputs:
-              ledger_answer: object
+              ledger_answer:
+                type: object
+                schema:
+                  required: [decision, question, query]
+                  additionalProperties: false
+                  properties:
+                    decision: { type: string, enum: [answered, needs_more_evidence, needs_agent] }
+                    question: { type: string }
+                    query:
+                      type: object
+                      required: [principal, skill_ref, status, time_range, receipt_ids]
+                      additionalProperties: false
+                      properties:
+                        principal: { type: string }
+                        skill_ref: { type: string }
+                        status: { type: array, items: { type: string } }
+                        time_range:
+                          type: object
+                          required: [from, to]
+                          properties: { from: { type: string }, to: { type: string } }
+                          additionalProperties: false
+                        receipt_ids: { type: array, items: { type: string }, uniqueItems: true }
               matched_receipts: array
               receipt_details: array
-              chain_verification: object
+              chain_verification:
+                type: object
+                schema:
+                  required: [checked, intact, breaks]
+                  additionalProperties: false
+                  properties:
+                    checked: { type: boolean }
+                    intact: { type: [boolean, "null"] }
+                    breaks:
+                      type: array
+                      items:
+                        type: object
+                        required: [from_receipt_id, to_receipt_id, reason]
+                        properties:
+                          from_receipt_id: { type: string }
+                          to_receipt_id: { type: string }
+                          reason: { type: string }
+                        additionalProperties: false
               summary: string
           context:
             ledger_context: prepare.ledger_context.data
@@ -113,10 +151,48 @@ runners:
             module: ledger.mjs
             export: finalizeLedger
             outputs:
-              ledger_answer: object
+              ledger_answer:
+                type: object
+                schema:
+                  required: [decision, question, query]
+                  additionalProperties: false
+                  properties:
+                    decision: { type: string, enum: [answered, needs_more_evidence, needs_agent] }
+                    question: { type: string }
+                    query:
+                      type: object
+                      required: [principal, skill_ref, status, time_range, receipt_ids]
+                      additionalProperties: false
+                      properties:
+                        principal: { type: string }
+                        skill_ref: { type: string }
+                        status: { type: array, items: { type: string } }
+                        time_range:
+                          type: object
+                          required: [from, to]
+                          properties: { from: { type: string }, to: { type: string } }
+                          additionalProperties: false
+                        receipt_ids: { type: array, items: { type: string }, uniqueItems: true }
               matched_receipts: array
               receipt_details: array
-              chain_verification: object
+              chain_verification:
+                type: object
+                schema:
+                  required: [checked, intact, breaks]
+                  additionalProperties: false
+                  properties:
+                    checked: { type: boolean }
+                    intact: { type: [boolean, "null"] }
+                    breaks:
+                      type: array
+                      items:
+                        type: object
+                        required: [from_receipt_id, to_receipt_id, reason]
+                        properties:
+                          from_receipt_id: { type: string }
+                          to_receipt_id: { type: string }
+                          reason: { type: string }
+                        additionalProperties: false
               summary: string
           context:
             ledger_context: prepare.ledger_context.data
@@ -133,10 +209,48 @@ runners:
             module: ledger.mjs
             export: finalizeLedger
             outputs:
-              ledger_answer: object
+              ledger_answer:
+                type: object
+                schema:
+                  required: [decision, question, query]
+                  additionalProperties: false
+                  properties:
+                    decision: { type: string, enum: [answered, needs_more_evidence, needs_agent] }
+                    question: { type: string }
+                    query:
+                      type: object
+                      required: [principal, skill_ref, status, time_range, receipt_ids]
+                      additionalProperties: false
+                      properties:
+                        principal: { type: string }
+                        skill_ref: { type: string }
+                        status: { type: array, items: { type: string } }
+                        time_range:
+                          type: object
+                          required: [from, to]
+                          properties: { from: { type: string }, to: { type: string } }
+                          additionalProperties: false
+                        receipt_ids: { type: array, items: { type: string }, uniqueItems: true }
               matched_receipts: array
               receipt_details: array
-              chain_verification: object
+              chain_verification:
+                type: object
+                schema:
+                  required: [checked, intact, breaks]
+                  additionalProperties: false
+                  properties:
+                    checked: { type: boolean }
+                    intact: { type: [boolean, "null"] }
+                    breaks:
+                      type: array
+                      items:
+                        type: object
+                        required: [from_receipt_id, to_receipt_id, reason]
+                        properties:
+                          from_receipt_id: { type: string }
+                          to_receipt_id: { type: string }
+                          reason: { type: string }
+                        additionalProperties: false
               summary: string
           context:
             ledger_context: prepare.ledger_context.data

@@ -30,10 +30,6 @@ use runx_contracts::orchestrator_handoff::{
 };
 use runx_contracts::output::Output;
 use runx_contracts::packet_index::PacketIndex;
-use runx_contracts::payment_inputs::{
-    PaymentChargePolicy, PaymentCredentialReference, PaymentRefundRequest, PaymentSignal,
-    PaymentToolCall,
-};
 use runx_contracts::policy_proof::{AuthorityProof, CredentialEnvelope, ScopeAdmission};
 use runx_contracts::receipt::Receipt;
 use runx_contracts::redaction::Redaction;
@@ -268,31 +264,6 @@ pub(super) fn covered() -> Vec<Covered> {
             file_name: "packet-index.schema.json",
             emitted: PacketIndex::json_schema(),
             corpus: packet_index_corpus(),
-        },
-        Covered {
-            file_name: "payment-signal.schema.json",
-            emitted: PaymentSignal::json_schema(),
-            corpus: payment_signal_corpus(),
-        },
-        Covered {
-            file_name: "payment-tool-call.schema.json",
-            emitted: PaymentToolCall::json_schema(),
-            corpus: payment_tool_call_corpus(),
-        },
-        Covered {
-            file_name: "payment-charge-policy.schema.json",
-            emitted: PaymentChargePolicy::json_schema(),
-            corpus: payment_charge_policy_corpus(),
-        },
-        Covered {
-            file_name: "payment-credential-reference.schema.json",
-            emitted: PaymentCredentialReference::json_schema(),
-            corpus: payment_credential_reference_corpus(),
-        },
-        Covered {
-            file_name: "payment-refund-request.schema.json",
-            emitted: PaymentRefundRequest::json_schema(),
-            corpus: payment_refund_request_corpus(),
         },
         Covered {
             file_name: "registry-binding.schema.json",

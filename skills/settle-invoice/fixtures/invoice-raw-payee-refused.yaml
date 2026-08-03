@@ -51,20 +51,7 @@ inputs:
   idempotency_seed: invoice-2026-0490
   realm: test
 expect:
-  status: sealed
-  step_outputs:
-    prepare:
-      subset:
-        settlement_plan:
-          data:
-            decision: blocked
-            downstream: null
-            provider_effect:
-              money_moved: false
-            findings:
-              - code: payee.raw_fields
-  receipt:
-    schema: runx.receipt.v1
+  status: failure
 metadata:
   public_skill: settle-invoice
   source_case: invoice-raw-payee-refused

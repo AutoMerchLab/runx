@@ -662,6 +662,7 @@ fn provider_step(tool: &str, verb: &str, mutating: bool) -> GraphStep {
         tool: Some(tool.to_owned()),
         run: None,
         artifacts: None,
+        outputs: None,
         runner: None,
         inputs: JsonObject::new(),
         context: BTreeMap::new(),

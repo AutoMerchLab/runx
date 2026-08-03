@@ -53,7 +53,6 @@ export function bindNotification(inputs) {
 
   return {
     slack_context: {
-      schema: "runx.slack.notification_context.v1",
       decision: findings.length === 0 ? "ready" : "blocked",
       principal: text(admission.principal),
       channel: text(admission.channel),

@@ -104,6 +104,12 @@ fn validate_source_with_context(
     validate_source_timeout(&source_kind, timeout_seconds)?;
     let external_adapter = validate_external_adapter_manifest(source, source_kind)?;
     let thread_outbox_provider = validate_thread_outbox_provider(source, source_kind)?;
+    let outputs = FIELDS.optional_object(source.get("outputs"), "source.outputs")?;
+    if let Some(outputs) = &outputs {
+        runx_contracts::parse_output_contract(outputs).map_err(|error| {
+            FIELDS.validation_error(format!("source.outputs is invalid: {error}"))
+        })?;
+    }
     Ok(SkillSource {
         command: FIELDS.optional_string(source.get("command"), "source.command")?,
         module,
@@ -122,7 +128,7 @@ fn validate_source_with_context(
             .optional_string(source.get("agent_identity"), "source.agent_identity")?,
         agent: validate_agent(source, &source_type, context)?,
         task: validate_task(source, &source_type, context)?,
-        outputs: FIELDS.optional_object(source.get("outputs"), "source.outputs")?,
+        outputs,
         graph: validate_graph_source(source, &source_type)?,
         external_adapter,
         thread_outbox_provider,

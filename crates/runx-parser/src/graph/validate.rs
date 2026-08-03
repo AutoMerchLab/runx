@@ -153,6 +153,46 @@ steps:
     }
 
     #[test]
+    fn typed_graph_ir_preserves_step_output_contracts() -> Result<(), String> {
+        let graph = validate_yaml(
+            r#"
+name: typed-step-outputs
+steps:
+  - id: analyze
+    run:
+      type: agent-task
+    outputs:
+      verdict:
+        type: string
+        enum: [ready, blocked]
+"#,
+        )?;
+        let outputs = graph.steps[0]
+            .outputs
+            .as_ref()
+            .ok_or_else(|| "typed graph step omitted outputs".to_owned())?;
+        let verdict = outputs
+            .get("verdict")
+            .and_then(runx_contracts::JsonValue::as_object)
+            .ok_or_else(|| "typed graph step omitted verdict schema".to_owned())?;
+
+        assert_eq!(
+            verdict
+                .get("type")
+                .and_then(runx_contracts::JsonValue::as_str),
+            Some("string")
+        );
+        assert_eq!(
+            verdict
+                .get("enum")
+                .and_then(runx_contracts::JsonValue::as_array)
+                .map(Vec::len),
+            Some(2)
+        );
+        Ok(())
+    }
+
+    #[test]
     fn inputs_reject_retired_double_brace_bindings() -> Result<(), String> {
         let error = validate_err(
             r#"

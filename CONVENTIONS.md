@@ -58,6 +58,38 @@ the displaced path in the same cutover, and never expose fixture or package
 layout through a generic API. `skills/skill-lab/SKILL.md` owns the full skill
 authoring contract; `docs/skill-quality-standard.md` owns the review standard.
 
+## Packet Artifact Eligibility
+
+Every public runner must expose a complete inspectable input and output
+contract. That does not make every runner or skill a global packet owner.
+
+- Keep runner-specific nested values in `X.yaml` as ordinary JSON Schema.
+- Put nested output shape in the producing output declaration's `schema`; the
+  parser and runtime validate that same declaration and packet generation
+  projects it without a second schema owner.
+- Declare `packet: <packet-id>` only when the complete value crosses a named,
+  reusable skill, runtime, SDK, provider, receipt, or registry boundary.
+- Keep graph intermediates and one-run implementation values as typed step
+  inputs or outputs; do not mint packet ids to make inspection work.
+- A canonical Rust contract uses `public_packet_artifact` only when a native
+  producer or public cross-language boundary requires distribution without an
+  `X.yaml` producer. Existence in `runx-contracts` is not enough.
+- One packet id has one schema owner. Consumers reference it and never copy its
+  schema. Generated packet files are distribution outputs and must disappear
+  when their last declaration or explicit public native owner disappears.
+- A named packet schema describes its semantic fields or references another
+  canonical contract. Bare `type: object`, unconstrained `{}`, and an opaque
+  `additionalProperties` bag are not substitutes for a contract. An open JSON
+  value is valid only as an explicitly named protocol extension or generic data
+  payload inside an otherwise bounded semantic envelope.
+- This rule is recursive. Every `type: object` in an input or distributed
+  packet must declare structure or an explicit `additionalProperties` policy.
+  Use `type: json` when the value is intentionally arbitrary JSON rather than
+  disguising that intent as an object contract.
+
+Review the active producer and consumer before adding or retaining a packet
+artifact. An orphaned schema is legacy code, not compatibility evidence.
+
 ## Rust Bar
 
 Rust code must keep the workspace green under:

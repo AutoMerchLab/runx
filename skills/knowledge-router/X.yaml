@@ -164,8 +164,6 @@ runners:
           artifacts:
             named_emits:
               route_proposal: route_proposal
-            packets:
-              route_proposal: runx.ops.knowledge_route_proposal.v1
         - id: validate
           label: validate all catalog references
           inputs:
@@ -178,7 +176,66 @@ runners:
             type: javascript
             module: knowledge-router.mjs
             outputs:
-              knowledge_route: object
+              knowledge_route:
+                type: object
+                schema:
+                  required: [schema, verdict, route, source_matches, owner_recommendation, next_skill, validation]
+                  additionalProperties: false
+                  properties:
+                    schema: { const: runx.ops.knowledge_route.v1 }
+                    verdict: { type: string, enum: [routed, needs_more_context, manual_review, refused] }
+                    route:
+                      type: object
+                      required: [domain, rationale, source_refs]
+                      additionalProperties: false
+                      properties:
+                        domain: { type: [string, 'null'], maxLength: 500 }
+                        rationale: { type: string, minLength: 1, maxLength: 4000 }
+                        source_refs: { type: array, maxItems: 500, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 1000 } }
+                    source_matches:
+                      type: array
+                      maxItems: 500
+                      items:
+                        type: object
+                        required: [source_ref, matching_signal, reason]
+                        additionalProperties: false
+                        properties:
+                          source_ref: { type: string, minLength: 1, maxLength: 1000 }
+                          matching_signal: { type: string, maxLength: 4000 }
+                          reason: { type: string, maxLength: 4000 }
+                    owner_recommendation:
+                      type: [object, 'null']
+                      required: [owner_ref, rationale, escalation_required]
+                      additionalProperties: false
+                      properties:
+                        owner_ref: { type: string, minLength: 1, maxLength: 1000 }
+                        rationale: { type: string, maxLength: 4000 }
+                        escalation_required: { type: boolean }
+                    next_skill:
+                      type: [object, 'null']
+                      required: [skill_ref, rationale]
+                      additionalProperties: false
+                      properties:
+                        skill_ref: { type: string, minLength: 1, maxLength: 1000 }
+                        rationale: { type: string, maxLength: 4000 }
+                    validation:
+                      type: object
+                      required: [valid, catalog_digest, invalid_refs, constraints_applied]
+                      additionalProperties: false
+                      properties:
+                        valid: { type: boolean }
+                        catalog_digest: { type: [string, 'null'], pattern: '^sha256:[0-9a-f]{64}$' }
+                        invalid_refs:
+                          type: array
+                          maxItems: 1000
+                          items:
+                            type: object
+                            required: [kind, ref]
+                            additionalProperties: false
+                            properties:
+                              kind: { type: string, enum: [source, owner, skill] }
+                              ref: { type: string, minLength: 1, maxLength: 1000 }
+                        constraints_applied: {}
           artifacts:
             named_emits:
               knowledge_route: knowledge_route

@@ -20,7 +20,7 @@
         "additionalProperties": true
       }
     },
-    "readback": { "type": ["object", "null"] }
+    "readback": { "type": ["object", "null"], "additionalProperties": true }
   },
   "additionalProperties": false
 }

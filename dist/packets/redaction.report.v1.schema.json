@@ -54,7 +54,18 @@
       "required": ["status", "findings"],
       "properties": {
         "status": { "type": "string", "enum": ["pass", "hold", "block"] },
-        "findings": { "type": "array", "items": { "type": "object" } }
+        "findings": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "code": { "type": "string", "minLength": 1 },
+              "message": { "type": "string", "minLength": 1 },
+              "path": { "type": "string" }
+            },
+            "additionalProperties": true
+          }
+        }
       },
       "additionalProperties": false
     },

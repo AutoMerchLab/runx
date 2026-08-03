@@ -76,7 +76,46 @@ runners:
             module: overlay-binding.mjs
             export: finalizeBinding
             outputs:
-              binding_bundle: object
+              binding_bundle:
+                type: object
+                schema:
+                  required: [decision, binding_path, source, files, validation, rationale, blockers, success_checkpoint]
+                  additionalProperties: false
+                  properties:
+                    decision: { type: string, enum: [ready, reject] }
+                    binding_path: { type: string, maxLength: 2000 }
+                    source:
+                      type: object
+                      maxProperties: 50
+                      propertyNames: { minLength: 1, maxLength: 200 }
+                    files:
+                      type: array
+                      maxItems: 2
+                      items:
+                        type: object
+                        required: [path, contents, sha256]
+                        additionalProperties: false
+                        properties:
+                          path: { type: string, minLength: 1, maxLength: 4000 }
+                          contents: { type: string, maxLength: 1048576 }
+                          sha256: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+                    validation:
+                      type: object
+                      required: [status]
+                      maxProperties: 3
+                      properties:
+                        status: { type: string, enum: [pass, hold] }
+                        inspect: { type: object, maxProperties: 100 }
+                        harness: { type: object, maxProperties: 100 }
+                    rationale: { type: string, minLength: 1, maxLength: 10000 }
+                    blockers: { type: array, maxItems: 250, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 4000 } }
+                    success_checkpoint:
+                      type: object
+                      required: [milestone, description]
+                      additionalProperties: false
+                      properties:
+                        milestone: { type: string, enum: [binding_bundle_ready, binding_blocked] }
+                        description: { type: string, minLength: 1, maxLength: 4000 }
           context:
             source_request: plan-source.source_request.data
           artifacts:

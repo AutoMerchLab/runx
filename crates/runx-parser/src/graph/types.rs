@@ -251,6 +251,11 @@ pub struct GraphStep {
     pub run: Option<GraphRunTarget>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artifacts: Option<SkillArtifactContract>,
+    /// Complete output declarations owned by this graph step. Preserve these
+    /// in typed IR so inspection, packet generation, and registry packaging do
+    /// not have to reparse the raw manifest.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub outputs: Option<JsonObject>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runner: Option<String>,
     pub inputs: JsonObject,

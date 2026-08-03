@@ -41,7 +41,7 @@ pub(crate) fn verify_declared_packets(
 }
 
 fn verify_packet_binding(
-    binding: PacketBinding<'_>,
+    binding: PacketBinding,
     schemas: &PacketSchemaCatalog,
     schema_directories: &[std::path::PathBuf],
 ) -> Result<(String, JsonValue), RuntimeError> {
@@ -61,7 +61,7 @@ fn verify_packet_binding(
     let validator = jsonschema::draft202012::options()
         .build(&schema_document)
         .map_err(|error| packet_error(&binding, format!("packet schema is invalid: {error}")))?;
-    let instance = serde_json::to_value(binding.value).map_err(|source| {
+    let instance = serde_json::to_value(&binding.value).map_err(|source| {
         RuntimeError::json("serializing agent packet output for validation", source)
     })?;
     validator
@@ -81,7 +81,7 @@ fn verify_packet_binding(
     Ok((binding.output, verified))
 }
 
-fn packet_error(binding: &PacketBinding<'_>, detail: impl std::fmt::Display) -> RuntimeError {
+fn packet_error(binding: &PacketBinding, detail: impl std::fmt::Display) -> RuntimeError {
     RuntimeError::SkillFailed {
         skill_name: "agent".to_owned(),
         message: format!(
@@ -91,50 +91,49 @@ fn packet_error(binding: &PacketBinding<'_>, detail: impl std::fmt::Display) -> 
     }
 }
 
-struct PacketBinding<'a> {
+struct PacketBinding {
     output: String,
     packet: String,
-    value: &'a JsonValue,
+    value: JsonValue,
 }
 
-fn packet_bindings<'a>(
-    payload: &'a JsonValue,
+fn packet_bindings(
+    payload: &JsonValue,
     artifacts: Option<&SkillArtifactContract>,
-) -> Result<Vec<PacketBinding<'a>>, RuntimeError> {
-    let object = payload
-        .as_object()
-        .ok_or_else(|| RuntimeError::SkillFailed {
-            skill_name: "agent".to_owned(),
-            message: "packet-producing agent output must be an object".to_owned(),
-        })?;
+) -> Result<Vec<PacketBinding>, RuntimeError> {
     let mut bindings = Vec::new();
     if let Some(artifacts) = artifacts {
+        let projected = crate::output_contract::project_artifact_outputs(payload, Some(artifacts));
         if let Some(named) = &artifacts.packets {
             for (output, packet) in named {
-                bindings.push(named_binding(object, output, packet)?);
+                bindings.push(projected_binding(&projected, output, packet)?);
             }
         }
         if let (Some(output), Some(packet)) = (&artifacts.wrap_as, &artifacts.packet) {
-            bindings.push(PacketBinding {
-                output: output.clone(),
-                packet: packet.clone(),
-                value: payload,
-            });
+            bindings.push(projected_binding(&projected, output, packet)?);
         }
     }
     Ok(bindings)
 }
 
-fn named_binding<'a>(
-    payload: &'a JsonObject,
+fn projected_binding(
+    projection: &JsonObject,
     output: &str,
     packet: &str,
-) -> Result<PacketBinding<'a>, RuntimeError> {
-    let value = payload
+) -> Result<PacketBinding, RuntimeError> {
+    let envelope = projection
         .get(output)
         .ok_or_else(|| RuntimeError::SkillFailed {
             skill_name: "agent".to_owned(),
             message: format!("named packet output '{output}' was not returned"),
+        })?;
+    let value = envelope
+        .as_object()
+        .and_then(|object| object.get("data"))
+        .cloned()
+        .ok_or_else(|| RuntimeError::SkillFailed {
+            skill_name: "agent".to_owned(),
+            message: format!("packet output '{output}' was not projected as a data envelope"),
         })?;
     Ok(PacketBinding {
         output: output.to_owned(),
@@ -152,6 +151,7 @@ mod tests {
     use runx_parser::SkillArtifactContract;
 
     use super::verify_declared_packets;
+    use crate::output_contract::project_artifact_outputs;
 
     fn temp_skill() -> Result<tempfile::TempDir, std::io::Error> {
         let directory = tempfile::tempdir()?;
@@ -287,6 +287,33 @@ mod tests {
             )
             .is_err()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn packet_validation_is_identical_after_runtime_projection()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let skill = temp_skill()?;
+        write_wrapped_schema(skill.path())?;
+        let value = payload(JsonValue::Object(BTreeMap::from([(
+            "decision".to_owned(),
+            JsonValue::String("ready".to_owned()),
+        )])));
+        let artifacts = wrapped_artifacts();
+        let mut projected_payload = value.clone();
+        let projection = project_artifact_outputs(&value, Some(&artifacts));
+        let JsonValue::Object(projected_object) = &mut projected_payload else {
+            return Err("projected payload must be an object".into());
+        };
+        projected_object.extend(projection);
+
+        verify_declared_packets(&value, Some(&artifacts), skill.path(), &BTreeMap::new())?;
+        verify_declared_packets(
+            &projected_payload,
+            Some(&artifacts),
+            skill.path(),
+            &BTreeMap::new(),
+        )?;
         Ok(())
     }
 

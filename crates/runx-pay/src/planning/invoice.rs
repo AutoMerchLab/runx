@@ -1,7 +1,8 @@
 use super::{
-    AuthorityTerm, EffectToolRequest, JsonObject, JsonValue, PaymentPlanningError, QUOTE_TOOL,
-    finding, invalid, is_opaque_reference, is_sha256, json_bytes, object_value, quote,
-    required_object, required_string, required_typed, required_u64, sha256_hex, typed_value,
+    AuthorityTerm, EffectToolRequest, JsonObject, JsonValue, PaymentInvoiceSettlementPlan,
+    PaymentPlanningError, QUOTE_TOOL, finding, invalid, is_opaque_reference, is_sha256, json_bytes,
+    object_value, quote, required_object, required_string, required_typed, required_u64,
+    sha256_hex, typed_value, validate_typed_output,
 };
 
 // Function rationale: invoice planning validates invoice, payee, rail, authority, and canonical spend handoff as one non-mutating decision.
@@ -120,6 +121,10 @@ pub(super) fn invoice_plan(
         "findings": findings,
         "plan_digest": plan_digest,
     }))?;
+    validate_typed_output::<PaymentInvoiceSettlementPlan>(
+        &settlement_plan,
+        "invoice settlement plan",
+    )?;
     Ok(JsonValue::Object(JsonObject::from([(
         "settlement_plan".to_owned(),
         settlement_plan,

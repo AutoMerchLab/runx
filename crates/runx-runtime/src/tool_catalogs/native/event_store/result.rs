@@ -8,8 +8,8 @@ use crate::RuntimeError;
 
 use super::{MAX_DATA_OPERATION_RESULT_BYTES, invalid_input};
 
-use super::model::{DataOperationResult as OperationResult, OperationStatus as Status};
 pub(super) use expectation::Expectation;
+use runx_contracts::{DataOperationResult as OperationResult, DataOperationStatus as Status};
 
 const MAX_REDACTIONS: usize = 100;
 const MAX_STOP_CONDITIONS: usize = 20;

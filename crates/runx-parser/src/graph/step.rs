@@ -70,6 +70,11 @@ pub fn validate_step(
         &scopes,
         requested_scope_from.as_deref(),
     )?;
+    let outputs = optional_object(raw_step.get("outputs"), &format!("{field}.outputs"))?;
+    if let Some(outputs) = &outputs {
+        runx_contracts::parse_output_contract(outputs)
+            .map_err(|error| validation_error(format!("{field}.outputs is invalid: {error}")))?;
+    }
 
     Ok(GraphStep {
         id,
@@ -81,6 +86,7 @@ pub fn validate_step(
             raw_step.get("artifacts"),
             &format!("{field}.artifacts"),
         )?,
+        outputs,
         runner,
         inputs,
         context_edges: context_edges(&context, previous_step_ids, field)?,

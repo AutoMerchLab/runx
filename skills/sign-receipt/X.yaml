@@ -36,6 +36,8 @@ runners:
         type: object
         required: false
         description: Bound on downstream reliance.
+        schema:
+          additionalProperties: true
     graph:
       name: sign-receipt
       result_from: [attest]

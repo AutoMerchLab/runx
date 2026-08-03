@@ -31,7 +31,20 @@
       "type": "string",
       "pattern": "^(?:|sha256:[0-9a-f]{64})$"
     },
-    "send_plan": { "type": "object" },
+    "send_plan": {
+      "type": "object",
+      "required": ["decision"],
+      "properties": {
+        "decision": { "type": "string", "enum": ["ready", "needs_input", "denied", "refused"] },
+        "principal": { "type": "object", "additionalProperties": true },
+        "provider": { "type": "object", "additionalProperties": true },
+        "channel": { "type": "string" },
+        "audience": { "type": "object", "additionalProperties": true },
+        "content": { "type": "object", "additionalProperties": true },
+        "gates": { "type": "object", "additionalProperties": true }
+      },
+      "additionalProperties": true
+    },
     "provider_status": { "const": "not_called" },
     "delivery_status": { "const": "not_sent" },
     "downstream_handoff": {

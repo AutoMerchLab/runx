@@ -50,6 +50,7 @@ fn test_step(id: &str, scopes: &[&str], verb: &str) -> GraphStep {
         tool: None,
         run: None,
         artifacts: None,
+        outputs: None,
         runner: None,
         inputs: JsonObject::new(),
         context: BTreeMap::new(),

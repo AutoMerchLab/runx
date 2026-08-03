@@ -266,7 +266,8 @@ The global link points at `packages/cli` in this checkout. Rebuild with
 Rust owns the trusted local runtime path. The Rust crate graph is the enforced
 boundary map:
 
-- `runx-contracts`: Rust-owned public contract types and schema emission.
+- `runx-contracts`: domain-neutral Rust contract types plus shared schema
+  emission and reconciliation; domain crates contribute the contracts they own.
 - `runx-core`: pure state-machine and policy decisions.
 - `runx-parser`: pure skill, graph, runner, and tool manifest parsing.
 - `runx-receipts`: canonical receipt model, hashing, signatures, and tree

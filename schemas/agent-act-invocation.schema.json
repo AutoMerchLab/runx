@@ -419,6 +419,10 @@
                   "required": {
                     "type": "boolean"
                   },
+                  "schema": {
+                    "additionalProperties": {},
+                    "type": "object"
+                  },
                   "type": {
                     "anyOf": [
                       {

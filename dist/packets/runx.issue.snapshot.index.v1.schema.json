@@ -1,7 +1,0 @@
-{
-  "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://schemas.runx.ai/runx/issue/snapshot_index/v1.json",
-  "x-runx-packet-id": "runx.issue.snapshot_index.v1",
-  "x-runx-generated-from": "skills/issue-triage/X.yaml#root.runners.discover.graph.steps.1",
-  "type": "object"
-}

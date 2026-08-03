@@ -11,7 +11,7 @@
     "extracted": {
       "oneOf": [
         { "type": "string" },
-        { "type": "object" },
+        { "type": "object", "additionalProperties": true },
         { "type": "array", "items": { "type": "string" } }
       ]
     },

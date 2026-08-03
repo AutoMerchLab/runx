@@ -409,5 +409,6 @@
     "architecture"
   ],
   "type": "object",
+  "x-runx-packet": true,
   "x-runx-schema": "runx.skill.architecture_plan.v1"
 }

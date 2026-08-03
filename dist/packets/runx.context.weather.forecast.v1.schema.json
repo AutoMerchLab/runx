@@ -19,6 +19,52 @@
       "type": "string"
     },
     "forecast_packet": {
+      "additionalProperties": false,
+      "properties": {
+        "confidence": {
+          "type": "string"
+        },
+        "generated_at": {
+          "type": "string"
+        },
+        "hazards": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "periods": {
+          "items": {
+            "additionalProperties": true,
+            "properties": {
+              "forecast": {
+                "type": "string"
+              },
+              "label": {
+                "type": "string"
+              },
+              "name": {
+                "type": "string"
+              },
+              "wind": {
+                "type": "string"
+              }
+            },
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "summary": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "summary",
+        "periods",
+        "hazards",
+        "confidence",
+        "generated_at"
+      ],
       "type": "object"
     },
     "horizon": {
@@ -28,9 +74,47 @@
       "type": "string"
     },
     "provider_evidence": {
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string"
+        },
+        "receipt_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        },
+        "source_refs": {
+          "items": {
+            "type": "string"
+          },
+          "type": "array",
+          "uniqueItems": true
+        }
+      },
+      "required": [
+        "provider",
+        "source_refs",
+        "receipt_refs"
+      ],
       "type": "object"
     },
     "receipt_notes": {
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "const": "context-only"
+        },
+        "mutation": {
+          "const": false
+        }
+      },
+      "required": [
+        "authority",
+        "mutation"
+      ],
       "type": "object"
     },
     "safety_notes": {

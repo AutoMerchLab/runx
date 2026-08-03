@@ -12,25 +12,31 @@
   ],
   "properties": {
     "credential_envelope": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": true
     },
     "rail_proof": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": true
     },
     "rail_result": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": true
     },
     "recovery_hint": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": true
     },
     "redactions": {
       "type": "array"
     },
     "settlement_proof": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": true
     },
     "kernel_token": {
-      "type": "object"
+      "type": "object",
+      "additionalProperties": true
     }
   },
   "additionalProperties": false

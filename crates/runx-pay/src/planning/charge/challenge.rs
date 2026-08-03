@@ -27,10 +27,7 @@ pub(in crate::planning) fn charge_challenge(
         .and_then(JsonValue::as_array)
         .cloned()
         .unwrap_or_default();
-    let rail = families
-        .first()
-        .and_then(JsonValue::as_str)
-        .unwrap_or_default();
+    let rail = families.first().and_then(JsonValue::as_str);
     let ready = findings.is_empty();
     Ok(JsonValue::Object(JsonObject::from([
         (

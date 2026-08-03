@@ -114,6 +114,11 @@ already read authoritative MCP intent evidence, and the agent only authors a
 candidate for the graph's read-only MCP validation. No agent act persists or
 delivers.
 
+The internal provider boundary emits `nitrosend.provider_evidence.v1` for both
+successful and stopped operations. Consumers carry that packet unchanged;
+they do not reconstruct a smaller result shape or infer completion from raw
+transport output.
+
 ### `send-campaign`
 
 Build one campaign plan from the objective, current account-status JSON, and

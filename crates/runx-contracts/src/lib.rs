@@ -27,12 +27,12 @@ pub mod limits;
 pub mod links;
 pub mod list;
 pub mod maturity;
+pub mod native_packets;
 pub mod operational_policy;
 pub mod operational_proposal;
 pub mod orchestrator_handoff;
 pub mod output;
 pub mod packet_index;
-pub mod payment_inputs;
 pub mod policy_proof;
 pub mod receipt;
 pub mod redaction;
@@ -42,6 +42,7 @@ pub mod review;
 pub mod run_summary;
 pub mod schema;
 pub mod schema_artifacts;
+mod schema_reconcile;
 pub mod signal;
 pub mod skill_authoring;
 pub mod source_packet;
@@ -151,6 +152,10 @@ pub use list::{
     RunxListEmit, RunxListItem, RunxListItemKind, RunxListReport, RunxListRequestedKind,
     RunxListSchema, RunxListSource, RunxListStatus,
 };
+pub use native_packets::{
+    ApprovalDecisionActor, ApprovalDecisionPacket, ApprovalDecisionStatus, DataOperationResult,
+    DataOperationStatus, DataStopCondition, GitBlobDigest, LocalArtifact, LocalArtifactPage,
+};
 pub use operational_policy::{
     OperationalPolicy, OperationalPolicyAction, OperationalPolicyAdmission,
     OperationalPolicyAdmissionRequest, OperationalPolicyAdmissionStatus,
@@ -179,14 +184,11 @@ pub use orchestrator_handoff::{
     OrchestratorReceiptExpectations, OrchestratorReceiverValidation,
 };
 pub use output::{
-    Output, OutputField, OutputFieldSpec, OutputType, OutputValidationError,
-    output_contract_digest, output_value_schema, validate_output_value,
+    Output, OutputContractParseError, OutputField, OutputFieldSpec, OutputType,
+    OutputValidationError, output_contract_digest, output_value_schema, parse_output_contract,
+    validate_output_value,
 };
 pub use packet_index::{PacketIndex, PacketIndexEntry, PacketIndexSchema};
-pub use payment_inputs::{
-    CurrencyCode, PaymentChargePolicy, PaymentCredentialReference, PaymentRefundRequest,
-    PaymentSignal, PaymentToolCall,
-};
 pub use policy_proof::{
     AuthorityKind, AuthorityProof, AuthorityProofApprovalDecision,
     AuthorityProofApprovalDecisionValue, AuthorityProofCredentialMaterial,
@@ -213,7 +215,10 @@ pub use registry_binding::{
 };
 pub use review::{ReviewReceiptImprovementProposal, ReviewReceiptOutput, ReviewReceiptVerdict};
 pub use run_summary::{RunSummary, RunSummarySchema, RunSummaryStatus};
-pub use schema_artifacts::{SchemaArtifact, generated_schema_artifacts};
+pub use schema_artifacts::{
+    SchemaArtifact, generated_schema_artifacts, public_packet_artifact, schema_artifact,
+};
+pub use schema_reconcile::{SchemaDrift, reconcile_schema_artifacts};
 pub use signal::{
     SIGNAL_SCHEMA, Signal, SignalAuthenticity, SignalSchema, SignalTrustLevel, signal_type,
 };

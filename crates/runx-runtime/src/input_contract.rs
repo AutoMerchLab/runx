@@ -373,6 +373,8 @@ impl fmt::Display for InputContractError {
     }
 }
 
+impl std::error::Error for InputContractError {}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -397,7 +399,8 @@ mod tests {
     }
 
     #[test]
-    fn nested_runner_projects_its_contract_from_parent_graph_parameters() {
+    fn nested_runner_projects_its_contract_from_parent_graph_parameters()
+    -> Result<(), Box<dyn std::error::Error>> {
         let declared = BTreeMap::from([("objective".to_owned(), string_input(true))]);
         let supplied = JsonObject::from([
             (
@@ -410,18 +413,19 @@ mod tests {
             ),
         ]);
 
-        let nested = materialize_nested_runner_inputs(&declared, &supplied)
-            .expect("parent-only graph parameters should be projected out");
+        let nested = materialize_nested_runner_inputs(&declared, &supplied)?;
         assert_eq!(nested.len(), 1);
         assert_eq!(
             nested.get("objective").and_then(JsonValue::as_str),
             Some("Bounded question")
         );
         assert!(materialize_present_runner_inputs(&declared, &supplied).is_err());
+        Ok(())
     }
 
     #[test]
-    fn nested_contract_error_names_the_failing_path_and_accepted_shape() {
+    fn nested_contract_error_names_the_failing_path_and_accepted_shape()
+    -> Result<(), Box<dyn std::error::Error>> {
         let resources = InputDefinition {
             input_type: "object".to_owned(),
             required: true,
@@ -473,28 +477,30 @@ mod tests {
             )])),
         )]);
 
-        let error = materialize_present_runner_inputs(&declared, &supplied)
-            .expect_err("out-of-range nested input must fail")
-            .into_runtime_error();
+        let Err(error) = materialize_present_runner_inputs(&declared, &supplied) else {
+            return Err("out-of-range nested input must fail".into());
+        };
+        let error = error.into_runtime_error();
         let crate::RuntimeError::InputContract {
             path,
             accepted_schema,
             ..
         } = error
         else {
-            panic!("expected input-contract error");
+            return Err("expected input-contract error".into());
         };
         assert_eq!(path, "/resources/filters/limit");
-        let accepted_schema =
-            serde_json::to_value(accepted_schema).expect("accepted input schema must serialize");
+        let accepted_schema = serde_json::to_value(accepted_schema)?;
         assert_eq!(
             accepted_schema["properties"]["filters"]["properties"]["limit"]["maximum"],
             25
         );
+        Ok(())
     }
 
     #[test]
-    fn complete_runner_rejects_missing_required_and_conditional_nested_values() {
+    fn complete_runner_rejects_missing_required_and_conditional_nested_values()
+    -> Result<(), Box<dyn std::error::Error>> {
         let resources = InputDefinition {
             input_type: "object".to_owned(),
             required: true,
@@ -578,12 +584,14 @@ mod tests {
                 ])),
             ),
         ]);
-        let error = materialize_complete_runner_inputs(&declared, &invalid_conditional)
-            .expect_err("conditional nested schemas must be enforced")
-            .into_runtime_error();
+        let Err(error) = materialize_complete_runner_inputs(&declared, &invalid_conditional) else {
+            return Err("conditional nested schemas must be enforced".into());
+        };
+        let error = error.into_runtime_error();
         assert!(matches!(
             error,
             crate::RuntimeError::InputContract { ref path, .. } if path == "/resources/base"
         ));
+        Ok(())
     }
 }

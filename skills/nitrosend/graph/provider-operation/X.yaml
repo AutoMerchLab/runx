@@ -84,10 +84,39 @@ runners:
             module: nitrosend-operation.mjs
             export: normalizeOperation
             outputs:
-              provider_evidence: object
+              provider_evidence:
+                type: object
+                schema:
+                  required: [decision, provider, mode, operation, tool, provider_ref, result, evidence, blockers]
+                  additionalProperties: false
+                  properties:
+                    decision: { type: string, enum: [ok, needs_input, provider_error, refused] }
+                    provider: { const: nitrosend }
+                    mode: { type: string, enum: [read, act] }
+                    operation: { type: [string, "null"] }
+                    tool: { type: [string, "null"] }
+                    provider_ref: { type: [string, "null"] }
+                    result:
+                      type: [object, "null"]
+                      additionalProperties: true
+                    evidence:
+                      type: [object, "null"]
+                      required: [request_id, http_status, body_digest, credential_material]
+                      additionalProperties: false
+                      properties:
+                        request_id: { type: string }
+                        http_status: { type: number }
+                        body_digest: { type: string }
+                        credential_material: { const: redacted }
+                    blockers:
+                      type: array
+                      maxItems: 100
+                      items: { type: string, minLength: 1, maxLength: 4000 }
           artifacts:
             named_emits:
               provider_evidence: provider_evidence
+            packets:
+              provider_evidence: nitrosend.provider_evidence.v1
         - id: blocked
           when:
             field: prepare.operation_plan.decision
@@ -103,6 +132,8 @@ runners:
           artifacts:
             named_emits:
               provider_evidence: provider_evidence
+            packets:
+              provider_evidence: nitrosend.provider_evidence.v1
   act:
     type: graph
     inputs:
@@ -164,6 +195,8 @@ runners:
           artifacts:
             named_emits:
               provider_evidence: provider_evidence
+            packets:
+              provider_evidence: nitrosend.provider_evidence.v1
         - id: blocked
           when:
             field: prepare.operation_plan.decision
@@ -179,3 +212,5 @@ runners:
           artifacts:
             named_emits:
               provider_evidence: provider_evidence
+            packets:
+              provider_evidence: nitrosend.provider_evidence.v1

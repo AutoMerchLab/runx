@@ -120,8 +120,6 @@ runners:
           artifacts:
             named_emits:
               issue_evidence: issue_evidence
-            packets:
-              issue_evidence: runx.issue.snapshot.v1
 
         - id: draft
           run:
@@ -201,8 +199,6 @@ runners:
           artifacts:
             named_emits:
               issue_index: issue_index
-            packets:
-              issue_index: runx.issue.snapshot_index.v1
 
         - id: select
           run:
@@ -272,8 +268,6 @@ runners:
           artifacts:
             named_emits:
               issue_evidence: issue_evidence
-            packets:
-              issue_evidence: runx.issue.snapshot.v1
 
         - id: draft
           run:

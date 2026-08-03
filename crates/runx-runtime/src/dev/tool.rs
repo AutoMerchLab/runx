@@ -8,8 +8,6 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 #[cfg(feature = "catalog")]
-use std::path::PathBuf;
-#[cfg(feature = "catalog")]
 use std::time::Instant;
 
 #[cfg(feature = "catalog")]
@@ -30,6 +28,8 @@ use super::types::{
     DevFixtureAssertion, DevFixtureAssertionKind, DevFixtureExecutionRoots, DevFixtureStatus,
     PreparedDevFixtureWorkspace,
 };
+#[cfg(feature = "catalog")]
+use crate::tool_catalogs::{ToolCatalogError, ToolInspectOptions, resolve_local_tool};
 
 pub(super) fn run_tool_fixture(
     root: &Path,
@@ -60,12 +60,30 @@ fn run_tool_fixture_with_catalog(
 ) -> Result<DevFixtureResult, DevError> {
     let started = Instant::now();
     let reference = fixture.target().reference.as_str();
-    let Some(tool_dir) = resolve_tool_dir_from_ref(root, reference) else {
-        return Ok(unknown_tool_ref(fixture, started, reference));
+    let resolution = match resolve_local_tool(&ToolInspectOptions {
+        root: root.to_path_buf(),
+        tool_ref: reference.to_owned(),
+        source: None,
+        search_from_directory: root.to_path_buf(),
+        tool_roots: vec![root.join("tools")],
+        fixture_catalog_enabled: false,
+        allow_explicit_manifest_path: false,
+    }) {
+        Ok(resolution) => resolution,
+        Err(ToolCatalogError::NotFound(_)) => {
+            return Ok(unknown_tool_ref(fixture, started, reference));
+        }
+        Err(error) => {
+            return Err(crate::RuntimeError::SkillFailed {
+                skill_name: "runx-dev".to_owned(),
+                message: error.to_string(),
+            }
+            .into());
+        }
     };
     let workspace =
         prepare_fixture_workspace(root, &fixture.path, fixture.definition.workspace.as_ref())?;
-    let result = run_tool_fixture_inner(root, fixture, &tool_dir, &workspace, base_env, started);
+    let result = run_tool_fixture_inner(root, fixture, &resolution, &workspace, base_env, started);
     if let Some(workspace_root) = &workspace.root {
         let _ = fs::remove_dir_all(workspace_root);
     }
@@ -76,11 +94,16 @@ fn run_tool_fixture_with_catalog(
 fn run_tool_fixture_inner(
     root: &Path,
     fixture: &LoadedDevFixture,
-    tool_dir: &Path,
+    resolution: &crate::tool_catalogs::LocalToolResolution,
     workspace: &PreparedDevFixtureWorkspace,
     base_env: &BTreeMap<String, String>,
     started: Instant,
 ) -> Result<DevFixtureResult, DevError> {
+    let tool_dir = resolution
+        .manifest_path
+        .parent()
+        .map(Path::to_path_buf)
+        .unwrap_or_else(|| root.to_path_buf());
     let Some(execution_roots) =
         resolve_fixture_execution_roots(root, fixture.lane(), workspace.root.as_deref())
     else {
@@ -97,14 +120,14 @@ fn run_tool_fixture_inner(
     let credential_delivery = crate::credentials::CredentialDelivery::none();
     let javascript = crate::adapters::javascript::JavaScriptAdapter::default();
     let local_artifacts = crate::services::LocalArtifactService::default();
-    let output = crate::tool_catalogs::dispatch::dispatch_tool(
+    let mut output = crate::tool_catalogs::dispatch::dispatch_tool(
         crate::tool_catalogs::dispatch::ToolDispatchRequest {
             tool_ref: Cow::Borrowed(fixture.target().reference.as_str()),
             inputs: Cow::Owned(inputs),
             resolved_inputs: Cow::Owned(JsonObject::new()),
-            scopes: &[],
+            scopes: &resolution.tool.scopes,
             env: &env,
-            skill_directory: tool_dir,
+            skill_directory: &tool_dir,
             credential_delivery: &credential_delivery,
             local_artifacts: &local_artifacts,
             javascript: &javascript,
@@ -116,6 +139,22 @@ fn run_tool_fixture_inner(
         crate::time::DEFAULT_CREATED_AT,
         started,
     )?;
+    if output.succeeded() {
+        let verification = crate::output_contract::verified_output_metadata_with_artifacts(
+            "runx-dev",
+            &output.value,
+            None,
+            resolution.tool.artifacts.as_ref(),
+            &tool_dir,
+            &env,
+        )
+        .and_then(|metadata| {
+            crate::output_contract::attach_verified_metadata(&mut output, metadata)
+        });
+        if let Err(error) = verification {
+            output.reject(error.to_string());
+        }
+    }
     Ok(tool_result_from_execution(fixture, started, output))
 }
 
@@ -215,18 +254,6 @@ fn missing_execution_roots(fixture: &LoadedDevFixture, started: Instant) -> DevF
                 .to_owned(),
         }],
     )
-}
-
-#[cfg(feature = "catalog")]
-fn resolve_tool_dir_from_ref(root: &Path, reference: &str) -> Option<PathBuf> {
-    let parts = reference.split('.').filter(|part| !part.is_empty());
-    let mut candidate = root.join("tools");
-    let mut count = 0;
-    for part in parts {
-        candidate.push(part);
-        count += 1;
-    }
-    (count >= 2 && candidate.join("manifest.json").exists()).then_some(candidate)
 }
 
 #[cfg(feature = "catalog")]

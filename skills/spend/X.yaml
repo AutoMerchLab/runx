@@ -43,6 +43,8 @@ input_definitions:
     type: object
     required: false
     description: Provider-specific hosted payment admission and settlement identity passed only to the selected rail.
+    schema:
+      additionalProperties: true
   idempotency_seed:
     type: string
     required: true
@@ -218,7 +220,7 @@ runners:
             reserved_payment_authority: reserve.payment_reservation_packet.data.reserved_payment_authority
           artifacts:
             wrap_as: payment_approval
-            packet: runx.payment.approval.v1
+            packet: runx.approval.decision.v1
         - id: fulfill
           skill: graph/pay-fulfill-rail
           runner: mock
@@ -340,7 +342,7 @@ runners:
             reserved_payment_authority: reserve.payment_reservation_packet.data.reserved_payment_authority
           artifacts:
             wrap_as: payment_approval
-            packet: runx.payment.approval.v1
+            packet: runx.approval.decision.v1
         - id: fulfill
           skill: graph/pay-fulfill-rail
           runner: mpp
@@ -470,7 +472,7 @@ runners:
             reserved_payment_authority: reserve.payment_reservation_packet.data.reserved_payment_authority
           artifacts:
             wrap_as: payment_approval
-            packet: runx.payment.approval.v1
+            packet: runx.approval.decision.v1
         - id: fulfill
           skill: graph/pay-fulfill-rail
           runner: stripe-spt

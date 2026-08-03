@@ -54,14 +54,15 @@ input_definitions:
     type: object
     required: false
     description: GA4 FilterExpression passed intact to the configured provider connector.
-    schema: {}
+    schema:
+      additionalProperties: true
   order_bys:
     type: array
     required: false
     description: Ordered GA4 OrderBy records passed intact to the provider connector.
     schema:
       maxItems: 10
-      items: { type: object }
+      items: { type: object, additionalProperties: true }
   minute_ranges:
     type: array
     required: false
@@ -86,13 +87,13 @@ input_definitions:
       properties:
         property: { type: string, pattern: '^properties/[1-9][0-9]*$' }
         report_type: { type: string, enum: [standard, realtime] }
-        date_ranges: { type: array, maxItems: 4, items: { type: object } }
+        date_ranges: { type: array, maxItems: 4, items: { type: object, additionalProperties: true } }
         dimensions: { type: array, maxItems: 9, items: { type: string, minLength: 1, maxLength: 256 } }
         metrics: { type: array, minItems: 1, maxItems: 10, items: { type: string, minLength: 1, maxLength: 256 } }
-        dimension_filter: { type: object }
-        metric_filter: { type: object }
-        order_bys: { type: array, maxItems: 10, items: { type: object } }
-        minute_ranges: { type: array, maxItems: 4, items: { type: object } }
+        dimension_filter: { type: object, additionalProperties: true }
+        metric_filter: { type: object, additionalProperties: true }
+        order_bys: { type: array, maxItems: 10, items: { type: object, additionalProperties: true } }
+        minute_ranges: { type: array, maxItems: 4, items: { type: object, additionalProperties: true } }
         currency_code: { type: string, pattern: '^[A-Z]{3}$' }
         limit: { type: integer, minimum: 1, maximum: 100000 }
         offset: { type: integer, minimum: 0 }
@@ -104,13 +105,13 @@ input_definitions:
       required: [dimension_headers, metric_headers, rows]
       properties:
         property: { type: string, pattern: '^properties/[1-9][0-9]*$' }
-        dimension_headers: { type: array, maxItems: 9, items: { type: [string, object] } }
-        metric_headers: { type: array, maxItems: 10, items: { type: [string, object] } }
-        rows: { type: array, maxItems: 100000, items: { type: object } }
+        dimension_headers: { type: array, maxItems: 9, items: { type: [string, object], additionalProperties: true } }
+        metric_headers: { type: array, maxItems: 10, items: { type: [string, object], additionalProperties: true } }
+        rows: { type: array, maxItems: 100000, items: { type: object, additionalProperties: true } }
         row_count: { type: integer, minimum: 0 }
-        pagination: { type: object }
-        metadata: { type: object }
-        property_quota: { type: object }
+        pagination: { type: object, additionalProperties: true }
+        metadata: { type: object, additionalProperties: true }
+        property_quota: { type: object, additionalProperties: true }
         fetched_at: { type: string, format: date-time }
 
 harness:

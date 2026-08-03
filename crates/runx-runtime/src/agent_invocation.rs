@@ -6,7 +6,7 @@ use crate::SkillInvocation;
 use runx_contracts::schema::NonEmptyString;
 use runx_contracts::{
     AgentActInvocation, AgentActSourceType, AgentContextEnvelope, AgentExecutionRequirements,
-    ExecutionLocation, JsonObject, JsonValue, Output, OutputField, ResolutionRequest,
+    ExecutionLocation, JsonObject, OutputField, ResolutionRequest,
 };
 
 const TRUST_BOUNDARY: &str = "runtime-governed: caller-mediated resolution is the default; an in-process model loop runs only with explicit per-run managed-agent consent, and every resolution is receipt-bound";
@@ -196,11 +196,9 @@ fn optional_non_empty(value: Option<&str>) -> Option<NonEmptyString> {
 }
 
 fn output_schema_fields(raw: &JsonObject) -> Result<BTreeMap<String, OutputField>, RuntimeError> {
-    let value = serde_json::to_value(JsonValue::Object(raw.clone()))
-        .map_err(|source| RuntimeError::json("serializing agent output contract", source))?;
-    let Output(output) = serde_json::from_value(value)
-        .map_err(|source| RuntimeError::json("parsing agent output contract", source))?;
-    Ok(output)
+    runx_contracts::parse_output_contract(raw).map_err(|source| RuntimeError::ReceiptInvalid {
+        message: format!("agent output contract is invalid: {source}"),
+    })
 }
 
 fn execution_location(skill_directory: &Path, env: &BTreeMap<String, String>) -> ExecutionLocation {

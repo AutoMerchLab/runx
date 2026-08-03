@@ -13,9 +13,116 @@
   ],
   "properties": {
     "chain_verification": {
+      "additionalProperties": false,
+      "properties": {
+        "breaks": {
+          "items": {
+            "additionalProperties": false,
+            "properties": {
+              "from_receipt_id": {
+                "type": "string"
+              },
+              "reason": {
+                "type": "string"
+              },
+              "to_receipt_id": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "from_receipt_id",
+              "to_receipt_id",
+              "reason"
+            ],
+            "type": "object"
+          },
+          "type": "array"
+        },
+        "checked": {
+          "type": "boolean"
+        },
+        "intact": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "checked",
+        "intact",
+        "breaks"
+      ],
       "type": "object"
     },
     "ledger_answer": {
+      "additionalProperties": false,
+      "properties": {
+        "decision": {
+          "enum": [
+            "answered",
+            "needs_more_evidence",
+            "needs_agent"
+          ],
+          "type": "string"
+        },
+        "query": {
+          "additionalProperties": false,
+          "properties": {
+            "principal": {
+              "type": "string"
+            },
+            "receipt_ids": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "uniqueItems": true
+            },
+            "skill_ref": {
+              "type": "string"
+            },
+            "status": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "time_range": {
+              "additionalProperties": false,
+              "properties": {
+                "from": {
+                  "type": "string"
+                },
+                "to": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "from",
+                "to"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "principal",
+            "skill_ref",
+            "status",
+            "time_range",
+            "receipt_ids"
+          ],
+          "type": "object"
+        },
+        "question": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "decision",
+        "question",
+        "query"
+      ],
       "type": "object"
     },
     "matched_receipts": {

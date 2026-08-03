@@ -1,10 +1,12 @@
+use runx_contracts::AuthorityTerm;
 use runx_contracts::schema::BoundedString;
-use runx_contracts::{AuthorityTerm, PaymentRefundRequest};
 use runx_runtime::{
     CapabilityAdmission, CapabilityApproval, CapabilityArtifacts, CapabilityDefinition,
     CapabilityEffect, CapabilityField, CapabilityInput, TypedCapability,
 };
 use serde::{Deserialize, Serialize};
+
+use crate::contracts::PaymentRefundRequest;
 
 pub(crate) const REFUND_PLAN_TOOL: &str = "payment.refund_plan";
 

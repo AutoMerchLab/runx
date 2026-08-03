@@ -395,6 +395,7 @@ mod tests {
             tool: None,
             run: None,
             artifacts: None,
+            outputs: None,
             runner: None,
             inputs: JsonObject::new(),
             context: BTreeMap::new(),

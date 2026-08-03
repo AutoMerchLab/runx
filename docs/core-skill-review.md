@@ -76,6 +76,40 @@ read-only observations supported the provider claims in this review:
 | `nws-weather-forecast` | keyless read | `sha256:5ac7f93c7684606e3122e4200e881396a54634a0c22fb49221ac59b142367bdb` | 2026-07-16T15:46:02.263Z |
 | `nitrosend` | credentialed account read | `sha256:8936ef07b8ae9ae7994c22cad8592a60c516fb9fed6fb5c139a3eb4c0fa18faa` | 2026-07-16T10:36:18.971Z |
 
+Packet distribution was audited separately from runner inspection. Every
+runner remains responsible for a complete inspectable input and output schema,
+but only reusable named boundaries are emitted under `dist/packets/`. The
+generator reads typed parser output, uses explicit native public owners where
+there is no skill producer, and removes generated files whose last owner has
+disappeared. This prevents both missing public contracts and a global schema
+artifact for every runner-local object.
+
+The 20 `improve` decisions below are evidence gaps, not permission to add more
+runtime layers. They close through the named safe provider observation or
+explicitly approved harmless mutation and readback. Until that evidence exists,
+the package must retain its truthful non-final state.
+
+### Packet-depth remediation completed
+
+The ownership audit found 24 packet ids whose producers exposed only
+`type: object`. Each was traced rather than mechanically expanded:
+
+- 15 reusable public boundaries now declare their complete nested schema at
+  the producing `X.yaml` output;
+- 9 runner-local or graph-intermediate identities were removed while their
+  ordinary typed outputs remain inspectable; and
+- the native payment price, challenge, verification, charge-plan,
+  invoice-plan, and refund-plan packets now compose canonical Rust types rather
+  than copied or generic nested schemas.
+
+The existing output declaration is the source for inspection, agent context,
+runtime validation, packet generation, registry packaging, and harness replay.
+No second packet registry or contract version was introduced. Generation now
+rejects a bare public object, conflicting producers, orphaned manual packets,
+and stale generated artifacts. Open JSON remains only at deliberate protocol
+boundaries such as a provider tool's generic arguments, a named extension map,
+or an opaque hosted-admission payload inside a typed payment envelope.
+
 ## Recommendation meanings
 
 - `keep`: the package has a clear core role and evidence appropriate to its current claim.

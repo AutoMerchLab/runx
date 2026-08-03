@@ -147,7 +147,91 @@ runners:
             module: dispute-respond.mjs
             export: finalizeResponse
             outputs:
-              dispute_packet: object
+              dispute_packet:
+                type: object
+                schema:
+                  required: [schema, decision, dispute, posture, response_summary, linked_receipts, evidence, open_questions, receipt_verification, validation, filing, next_action]
+                  additionalProperties: false
+                  properties:
+                    schema: { const: runx.payment.dispute_response.v1 }
+                    decision: { type: string, enum: [ready_for_review, needs_more_evidence] }
+                    dispute:
+                      type: object
+                      required: [dispute_id, provider, provider_charge_ref, amount_minor, currency, reason_code, response_due_at]
+                      additionalProperties: false
+                      properties:
+                        dispute_id: { type: string, maxLength: 256 }
+                        provider: { type: string, maxLength: 64 }
+                        provider_charge_ref: { type: string, maxLength: 256 }
+                        amount_minor: { type: [integer, 'null'], minimum: 1 }
+                        currency: { type: string, pattern: '^(?:[A-Z]{3})?$' }
+                        reason_code: { type: string, maxLength: 128 }
+                        response_due_at: { type: [string, 'null'], maxLength: 64 }
+                    posture: { type: string, enum: [accept, contest, refund_already_sent, needs_more_evidence, operator_review] }
+                    response_summary: { type: string, maxLength: 10000 }
+                    linked_receipts:
+                      type: object
+                      required: [original_charge, prior_refunds, cited]
+                      additionalProperties: false
+                      properties:
+                        original_charge: { type: string, maxLength: 256 }
+                        prior_refunds: { type: array, maxItems: 100, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 256 } }
+                        cited: { type: array, maxItems: 101, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 256 } }
+                    evidence:
+                      type: object
+                      required: [admitted, cited_refs]
+                      additionalProperties: false
+                      properties:
+                        admitted:
+                          type: array
+                          maxItems: 100
+                          items:
+                            type: object
+                            required: [ref, digest, kind, summary]
+                            additionalProperties: false
+                            properties:
+                              ref: { type: string, minLength: 1, maxLength: 512 }
+                              digest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+                              kind: { type: string, enum: [delivery, consent, support, provider, contract, refund] }
+                              summary: { type: string, minLength: 1, maxLength: 1000 }
+                        cited_refs: { type: array, maxItems: 100, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 512 } }
+                    open_questions: { type: array, maxItems: 100, items: { type: string, minLength: 1, maxLength: 1000 } }
+                    receipt_verification:
+                      type: object
+                      required: [matched_receipt_ids, original_receipt_status, signature_mode, tree_status]
+                      additionalProperties: false
+                      properties:
+                        matched_receipt_ids: { type: array, maxItems: 101, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 256 } }
+                        original_receipt_status: { type: string, minLength: 1, maxLength: 100 }
+                        signature_mode: { type: string, enum: [production, local-development, unverified] }
+                        tree_status: { type: string, enum: [intact, unverified] }
+                    validation:
+                      type: object
+                      required: [status, findings]
+                      additionalProperties: false
+                      properties:
+                        status: { type: string, enum: [pass, fail] }
+                        findings:
+                          type: array
+                          maxItems: 500
+                          items:
+                            type: object
+                            required: [code, message]
+                            additionalProperties: false
+                            properties:
+                              code: { type: string, minLength: 1, maxLength: 200 }
+                              message: { type: string, minLength: 1, maxLength: 4000 }
+                    filing:
+                      type: object
+                      required: [provider, dispute_id, status, provider_status, approval_status]
+                      additionalProperties: false
+                      properties:
+                        provider: { type: string, maxLength: 64 }
+                        dispute_id: { type: string, maxLength: 256 }
+                        status: { const: not_filed }
+                        provider_status: { const: not_called }
+                        approval_status: { const: not_requested }
+                    next_action: { type: string, minLength: 1, maxLength: 4000 }
           artifacts:
             named_emits:
               dispute_packet: dispute_packet

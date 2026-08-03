@@ -30,6 +30,19 @@ runners:
         type: object
         required: true
         description: Payee name, party_ref, and exactly one opaque settlement_ref or sha256 settlement_digest.
+        schema:
+          required: [name, party_ref]
+          additionalProperties: false
+          properties:
+            name: { type: string, minLength: 1, maxLength: 256 }
+            party_ref: { type: string, minLength: 1, maxLength: 512 }
+            settlement_ref: { type: string, minLength: 1, maxLength: 512 }
+            settlement_digest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+          oneOf:
+            - required: [settlement_ref]
+              not: { required: [settlement_digest] }
+            - required: [settlement_digest]
+              not: { required: [settlement_ref] }
       rail:
         type: string
         required: true
@@ -55,6 +68,8 @@ runners:
         type: object
         required: false
         description: Bounded hosted admission and settlement identity.
+        schema:
+          additionalProperties: true
     graph:
       name: settle-invoice
       result_from: [prepare]

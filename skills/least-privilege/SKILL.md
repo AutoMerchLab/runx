@@ -131,7 +131,7 @@ reviewable attenuation proposal, not an automatic change.
 Return a structured report with these fields:
 
 ```yaml
-status: attenuation_proposed | no_change | needs_more_evidence | needs_input | needs_human | refused
+status: attenuation_proposed | no_change | needs_more_evidence
 subject: string
 evidence:
   receipt_ids: [string]
@@ -160,7 +160,7 @@ narrowed_scopes:
 kept_scopes: [string]
 deferred_scopes: [string]
 residual_risk: [string]
-reviewer_action: applyable_now | needs_policy_decision | gather_more_receipts | none
+reviewer_action: applyable_now | gather_more_receipts | none
 receipt_expectations:
   classification_counts: object
   stop_status: string

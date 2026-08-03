@@ -1,3 +1,4 @@
+pub(super) use runx_contracts::GitBlobDigest;
 use runx_contracts::{JsonObject, JsonValue};
 use serde::{Deserialize, Serialize};
 
@@ -83,14 +84,6 @@ pub(super) struct GitBlobDigestOutput {
 }
 
 impl CapabilityOutput for GitBlobDigestOutput {}
-
-#[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
-#[serde(deny_unknown_fields)]
-pub(super) struct GitBlobDigest {
-    pub(super) algorithm: String,
-    pub(super) digest: String,
-    pub(super) bytes: u64,
-}
 
 const ROOT_FIELDS: &[CapabilityField] = &[CapabilityField {
     name: "repo_root",

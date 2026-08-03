@@ -496,5 +496,6 @@
     "expected_outputs"
   ],
   "type": "object",
+  "x-runx-packet": true,
   "x-runx-schema": "runx.skill.change_bundle.v1"
 }

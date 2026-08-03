@@ -6,6 +6,7 @@ mod subset;
 
 pub use subset::{PaymentBoundsComparator, is_payment_authority_subset};
 
+pub use crate::contracts::PaymentSpendCapabilityBinding;
 use runx_contracts::{
     AuthorityCapability, AuthorityEffectCredentialForm, AuthorityEffectLimit,
     AuthorityResourceFamily, AuthoritySubsetProof, AuthorityTerm, AuthorityVerb, Decision,
@@ -61,19 +62,6 @@ struct PaymentRailAuthorization<'a> {
     pub rail_proof_refs: &'a [Reference],
     pub consumed_spend_capability_refs: &'a [Reference],
     pub spend_capability_ref: Option<&'a Reference>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, serde::Deserialize)]
-#[serde(deny_unknown_fields)]
-pub struct PaymentSpendCapabilityBinding {
-    pub child_harness_ref: Reference,
-    pub act_id: String,
-    pub reservation_decision_id: String,
-    pub idempotency_key: String,
-    pub amount_minor: u64,
-    pub currency: String,
-    pub counterparty: String,
-    pub rail: String,
 }
 
 #[cfg(test)]

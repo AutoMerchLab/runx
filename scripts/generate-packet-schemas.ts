@@ -1,8 +1,9 @@
-import { readFile, readdir, writeFile } from "node:fs/promises";
+import { readFile, readdir, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  listToolPacketDeclarations,
   parsePacketSchemaDocumentsBatch,
   validateRunnerManifestYamlBatch,
 } from "./lib/native-parser.mjs";
@@ -40,6 +41,7 @@ interface ExecutionGraph {
 interface GraphStep {
   readonly id: string;
   readonly run?: ExecutionSource;
+  readonly outputs?: JsonObject;
   readonly artifacts?: ArtifactContract;
 }
 
@@ -82,6 +84,14 @@ for (const [index, profilePath] of profilePaths.entries()) {
   if (!profile) throw new Error(`native parser omitted ${path.relative(workspaceRoot, profilePath)}`);
   collectManifestContracts(profile, path.relative(workspaceRoot, profilePath));
 }
+for (const declaration of listToolPacketDeclarations()) {
+  if (!declarations.has(declaration.packetId)) {
+    declarations.set(declaration.packetId, declaration.source);
+  }
+}
+// Public native boundary packets have no X.yaml producer to discover. The
+// Rust artifact owner marks those explicitly; ordinary contract schemas are
+// never promoted merely because they exist.
 for (const contract of ownedContracts.values()) {
   if (contract.schema["x-runx-packet"] === true) contracts.set(contract.packetId, contract);
 }
@@ -130,8 +140,53 @@ for (const [packetId, packetContracts] of manualContractsByPacket) {
     }
   }
 }
+const structuralContracts = new Map(contracts);
+for (const [packetId, source] of declarations) {
+  if (structuralContracts.has(packetId)) continue;
+  const existing = existingById.get(packetId);
+  if (existing && !existing.generated) {
+    structuralContracts.set(packetId, { packetId, source, schema: existing.schema });
+  }
+}
+for (const contract of structuralContracts.values()) {
+  const effectiveSchema = existingById.get(contract.packetId)?.generated === false
+    ? existingById.get(contract.packetId)?.schema ?? contract.schema
+    : contract.schema;
+  for (const schemaPath of ambiguousObjectSchemaPaths(effectiveSchema)) {
+    manualSchemaFindings.push(
+      `packet schema '${contract.packetId}' from ${contract.source} declares an object without a shape at ${schemaPath}; define its semantic fields or set additionalProperties explicitly for an intentional open payload`,
+    );
+  }
+}
 if (manualSchemaFindings.length > 0) {
   throw new Error(`manual packet schemas conflict with X.yaml output contracts:\n${manualSchemaFindings.join("\n")}`);
+}
+
+const staleGenerated = [...existingById.entries()]
+  .filter(([packetId, existing]) => existing.generated && !contracts.has(packetId))
+  .sort(([left], [right]) => left.localeCompare(right));
+const orphanedManual = [...existingById.entries()]
+  .filter(
+    ([packetId, existing]) =>
+      !existing.generated && !declarations.has(packetId) && !contracts.has(packetId),
+  )
+  .sort(([left], [right]) => left.localeCompare(right));
+if (orphanedManual.length > 0) {
+  throw new Error(
+    `manual packet schemas have no active declaration or public native owner; remove or assign ownership explicitly:\n${orphanedManual
+      .map(([, existing]) => path.relative(workspaceRoot, existing.path))
+      .join("\n")}`,
+  );
+}
+if (check && staleGenerated.length > 0) {
+  throw new Error(
+    `generated packet schemas have no active declaration or public native owner:\n${staleGenerated
+      .map(([, existing]) => path.relative(workspaceRoot, existing.path))
+      .join("\n")}`,
+  );
+}
+if (!check) {
+  await Promise.all(staleGenerated.map(([, existing]) => unlink(existing.path)));
 }
 
 for (const contract of [...contracts.values()].sort((left, right) => left.packetId.localeCompare(right.packetId))) {
@@ -162,7 +217,9 @@ if (missing.length > 0) {
   throw new Error(`packet declarations have no schema contract: ${missing.join(", ")}`);
 }
 console.log(
-  `${check ? "checked" : "generated"} ${contracts.size} packet contracts for ${declarations.size} manifest declarations`,
+  `${check ? "checked" : "generated"} ${contracts.size} packet contracts for ${declarations.size} manifest declarations${
+    !check && staleGenerated.length > 0 ? `; removed ${staleGenerated.length} stale generated artifact(s)` : ""
+  }`,
 );
 
 function collectManifestContracts(manifest: RunnerManifest, profile: string): void {
@@ -173,7 +230,7 @@ function collectManifestContracts(manifest: RunnerManifest, profile: string): vo
     for (const [index, step] of (runner.source.graph?.steps ?? []).entries()) {
       const stepLocation = `${location}.graph.steps.${index}`;
       if (step.run) {
-        collectExecutionContract(step.run, step.artifacts, profile, stepLocation);
+        collectExecutionContract(step.run, step.artifacts, profile, stepLocation, step.outputs);
       } else if (step.artifacts) {
         collectPacketDeclarations(step.artifacts, `${profile}#${stepLocation}`);
       }
@@ -199,9 +256,10 @@ function collectExecutionContract(
   artifacts: ArtifactContract | undefined,
   profile: string,
   location: string,
+  stepOutputs?: JsonObject,
 ): void {
   const type = execution.type;
-  const outputs = execution.outputs;
+  const outputs = stepOutputs ?? execution.outputs;
   if (type === "agent" || type === "agent-task") {
     if (!outputs || Object.keys(outputs).length === 0) {
       throw new Error(`${profile}#${location} agent runner has no declared outputs`);
@@ -240,7 +298,12 @@ function collectArtifactContracts(
     register({
       packetId: packet,
       source,
-      schema: objectSchema(outputs),
+      // Runtime projection uses the named value when wrap_as is also a
+      // declared output; otherwise it wraps the complete declared payload.
+      // Generate the schema from that same semantic value.
+      schema: Object.hasOwn(outputs, wrapAs)
+        ? outputSchema(outputs[wrapAs])
+        : objectSchema(outputs),
     });
   }
   if (!artifacts.packets) return;
@@ -264,6 +327,11 @@ function register(contract: PacketContract): void {
   }
   const existing = contracts.get(contract.packetId);
   if (existing && JSON.stringify(existing.schema) !== JSON.stringify(contract.schema)) {
+    if (isBareObjectSchema(existing.schema) && !isBareObjectSchema(contract.schema)) {
+      contracts.set(contract.packetId, contract);
+      return;
+    }
+    if (!isBareObjectSchema(existing.schema) && isBareObjectSchema(contract.schema)) return;
     throw new Error(`packet '${contract.packetId}' has conflicting X.yaml output contracts`);
   }
   if (!existing) contracts.set(contract.packetId, contract);
@@ -331,8 +399,10 @@ function schemaView(
   readonly type?: string;
   readonly required: Set<string>;
   readonly properties: Map<string, JsonObject>;
+  readonly closed: boolean;
 } {
   let type = nonEmptyString(schema.type);
+  let closed = schema.additionalProperties === false;
   const required = new Set(stringArray(schema.required));
   const properties = new Map<string, JsonObject>();
   if (isRecord(schema.properties)) {
@@ -355,10 +425,11 @@ function schemaView(
   for (const branch of branches) {
     const view = schemaView(branch, root, new Set(visitedRefs));
     type ??= view.type;
+    closed ||= view.closed;
     for (const field of view.required) required.add(field);
     for (const [name, value] of view.properties) properties.set(name, value);
   }
-  return { type, required, properties };
+  return { type, required, properties, closed };
 }
 
 function resolveLocalRef(root: JsonObject, ref: string): JsonObject | undefined {
@@ -402,15 +473,93 @@ function outputSchema(declaration: unknown): JsonObject {
     : isRecord(declaration) && typeof declaration.type === "string"
       ? declaration.type
       : "json";
-  switch (type) {
-    case "string": return { type: "string" };
-    case "number": return { type: "number" };
-    case "integer": return { type: "integer" };
-    case "boolean": return { type: "boolean" };
-    case "array": return { type: "array" };
-    case "object": return { type: "object" };
-    case "json": return {};
-    default: throw new Error(`unsupported agent output type '${type}'`);
+  if (!new Set(["string", "number", "integer", "boolean", "array", "object", "json", "null"]).has(type)) {
+    throw new Error(`unsupported agent output type '${type}'`);
+  }
+  const schema = isRecord(declaration) && isRecord(declaration.schema)
+    ? structuredClone(declaration.schema)
+    : {};
+  if (type !== "json") schema.type = type;
+  if (isRecord(declaration) && Array.isArray(declaration.enum)) schema.enum = declaration.enum;
+  if (isRecord(declaration) && typeof declaration.description === "string") {
+    schema.description = declaration.description;
+  }
+  return schema;
+}
+
+function isBareObjectSchema(schema: JsonObject): boolean {
+  const view = schemaView(schema, schema, new Set());
+  return view.type === "object"
+    && view.required.size === 0
+    && view.properties.size === 0
+    && !view.closed;
+}
+
+function ambiguousObjectSchemaPaths(schema: JsonObject): readonly string[] {
+  const findings: string[] = [];
+  visitSchema(schema, "$", findings);
+  return findings;
+}
+
+function visitSchema(schema: JsonObject, schemaPath: string, findings: string[]): void {
+  const declaredTypes = typeof schema.type === "string"
+    ? [schema.type]
+    : Array.isArray(schema.type)
+      ? schema.type.filter((value): value is string => typeof value === "string")
+      : [];
+  const declaresObject = declaredTypes.includes("object");
+  const objectContractIsExplicit = [
+    "$ref",
+    "additionalProperties",
+    "allOf",
+    "anyOf",
+    "const",
+    "enum",
+    "if",
+    "maxProperties",
+    "minProperties",
+    "not",
+    "oneOf",
+    "patternProperties",
+    "properties",
+    "propertyNames",
+    "unevaluatedProperties",
+  ].some((keyword) => Object.hasOwn(schema, keyword));
+  if (declaresObject && !objectContractIsExplicit) findings.push(schemaPath);
+
+  for (const keyword of [
+    "additionalProperties",
+    "contains",
+    "else",
+    "if",
+    "items",
+    "not",
+    "propertyNames",
+    "then",
+    "unevaluatedProperties",
+  ]) {
+    const child = schema[keyword];
+    if (isRecord(child)) visitSchema(child, `${schemaPath}.${keyword}`, findings);
+  }
+  for (const keyword of ["allOf", "anyOf", "oneOf", "prefixItems"]) {
+    const children = schema[keyword];
+    if (!Array.isArray(children)) continue;
+    children.forEach((child, index) => {
+      if (isRecord(child)) visitSchema(child, `${schemaPath}.${keyword}[${index}]`, findings);
+    });
+  }
+  for (const keyword of [
+    "$defs",
+    "definitions",
+    "dependentSchemas",
+    "patternProperties",
+    "properties",
+  ]) {
+    const children = schema[keyword];
+    if (!isRecord(children)) continue;
+    for (const [name, child] of Object.entries(children)) {
+      if (isRecord(child)) visitSchema(child, `${schemaPath}.${keyword}.${name}`, findings);
+    }
   }
 }
 

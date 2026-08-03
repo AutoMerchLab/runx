@@ -38,7 +38,9 @@ consume those owners; none is a parallel implementation.
 
 ## Repository ownership
 
-- `runx-contracts` owns portable Rust wire types and schema identifiers.
+- `runx-contracts` owns domain-neutral portable Rust wire types and schema
+  mechanics. Domain crates own their wire types; for example, `runx-pay` owns
+  payment contracts and contributes their schema artifacts to the same catalog.
 - `runx-core` owns pure policy, authority, and state-transition algebra.
 - `runx-parser` owns all pure package parsing and validation. It returns one
   aggregate validated package representation; consumers do not reparse package

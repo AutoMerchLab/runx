@@ -207,6 +207,11 @@ authoring.
   report. This proves enforcement owned by Runx capabilities and providers. It
   cannot prove that trusted host code avoided undeclared filesystem, network,
   or syscall access, so report that boundary as trusted rather than confined.
+- Tool fixtures inherit the exact scopes declared by the canonically resolved
+  manifest and pass declared packets through the production packet verifier.
+  Use `expect.output.matches_packet` only when the whole fixture output is one
+  self-described packet; named artifact packets are already verified from the
+  manifest and should not be asserted through a second fixture path.
 - Search the inspected native-tool and skill catalogs before designing files.
   Prefer an existing core tool or canonical skill over executable package code.
 - Make every public runner input constructible from inspection. Use ordinary
@@ -216,8 +221,28 @@ authoring.
   exports, registry bundles, and harnesses. Never copy that packet schema into
   the consumer. If the canonical schema is too weak to make the input usable,
   improve the producing packet contract first; a packet reference is not a
-  substitute for a complete schema. Every public runner still needs at least
-  one realistic, copy-valid example unless its inputs are empty.
+  substitute for a complete schema. Do not mint a packet id for a runner-local
+  nested value, graph intermediate, or one-run implementation detail. A packet
+  exists only for the complete value crossing a named reusable skill, runtime,
+  SDK, provider, receipt, or registry boundary, and it must have one active
+  producer and consumer or an explicit public native owner. Remove the generated
+  artifact when that ownership disappears. Every public runner still needs at
+  least one realistic, copy-valid example unless its inputs are empty.
+- A named packet must expose its semantic fields or reference a canonical typed
+  contract. Bare `type: object`, unconstrained `{}`, and opaque property bags do
+  not make a runner inspectable and must be repaired at the producing contract,
+  not documented around in prose. Open JSON is admissible only as an explicitly
+  named protocol extension or generic data payload inside an otherwise bounded
+  semantic envelope.
+- Apply that rule recursively. Every nested `type: object` declares meaningful
+  properties or an explicit `additionalProperties` policy. If the value is
+  intentionally arbitrary JSON, declare `type: json`; do not make an object
+  declaration imply structure that the contract does not provide.
+- Put a producer's nested output shape in that output declaration's `schema`.
+  Do not hand-maintain the same shape in a packet file, fixture, exporter, or
+  consumer: native parsing, agent context, runtime validation, packet
+  generation, registry packaging, and harness replay all consume the producer's
+  declaration.
 - Express orchestration through `X.yaml`; keep all static agent operating
   knowledge and task contracts in `SKILL.md`. Never put model instructions in
   manifests, fixtures, or duplicated prompt fragments.

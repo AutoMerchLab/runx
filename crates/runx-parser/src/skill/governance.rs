@@ -219,6 +219,7 @@ fn validate_input_schema(input: &SkillInput, field: &str) -> Result<(), Validati
     })?;
     jsonschema::draft202012::meta::validate(&schema)
         .map_err(|error| FIELDS.validation_error(format!("{field}.schema is invalid: {error}")))?;
+    validate_explicit_object_contracts(&schema, &format!("{field}.schema"))?;
     let values = input
         .default
         .iter()
@@ -249,6 +250,83 @@ fn validate_input_schema(input: &SkillInput, field: &str) -> Result<(), Validati
             return Err(FIELDS.validation_error(format!(
                 "{field}.{label} must match the declared input schema"
             )));
+        }
+    }
+    Ok(())
+}
+
+fn validate_explicit_object_contracts(
+    schema: &serde_json::Value,
+    field: &str,
+) -> Result<(), ValidationError> {
+    let Some(object) = schema.as_object() else {
+        return Ok(());
+    };
+    let declares_object = match object.get("type") {
+        Some(serde_json::Value::String(value)) => value == "object",
+        Some(serde_json::Value::Array(values)) => values.iter().any(|value| value == "object"),
+        _ => false,
+    };
+    let object_contract_is_explicit = [
+        "$ref",
+        "additionalProperties",
+        "allOf",
+        "anyOf",
+        "const",
+        "enum",
+        "if",
+        "maxProperties",
+        "minProperties",
+        "not",
+        "oneOf",
+        "patternProperties",
+        "properties",
+        "propertyNames",
+        "unevaluatedProperties",
+    ]
+    .iter()
+    .any(|keyword| object.contains_key(*keyword));
+    if declares_object && !object_contract_is_explicit {
+        return Err(FIELDS.validation_error(format!(
+            "{field} declares an object without a shape; define its properties or set additionalProperties explicitly for an intentional open object"
+        )));
+    }
+
+    for keyword in [
+        "additionalProperties",
+        "contains",
+        "else",
+        "if",
+        "items",
+        "not",
+        "propertyNames",
+        "then",
+        "unevaluatedProperties",
+    ] {
+        if let Some(child) = object.get(keyword)
+            && child.is_object()
+        {
+            validate_explicit_object_contracts(child, &format!("{field}.{keyword}"))?;
+        }
+    }
+    for keyword in ["allOf", "anyOf", "oneOf", "prefixItems"] {
+        if let Some(children) = object.get(keyword).and_then(serde_json::Value::as_array) {
+            for (index, child) in children.iter().enumerate() {
+                validate_explicit_object_contracts(child, &format!("{field}.{keyword}[{index}]"))?;
+            }
+        }
+    }
+    for keyword in [
+        "$defs",
+        "definitions",
+        "dependentSchemas",
+        "patternProperties",
+        "properties",
+    ] {
+        if let Some(children) = object.get(keyword).and_then(serde_json::Value::as_object) {
+            for (name, child) in children {
+                validate_explicit_object_contracts(child, &format!("{field}.{keyword}.{name}"))?;
+            }
         }
     }
     Ok(())
@@ -353,6 +431,7 @@ mod tests {
     use runx_contracts::{JsonObject, JsonValue};
 
     use super::{validate_artifact_contract, validate_inputs};
+    use crate::ValidationError;
 
     fn packet_input(extra: impl IntoIterator<Item = (&'static str, JsonValue)>) -> JsonObject {
         let mut input = JsonObject::from([
@@ -371,13 +450,24 @@ mod tests {
         JsonObject::from([("plan".to_owned(), JsonValue::Object(input))])
     }
 
+    fn object_input(schema: JsonObject) -> JsonObject {
+        JsonObject::from([(
+            "value".to_owned(),
+            JsonValue::Object(JsonObject::from([
+                ("type".to_owned(), JsonValue::String("object".to_owned())),
+                ("schema".to_owned(), JsonValue::Object(schema)),
+            ])),
+        )])
+    }
+
     #[test]
-    fn packet_input_reference_is_parser_owned() {
-        let inputs = validate_inputs(packet_input([]), "inputs").expect("packet input");
+    fn packet_input_reference_is_parser_owned() -> Result<(), ValidationError> {
+        let inputs = validate_inputs(packet_input([]), "inputs")?;
         assert_eq!(
             inputs.get("plan").and_then(|input| input.packet.as_deref()),
             Some("runx.test.plan.v1")
         );
+        Ok(())
     }
 
     #[test]
@@ -395,6 +485,41 @@ mod tests {
         assert!(validate_inputs(inline_schema, "inputs").is_err());
         assert!(validate_inputs(default_packet, "inputs").is_err());
         assert!(validate_inputs(wrong_type, "inputs").is_err());
+    }
+
+    #[test]
+    fn object_inputs_require_recursive_shape_or_explicit_openness() -> Result<(), ValidationError> {
+        let implicit_open = object_input(JsonObject::new());
+        let explicit_open = object_input(JsonObject::from([(
+            "additionalProperties".to_owned(),
+            JsonValue::Bool(true),
+        )]));
+        let nested_implicit_open = object_input(JsonObject::from([(
+            "properties".to_owned(),
+            JsonValue::Object(JsonObject::from([(
+                "payload".to_owned(),
+                JsonValue::Object(JsonObject::from([(
+                    "type".to_owned(),
+                    JsonValue::String("object".to_owned()),
+                )])),
+            )])),
+        )]));
+        let nested_closed = object_input(JsonObject::from([(
+            "properties".to_owned(),
+            JsonValue::Object(JsonObject::from([(
+                "payload".to_owned(),
+                JsonValue::Object(JsonObject::from([
+                    ("type".to_owned(), JsonValue::String("object".to_owned())),
+                    ("additionalProperties".to_owned(), JsonValue::Bool(false)),
+                ])),
+            )])),
+        )]));
+
+        assert!(validate_inputs(implicit_open, "inputs").is_err());
+        assert!(validate_inputs(nested_implicit_open, "inputs").is_err());
+        validate_inputs(explicit_open, "inputs")?;
+        validate_inputs(nested_closed, "inputs")?;
+        Ok(())
     }
 
     #[test]

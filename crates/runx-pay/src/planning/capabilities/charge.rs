@@ -1,7 +1,9 @@
-use runx_contracts::schema::BoundedString;
-use runx_contracts::{
-    JsonObject, PaymentChargePolicy, PaymentCredentialReference, PaymentToolCall,
+use crate::contracts::{
+    PaymentChargeChallengePacket, PaymentChargePolicy, PaymentChargePricePacket,
+    PaymentChargeVerificationRequest, PaymentCredentialReference, PaymentIdempotencyBinding,
+    PaymentToolCall,
 };
+use runx_contracts::schema::BoundedString;
 use runx_runtime::{
     CapabilityAdmission, CapabilityApproval, CapabilityArtifacts, CapabilityDefinition,
     CapabilityEffect, CapabilityField, CapabilityInput, TypedCapability,
@@ -25,7 +27,7 @@ impl CapabilityInput for PriceInput {}
 #[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct ChallengeInput {
-    charge_price_packet: JsonObject,
+    charge_price_packet: PaymentChargePricePacket,
     idempotency_seed: BoundedString<256>,
 }
 
@@ -34,12 +36,12 @@ impl CapabilityInput for ChallengeInput {}
 #[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct VerificationInput {
-    charge_price_packet: JsonObject,
-    charge_challenge_packet: JsonObject,
+    charge_price_packet: PaymentChargePricePacket,
+    charge_challenge_packet: PaymentChargeChallengePacket,
     returned_credential: PaymentCredentialReference,
     verify_capability_ref: BoundedString<512>,
     settlement_family: BoundedString<64>,
-    idempotency: JsonObject,
+    idempotency: PaymentIdempotencyBinding,
 }
 
 impl CapabilityInput for VerificationInput {}
@@ -47,9 +49,9 @@ impl CapabilityInput for VerificationInput {}
 #[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct PlanInput {
-    charge_price_packet: JsonObject,
-    charge_challenge_packet: JsonObject,
-    charge_verification_request: JsonObject,
+    charge_price_packet: PaymentChargePricePacket,
+    charge_challenge_packet: PaymentChargeChallengePacket,
+    charge_verification_request: PaymentChargeVerificationRequest,
 }
 
 impl CapabilityInput for PlanInput {}
