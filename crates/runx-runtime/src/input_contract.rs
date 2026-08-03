@@ -88,6 +88,26 @@ pub(crate) fn materialize_present_runner_inputs(
     )
 }
 
+/// Admit a complete top-level runner invocation.
+///
+/// Unlike the preparation front, which preserves absent required values long
+/// enough to return a blocked context and refusal receipt, execution and
+/// harness replay must receive every required value and must reject ambient,
+/// undeclared inputs.
+pub(crate) fn materialize_complete_runner_inputs(
+    declared: &BTreeMap<String, SkillInput>,
+    supplied: &JsonObject,
+) -> Result<JsonObject, InputContractError> {
+    materialize_declared_inputs(
+        declared,
+        supplied,
+        &JsonObject::new(),
+        "runner",
+        MissingRequired::Reject,
+        UnknownInputs::Reject,
+    )
+}
+
 fn materialize_declared_inputs(
     declared: &BTreeMap<String, SkillInput>,
     static_inputs: &JsonObject,
@@ -229,11 +249,17 @@ fn validate_schema_value(
     } else {
         format!("/{name}{nested}")
     };
+    let schema_path = error.schema_path().as_str();
+    let message = if schema_path.is_empty() {
+        "value does not satisfy the declared schema".to_owned()
+    } else {
+        format!("value does not satisfy the declared schema at '{schema_path}'")
+    };
     Err(InputContractError::new(
         owner,
         name,
         path,
-        error.to_string(),
+        message,
         accepted_schema,
     ))
 }
@@ -332,7 +358,7 @@ impl InputContractError {
             input: self.input,
             path: self.path,
             message: self.message,
-            accepted_schema: self.accepted_schema,
+            accepted_schema: Box::new(self.accepted_schema),
         }
     }
 }
@@ -353,7 +379,10 @@ mod tests {
 
     use runx_contracts::{InputDefinition, JsonNumber, JsonObject, JsonValue};
 
-    use super::{materialize_nested_runner_inputs, materialize_present_runner_inputs};
+    use super::{
+        materialize_complete_runner_inputs, materialize_nested_runner_inputs,
+        materialize_present_runner_inputs,
+    };
 
     fn string_input(required: bool) -> InputDefinition {
         InputDefinition {
@@ -462,5 +491,99 @@ mod tests {
             accepted_schema["properties"]["filters"]["properties"]["limit"]["maximum"],
             25
         );
+    }
+
+    #[test]
+    fn complete_runner_rejects_missing_required_and_conditional_nested_values() {
+        let resources = InputDefinition {
+            input_type: "object".to_owned(),
+            required: true,
+            description: Some("Bounded GitHub resources.".to_owned()),
+            default: None,
+            artifact: None,
+            packet: None,
+            schema: Some(JsonObject::from([
+                ("type".to_owned(), JsonValue::String("object".to_owned())),
+                (
+                    "required".to_owned(),
+                    JsonValue::Array(vec![JsonValue::String("kind".to_owned())]),
+                ),
+                (
+                    "properties".to_owned(),
+                    JsonValue::Object(JsonObject::from([(
+                        "kind".to_owned(),
+                        JsonValue::Object(JsonObject::from([(
+                            "type".to_owned(),
+                            JsonValue::String("string".to_owned()),
+                        )])),
+                    )])),
+                ),
+                (
+                    "allOf".to_owned(),
+                    JsonValue::Array(vec![JsonValue::Object(JsonObject::from([
+                        (
+                            "if".to_owned(),
+                            JsonValue::Object(JsonObject::from([(
+                                "properties".to_owned(),
+                                JsonValue::Object(JsonObject::from([(
+                                    "kind".to_owned(),
+                                    JsonValue::Object(JsonObject::from([(
+                                        "const".to_owned(),
+                                        JsonValue::String("prs".to_owned()),
+                                    )])),
+                                )])),
+                            )])),
+                        ),
+                        (
+                            "then".to_owned(),
+                            JsonValue::Object(JsonObject::from([(
+                                "properties".to_owned(),
+                                JsonValue::Object(JsonObject::from([(
+                                    "base".to_owned(),
+                                    JsonValue::Object(JsonObject::from([(
+                                        "type".to_owned(),
+                                        JsonValue::String("string".to_owned()),
+                                    )])),
+                                )])),
+                            )])),
+                        ),
+                    ]))]),
+                ),
+            ])),
+        };
+        let direction = string_input(true);
+        let declared = BTreeMap::from([
+            ("direction".to_owned(), direction),
+            ("resources".to_owned(), resources),
+        ]);
+        let missing_direction = JsonObject::from([(
+            "resources".to_owned(),
+            JsonValue::Object(JsonObject::from([(
+                "kind".to_owned(),
+                JsonValue::String("issues".to_owned()),
+            )])),
+        )]);
+        assert!(
+            materialize_complete_runner_inputs(&declared, &missing_direction).is_err(),
+            "execution admission must not preserve missing required inputs"
+        );
+
+        let invalid_conditional = JsonObject::from([
+            ("direction".to_owned(), JsonValue::String("push".to_owned())),
+            (
+                "resources".to_owned(),
+                JsonValue::Object(JsonObject::from([
+                    ("kind".to_owned(), JsonValue::String("prs".to_owned())),
+                    ("base".to_owned(), JsonValue::Bool(true)),
+                ])),
+            ),
+        ]);
+        let error = materialize_complete_runner_inputs(&declared, &invalid_conditional)
+            .expect_err("conditional nested schemas must be enforced")
+            .into_runtime_error();
+        assert!(matches!(
+            error,
+            crate::RuntimeError::InputContract { ref path, .. } if path == "/resources/base"
+        ));
     }
 }

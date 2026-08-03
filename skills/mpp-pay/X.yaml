@@ -1,5 +1,5 @@
 skill: mpp-pay
-version: "0.2.0"
+version: "0.2.1"
 catalog:
   kind: graph
   audience: operator
@@ -91,11 +91,13 @@ runners:
     type: graph
     inputs:
       payment_signal:
-        type: object
+        type: json
+        packet: runx.payment.signal.v1
         required: true
         description: Payment-required signal or challenge.
       parent_payment_authority:
-        type: object
+        type: json
+        packet: runx.authority_term.v1
         required: true
         description: Full typed parent payment AuthorityTerm; a reference alone is refused.
       rail_profile_ref:

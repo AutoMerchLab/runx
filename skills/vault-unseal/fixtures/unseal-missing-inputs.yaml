@@ -5,14 +5,5 @@ runner: vault-unseal
 inputs:
   purpose: Need a key for the export job
 expect:
-  status: sealed
-  output:
-    subset:
-      unseal_plan:
-        decision: needs_input
-        execution:
-          provider_status: not_called
-          handle_issued: false
-          secret_material_exposed: false
-  receipt: { schema: runx.receipt.v1 }
+  status: failure
 metadata: { public_skill: vault-unseal, source_case: missing-inputs, source: skills-fixture }

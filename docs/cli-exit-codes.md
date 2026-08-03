@@ -35,6 +35,10 @@ The command ran but failed, was denied by policy, hit an invalid operation,
 found invalid requested output, or sealed a terminal `superseded`, `declined`,
 `blocked`, `failed`, `killed`, or `timed_out` closure.
 
+After package and runner resolution, blocked skill preparation writes a refusal
+receipt before returning exit code 1. With `--json`, the error includes its
+`receipt_id` and prepared-context digest; inspect it with `runx history`.
+
 Common fixes:
 
 - Read the stderr message first; it should name the failing command or policy.

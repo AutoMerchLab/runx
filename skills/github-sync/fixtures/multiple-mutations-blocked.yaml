@@ -13,11 +13,5 @@ inputs:
       - { ref: issues/242, op: update, payload: { labels: [triage] } }
   scope: write
 expect:
-  status: sealed
-  output:
-    subset:
-      sync_plan:
-        decision: blocked
-        provider_status: not_called
-  receipt: { schema: runx.receipt.v1 }
+  status: failure
 metadata: { public_skill: github-sync, source_case: non-atomic-batch, source: skills-fixture }

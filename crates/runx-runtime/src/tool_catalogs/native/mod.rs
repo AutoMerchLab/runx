@@ -35,6 +35,7 @@ mod evidence;
 mod files;
 #[cfg(feature = "cli-tool")]
 mod git;
+mod handoff;
 #[cfg(feature = "async-http")]
 mod http;
 mod input;
@@ -78,6 +79,7 @@ const CAPABILITY_GROUPS: &[&[&dyn NativeCapability]] = &[
     #[cfg(feature = "async-http")]
     web::CAPABILITIES,
     data::CAPABILITIES,
+    handoff::CAPABILITIES,
     event_store::CAPABILITIES,
     evidence::CAPABILITIES,
     attestation::CAPABILITIES,

@@ -3,7 +3,7 @@ use runx_contracts::act::assignment::ActAssignment;
 use runx_contracts::act::result::ActResultEnvelope;
 use runx_contracts::agent_context::AgentContextEnvelope;
 use runx_contracts::artifact::Artifact;
-use runx_contracts::authority::{Authority, AuthoritySubsetProof};
+use runx_contracts::authority::{Authority, AuthoritySubsetProof, AuthorityTerm};
 use runx_contracts::credential_delivery::{
     CredentialDeliveryObservation, CredentialDeliveryProfile, CredentialDeliveryRequest,
     CredentialDeliveryResponse,
@@ -25,8 +25,15 @@ use runx_contracts::ledger::LedgerEntry;
 use runx_contracts::list::RunxListReport;
 use runx_contracts::operational_policy::OperationalPolicy;
 use runx_contracts::operational_proposal::OperationalProposal;
+use runx_contracts::orchestrator_handoff::{
+    OrchestratorExecutionContext, OrchestratorHandoffContext,
+};
 use runx_contracts::output::Output;
 use runx_contracts::packet_index::PacketIndex;
+use runx_contracts::payment_inputs::{
+    PaymentChargePolicy, PaymentCredentialReference, PaymentRefundRequest, PaymentSignal,
+    PaymentToolCall,
+};
 use runx_contracts::policy_proof::{AuthorityProof, CredentialEnvelope, ScopeAdmission};
 use runx_contracts::receipt::Receipt;
 use runx_contracts::redaction::Redaction;
@@ -208,6 +215,11 @@ pub(super) fn covered() -> Vec<Covered> {
             corpus: authority_corpus(),
         },
         Covered {
+            file_name: "authority-term.schema.json",
+            emitted: AuthorityTerm::json_schema(),
+            corpus: authority_term_corpus(),
+        },
+        Covered {
             file_name: "operational-policy.schema.json",
             emitted: OperationalPolicy::json_schema(),
             corpus: operational_policy_corpus(),
@@ -216,6 +228,16 @@ pub(super) fn covered() -> Vec<Covered> {
             file_name: "operational-proposal.schema.json",
             emitted: OperationalProposal::json_schema(),
             corpus: operational_proposal_corpus(),
+        },
+        Covered {
+            file_name: "orchestrator-execution-context.schema.json",
+            emitted: OrchestratorExecutionContext::json_schema(),
+            corpus: orchestrator_execution_context_corpus(),
+        },
+        Covered {
+            file_name: "orchestrator-handoff-context.schema.json",
+            emitted: OrchestratorHandoffContext::json_schema(),
+            corpus: orchestrator_handoff_context_corpus(),
         },
         Covered {
             file_name: "act.schema.json",
@@ -246,6 +268,31 @@ pub(super) fn covered() -> Vec<Covered> {
             file_name: "packet-index.schema.json",
             emitted: PacketIndex::json_schema(),
             corpus: packet_index_corpus(),
+        },
+        Covered {
+            file_name: "payment-signal.schema.json",
+            emitted: PaymentSignal::json_schema(),
+            corpus: payment_signal_corpus(),
+        },
+        Covered {
+            file_name: "payment-tool-call.schema.json",
+            emitted: PaymentToolCall::json_schema(),
+            corpus: payment_tool_call_corpus(),
+        },
+        Covered {
+            file_name: "payment-charge-policy.schema.json",
+            emitted: PaymentChargePolicy::json_schema(),
+            corpus: payment_charge_policy_corpus(),
+        },
+        Covered {
+            file_name: "payment-credential-reference.schema.json",
+            emitted: PaymentCredentialReference::json_schema(),
+            corpus: payment_credential_reference_corpus(),
+        },
+        Covered {
+            file_name: "payment-refund-request.schema.json",
+            emitted: PaymentRefundRequest::json_schema(),
+            corpus: payment_refund_request_corpus(),
         },
         Covered {
             file_name: "registry-binding.schema.json",

@@ -6,7 +6,7 @@ regenerated from a parallel JavaScript model of Runx execution; current
 structural truth comes from native package validation, operator-context
 expansion, the official lock, and package harnesses.
 
-**Status: implemented.** This covers all 79 top-level skill packages: 71 public
+**Status: implemented.** This covers all 78 top-level skill packages: 70 public
 and 8 internal.
 No additional package is removed or hidden by this review. Improvement recommendations preserve the capability until a separate product decision approves a migration.
 
@@ -52,8 +52,8 @@ The official lock, generated Rust catalog, packet schemas, documentation, and co
 
 ## Evidence recorded at review time
 
-- Top-level core packages: 79
-- Public packages: 71; internal packages: 8
+- Top-level core packages: 78
+- Public packages: 70; internal packages: 8
 - Packages containing agent work: 47
 - Agent-only default closures: 2
 - Packages without operation proof: 7
@@ -62,9 +62,9 @@ The official lock, generated Rust catalog, packet schemas, documentation, and co
 - Packages without any replayable contract proof: 3
 - Public manuals failing the cold-operator floor: 0
 - Public manuals missing a composed-skill relationship: 0
-- Public harness trials: 71 passed, 0 failed, 0 unproven
+- Public harness trials: 70 passed, 0 failed, 0 unproven
 - Public packages currently meeting their complete archetype bar: 50
-- Recommendations: improve=20, internal_fixture=3, internal_runtime=5, keep=51
+- Recommendations: improve=20, internal_fixture=3, internal_runtime=5, keep=50
 - Archetypes: artifact=12, builder=8, context=3, operation=27, runtime=8, workflow=21
 
 The detailed per-fixture results are not checked in as a generated mirror; the
@@ -125,7 +125,7 @@ read-only observations supported the provider claims in this review:
 | mpp-charge | runtime | internal/runtime-path | tool:payment.charge_challenge, tool:payment.charge_plan, tool:payment.charge_price, tool:payment.charge_verification_request | internal; 0 blocking finding(s); not trialled | internal_runtime | MPP provider rail retained behind canonical payment skills. | none |
 | mpp-pay | runtime | internal/runtime-path | tool:payment.quote, tool:payment.reserve; 1 agent act -> declared artifact | internal; 0 blocking finding(s); not trialled | internal_runtime | MPP provider rail retained behind canonical payment skills. | none |
 | mpp-refund | runtime | internal/runtime-path | tool:payment.refund_plan | internal; 0 blocking finding(s); not trialled | internal_runtime | MPP provider rail retained behind canonical payment skills. | none |
-| n8n-handoff | operation | public/context | tool:http.execute, tool:orchestrators.build_handoff_context | harness passed; 0 blocking finding(s); 1 operation proof(s); provider readback unproven | improve | A scoped idempotent n8n handoff is a real integration boundary; native HTTP now owns transport and audience-bound credential delivery. | Capture standalone webhook acceptance/readback evidence. |
+| n8n-handoff | operation | public/context | tool:control.prepare_handoff, tool:http.execute | harness passed; 0 blocking finding(s); 1 operation proof(s); provider readback unproven | improve | A scoped idempotent n8n handoff is a real integration boundary; native handoff normalization and HTTP own context binding, transport, and audience-bound credential delivery. | Capture standalone webhook acceptance/readback evidence. |
 | nitrosend | operation | public/branded | javascript, tool:http.query | complete archetype bar | keep | The unified Nitrosend domain skill has isolated adapter trials and sealed live read-only provider evidence. | none |
 | nws-weather-forecast | operation | public/branded | tool:http.read | complete archetype bar | keep | The NWS skill performs bounded keyless provider reads with live HTTP proof. | none |
 | open-meteo-weather-forecast | operation | public/branded | tool:http.read | complete archetype bar | keep | The Open-Meteo skill performs global keyless forecast and air-quality reads with live HTTP proof. | none |
@@ -165,7 +165,7 @@ read-only observations supported the provider claims in this review:
 | web-fetch | operation | public/canonical | tool:web.fetch | complete archetype bar | keep | Allowlisted fetch with digest provenance is a genuine network operation with live keyless proof. | none |
 | work-plan | builder | public/context | javascript, tool:runx.skill.inspect; 1 agent act -> declared artifact | complete archetype bar | keep | The planner now preserves issue-intake change sets and captured control context, keeps decomposition as bounded agent judgment, then deterministically validates ordered phase and step DAGs, mutation scopes, context dependencies, catalog references, and canonical skill-lab ownership before releasing an executable plan. | none |
 | x402-pay | operation | public/branded | tool:payment.quote | harness passed; 0 blocking finding(s); 1 operation proof(s) | improve | The branded x402 facade now delegates only authority-bound quoting to canonical spend and truthfully stops before execution because no trusted buyer adapter is bundled. | Add a separately owned adapter that uses the standard x402 paid-resource flow, selects credentials through an opaque local profile or explicit Connect grant, and proves bounded testnet settlement, recovery, and independent readback. |
-| zapier-handoff | operation | public/context | tool:http.execute, tool:orchestrators.build_handoff_context | harness passed; 0 blocking finding(s); 1 operation proof(s); provider readback unproven | improve | A scoped idempotent Zapier handoff is a real integration boundary; native HTTP now owns transport and audience-bound credential delivery. | Capture standalone webhook acceptance/readback evidence. |
+| zapier-handoff | operation | public/context | tool:control.prepare_handoff, tool:http.execute | harness passed; 0 blocking finding(s); 1 operation proof(s); provider readback unproven | improve | A scoped idempotent Zapier handoff is a real integration boundary; native handoff normalization and HTTP own context binding, transport, and audience-bound credential delivery. | Capture standalone webhook acceptance/readback evidence. |
 
 ## Consolidation and removal guard
 

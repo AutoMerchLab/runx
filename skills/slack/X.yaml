@@ -1,5 +1,5 @@
 skill: slack
-version: "0.2.4"
+version: "0.2.5"
 
 catalog:
   kind: graph
@@ -69,11 +69,13 @@ runners:
         type: string
         required: true
         description: Exact slack://workspace/channel/timestamp thread locator.
+        schema: { pattern: '^slack://[A-Z][A-Z0-9]+/[CGD][A-Z0-9]+/[0-9]+\.[0-9]+$', maxLength: 300 }
       limit:
-        type: number
+        type: integer
         required: false
         default: 15
         description: Bounded messages to return; provider maximum is 15.
+        schema: { minimum: 1, maximum: 15 }
       cursor:
         type: string
         required: false
@@ -110,11 +112,13 @@ runners:
         type: string
         required: true
         description: Exact https://workspace.slack.com/archives/channel/message permalink.
+        schema: { pattern: '^https://[^/]+\.slack\.com/archives/[A-Z0-9]+/p[0-9]+$', maxLength: 2048 }
       limit:
-        type: number
+        type: integer
         required: false
         default: 15
         description: Bounded messages to return; provider maximum is 15.
+        schema: { minimum: 1, maximum: 15 }
       cursor:
         type: string
         required: false
@@ -149,6 +153,7 @@ runners:
         type: string
         required: true
         description: Exact slack-file://workspace/file locator returned by read_thread.
+        schema: { pattern: '^slack-file://[A-Z][A-Z0-9]+/F[A-Z0-9]+$', maxLength: 300 }
     examples:
       - file_locator: slack-file://T123ABC/F123ABC
     graph:
@@ -182,10 +187,12 @@ runners:
         type: string
         required: true
         description: Exact Slack thread that would receive the reply.
+        schema: { pattern: '^slack://[A-Z][A-Z0-9]+/[CGD][A-Z0-9]+/[0-9]+\.[0-9]+$', maxLength: 300 }
       text:
         type: string
         required: true
         description: Exact proposed reply text.
+        schema: { minLength: 1, maxLength: 4000 }
       provider_context:
         type: json
         required: false
@@ -228,29 +235,45 @@ runners:
     type: graph
     inputs:
       send_plan:
-        type: object
+        type: json
+        packet: runx.send_as.plan.v1
         required: true
         description: Exact send_plan emitted by plan_reply.
       thread_locator:
         type: string
         required: true
         description: Exact Slack thread locator bound by the plan and Connect grant.
+        schema: { pattern: '^slack://[A-Z][A-Z0-9]+/[CGD][A-Z0-9]+/[0-9]+\.[0-9]+$', maxLength: 300 }
       text:
         type: string
         required: true
         description: Exact reply text whose digest must match the plan.
+        schema: { minLength: 1, maxLength: 4000 }
       idempotency_key:
         type: string
         required: true
         description: Stable UUID for this exact Slack reply.
+        schema: { format: uuid }
     examples:
       - send_plan:
           decision: ready
-          provider: { name: slack }
+          action_family: send-as
+          principal: { type: user, ref: "user:kam" }
+          provider: { name: slack, account_ref: "workspace:T123ABC", runtime_path: slack }
+          send_class: internal
           channel: chat
-          audience: { type: thread, ref: 'slack://T123ABC/C123ABC/1750000000.000001' }
-          content: { digest: 'sha256:8604f5c08db8d76b6fa8066c769fbdc6a4992101373d0d17bcfe426cf8e77647' }
-          gates: { human_approval_required: true }
+          audience: { type: thread, ref: 'slack://T123ABC/C123ABC/1750000000.000001', requires_reconfirmation: false }
+          content:
+            draft_ref: inline
+            digest: 'sha256:8604f5c08db8d76b6fa8066c769fbdc6a4992101373d0d17bcfe426cf8e77647'
+            subject_or_title: Slack thread reply
+          gates: { preflight_required: true, human_approval_required: true, approval_ref: slack.deliver-reply.approval }
+          blockers: []
+          provider_actions: [thread.reply]
+          evidence_refs: []
+          success_checkpoint:
+            milestone: plan_ready
+            description: Digest-bound Slack reply awaits approved provider execution.
         thread_locator: slack://T123ABC/C123ABC/1750000000.000001
         text: I’ll verify this now.
         idempotency_key: 178d473e-8431-4d15-8de6-e29227bfa90d

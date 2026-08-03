@@ -1,4 +1,7 @@
-use runx_contracts::JsonObject;
+use runx_contracts::schema::BoundedString;
+use runx_contracts::{
+    JsonObject, PaymentChargePolicy, PaymentCredentialReference, PaymentToolCall,
+};
 use runx_runtime::{
     CapabilityAdmission, CapabilityApproval, CapabilityArtifacts, CapabilityDefinition,
     CapabilityEffect, CapabilityField, CapabilityInput, TypedCapability,
@@ -13,8 +16,8 @@ pub(crate) const CHARGE_PLAN_TOOL: &str = "payment.charge_plan";
 #[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct PriceInput {
-    mcp_tool_call: JsonObject,
-    provider_policy: JsonObject,
+    mcp_tool_call: PaymentToolCall,
+    provider_policy: PaymentChargePolicy,
 }
 
 impl CapabilityInput for PriceInput {}
@@ -23,7 +26,7 @@ impl CapabilityInput for PriceInput {}
 #[serde(deny_unknown_fields)]
 pub(super) struct ChallengeInput {
     charge_price_packet: JsonObject,
-    idempotency_seed: String,
+    idempotency_seed: BoundedString<256>,
 }
 
 impl CapabilityInput for ChallengeInput {}
@@ -33,9 +36,9 @@ impl CapabilityInput for ChallengeInput {}
 pub(super) struct VerificationInput {
     charge_price_packet: JsonObject,
     charge_challenge_packet: JsonObject,
-    returned_credential: JsonObject,
-    verify_capability_ref: String,
-    settlement_family: String,
+    returned_credential: PaymentCredentialReference,
+    verify_capability_ref: BoundedString<512>,
+    settlement_family: BoundedString<64>,
     idempotency: JsonObject,
 }
 

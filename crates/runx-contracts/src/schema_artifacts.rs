@@ -7,19 +7,20 @@ use serde_json as schema_json;
 use crate::schema::RunxSchema;
 use crate::{
     Act, ActAssignment, ActResultEnvelope, AgentActInvocation, AgentContextEnvelope, ApprovalGate,
-    Artifact, Authority, AuthorityProof, AuthoritySubsetProof, CredentialDeliveryObservation,
-    CredentialDeliveryProfile, CredentialDeliveryRequest, CredentialDeliveryResponse,
-    CredentialEnvelope, Decision, DevReport, DoctorReport, EffectFinalityReceipt,
-    ExternalAdapterCancellationFrame, ExternalAdapterCredentialRequest,
+    Artifact, Authority, AuthorityProof, AuthoritySubsetProof, AuthorityTerm,
+    CredentialDeliveryObservation, CredentialDeliveryProfile, CredentialDeliveryRequest,
+    CredentialDeliveryResponse, CredentialEnvelope, Decision, DevReport, DoctorReport,
+    EffectFinalityReceipt, ExternalAdapterCancellationFrame, ExternalAdapterCredentialRequest,
     ExternalAdapterHostResolutionFrame, ExternalAdapterInvocation, ExternalAdapterManifest,
     ExternalAdapterResponse, Fixture, HandoffSignal, HandoffState, LedgerEntry, OperationalPolicy,
-    OperationalProposal, Output, PacketIndex, Question, Receipt, Redaction, Reference,
-    ReferenceLink, RegistryBinding, ResolutionRequest, ResolutionResponse, ReviewReceiptOutput,
-    RunSummary, RunxListReport, ScopeAdmission, Signal, SkillApplyResult,
-    SkillArchitectureDecision, SkillArchitecturePlan, SkillChangeBundle, SkillChangeDraft,
-    SkillValidationResult, SourcePacket, SuppressionRecord, ThreadOutboxProviderFetch,
-    ThreadOutboxProviderManifest, ThreadOutboxProviderObservation, ThreadOutboxProviderPush,
-    ToolManifest, Verification,
+    OperationalProposal, OrchestratorExecutionContext, OrchestratorHandoffContext, Output,
+    PacketIndex, PaymentChargePolicy, PaymentCredentialReference, PaymentRefundRequest,
+    PaymentSignal, PaymentToolCall, Question, Receipt, Redaction, Reference, ReferenceLink,
+    RegistryBinding, ResolutionRequest, ResolutionResponse, ReviewReceiptOutput, RunSummary,
+    RunxListReport, ScopeAdmission, Signal, SkillApplyResult, SkillArchitectureDecision,
+    SkillArchitecturePlan, SkillChangeBundle, SkillChangeDraft, SkillValidationResult,
+    SourcePacket, SuppressionRecord, ThreadOutboxProviderFetch, ThreadOutboxProviderManifest,
+    ThreadOutboxProviderObservation, ThreadOutboxProviderPush, ToolManifest, Verification,
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -67,6 +68,11 @@ pub fn generated_schema_artifacts() -> Vec<SchemaArtifact> {
         artifact::<Fixture>("fixture.schema.json"),
         artifact::<ToolManifest>("tool-manifest.schema.json"),
         artifact::<PacketIndex>("packet-index.schema.json"),
+        packet_artifact::<PaymentSignal>("payment-signal.schema.json"),
+        packet_artifact::<PaymentToolCall>("payment-tool-call.schema.json"),
+        packet_artifact::<PaymentChargePolicy>("payment-charge-policy.schema.json"),
+        packet_artifact::<PaymentCredentialReference>("payment-credential-reference.schema.json"),
+        packet_artifact::<PaymentRefundRequest>("payment-refund-request.schema.json"),
         artifact::<ActAssignment>("act-assignment.schema.json"),
         artifact::<ExternalAdapterManifest>("external-adapter-manifest.schema.json"),
         artifact::<ExternalAdapterInvocation>("external-adapter-invocation.schema.json"),
@@ -81,6 +87,7 @@ pub fn generated_schema_artifacts() -> Vec<SchemaArtifact> {
         artifact::<Reference>("reference.schema.json"),
         artifact::<ReferenceLink>("reference-link.schema.json"),
         artifact::<Authority>("authority.schema.json"),
+        packet_artifact::<AuthorityTerm>("authority-term.schema.json"),
         artifact::<AuthoritySubsetProof>("authority-subset-proof.schema.json"),
         artifact::<Signal>("signal.schema.json"),
         artifact::<SourcePacket>("source-packet.schema.json"),
@@ -97,6 +104,10 @@ pub fn generated_schema_artifacts() -> Vec<SchemaArtifact> {
         artifact::<SuppressionRecord>("suppression-record.schema.json"),
         artifact::<OperationalPolicy>("operational-policy.schema.json"),
         artifact::<OperationalProposal>("operational-proposal.schema.json"),
+        packet_artifact::<OrchestratorExecutionContext>(
+            "orchestrator-execution-context.schema.json",
+        ),
+        packet_artifact::<OrchestratorHandoffContext>("orchestrator-handoff-context.schema.json"),
         artifact::<RegistryBinding>("registry-binding.schema.json"),
         artifact::<ReviewReceiptOutput>("review-receipt-output.schema.json"),
     ]
@@ -107,4 +118,18 @@ fn artifact<T: RunxSchema>(file_name: &'static str) -> SchemaArtifact {
         file_name,
         schema: T::json_schema(),
     }
+}
+
+fn packet_artifact<T: RunxSchema>(file_name: &'static str) -> SchemaArtifact {
+    let mut artifact = artifact::<T>(file_name);
+    if let schema_json::Value::Object(schema) = &mut artifact.schema {
+        schema.insert("x-runx-packet".to_owned(), schema_json::Value::Bool(true));
+    } else {
+        let schema = std::mem::replace(&mut artifact.schema, schema_json::Value::Null);
+        artifact.schema = schema_json::json!({
+            "allOf": [schema],
+            "x-runx-packet": true,
+        });
+    }
+    artifact
 }

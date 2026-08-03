@@ -22,11 +22,14 @@ operator-owned Zap that receives governed effects from runx.
 - `send`: validates the context and posts the payload to the Zapier Catch Hook.
 
 Use `preflight` for reviews, CI, and local harnesses; it never needs approval.
-The `send` runner opens approval immediately before the outbound webhook and
-posts through Runx's native `http.execute` capability. The skill binds the
-credential to `https://hooks.zapier.com`, so caller-supplied hook path segments
-cannot redirect it to another host. Configure the token through the normal
-profile path:
+The `send` runner first calls native `control.prepare_handoff`, which validates
+the execution identity and produces both the canonical `delivery` envelope and
+the exact webhook request that carries it. One explicit graph gate approves
+that exact request because native `http.execute` is policy-gated rather than
+effect-owned; the HTTP tool then posts the approved request. The skill binds
+the credential to `https://hooks.zapier.com`, so caller-supplied hook path
+segments cannot redirect it to another host. Configure the token through the
+normal profile path:
 
 ```bash
 printf '%s' "$ZAPIER_WEBHOOK_TOKEN" |
@@ -50,9 +53,14 @@ When present, these fields must match the top-level inputs:
 
 - `platform`
 - `event_id`
-- `idempotency_key`
+- `idempotency_key` (bound to `event_id`)
 - `handoff_scope`
 - `handoff_audience`
+
+The Catch Hook receives the normalized `delivery` object, not a second
+package-authored rendering. It carries the business payload, source context,
+exact handoff scope and audience, and idempotency binding the Zap must validate
+before any downstream action.
 
 ## Edge cases
 
@@ -75,4 +83,6 @@ When present, these fields must match the top-level inputs:
   `zapier:zap:runx-governed-effect`.
 - `zapier_account_id` and `zapier_hook_id` (send runner): Catch Hook path
   segments.
-- `idempotency_key` (optional): defaults to `event_id`.
+
+`event_id` is also the Runx mutation idempotency key and the value delivered as
+`idempotency_key`; there is no second retry identity that can drift from it.

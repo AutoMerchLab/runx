@@ -1,5 +1,5 @@
 skill: mpp-refund
-version: "0.3.0"
+version: "0.3.1"
 catalog:
   kind: graph
   audience: operator
@@ -17,11 +17,13 @@ runners:
         required: true
         description: Opaque sealed charge receipt reference.
       refund_request:
-        type: object
+        type: json
+        packet: runx.payment.refund_request.v1
         required: true
         description: Positive minor-unit amount, reason, and optional payer check.
       parent_payment_authority:
-        type: object
+        type: json
+        packet: runx.authority_term.v1
         required: true
         description: Full typed parent refund AuthorityTerm.
     graph:

@@ -1,5 +1,5 @@
 skill: spend
-version: "0.3.1"
+version: "0.3.2"
 catalog:
   kind: graph
   audience: operator
@@ -9,31 +9,97 @@ catalog:
   completion: provider_readback
   requires_adapter: true
   approval: required
+input_definitions:
+  payment_signal:
+    type: json
+    packet: runx.payment.signal.v1
+    required: true
+    description: Exact typed payment-required signal or challenge.
+  parent_payment_authority:
+    type: json
+    packet: runx.authority_term.v1
+    required: true
+    description: Full typed parent payment AuthorityTerm; a reference alone is refused.
+  realm:
+    type: string
+    required: false
+    description: Authority realm; when supplied it must match both signal and parent authority.
+    schema: { minLength: 1, maxLength: 64 }
+  rail_preferences:
+    type: array
+    required: false
+    description: Ordered rail allowlist used to narrow the parent authority.
+    schema:
+      minItems: 1
+      maxItems: 10
+      uniqueItems: true
+      items: { type: string, minLength: 1, maxLength: 64 }
+  rail_profile_ref:
+    type: string
+    required: true
+    description: Configured opaque rail profile reference.
+    schema: { minLength: 1, maxLength: 512, pattern: '^\S+$' }
+  payment_admission:
+    type: object
+    required: false
+    description: Provider-specific hosted payment admission and settlement identity passed only to the selected rail.
+  idempotency_seed:
+    type: string
+    required: true
+    description: Stable caller-owned material shared across quote, reservation, and provider execution.
+    schema: { minLength: 1, maxLength: 256 }
 runners:
   plan:
     default: false
     type: graph
     inputs:
       payment_signal:
-        type: object
-        required: true
-        description: Payment-required signal or challenge.
+        definition: payment_signal
       parent_payment_authority:
-        type: object
-        required: true
-        description: Full typed parent payment AuthorityTerm; a reference alone is refused.
+        definition: parent_payment_authority
       realm:
-        type: string
-        required: false
-        description: Authority realm.
+        definition: realm
       rail_preferences:
-        type: json
-        required: false
-        description: Ordered rail allowlist used to narrow the parent authority.
+        definition: rail_preferences
       idempotency_seed:
-        type: string
-        required: true
-        description: Stable caller-owned idempotency material.
+        definition: idempotency_seed
+    examples:
+      - payment_signal:
+          signal_type: effect_required
+          challenge_id: ch_payment_001
+          amount_minor: 125
+          currency: USD
+          counterparty: merchant:demo
+          operation: search.paid
+          realm: test
+        parent_payment_authority:
+          term_id: authority-term:payment:demo-001
+          principal_ref: { type: host, uri: principal:operator:test }
+          resource_ref: { type: surface, uri: merchant:demo }
+          resource_family: effect
+          verbs: [prepare, commit]
+          bounds:
+            effect_limits:
+              - family: payment
+                unit: USD
+                max_per_call_units: 125
+                max_per_run_units: 125
+                channels: [mock, mpp, stripe-spt, x402]
+                realm: test
+                peer: merchant:demo
+                operation: search.paid
+                idempotency_required: true
+                recovery_required: true
+                receipt_before_success: true
+                single_use_capability: true
+                authorization_form: single_use_capability
+          conditions: []
+          approvals: []
+          capabilities: [effect_single_use_capability]
+          issued_by_ref: { type: host, uri: authority:payment:test }
+        realm: test
+        rail_preferences: [mock]
+        idempotency_seed: demo-payment-001
     graph:
       name: spend-plan
       result_from: [quote]
@@ -57,29 +123,54 @@ runners:
     type: graph
     inputs:
       payment_signal:
-        type: object
-        required: true
-        description: Payment-required signal or challenge.
+        definition: payment_signal
       parent_payment_authority:
-        type: object
-        required: true
-        description: Full typed parent payment AuthorityTerm; a reference alone is refused.
+        definition: parent_payment_authority
       rail_profile_ref:
-        type: string
-        required: true
-        description: Configured rail profile reference.
+        definition: rail_profile_ref
       payment_admission:
-        type: object
-        required: false
-        description: Hosted payment admission token and settlement identity.
+        definition: payment_admission
       realm:
-        type: string
-        required: false
-        description: Authority realm.
+        definition: realm
       idempotency_seed:
-        type: string
-        required: true
-        description: Stable caller-owned idempotency material.
+        definition: idempotency_seed
+    examples:
+      - payment_signal:
+          signal_type: effect_required
+          challenge_id: ch_payment_001
+          amount_minor: 125
+          currency: USD
+          counterparty: merchant:demo
+          operation: search.paid
+          realm: test
+        parent_payment_authority:
+          term_id: authority-term:payment:demo-001
+          principal_ref: { type: host, uri: principal:operator:test }
+          resource_ref: { type: surface, uri: merchant:demo }
+          resource_family: effect
+          verbs: [prepare, commit]
+          bounds:
+            effect_limits:
+              - family: payment
+                unit: USD
+                max_per_call_units: 125
+                max_per_run_units: 125
+                channels: [mock, mpp, stripe-spt, x402]
+                realm: test
+                peer: merchant:demo
+                operation: search.paid
+                idempotency_required: true
+                recovery_required: true
+                receipt_before_success: true
+                single_use_capability: true
+                authorization_form: single_use_capability
+          conditions: []
+          approvals: []
+          capabilities: [effect_single_use_capability]
+          issued_by_ref: { type: host, uri: authority:payment:test }
+        rail_profile_ref: rail-profile:mock:test
+        realm: test
+        idempotency_seed: demo-payment-001
     graph:
       name: spend
       result_from: [fulfill]
@@ -154,29 +245,54 @@ runners:
     type: graph
     inputs:
       payment_signal:
-        type: object
-        required: true
-        description: Payment-required signal or challenge.
+        definition: payment_signal
       parent_payment_authority:
-        type: object
-        required: true
-        description: Full typed parent payment AuthorityTerm; a reference alone is refused.
+        definition: parent_payment_authority
       rail_profile_ref:
-        type: string
-        required: true
-        description: Configured rail profile reference.
+        definition: rail_profile_ref
       payment_admission:
-        type: object
-        required: false
-        description: Hosted payment admission token and settlement identity.
+        definition: payment_admission
       realm:
-        type: string
-        required: false
-        description: Authority realm.
+        definition: realm
       idempotency_seed:
-        type: string
-        required: true
-        description: Stable caller-owned idempotency material.
+        definition: idempotency_seed
+    examples:
+      - payment_signal:
+          signal_type: effect_required
+          challenge_id: ch_payment_001
+          amount_minor: 125
+          currency: USD
+          counterparty: merchant:demo
+          operation: search.paid
+          realm: test
+        parent_payment_authority:
+          term_id: authority-term:payment:demo-001
+          principal_ref: { type: host, uri: principal:operator:test }
+          resource_ref: { type: surface, uri: merchant:demo }
+          resource_family: effect
+          verbs: [prepare, commit]
+          bounds:
+            effect_limits:
+              - family: payment
+                unit: USD
+                max_per_call_units: 125
+                max_per_run_units: 125
+                channels: [mock, mpp, stripe-spt, x402]
+                realm: test
+                peer: merchant:demo
+                operation: search.paid
+                idempotency_required: true
+                recovery_required: true
+                receipt_before_success: true
+                single_use_capability: true
+                authorization_form: single_use_capability
+          conditions: []
+          approvals: []
+          capabilities: [effect_single_use_capability]
+          issued_by_ref: { type: host, uri: authority:payment:test }
+        rail_profile_ref: rail-profile:mpp:test
+        realm: test
+        idempotency_seed: demo-payment-001
     graph:
       name: spend
       result_from: [fulfill]
@@ -251,29 +367,62 @@ runners:
     type: graph
     inputs:
       payment_signal:
-        type: object
-        required: true
-        description: Payment-required signal or challenge.
+        definition: payment_signal
       parent_payment_authority:
-        type: object
-        required: true
-        description: Full typed parent payment AuthorityTerm; a reference alone is refused.
+        definition: parent_payment_authority
       rail_profile_ref:
-        type: string
-        required: true
-        description: Configured rail profile reference.
+        definition: rail_profile_ref
       payment_admission:
-        type: object
-        required: false
-        description: Hosted payment admission token and settlement identity.
+        definition: payment_admission
       realm:
-        type: string
-        required: false
-        description: Authority realm.
+        definition: realm
       idempotency_seed:
-        type: string
-        required: true
-        description: Stable caller-owned idempotency material.
+        definition: idempotency_seed
+    examples:
+      - payment_signal:
+          signal_type: effect_required
+          challenge_id: ch_payment_001
+          amount_minor: 125
+          currency: USD
+          counterparty: merchant:demo
+          operation: search.paid
+          realm: test
+        parent_payment_authority:
+          term_id: authority-term:payment:demo-001
+          principal_ref: { type: host, uri: principal:operator:test }
+          resource_ref: { type: surface, uri: merchant:demo }
+          resource_family: effect
+          verbs: [prepare, commit]
+          bounds:
+            effect_limits:
+              - family: payment
+                unit: USD
+                max_per_call_units: 125
+                max_per_run_units: 125
+                channels: [mock, mpp, stripe-spt, x402]
+                realm: test
+                peer: merchant:demo
+                operation: search.paid
+                idempotency_required: true
+                recovery_required: true
+                receipt_before_success: true
+                single_use_capability: true
+                authorization_form: single_use_capability
+          conditions: []
+          approvals: []
+          capabilities: [effect_single_use_capability]
+          issued_by_ref: { type: host, uri: authority:payment:test }
+        rail_profile_ref: rail-profile:stripe-spt:test
+        payment_admission:
+          payment_admission_id: sha256:payment-admission-demo-001
+          money_movement_id: sha256:money-movement-demo-001
+          token:
+            rail: stripe-spt
+            amount_minor: 125
+            currency: USD
+            counterparty: merchant:demo
+        realm: test
+        idempotency_seed: demo-payment-001
     graph:
       name: spend
       result_from: [fulfill]

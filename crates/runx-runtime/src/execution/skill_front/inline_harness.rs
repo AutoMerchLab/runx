@@ -131,25 +131,28 @@ fn run_inline_harness_case(
     };
     let is_graph = runner.source.source_type == runx_parser::SourceKind::Graph;
 
-    // Enforce the required-input contract the real `runx skill` prepare stage
-    // applies. The harness executes directly, so without this a missing required
-    // input would seal an empty run instead of blocking, masking the failure.
-    let missing = crate::input_contract::missing_required(&runner.inputs, &case.inputs);
-    if !missing.is_empty() {
+    // The harness executes below the normal preparation front, so admit the
+    // fixture through the same complete contract before running any step.
+    // Required fields, defaults, nested schemas, and packet bindings therefore
+    // have one owner in both production and harness execution.
+    let Ok(inputs) =
+        crate::input_contract::materialize_complete_runner_inputs(&runner.inputs, &case.inputs)
+    else {
         return InlineHarnessCaseOutcome {
             is_graph,
             receipt_id: None,
             assertion_error: inline_harness_status_error(case, HarnessExpectedStatus::Failure),
         };
-    }
+    };
 
-    let request = inline_harness_case_request(
+    let mut request = inline_harness_case_request(
         context.skill_dir,
         receipt_dir,
         context.env,
         case,
         context.cwd,
     );
+    request.inputs = inputs;
     let seeded_answers = match seeded_answers_from_caller(&case.caller) {
         Ok(answers) => answers,
         Err(error) => return inline_harness_case_error(&case.name, error),

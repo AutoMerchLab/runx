@@ -1,5 +1,5 @@
 skill: pay-reserve
-version: "0.2.0"
+version: "0.2.1"
 catalog:
   kind: skill
   audience: operator
@@ -116,7 +116,7 @@ runners:
     type: graph
     inputs:
       payment_quote_packet: { type: object, required: true, description: Native payment.quote packet data. }
-      parent_payment_authority: { type: object, required: true, description: Full typed parent AuthorityTerm used to recompute attenuation. }
+      parent_payment_authority: { type: json, packet: runx.authority_term.v1, required: true, description: Full typed parent AuthorityTerm used to recompute attenuation. }
       idempotency_seed: { type: string, required: true, description: Stable caller-owned reservation seed. }
       target_harness_ref: { type: object, required: true, description: Exact downstream harness Reference. }
       target_act_id: { type: string, required: true, description: Exact downstream payment act id. }

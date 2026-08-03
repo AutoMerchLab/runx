@@ -1,5 +1,5 @@
 skill: dispute-respond
-version: "0.4.0"
+version: "0.4.1"
 
 catalog:
   kind: graph
@@ -12,31 +12,80 @@ catalog:
   requires_adapter: true
   approval: required
 
+input_definitions:
+  dispute_event:
+    type: object
+    required: true
+    description: Normalized provider dispute event with no raw provider fields.
+    schema:
+      required: [dispute_id, provider, provider_charge_ref, amount_minor, currency, reason_code]
+      additionalProperties: false
+      properties:
+        dispute_id: { type: string, minLength: 1, maxLength: 256, pattern: '^\S+$' }
+        provider: { type: string, minLength: 1, maxLength: 64, pattern: '^\S+$' }
+        provider_charge_ref: { type: string, minLength: 1, maxLength: 256, pattern: '^\S+$' }
+        amount_minor: { type: integer, minimum: 1 }
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        reason_code: { type: string, minLength: 1, maxLength: 128, pattern: '^\S+$' }
+        response_due_at: { type: string, format: date-time }
+  receipt_ids:
+    type: array
+    required: false
+    description: Up to 100 unique opaque Runx receipt ids for prior refunds.
+    schema:
+      maxItems: 100
+      uniqueItems: true
+      items: { type: string, minLength: 1, maxLength: 256, pattern: '^\S+$' }
+  evidence_refs:
+    type: array
+    required: false
+    description: Up to 100 digest-bound evidence references supporting the response.
+    schema:
+      maxItems: 100
+      items:
+        type: object
+        required: [ref, digest, kind, summary]
+        additionalProperties: false
+        properties:
+          ref: { type: string, minLength: 1, maxLength: 512, pattern: '^\S+$' }
+          digest: { type: string, pattern: '^sha256:[0-9a-f]{64}$' }
+          kind: { type: string, enum: [delivery, consent, support, provider, contract, refund] }
+          summary: { type: string, minLength: 1, maxLength: 1000 }
+
 runners:
   respond:
     default: true
     type: graph
     inputs:
       dispute_event:
-        type: object
-        required: true
-        description: Normalized provider dispute event.
+        definition: dispute_event
       original_receipt_id:
         type: string
         required: true
         description: Exact Runx receipt id for the original charge.
+        schema: { minLength: 1, maxLength: 256, pattern: '^\S+$' }
       prior_refund_receipt_ids:
-        type: json
-        required: false
-        description: Exact Runx receipt ids for prior refunds.
+        definition: receipt_ids
       evidence_refs:
-        type: json
-        required: false
-        description: Bounded evidence refs with sha256 digest, kind, and summary.
+        definition: evidence_refs
       operator_posture:
         type: string
         required: false
         description: Optional preferred posture; evidence remains authoritative.
+        schema:
+          enum: [accept, contest, refund_already_sent, needs_more_evidence, operator_review]
+    examples:
+      - dispute_event:
+          dispute_id: dp_demo_001
+          provider: stripe
+          provider_charge_ref: ch_demo_001
+          amount_minor: 1250
+          currency: USD
+          reason_code: product_not_received
+        original_receipt_id: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        prior_refund_receipt_ids: []
+        evidence_refs: []
+        operator_posture: operator_review
     graph:
       name: dispute-respond
       result_from: [finalize, stop]
@@ -127,7 +176,8 @@ runners:
     type: graph
     inputs:
       dispute_packet:
-        type: object
+        type: json
+        packet: runx.payment.dispute_response.v1
         required: true
         description: Exact validated runx.payment.dispute_response.v1 packet produced by respond.
       provider:
@@ -138,6 +188,41 @@ runners:
         type: string
         required: true
         description: Stable retry key for this exact dispute filing.
+    examples:
+      - dispute_packet:
+          schema: runx.payment.dispute_response.v1
+          decision: ready_for_review
+          dispute:
+            dispute_id: dp_demo_001
+            provider: stripe
+            provider_charge_ref: ch_demo_001
+            amount_minor: 1250
+            currency: USD
+            reason_code: product_not_received
+            response_due_at: null
+          posture: contest
+          response_summary: Contest with the linked verified delivery evidence.
+          linked_receipts:
+            original_charge: receipt:charge:demo-001
+            prior_refunds: []
+            cited: [receipt:charge:demo-001]
+          evidence: { admitted: [], cited_refs: [] }
+          open_questions: []
+          receipt_verification:
+            matched_receipt_ids: [receipt:charge:demo-001]
+            original_receipt_status: verified
+            signature_mode: production
+            tree_status: intact
+          validation: { status: pass, findings: [] }
+          filing:
+            provider: stripe
+            dispute_id: dp_demo_001
+            status: not_filed
+            provider_status: not_called
+            approval_status: not_requested
+          next_action: review, then route through an approved provider dispute adapter
+        provider: stripe
+        idempotency_key: dispute:dp_demo_001:file:v1
     graph:
       name: dispute-respond-file
       result_from: [readback]

@@ -1,5 +1,5 @@
 skill: pay-quote
-version: "0.2.0"
+version: "0.2.1"
 catalog:
   kind: skill
   audience: operator
@@ -55,15 +55,15 @@ runners:
     default: true
     type: graph
     inputs:
-      payment_signal: { type: object, required: true, description: Structured payment-required signal. }
-      parent_payment_authority: { type: object, required: true, description: Full typed parent AuthorityTerm; references alone are refused. }
-      realm: { type: string, required: false, description: Expected payment realm. }
-      rail_preferences: { type: json, required: false, description: Ordered preferred rails within the parent authority. }
-      max_per_call_units: { type: number, required: false, description: Caller ceiling in minor units. }
-      currency: { type: string, required: false, description: Expected currency. }
-      operation: { type: string, required: false, description: Expected paid operation. }
-      counterparty: { type: string, required: false, description: Expected bounded counterparty. }
-      idempotency_seed: { type: string, required: true, description: Stable caller-owned idempotency seed. }
+      payment_signal: { type: json, packet: runx.payment.signal.v1, required: true, description: Structured payment-required signal. }
+      parent_payment_authority: { type: json, packet: runx.authority_term.v1, required: true, description: Full typed parent AuthorityTerm; references alone are refused. }
+      realm: { type: string, required: false, description: Expected payment realm., schema: { minLength: 1, maxLength: 64 } }
+      rail_preferences: { type: array, required: false, description: Ordered preferred rails within the parent authority., schema: { minItems: 1, maxItems: 10, uniqueItems: true, items: { type: string, minLength: 1, maxLength: 64 } } }
+      max_per_call_units: { type: integer, required: false, description: Positive caller ceiling in minor units., schema: { minimum: 1 } }
+      currency: { type: string, required: false, description: Expected uppercase currency., schema: { pattern: '^[A-Z]{3}$' } }
+      operation: { type: string, required: false, description: Expected paid operation., schema: { minLength: 1, maxLength: 256 } }
+      counterparty: { type: string, required: false, description: Expected bounded counterparty., schema: { minLength: 1, maxLength: 256 } }
+      idempotency_seed: { type: string, required: true, description: Stable caller-owned idempotency seed., schema: { minLength: 1, maxLength: 256 } }
     graph:
       name: pay-quote
       result_from: [quote]

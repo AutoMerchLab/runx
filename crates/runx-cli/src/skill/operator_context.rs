@@ -76,6 +76,9 @@ pub(super) fn write_operator_context(
     out.push_str(&format!("  Digest: {}\n", report.digest));
     if let Some(reason) = &report.blocked_reason {
         out.push_str(&format!("\nPreparation blocked: {reason}\n"));
+        if let Some(receipt_id) = &report.refusal_receipt_id {
+            out.push_str(&format!("Refusal receipt: {receipt_id}\n"));
+        }
         append_resolution_trace(&mut out, report);
     }
     if !full {

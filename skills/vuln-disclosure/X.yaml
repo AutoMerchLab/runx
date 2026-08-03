@@ -1,5 +1,5 @@
 skill: vuln-disclosure
-version: "0.3.0"
+version: "0.3.1"
 
 catalog:
   kind: graph
@@ -19,6 +19,7 @@ runners:
     inputs:
       advisory_packet:
         type: json
+        packet: runx.security.vulnerability_advisory.v1
         required: true
         description: Validated runx.security.vulnerability_advisory.v1 packet.
       channel:
@@ -26,13 +27,39 @@ runners:
         required: true
         description: Intended publication channel.
       target:
-        type: json
+        type: object
         required: true
         description: Exact downstream target with a locator.
+        schema:
+          required: [locator]
+          properties:
+            locator: { type: string, minLength: 1, maxLength: 1000 }
       disclosure_context:
         type: json
         required: false
         description: Embargo, coordination, remediation, or timing constraints.
+    examples:
+      - channel: github_security_advisory
+        target: { locator: github:runxhq/example:security-advisories }
+        disclosure_context: { coordination_status: maintainer_notified, remediation_status: fix_available }
+        advisory_packet:
+          schema: runx.security.vulnerability_advisory.v1
+          decision: ready_for_review
+          target: example/service
+          advisory_draft:
+            title: Example dependency advisory
+            summary: A verified dependency finding requires an upgrade.
+            body: example/service includes example-lib 1.2.3, affected by GHSA-example-1234.
+            affected_advisory_ids: [GHSA-example-1234]
+          disclosure_checklist: [confirm fixed version]
+          source_advisories:
+            - { advisory_id: GHSA-example-1234, dependency: example-lib, exact_version: 1.2.3 }
+          remediation_plan: { immediate: [upgrade example-lib] }
+          evidence_binding:
+            receipt_ref: runx:receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            evidence_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          validation: { status: pass, findings: [] }
+          publication_status: not_published
     graph:
       name: vuln-disclosure
       result_from: [finalize, stop]
@@ -117,7 +144,8 @@ runners:
     type: graph
     inputs:
       disclosure_packet:
-        type: object
+        type: json
+        packet: runx.security.vulnerability_disclosure.v1
         required: true
         description: Exact validated runx.security.vulnerability_disclosure.v1 packet.
       provider:
@@ -128,6 +156,33 @@ runners:
         type: string
         required: true
         description: Stable retry key for this exact advisory publication.
+    examples:
+      - disclosure_packet:
+          schema: runx.security.vulnerability_disclosure.v1
+          decision: ready_for_publication_approval
+          channel: github_security_advisory
+          target: { locator: github:runxhq/example:security-advisories }
+          payload:
+            title: Example dependency advisory
+            summary: A verified dependency finding requires an upgrade.
+            body: example/service includes example-lib 1.2.3, affected by GHSA-example-1234.
+            affected_advisory_ids: [GHSA-example-1234]
+          payload_digest: sha256:ffbfa74bacc06d2eb87da944c16d6827723a80508c52b2a8f6bdd5c077e56490
+          review:
+            rationale: The evidence is verified and a fix is available.
+            checklist: [confirm fixed version]
+            affected_advisory_ids: [GHSA-example-1234]
+          remediation_plan: { immediate: [upgrade example-lib] }
+          evidence_binding:
+            receipt_ref: runx:receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            evidence_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+          validation: { status: pass, findings: [] }
+          approval_status: not_requested
+          publication_status: not_published
+          provider_status: not_called
+          next_action: route through an approved provider publication adapter
+        provider: github
+        idempotency_key: d91cf92a-b2e1-43be-9827-b470a27b01e7
     graph:
       name: vuln-disclosure-publish
       result_from: [readback]

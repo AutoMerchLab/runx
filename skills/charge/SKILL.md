@@ -50,8 +50,8 @@ implicitly create a provider charge contract.
 - `mcp_tool_call` identifies the exact paid operation and bounded arguments.
 - `provider_policy` supplies the price and accepted family; there is no default
   price.
-- `returned_credential` is an opaque reference and metadata, never raw rail
-  material.
+- `returned_credential` names the settlement family and one opaque reference,
+  never raw rail material.
 - `verify_capability_ref` is the bounded single-use verification capability.
 - `idempotency_seed` stabilizes the challenge and replay decision.
 

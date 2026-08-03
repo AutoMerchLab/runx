@@ -45,8 +45,13 @@ interface GraphStep {
 
 interface RunnerDefinition {
   readonly name: string;
+  readonly inputs?: Readonly<Record<string, InputDefinition>>;
   readonly source: ExecutionSource;
   readonly artifacts?: ArtifactContract;
+}
+
+interface InputDefinition {
+  readonly packet?: string;
 }
 
 interface RunnerManifest {
@@ -76,6 +81,9 @@ for (const [index, profilePath] of profilePaths.entries()) {
   const profile = profiles[index];
   if (!profile) throw new Error(`native parser omitted ${path.relative(workspaceRoot, profilePath)}`);
   collectManifestContracts(profile, path.relative(workspaceRoot, profilePath));
+}
+for (const contract of ownedContracts.values()) {
+  if (contract.schema["x-runx-packet"] === true) contracts.set(contract.packetId, contract);
 }
 for (const packetId of declarations.keys()) {
   const owned = ownedContracts.get(packetId);
@@ -153,11 +161,14 @@ const missing = [...declarations.keys()].filter(
 if (missing.length > 0) {
   throw new Error(`packet declarations have no schema contract: ${missing.join(", ")}`);
 }
-console.log(`${check ? "checked" : "generated"} ${declarations.size} packet contracts`);
+console.log(
+  `${check ? "checked" : "generated"} ${contracts.size} packet contracts for ${declarations.size} manifest declarations`,
+);
 
 function collectManifestContracts(manifest: RunnerManifest, profile: string): void {
   for (const [runnerName, runner] of Object.entries(manifest.runners)) {
     const location = `root.runners.${runnerName}`;
+    collectInputPacketDeclarations(runner.inputs, profile, location);
     collectExecutionContract(runner.source, runner.artifacts, profile, location);
     for (const [index, step] of (runner.source.graph?.steps ?? []).entries()) {
       const stepLocation = `${location}.graph.steps.${index}`;
@@ -167,6 +178,19 @@ function collectManifestContracts(manifest: RunnerManifest, profile: string): vo
         collectPacketDeclarations(step.artifacts, `${profile}#${stepLocation}`);
       }
     }
+  }
+}
+
+function collectInputPacketDeclarations(
+  inputs: Readonly<Record<string, InputDefinition>> | undefined,
+  profile: string,
+  location: string,
+): void {
+  for (const [inputName, input] of Object.entries(inputs ?? {})) {
+    const packetId = nonEmptyString(input.packet);
+    if (!packetId) continue;
+    const source = `${profile}#${location}.inputs.${inputName}`;
+    if (!declarations.has(packetId)) declarations.set(packetId, source);
   }
 }
 

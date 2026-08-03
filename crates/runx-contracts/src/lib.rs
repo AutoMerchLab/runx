@@ -29,8 +29,10 @@ pub mod list;
 pub mod maturity;
 pub mod operational_policy;
 pub mod operational_proposal;
+pub mod orchestrator_handoff;
 pub mod output;
 pub mod packet_index;
+pub mod payment_inputs;
 pub mod policy_proof;
 pub mod receipt;
 pub mod redaction;
@@ -171,11 +173,20 @@ pub use operational_proposal::{
     OperationalProposalRecommendedAction, OperationalProposalRedactionStatus,
     OperationalProposalSchema,
 };
+pub use orchestrator_handoff::{
+    OrchestratorExecutionContext, OrchestratorHandoffBinding, OrchestratorHandoffContext,
+    OrchestratorHandoffDelivery, OrchestratorHandoffIdempotency, OrchestratorHandoffRequest,
+    OrchestratorReceiptExpectations, OrchestratorReceiverValidation,
+};
 pub use output::{
     Output, OutputField, OutputFieldSpec, OutputType, OutputValidationError,
     output_contract_digest, output_value_schema, validate_output_value,
 };
 pub use packet_index::{PacketIndex, PacketIndexEntry, PacketIndexSchema};
+pub use payment_inputs::{
+    CurrencyCode, PaymentChargePolicy, PaymentCredentialReference, PaymentRefundRequest,
+    PaymentSignal, PaymentToolCall,
+};
 pub use policy_proof::{
     AuthorityKind, AuthorityProof, AuthorityProofApprovalDecision,
     AuthorityProofApprovalDecisionValue, AuthorityProofCredentialMaterial,

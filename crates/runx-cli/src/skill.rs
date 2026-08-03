@@ -209,16 +209,30 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
             );
         }
         if prepared.report().status == PreparedSkillRunStatus::Blocked {
-            return write_skill_failure(
-                prepared
-                    .report()
-                    .blocked_reason
-                    .as_deref()
-                    .unwrap_or("operator context preparation blocked"),
+            let report = prepared.report();
+            let message = report
+                .blocked_reason
+                .as_deref()
+                .unwrap_or("operator context preparation blocked");
+            let detail = report.refusal_receipt_id.as_ref().map(|receipt_id| {
+                JsonObject::from([
+                    (
+                        "receipt_id".to_owned(),
+                        JsonValue::String(receipt_id.clone()),
+                    ),
+                    (
+                        "prepared_context_digest".to_owned(),
+                        JsonValue::String(report.digest.clone()),
+                    ),
+                ])
+            });
+            return write_skill_failure_with_detail(
+                message,
                 plan.json,
                 "operator_context_blocked",
                 1,
                 registry_provenance(&resolved),
+                detail,
             );
         }
         if let Err(error) = prepared.bind_context() {
@@ -608,11 +622,17 @@ fn write_skill_failure_with_detail(
 }
 
 fn input_contract_detail(error: &OrchestratorError) -> Option<JsonObject> {
-    let runtime = match error {
+    let (runtime, receipt_id) = match error {
         OrchestratorError::SkillRun(
             runx_runtime::execution::skill_front::SkillRunError::Runtime(runtime),
         )
-        | OrchestratorError::Runtime(runtime) => runtime,
+        | OrchestratorError::Runtime(runtime) => (runtime, None),
+        OrchestratorError::SkillRun(
+            runx_runtime::execution::skill_front::SkillRunError::PreflightRefused {
+                source,
+                receipt_id,
+            },
+        ) => (source.as_ref(), Some(receipt_id)),
         _ => return None,
     };
     let runx_runtime::RuntimeError::InputContract {
@@ -625,12 +645,22 @@ fn input_contract_detail(error: &OrchestratorError) -> Option<JsonObject> {
     else {
         return None;
     };
-    Some(JsonObject::from([
+    let mut detail = JsonObject::from([
         ("owner".to_owned(), JsonValue::String((*owner).to_owned())),
         ("input".to_owned(), JsonValue::String(input.clone())),
         ("path".to_owned(), JsonValue::String(path.clone())),
-        ("accepted_schema".to_owned(), accepted_schema.clone()),
-    ]))
+        (
+            "accepted_schema".to_owned(),
+            accepted_schema.as_ref().clone(),
+        ),
+    ]);
+    if let Some(receipt_id) = receipt_id {
+        detail.insert(
+            "receipt_id".to_owned(),
+            JsonValue::String(receipt_id.clone()),
+        );
+    }
+    Some(detail)
 }
 
 fn skill_json_failure_output(

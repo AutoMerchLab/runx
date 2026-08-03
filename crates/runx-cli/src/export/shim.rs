@@ -132,7 +132,7 @@ fn render_runner(command_target: &str, runner: &RunxExportRunner, runx_bin: &str
             .unwrap_or_else(|_| "{\"type\":\"object\"}".to_owned()),
     );
     output.push_str("\n```\n\n");
-    if runner.examples.first().is_some() {
+    if !runner.examples.is_empty() {
         output.push_str("Validated invocation example:\n\n");
     } else {
         output.push_str("Invocation template (replace placeholders before running):\n\n");

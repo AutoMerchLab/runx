@@ -1,4 +1,4 @@
-use runx_contracts::JsonObject;
+use runx_contracts::{AuthorityTerm, JsonObject};
 use runx_runtime::{
     CapabilityAdmission, CapabilityApproval, CapabilityArtifacts, CapabilityDefinition,
     CapabilityEffect, CapabilityField, CapabilityInput, TypedCapability,
@@ -16,7 +16,7 @@ pub(super) struct InvoiceInput {
     payee: JsonObject,
     rail: String,
     rail_profile_ref: String,
-    parent_payment_authority: JsonObject,
+    parent_payment_authority: AuthorityTerm,
     idempotency_seed: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     realm: Option<String>,

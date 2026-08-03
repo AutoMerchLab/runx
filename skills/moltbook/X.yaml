@@ -1,5 +1,5 @@
 skill: moltbook
-version: "0.3.0"
+version: "0.3.1"
 
 catalog:
   kind: skill
@@ -12,6 +12,42 @@ catalog:
   completion: provider_readback
   requires_adapter: true
   approval: required
+
+input_definitions:
+  feed_snapshot:
+    type: array
+    required: true
+    description: One to 100 unique, timestamped Moltbook evidence items admitted for local analysis.
+    schema:
+      minItems: 1
+      maxItems: 100
+      items:
+        type: object
+        required: [source_ref, topic, summary, observed_at]
+        additionalProperties: false
+        properties:
+          source_ref: { type: string, minLength: 1, maxLength: 512 }
+          topic: { type: string, minLength: 1, maxLength: 500 }
+          summary: { type: string, minLength: 1, maxLength: 10000 }
+          observed_at: { type: string, format: date-time }
+  outline:
+    type: object
+    required: true
+    description: Exact headline and beats selected from the admitted scan packet.
+    schema:
+      required: [headline, beats]
+      additionalProperties: false
+      properties:
+        headline: { type: string, minLength: 1, maxLength: 500 }
+        beats:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items: { type: string, minLength: 1, maxLength: 1000 }
+        source_refs:
+          type: array
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 512 }
 
 harness:
   cases:
@@ -147,6 +183,12 @@ runners:
         required: false
         default: 50
         description: Maximum provider feed items, capped by the provider grant.
+    examples:
+      - objective: Find one useful post for Runx builders.
+        community_context: OSS operators evaluating governed agent workflows.
+        as_of: "2026-07-17T12:00:00Z"
+        max_age_hours: 48
+        max_items: 50
     graph:
       name: moltbook-scan-provider
       result_from: [reject, finalize]
@@ -258,9 +300,7 @@ runners:
         required: false
         description: Intended community and discussion context.
       feed_snapshot:
-        type: json
-        required: true
-        description: Bounded source-ref, topic, summary, and timestamp items.
+        definition: feed_snapshot
       as_of:
         type: string
         required: true
@@ -270,6 +310,16 @@ runners:
         required: false
         default: 168
         description: Maximum feed signal age.
+    examples:
+      - objective: Find one useful post for Runx builders.
+        community_context: OSS operators evaluating governed agent workflows.
+        as_of: "2026-07-17T12:00:00Z"
+        max_age_hours: 48
+        feed_snapshot:
+          - source_ref: changelog_1
+            topic: package skills
+            summary: Runx now enforces package-rooted skills.
+            observed_at: "2026-07-16T10:00:00Z"
     graph:
       name: moltbook-scan
       result_from: [reject, finalize]
@@ -359,12 +409,11 @@ runners:
     inputs:
       scan_packet:
         type: json
+        packet: runx.moltbook.scan.v1
         required: true
         description: Validated ready Moltbook scan packet.
       outline:
-        type: json
-        required: true
-        description: Exact outline selected from the scan.
+        definition: outline
       community_context:
         type: string
         required: false
@@ -373,6 +422,27 @@ runners:
         type: string
         required: false
         description: Local content guidance, not publication approval.
+    examples:
+      - scan_packet:
+          decision: ready
+          opportunity_report:
+            topic: package skill migration
+            rationale: Current demand supports a practical post.
+            source_refs: [changelog_1]
+          post_outline:
+            headline: How to move a Runx skill into a package root
+            beats: [What changed, How to migrate]
+            source_refs: [changelog_1]
+          source_evidence:
+            - { source_ref: changelog_1, observed_at: "2026-07-16T10:00:00Z" }
+          evidence_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          delivery_status: not_posted
+          validation: { status: pass, findings: [] }
+        outline:
+          headline: How to move a Runx skill into a package root
+          beats: [What changed, How to migrate]
+        community_context: OSS operators.
+        operator_guidance: Keep it factual.
     graph:
       name: moltbook-post
       result_from: [finalize-post]
@@ -439,13 +509,31 @@ runners:
     type: graph
     inputs:
       post_packet:
-        type: object
+        type: json
+        packet: runx.moltbook.post.v1
         required: true
         description: Exact validated runx.moltbook.post.v1 payload to publish.
       idempotency_key:
         type: string
         required: true
         description: Stable retry key for this exact post payload.
+    examples:
+      - post_packet:
+          decision: ready_for_handoff
+          post_payload:
+            channel: moltbook
+            body: Package-rooted skills make inspection and harness verification explicit.
+            claim_refs:
+              - claim: Package-rooted skills are the migration subject.
+                source_refs: [changelog_1]
+          payload_digest: sha256:27329a1f0e5fa8da7598ac0bdc5079aa9bbec68bdc2cee2c14526f55d1a32f7d
+          moderation_notes: { final_check: [No unsupported claims.] }
+          follow_up_plan: { monitor_for: [migration questions] }
+          source_evidence:
+            - { source_ref: changelog_1, observed_at: "2026-07-16T10:00:00Z" }
+          delivery_status: not_posted
+          validation: { status: pass, findings: [] }
+        idempotency_key: 1c9a81bc-94c2-43f7-922c-a59145c7290e
     graph:
       name: moltbook-publish
       result_from: [readback]

@@ -15,11 +15,5 @@ inputs:
           base: 123
   scope: write
 expect:
-  status: sealed
-  output:
-    subset:
-      sync_plan:
-        decision: blocked
-        provider_status: not_called
-  receipt: { schema: runx.receipt.v1 }
+  status: failure
 metadata: { public_skill: github-sync, source_case: numeric-pull-base, source: skills-fixture }

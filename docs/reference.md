@@ -635,7 +635,7 @@ policy, approvals, and resolution requests still behave the same way.
 
 ## Receipts
 
-Local receipts are append-only JSON files under `.runx/receipts` unless `RUNX_RECEIPT_DIR` is set. `runx history` verifies receipt signatures and surfaces `verified`, `unverified`, or `invalid` status.
+Local receipts are append-only JSON files under `.runx/receipts` unless `RUNX_RECEIPT_DIR` is set. `runx history` verifies receipt signatures and surfaces `verified`, `unverified`, or `invalid` status. Once a skill package and runner resolve, a blocked preparation also seals a `blocked` refusal receipt; the JSON failure returns its `receipt_id` and prepared-context digest so rejected input or context admission remains visible in history without echoing the rejected value.
 
 Graph receipt lineage is an immutable one-way DAG. The parent commits each
 child receipt ID and exact signed-body digest; a reusable child is not re-signed

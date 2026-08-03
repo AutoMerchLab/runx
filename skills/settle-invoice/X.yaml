@@ -1,5 +1,5 @@
 skill: settle-invoice
-version: "0.3.0"
+version: "0.3.1"
 catalog:
   kind: graph
   audience: public
@@ -39,7 +39,8 @@ runners:
         required: true
         description: Configured profile reference for the selected rail.
       parent_payment_authority:
-        type: object
+        type: json
+        packet: runx.authority_term.v1
         required: true
         description: Full typed parent payment AuthorityTerm; a reference alone is refused.
       idempotency_seed:

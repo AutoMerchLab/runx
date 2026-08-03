@@ -1,5 +1,5 @@
 skill: refund
-version: "0.3.0"
+version: "0.3.1"
 catalog:
   kind: graph
   audience: operator
@@ -9,23 +9,61 @@ catalog:
   completion: plan
   requires_adapter: false
   approval: none
+input_definitions:
+  original_receipt_ref:
+    type: string
+    required: true
+    description: Opaque sealed charge receipt reference.
+    schema: { minLength: 1, maxLength: 512, pattern: '^\S+$' }
+  refund_request:
+    type: json
+    packet: runx.payment.refund_request.v1
+    required: true
+    description: Positive minor-unit amount, bounded reason, and optional recorded payer check.
+  parent_payment_authority:
+    type: json
+    packet: runx.authority_term.v1
+    required: true
+    description: Full typed parent refund AuthorityTerm; a reference alone is refused.
 runners:
   mock:
     default: true
     type: graph
     inputs:
       original_receipt_ref:
-        type: string
-        required: true
-        description: Opaque sealed charge receipt reference.
+        definition: original_receipt_ref
       refund_request:
-        type: object
-        required: true
-        description: Positive minor-unit amount, opaque reason, and optional recorded payer check.
+        definition: refund_request
       parent_payment_authority:
-        type: object
-        required: true
-        description: Full typed parent refund AuthorityTerm; a reference alone is refused.
+        definition: parent_payment_authority
+    examples:
+      - original_receipt_ref: receipt:charge:demo-001
+        refund_request: { amount_minor: 100, reason: operator_refund, requested_counterparty: payer:demo }
+        parent_payment_authority:
+          term_id: refund-demo
+          principal_ref: { type: principal, uri: runx:principal:operator }
+          resource_ref: { type: target, uri: payer:demo }
+          resource_family: effect
+          verbs: [reverse]
+          bounds:
+            effect_limits:
+              - family: payment
+                unit: USD
+                max_per_call_units: 125
+                max_per_run_units: 125
+                channels: [mock, mpp, stripe]
+                realm: test
+                peer: payer:demo
+                operation: refund
+                authorization_form: single_use_capability
+                idempotency_required: true
+                recovery_required: true
+                receipt_before_success: true
+                single_use_capability: true
+          conditions: []
+          approvals: []
+          capabilities: [effect_single_use_capability]
+          issued_by_ref: { type: grant, uri: runx:grant:payment }
     graph:
       name: refund-mock-plan
       result_from: [prepare]
@@ -42,17 +80,39 @@ runners:
     type: graph
     inputs:
       original_receipt_ref:
-        type: string
-        required: true
-        description: Opaque sealed charge receipt reference.
+        definition: original_receipt_ref
       refund_request:
-        type: object
-        required: true
-        description: Positive minor-unit amount, opaque reason, and optional recorded payer check.
+        definition: refund_request
       parent_payment_authority:
-        type: object
-        required: true
-        description: Full typed parent refund AuthorityTerm; a reference alone is refused.
+        definition: parent_payment_authority
+    examples:
+      - original_receipt_ref: receipt:charge:demo-001
+        refund_request: { amount_minor: 100, reason: operator_refund, requested_counterparty: payer:demo }
+        parent_payment_authority:
+          term_id: refund-demo
+          principal_ref: { type: principal, uri: runx:principal:operator }
+          resource_ref: { type: target, uri: payer:demo }
+          resource_family: effect
+          verbs: [reverse]
+          bounds:
+            effect_limits:
+              - family: payment
+                unit: USD
+                max_per_call_units: 125
+                max_per_run_units: 125
+                channels: [mock, mpp, stripe]
+                realm: test
+                peer: payer:demo
+                operation: refund
+                authorization_form: single_use_capability
+                idempotency_required: true
+                recovery_required: true
+                receipt_before_success: true
+                single_use_capability: true
+          conditions: []
+          approvals: []
+          capabilities: [effect_single_use_capability]
+          issued_by_ref: { type: grant, uri: runx:grant:payment }
     graph:
       name: refund-mpp-plan
       result_from: [prepare]
@@ -69,17 +129,39 @@ runners:
     type: graph
     inputs:
       original_receipt_ref:
-        type: string
-        required: true
-        description: Opaque sealed charge receipt reference.
+        definition: original_receipt_ref
       refund_request:
-        type: object
-        required: true
-        description: Positive minor-unit amount, opaque reason, and optional recorded payer check.
+        definition: refund_request
       parent_payment_authority:
-        type: object
-        required: true
-        description: Full typed parent refund AuthorityTerm; a reference alone is refused.
+        definition: parent_payment_authority
+    examples:
+      - original_receipt_ref: receipt:charge:demo-001
+        refund_request: { amount_minor: 100, reason: operator_refund, requested_counterparty: payer:demo }
+        parent_payment_authority:
+          term_id: refund-demo
+          principal_ref: { type: principal, uri: runx:principal:operator }
+          resource_ref: { type: target, uri: payer:demo }
+          resource_family: effect
+          verbs: [reverse]
+          bounds:
+            effect_limits:
+              - family: payment
+                unit: USD
+                max_per_call_units: 125
+                max_per_run_units: 125
+                channels: [mock, mpp, stripe]
+                realm: test
+                peer: payer:demo
+                operation: refund
+                authorization_form: single_use_capability
+                idempotency_required: true
+                recovery_required: true
+                receipt_before_success: true
+                single_use_capability: true
+          conditions: []
+          approvals: []
+          capabilities: [effect_single_use_capability]
+          issued_by_ref: { type: grant, uri: runx:grant:payment }
     graph:
       name: refund-stripe-plan
       result_from: [prepare]

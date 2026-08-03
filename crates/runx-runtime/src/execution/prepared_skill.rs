@@ -10,7 +10,9 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use runx_contracts::{ExecutionBoundaryKind, JsonValue, Reference, ReferenceType, sha256_prefixed};
+use runx_contracts::{
+    ExecutionBoundaryKind, JsonObject, JsonValue, Reference, ReferenceType, sha256_prefixed,
+};
 use runx_parser::{GraphRetryPolicy, GraphRunTarget, SkillRunnerDefinition, SkillRunnerManifest};
 use serde::{Deserialize, Serialize};
 
@@ -120,6 +122,8 @@ pub struct PreparedSkillRunReport {
     pub chain: Option<SkillOperatorContextChain>,
     pub trace: Vec<PreparedTraceEntry>,
     pub blocked_reason: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub refusal_receipt_id: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -332,16 +336,77 @@ pub(crate) fn prepare_skill_run_with_effects(
     )
     .map_err(|error| SkillRunError::Invalid(error.to_string()))?;
     if entry.execution_closure_digest.is_none() {
-        entry.execution_closure_digest = execution_closure_digest;
+        entry.execution_closure_digest = execution_closure_digest.clone();
     }
     crate::input_contract::apply_defaults(&runner.inputs, &mut request.inputs);
-    request.inputs =
-        crate::input_contract::materialize_present_runner_inputs(&runner.inputs, &request.inputs)
-            .map_err(|error| SkillRunError::Runtime(error.into_runtime_error()))?;
+    let input_failure = match crate::input_contract::materialize_present_runner_inputs(
+        &runner.inputs,
+        &request.inputs,
+    ) {
+        Ok(inputs) => {
+            request.inputs = inputs;
+            None
+        }
+        Err(error) => Some(error.into_runtime_error()),
+    };
     let request_summary = request_summary(&request, &skill_dir, &runner.name, entry);
-    let context = resolve_prepared_context(&request, &skill_dir, &runner, effects);
+    let context = input_failure.as_ref().map_or_else(
+        || resolve_prepared_context(&request, &skill_dir, &runner, effects),
+        |error| {
+            blocked_prepared_context(
+                vec![PreparedTraceEntry {
+                    node_path: "entry".to_owned(),
+                    stage: "resolve_runner".to_owned(),
+                    outcome: "resolved".to_owned(),
+                    detail: format!("selected runner {}", runner.name),
+                }],
+                "entry",
+                "validate_inputs",
+                error.to_string(),
+            )
+        },
+    );
     let governance = prepared_governance(&request, &context);
     let digest = prepared_context_digest(&request, &request_summary, &context)?;
+    let refusal_receipt_id = if context.status == PreparedSkillRunStatus::Blocked {
+        let mut failure = input_failure.as_ref().map_or_else(
+            || {
+                JsonObject::from([
+                    (
+                        "code".to_owned(),
+                        JsonValue::String("prepared_context_blocked".to_owned()),
+                    ),
+                    (
+                        "message".to_owned(),
+                        JsonValue::String(
+                            context
+                                .blocked_reason
+                                .clone()
+                                .unwrap_or_else(|| "skill preparation was blocked".to_owned()),
+                        ),
+                    ),
+                ])
+            },
+            RuntimeError::public_failure_projection,
+        );
+        failure.insert(
+            "prepared_context_digest".to_owned(),
+            JsonValue::String(digest.clone()),
+        );
+        if let Some(stage) = context.trace.last().map(|entry| entry.stage.clone()) {
+            failure.insert("stage".to_owned(), JsonValue::String(stage));
+        }
+        Some(super::skill_front::seal_skill_preflight_refusal(
+            &request,
+            &manifest,
+            &runner,
+            &package_digest,
+            execution_closure_digest.as_deref(),
+            failure,
+        )?)
+    } else {
+        None
+    };
     let guards = context
         .chain
         .as_ref()
@@ -362,6 +427,7 @@ pub(crate) fn prepare_skill_run_with_effects(
             chain: context.chain,
             trace: context.trace,
             blocked_reason: context.blocked_reason,
+            refusal_receipt_id,
         },
         guards,
         context_bound: false,
@@ -1076,11 +1142,10 @@ mod tests {
             "    inputs:\n      prompt:\n        type: string\n        required: true\n",
             "# Prepared",
         )?;
-        let prepared = prepare_skill_run(
-            request(temp.path()),
-            None,
-            PreparedEntryProvenance::default(),
-        )?;
+        let receipt_dir = temp.path().join("receipts");
+        let mut request = request(temp.path());
+        request.receipt_dir = Some(receipt_dir.clone());
+        let prepared = prepare_skill_run(request, None, PreparedEntryProvenance::default())?;
         assert_eq!(prepared.report().status, PreparedSkillRunStatus::Blocked);
         assert!(
             prepared
@@ -1097,6 +1162,53 @@ mod tests {
                 .iter()
                 .any(|entry| entry.outcome == "blocked")
         );
+        let refusal_receipt_id = prepared
+            .report()
+            .refusal_receipt_id
+            .as_deref()
+            .ok_or("blocked preparation did not expose its refusal receipt")?;
+        let receipts = crate::services::ReceiptServices::from_env_or_local_development(
+            &prepared.request().env,
+        )?
+        .list_local_receipts(&receipt_dir)?;
+        assert!(
+            receipts
+                .iter()
+                .any(|receipt| receipt.id.to_string() == refusal_receipt_id),
+            "blocked preparation did not persist its refusal receipt"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn prepared_skill_invalid_input_receipt_never_echoes_the_rejected_value()
+    -> Result<(), Box<dyn Error>> {
+        let temp = tempdir()?;
+        write_skill(
+            temp.path(),
+            "    inputs:\n      secret_ref:\n        type: string\n        required: true\n        schema: { pattern: '^secret://' }\n",
+            "# Prepared",
+        )?;
+        let sentinel = "PLAINTEXT-SECRET-MUST-NOT-APPEAR";
+        let receipt_dir = temp.path().join("receipts");
+        let mut request = request(temp.path());
+        request.receipt_dir = Some(receipt_dir.clone());
+        request.inputs.insert(
+            "secret_ref".to_owned(),
+            JsonValue::String(sentinel.to_owned()),
+        );
+
+        let prepared = prepare_skill_run(request, None, PreparedEntryProvenance::default())?;
+        assert_eq!(prepared.report().status, PreparedSkillRunStatus::Blocked);
+        assert!(prepared.report().refusal_receipt_id.is_some());
+        let receipts = crate::services::ReceiptServices::from_env_or_local_development(
+            &prepared.request().env,
+        )?
+        .list_local_receipts(&receipt_dir)?;
+        let public = serde_json::to_string(&(prepared.report(), receipts))?;
+        assert!(!public.contains(sentinel));
+        assert!(public.contains("/secret_ref"));
+        assert!(public.contains("input_contract_invalid"));
         Ok(())
     }
 

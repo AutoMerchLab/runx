@@ -21,9 +21,12 @@ its workflow webhook, canvas, branching, fan-out, and downstream notifications.
 - `send`: validates the context and posts the payload to the n8n webhook.
 
 Use `preflight` for reviews, CI, and local harnesses; it never needs approval.
-The `send` runner opens approval immediately before the outbound webhook. It
-posts through Runx's native `http.execute` capability; there is no handoff-
-specific HTTP wrapper or token-bearing manifest.
+The `send` runner first calls native `control.prepare_handoff`, which validates
+the execution identity and produces both the canonical `delivery` envelope and
+the exact webhook request that carries it. One explicit graph gate approves
+that exact request because native `http.execute` is policy-gated rather than
+effect-owned; the HTTP tool then posts the approved request. There is no second
+approval, package handoff parser, HTTP wrapper, or token-bearing manifest.
 
 Because an n8n host may be self-hosted, bind the stored credential to that
 exact HTTPS audience when configuring it:
@@ -56,9 +59,14 @@ When present, these fields must match the top-level inputs:
 
 - `platform`
 - `event_id`
-- `idempotency_key`
+- `idempotency_key` (bound to `event_id`)
 - `handoff_scope`
 - `handoff_audience`
+
+The receiver gets the normalized `delivery` object, not an independently
+reassembled copy of these fields. That object carries the business payload,
+source context, exact handoff scope and audience, and idempotency binding the
+receiver must validate before starting its workflow.
 
 ## Edge cases
 
@@ -83,4 +91,6 @@ When present, these fields must match the top-level inputs:
 - `handoff_audience` (optional): defaults to
   `n8n:workflow:runx-governed-effect`.
 - `webhook_host` and `workflow_slug` (send runner): public n8n endpoint parts.
-- `idempotency_key` (optional): defaults to `event_id`.
+
+`event_id` is also the Runx mutation idempotency key and the value delivered as
+`idempotency_key`; there is no second retry identity that can drift from it.

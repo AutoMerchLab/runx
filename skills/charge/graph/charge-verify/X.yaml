@@ -1,5 +1,5 @@
 skill: charge-verify
-version: 0.3.0
+version: 0.3.1
 catalog:
   kind: graph
   audience: operator
@@ -17,15 +17,18 @@ runners:
     type: graph
     inputs:
       charge_price_packet:
-        type: object
+        type: json
+        packet: runx.payment.charge_price.v1
         required: true
         description: Native charge-price packet data.
       charge_challenge_packet:
-        type: object
+        type: json
+        packet: runx.payment.charge_challenge.v1
         required: true
         description: Native charge-challenge packet data.
       returned_credential:
-        type: object
+        type: json
+        packet: runx.payment.credential_reference.v1
         required: true
         description: Opaque credential family and reference only.
       verify_capability_ref:

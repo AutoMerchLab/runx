@@ -1,5 +1,5 @@
 skill: issue-to-pr
-version: "0.2.4"
+version: "0.2.5"
 
 catalog:
   kind: graph
@@ -243,18 +243,22 @@ runners:
         description: "Portable thread for the current thread."
       outbox_entry:
         type: json
+        packet: runx.outbox.entry.v1
         required: false
         description: "Current outbox entry when the lane is refreshing an adapter-owned target."
       harness:
         type: json
+        packet: runx.receipt.v1
         required: false
         description: "Optional runx.receipt.v1 packet for the governed run boundary."
       signal:
         type: json
+        packet: runx.signal.v1
         required: false
         description: "Optional runx.signal.v1 packet with source references, authenticity, fingerprint, and evidence references."
       decision:
         type: json
+        packet: runx.decision.v1
         required: false
         description: "Optional runx.decision.v1 packet with the accountable lane selection rationale."
       target_repo:
@@ -263,6 +267,7 @@ runners:
         description: "Intended repository slug for repo-local dispatchers."
       operational_policy:
         type: json
+        packet: runx.operational_policy.v1
         required: false
         description: "Optional runx.operational_policy.v1 packet for source, target, runner, and source-thread admission."
       source_id:
@@ -332,6 +337,15 @@ runners:
         type: string
         required: false
         description: "Optional model forwarded to scafld review."
+    examples:
+      - task_id: issue-to-pr-example
+        thread_title: Fix the bounded runtime regression
+        thread_body: Reproduce the regression, preserve the public contract, and add focused coverage.
+        thread_locator: github://runxhq/runx/issues/42
+        target_repo: runxhq/runx
+        size: small
+        risk: low
+        base: main
     graph:
       name: issue-to-pr
       result_from: [push-feed-entry]

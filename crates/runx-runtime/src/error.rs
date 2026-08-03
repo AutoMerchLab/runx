@@ -136,7 +136,7 @@ pub enum RuntimeError {
         input: String,
         path: String,
         message: String,
-        accepted_schema: runx_contracts::JsonValue,
+        accepted_schema: Box<runx_contracts::JsonValue>,
     },
     #[error("receipt validation failed: {message}")]
     ReceiptInvalid { message: String },
@@ -271,7 +271,10 @@ impl RuntimeError {
                 projection.insert("owner".to_owned(), JsonValue::String((*owner).to_owned()));
                 projection.insert("input".to_owned(), JsonValue::String(input.clone()));
                 projection.insert("path".to_owned(), JsonValue::String(path.clone()));
-                projection.insert("accepted_schema".to_owned(), accepted_schema.clone());
+                projection.insert(
+                    "accepted_schema".to_owned(),
+                    accepted_schema.as_ref().clone(),
+                );
             }
             #[cfg(feature = "agent")]
             Self::ManagedAgentResolution { source, .. } => {

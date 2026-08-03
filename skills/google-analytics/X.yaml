@@ -1,5 +1,5 @@
 skill: google-analytics
-version: "0.1.0"
+version: "0.1.1"
 
 catalog:
   kind: graph
@@ -13,6 +13,105 @@ catalog:
   completion: provider_readback
   requires_adapter: true
   approval: none
+
+input_definitions:
+  property:
+    type: string
+    required: true
+    description: Exact GA4 property resource, such as properties/123456.
+    schema: { pattern: '^properties/[1-9][0-9]*$' }
+  date_ranges:
+    type: array
+    required: true
+    description: One to four inclusive GA4 date ranges using YYYY-MM-DD or GA relative dates.
+    schema:
+      minItems: 1
+      maxItems: 4
+      items:
+        type: object
+        required: [start_date, end_date]
+        additionalProperties: false
+        properties:
+          start_date: { type: string, pattern: '^(?:[0-9]{4}-[0-9]{2}-[0-9]{2}|today|yesterday|[0-9]+daysAgo)$' }
+          end_date: { type: string, pattern: '^(?:[0-9]{4}-[0-9]{2}-[0-9]{2}|today|yesterday|[0-9]+daysAgo)$' }
+          name: { type: string, maxLength: 64 }
+  dimensions:
+    type: array
+    required: true
+    description: Zero to nine ordered GA4 dimension names; an empty list supports metric-only reports.
+    schema:
+      maxItems: 9
+      items: { type: string, minLength: 1, maxLength: 256 }
+  metrics:
+    type: array
+    required: true
+    description: One to ten ordered GA4 metric names.
+    schema:
+      minItems: 1
+      maxItems: 10
+      items: { type: string, minLength: 1, maxLength: 256 }
+  filter:
+    type: object
+    required: false
+    description: GA4 FilterExpression passed intact to the configured provider connector.
+    schema: {}
+  order_bys:
+    type: array
+    required: false
+    description: Ordered GA4 OrderBy records passed intact to the provider connector.
+    schema:
+      maxItems: 10
+      items: { type: object }
+  minute_ranges:
+    type: array
+    required: false
+    description: One or more bounded GA4 realtime minute ranges.
+    schema:
+      maxItems: 4
+      items:
+        type: object
+        required: [start_minutes_ago, end_minutes_ago]
+        additionalProperties: false
+        properties:
+          start_minutes_ago: { type: integer, minimum: 0, maximum: 59 }
+          end_minutes_ago: { type: integer, minimum: 0, maximum: 59 }
+          name: { type: string, maxLength: 64 }
+  report_request:
+    type: object
+    required: true
+    description: Expected GA4 report identity and ordered headers for supplied-result normalization.
+    schema:
+      required: [property, report_type, dimensions, metrics]
+      additionalProperties: false
+      properties:
+        property: { type: string, pattern: '^properties/[1-9][0-9]*$' }
+        report_type: { type: string, enum: [standard, realtime] }
+        date_ranges: { type: array, maxItems: 4, items: { type: object } }
+        dimensions: { type: array, maxItems: 9, items: { type: string, minLength: 1, maxLength: 256 } }
+        metrics: { type: array, minItems: 1, maxItems: 10, items: { type: string, minLength: 1, maxLength: 256 } }
+        dimension_filter: { type: object }
+        metric_filter: { type: object }
+        order_bys: { type: array, maxItems: 10, items: { type: object } }
+        minute_ranges: { type: array, maxItems: 4, items: { type: object } }
+        currency_code: { type: string, pattern: '^[A-Z]{3}$' }
+        limit: { type: integer, minimum: 1, maximum: 100000 }
+        offset: { type: integer, minimum: 0 }
+  provider_result:
+    type: object
+    required: true
+    description: GA4 report readback with ordered headers and bounded rows; provider metadata is preserved.
+    schema:
+      required: [dimension_headers, metric_headers, rows]
+      properties:
+        property: { type: string, pattern: '^properties/[1-9][0-9]*$' }
+        dimension_headers: { type: array, maxItems: 9, items: { type: [string, object] } }
+        metric_headers: { type: array, maxItems: 10, items: { type: [string, object] } }
+        rows: { type: array, maxItems: 100000, items: { type: object } }
+        row_count: { type: integer, minimum: 0 }
+        pagination: { type: object }
+        metadata: { type: object }
+        property_quota: { type: object }
+        fetched_at: { type: string, format: date-time }
 
 harness:
   cases:
@@ -148,33 +247,19 @@ runners:
     type: graph
     inputs:
       property:
-        type: string
-        required: true
-        description: Exact GA4 property resource, such as properties/123456.
+        definition: property
       date_ranges:
-        type: json
-        required: true
-        description: One or more named inclusive date ranges.
+        definition: date_ranges
       dimensions:
-        type: json
-        required: true
-        description: Ordered GA4 dimension names.
+        definition: dimensions
       metrics:
-        type: json
-        required: true
-        description: Ordered GA4 metric names.
+        definition: metrics
       dimension_filter:
-        type: json
-        required: false
-        description: Exact GA4 dimension filter expression.
+        definition: filter
       metric_filter:
-        type: json
-        required: false
-        description: Exact GA4 metric filter expression.
+        definition: filter
       order_bys:
-        type: json
-        required: false
-        description: Exact GA4 order definitions.
+        definition: order_bys
       currency_code:
         type: string
         required: false
@@ -184,11 +269,18 @@ runners:
         required: false
         default: 1000
         description: Bounded row limit, at most 100000.
+        schema: { minimum: 1, maximum: 100000 }
       offset:
         type: integer
         required: false
         default: 0
         description: Zero-based row offset.
+        schema: { minimum: 0 }
+    examples:
+      - property: properties/123456
+        date_ranges: [{ start_date: 30daysAgo, end_date: yesterday }]
+        dimensions: [landingPagePlusQueryString]
+        metrics: [sessions, keyEvents]
     graph:
       name: google-analytics-report
       result_from: [finalize]
@@ -258,13 +350,24 @@ runners:
     type: graph
     inputs:
       provider_result:
-        type: json
-        required: true
-        description: GA4-shaped report result already obtained from a trusted source.
+        definition: provider_result
       request:
-        type: json
-        required: true
-        description: Expected report identity and ordered headers.
+        definition: report_request
+    examples:
+      - request:
+          property: properties/123456
+          report_type: standard
+          date_ranges: [{ start_date: "2026-06-01", end_date: "2026-06-30" }]
+          dimensions: [landingPagePlusQueryString]
+          metrics: [sessions]
+        provider_result:
+          property: properties/123456
+          dimension_headers: [{ name: landingPagePlusQueryString }]
+          metric_headers: [{ name: sessions, type: TYPE_INTEGER }]
+          rows:
+            - dimension_values: [/guides/runx]
+              metric_values: ["120"]
+          row_count: 1
     graph:
       name: google-analytics-normalize-report
       result_from: [finalize]
@@ -301,34 +404,27 @@ runners:
     type: graph
     inputs:
       property:
-        type: string
-        required: true
-        description: Exact GA4 property resource.
+        definition: property
       dimensions:
-        type: json
-        required: true
-        description: Ordered realtime-compatible dimension names.
+        definition: dimensions
       metrics:
-        type: json
-        required: true
-        description: Ordered realtime-compatible metric names.
+        definition: metrics
       dimension_filter:
-        type: json
-        required: false
-        description: Exact realtime dimension filter.
+        definition: filter
       metric_filter:
-        type: json
-        required: false
-        description: Exact realtime metric filter.
+        definition: filter
       minute_ranges:
-        type: json
-        required: false
-        description: One or more bounded realtime minute ranges.
+        definition: minute_ranges
       limit:
         type: integer
         required: false
         default: 1000
         description: Bounded realtime row limit.
+        schema: { minimum: 1, maximum: 100000 }
+    examples:
+      - property: properties/123456
+        dimensions: [unifiedScreenName]
+        metrics: [activeUsers]
     graph:
       name: google-analytics-realtime
       result_from: [finalize]
@@ -414,6 +510,8 @@ runners:
         type: string
         required: true
         description: Exact GA4 property resource.
+    examples:
+      - property: properties/123456
     graph:
       name: google-analytics-metadata
       result_from: [read]

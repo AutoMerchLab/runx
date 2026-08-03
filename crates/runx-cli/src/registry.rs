@@ -113,7 +113,9 @@ fn run_package(
         plan.json,
         &output::RegistryEnvelope {
             status: "success",
-            registry: output::RegistryPayload::Package { package },
+            registry: output::RegistryPayload::Package {
+                package: Box::new(package),
+            },
         },
         || "\n  registry package  ready\n\n".to_owned(),
     )

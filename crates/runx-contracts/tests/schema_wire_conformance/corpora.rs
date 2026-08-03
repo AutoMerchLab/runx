@@ -1735,6 +1735,200 @@ fn authority_term() -> Value {
     })
 }
 
+pub(super) fn orchestrator_execution_context_corpus() -> Vec<(&'static str, Value)> {
+    vec![
+        ("caller origin", json!({ "caller": "runx-cli" })),
+        (
+            "full binding",
+            json!({
+                "workflow_ref": "workflow:demo",
+                "platform": "n8n",
+                "event_id": "evt_demo_001",
+                "idempotency_key": "evt_demo_001",
+                "handoff_scope": "orchestrator.n8n.workflow.invoke",
+                "handoff_audience": "n8n:workflow:demo",
+                "environment": "local",
+            }),
+        ),
+        (
+            "provider extension",
+            json!({ "principal": "operator:1", "trace_id": 42 }),
+        ),
+        ("invalid known field type", json!({ "caller": 42 })),
+    ]
+}
+
+pub(super) fn orchestrator_handoff_context_corpus() -> Vec<(&'static str, Value)> {
+    let valid = json!({
+        "status": "ready",
+        "platform": "n8n",
+        "event_id": "evt_demo_001",
+        "idempotency": { "key": "evt_demo_001", "receiver_should_dedupe": true },
+        "handoff": {
+            "scope": "orchestrator.n8n.workflow.invoke",
+            "audience": "n8n:workflow:demo",
+            "source": "runx",
+        },
+        "delivery": {
+            "event_id": "evt_demo_001",
+            "handoff_scope": "orchestrator.n8n.workflow.invoke",
+            "handoff_audience": "n8n:workflow:demo",
+            "execution_context": { "caller": "runx-cli", "platform": "n8n" },
+            "payload": { "hello": "workflow" },
+            "source": "runx",
+            "idempotency_key": "evt_demo_001",
+        },
+        "receiver_validation": {
+            "require_bearer": true,
+            "require_scope": "orchestrator.n8n.workflow.invoke",
+            "require_audience": "n8n:workflow:demo",
+            "require_event_id": "evt_demo_001",
+            "reject_duplicate_event_id": true,
+        },
+        "receipt_expectations": {
+            "context_artifact": "handoff_context",
+            "outbound_effect_must_be_receipted": true,
+            "receiver_response_must_be_captured": true,
+            "delivered_credential_material_absent": true,
+        },
+        "stop_conditions": [],
+    });
+    vec![
+        ("valid preflight", valid.clone()),
+        ("missing delivery", drop_field(valid.clone(), "delivery")),
+        (
+            "invalid request method type",
+            set_field(
+                valid.clone(),
+                "requests",
+                json!([{
+                    "id": "n8n-handoff",
+                    "method": 42,
+                    "url": "https://{host}/webhook/{slug}",
+                    "path": { "host": "n8n.example.com", "slug": "demo" },
+                    "headers": { "content-type": "application/json" },
+                    "body": valid["delivery"],
+                }]),
+            ),
+        ),
+        (
+            "additional property",
+            set_field(valid, "credential", json!("secret")),
+        ),
+    ]
+}
+
+pub(super) fn payment_tool_call_corpus() -> Vec<(&'static str, Value)> {
+    let valid = json!({ "tool": "search.paid", "arguments": { "query": "runx" } });
+    vec![
+        ("valid", valid.clone()),
+        ("missing arguments", drop_field(valid.clone(), "arguments")),
+        ("empty tool", set_field(valid.clone(), "tool", json!(""))),
+        (
+            "additional property",
+            set_field(valid, "server", json!("demo")),
+        ),
+    ]
+}
+
+pub(super) fn payment_signal_corpus() -> Vec<(&'static str, Value)> {
+    let valid = json!({
+        "amount_minor": 125,
+        "currency": "USD",
+        "counterparty": "merchant:demo",
+        "operation": "search.paid",
+        "rail": "mock",
+        "challenge_id": "challenge:demo",
+        "provider_extension": { "network": "test" },
+    });
+    vec![
+        ("valid with provider extension", valid.clone()),
+        ("missing amount", drop_field(valid.clone(), "amount_minor")),
+        (
+            "zero amount",
+            set_field(valid.clone(), "amount_minor", json!(0)),
+        ),
+        (
+            "lowercase currency",
+            set_field(valid.clone(), "currency", json!("usd")),
+        ),
+        ("empty operation", set_field(valid, "operation", json!(""))),
+    ]
+}
+
+pub(super) fn payment_charge_policy_corpus() -> Vec<(&'static str, Value)> {
+    let valid = json!({
+        "price_minor": 125,
+        "currency": "USD",
+        "accepted_settlement_families": ["mock"],
+        "counterparty": "provider:demo",
+    });
+    vec![
+        ("valid", valid.clone()),
+        ("missing price", drop_field(valid.clone(), "price_minor")),
+        (
+            "wrong family shape",
+            set_field(valid.clone(), "accepted_settlement_families", json!("mock")),
+        ),
+        (
+            "additional property",
+            set_field(valid, "api_key", json!("secret")),
+        ),
+    ]
+}
+
+pub(super) fn payment_credential_reference_corpus() -> Vec<(&'static str, Value)> {
+    let valid = json!({ "family": "mock", "credential_ref": "credential:mock:1" });
+    vec![
+        ("valid", valid.clone()),
+        (
+            "missing reference",
+            drop_field(valid.clone(), "credential_ref"),
+        ),
+        (
+            "empty family",
+            set_field(valid.clone(), "family", json!("")),
+        ),
+        ("raw field", set_field(valid, "token", json!("secret"))),
+    ]
+}
+
+pub(super) fn payment_refund_request_corpus() -> Vec<(&'static str, Value)> {
+    let valid = json!({ "amount_minor": 125, "reason": "duplicate" });
+    vec![
+        ("valid", valid.clone()),
+        ("missing reason", drop_field(valid.clone(), "reason")),
+        (
+            "wrong amount type",
+            set_field(valid.clone(), "amount_minor", json!("125")),
+        ),
+        (
+            "additional property",
+            set_field(valid, "provider", json!("stripe")),
+        ),
+    ]
+}
+
+pub(super) fn authority_term_corpus() -> Vec<(&'static str, Value)> {
+    let valid = authority_term();
+    vec![
+        ("minimal valid", valid.clone()),
+        ("missing term_id", drop_field(valid.clone(), "term_id")),
+        (
+            "empty term_id rejected",
+            set_field(valid.clone(), "term_id", json!("")),
+        ),
+        (
+            "unknown resource family",
+            set_field(valid.clone(), "resource_family", json!("payment")),
+        ),
+        (
+            "additional property",
+            set_field(valid, "authority_ref", json!("authority:payment:test")),
+        ),
+    ]
+}
+
 pub(super) fn authority_corpus() -> Vec<(&'static str, Value)> {
     let valid = json!({
         "schema": "runx.authority.v1",

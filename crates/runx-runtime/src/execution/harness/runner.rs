@@ -127,6 +127,7 @@ impl From<crate::execution::skill_front::SkillRunError> for HarnessReplayError {
         use crate::execution::skill_front::SkillRunError;
         match error {
             SkillRunError::Runtime(error) => HarnessReplayError::Runtime(error),
+            SkillRunError::PreflightRefused { source, .. } => HarnessReplayError::Runtime(*source),
             other => HarnessReplayError::Runtime(RuntimeError::ReceiptInvalid {
                 message: other.to_string(),
             }),
@@ -511,13 +512,27 @@ fn run_skill_fixture<A>(
 where
     A: SkillAdapter,
 {
-    let (skill_name, runner, invocation) = skill_fixture_invocation(fixture, skill_dir, &options)?;
-    if invocation.source.source_type == runx_parser::SourceKind::Graph {
-        if is_fixture_replay_graph(fixture) {
-            return run_graph_replay_fixture(fixture, options);
+    let (skill_name, runner, mut invocation) =
+        skill_fixture_invocation(fixture, skill_dir, &options)?;
+    let admitted_inputs = crate::input_contract::materialize_complete_runner_inputs(
+        &runner.inputs,
+        &invocation.inputs,
+    );
+    let outcome = match admitted_inputs {
+        Ok(inputs) => {
+            invocation.inputs = inputs;
+            if invocation.source.source_type == runx_parser::SourceKind::Graph {
+                if is_fixture_replay_graph(fixture) {
+                    return run_graph_replay_fixture(fixture, options);
+                }
+                return run_graph_skill_fixture(
+                    fixture, skill_name, runner, invocation, adapter, options,
+                );
+            }
+            run_skill_invocation(fixture, &runner, invocation, adapter)?
         }
-        return run_graph_skill_fixture(fixture, skill_name, runner, invocation, adapter, options);
-    }
+        Err(error) => skill_fixture_admission_failure(error.into_runtime_error()),
+    };
     let SkillFixtureInvocationOutcome {
         output: skill_output,
         claim_payload,
@@ -525,7 +540,7 @@ where
         reason_code,
         summary,
         replayed_answers,
-    } = run_skill_invocation(fixture, &runner, invocation, adapter)?;
+    } = outcome;
     let claim = if skill_output.succeeded() {
         project_declared_output_claim(
             &runner.name,
@@ -561,6 +576,24 @@ where
         skill_output: Some(skill_output),
         replayed_answers,
     })
+}
+
+fn skill_fixture_admission_failure(error: RuntimeError) -> SkillFixtureInvocationOutcome {
+    let message = error.to_string();
+    let claim_payload = JsonValue::Object(error.public_failure_projection());
+    SkillFixtureInvocationOutcome {
+        output: InvocationOutput::runtime_failure(
+            claim_payload.clone(),
+            message,
+            0,
+            JsonObject::new(),
+        ),
+        claim_payload,
+        disposition: ClosureDisposition::Failed,
+        reason_code: "input_contract_invalid".to_owned(),
+        summary: "runner input contract rejected the harness case".to_owned(),
+        replayed_answers: JsonObject::new(),
+    }
 }
 
 // Function rationale: the fixture graph turn keeps materialize,

@@ -18,19 +18,7 @@ inputs:
       summary: Provider event reference.
       raw_payload: private-provider-body
 expect:
-  status: sealed
-  steps: [admit, stop]
-  step_outputs:
-    stop:
-      subset:
-        dispute_packet:
-          data:
-            decision: needs_more_evidence
-            filing:
-              status: not_filed
-              provider_status: not_called
-  receipt:
-    schema: runx.receipt.v1
+  status: failure
 metadata:
   public_skill: dispute-respond
   source_case: dispute-respond-refuses-raw-evidence

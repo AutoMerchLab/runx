@@ -34,7 +34,7 @@ pub(super) enum RegistryPayload {
         receipt_metadata: runx_contracts::JsonObject,
     },
     Package {
-        package: runx_runtime::registry::RegistryPublishPackageParts,
+        package: Box<runx_runtime::registry::RegistryPublishPackageParts>,
     },
     Publish {
         publish: PublishPayload,

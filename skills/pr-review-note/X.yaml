@@ -1,5 +1,5 @@
 skill: pr-review-note
-version: "0.2.1"
+version: "0.2.2"
 
 catalog:
   kind: graph
@@ -10,6 +10,28 @@ catalog:
   completion: provider_readback
   requires_adapter: true
   approval: required
+
+input_definitions:
+  repository:
+    type: string
+    required: true
+    description: Exact GitHub repository slug as owner/name.
+    schema: { pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$', maxLength: 201 }
+  pr_number:
+    type: string
+    required: true
+    description: Positive decimal pull-request number.
+    schema: { pattern: '^[1-9][0-9]*$', maxLength: 20 }
+  body:
+    type: string
+    required: true
+    description: Exact review note body bound into approval and provider readback.
+    schema: { minLength: 1, maxLength: 65536 }
+  idempotency_key:
+    type: string
+    required: true
+    description: Stable retry key for this exact repository, pull request, and body.
+    schema: { minLength: 8, maxLength: 256, pattern: '^[A-Za-z0-9._:-]+$' }
 harness:
   cases:
     - name: pr-review-note-comment-seals
@@ -63,21 +85,18 @@ runners:
       category: code
     inputs:
       repository:
-        type: string
-        required: true
-        description: Repository slug.
+        definition: repository
       pr_number:
-        type: string
-        required: true
-        description: Pull request number.
+        definition: pr_number
       body:
-        type: string
-        required: true
-        description: Review note body.
+        definition: body
       idempotency_key:
-        type: string
-        required: true
-        description: Stable retry key for this exact PR comment.
+        definition: idempotency_key
+    examples:
+      - repository: runxhq/runx
+        pr_number: "42"
+        body: The reviewed path is sound; please add the missing harness case.
+        idempotency_key: runxhq-runx-pr-42-review-note-v1
     graph:
       name: pr-review-note-comment
       result_from: [review_note]
@@ -120,21 +139,18 @@ runners:
       category: code
     inputs:
       repository:
-        type: string
-        required: true
-        description: Repository slug as owner/name.
+        definition: repository
       pr_number:
-        type: string
-        required: true
-        description: Pull request number.
+        definition: pr_number
       body:
-        type: string
-        required: true
-        description: Exact review note body.
+        definition: body
       idempotency_key:
-        type: string
-        required: true
-        description: Stable retry key for this exact PR comment.
+        definition: idempotency_key
+    examples:
+      - repository: runxhq/runx
+        pr_number: "42"
+        body: The reviewed path is sound; please add the missing harness case.
+        idempotency_key: runxhq-runx-pr-42-connect-note-v1
     graph:
       name: pr-review-note-connect-comment
       result_from: [readback]
@@ -196,13 +212,12 @@ runners:
     type: graph
     inputs:
       repository:
-        type: string
-        required: true
-        description: Repository slug.
+        definition: repository
       pr_number:
-        type: string
-        required: true
-        description: Pull request number.
+        definition: pr_number
+    examples:
+      - repository: runxhq/runx
+        pr_number: "42"
     graph:
       name: pr-review-note-merge-refused
       result_from: [merge_pr]

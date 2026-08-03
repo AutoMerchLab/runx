@@ -42,7 +42,6 @@ pub(crate) enum PacketSchemaCatalogError {
     PackageBundle(String),
     #[error("packet schema path is not valid UTF-8: {path}")]
     InvalidPath { path: PathBuf },
-    #[cfg(feature = "cli-tool")]
     #[error("packet schema is not valid UTF-8: {path}")]
     InvalidSource { path: PathBuf },
     #[error(

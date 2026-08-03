@@ -1,5 +1,5 @@
 skill: issue-to-pr-push-outbox
-version: "0.1.3"
+version: "0.1.4"
 
 catalog:
   kind: graph
@@ -19,10 +19,12 @@ runners:
         description: Portable thread carrying the provider adapter and canonical locator.
       outbox_entry:
         type: json
+        packet: runx.outbox.entry.v1
         required: true
         description: Digest-bound outbox entry to publish or update.
       draft_pull_request:
         type: json
+        packet: runx.outbox.draft_pull_request.v1
         required: false
         description: Draft pull-request packet when publishing a pull_request entry.
       fixture:

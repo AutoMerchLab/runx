@@ -1,4 +1,5 @@
-use runx_contracts::JsonObject;
+use runx_contracts::schema::BoundedString;
+use runx_contracts::{AuthorityTerm, PaymentRefundRequest};
 use runx_runtime::{
     CapabilityAdmission, CapabilityApproval, CapabilityArtifacts, CapabilityDefinition,
     CapabilityEffect, CapabilityField, CapabilityInput, TypedCapability,
@@ -10,10 +11,10 @@ pub(crate) const REFUND_PLAN_TOOL: &str = "payment.refund_plan";
 #[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct RefundInput {
-    original_receipt_ref: String,
-    refund_request: JsonObject,
-    settlement_family: String,
-    parent_payment_authority: JsonObject,
+    original_receipt_ref: BoundedString<512>,
+    refund_request: PaymentRefundRequest,
+    settlement_family: BoundedString<64>,
+    parent_payment_authority: AuthorityTerm,
 }
 
 impl CapabilityInput for RefundInput {}

@@ -1,5 +1,5 @@
 skill: charge
-version: "0.3.0"
+version: "0.3.1"
 catalog:
   kind: graph
   audience: operator
@@ -9,31 +9,58 @@ catalog:
   completion: plan
   requires_adapter: false
   approval: none
+input_definitions:
+  mcp_tool_call:
+    type: json
+    packet: runx.payment.tool_call.v1
+    required: true
+    description: Inbound MCP operation request.
+  provider_policy:
+    type: json
+    packet: runx.payment.charge_policy.v1
+    required: true
+    description: Provider-owned price and settlement-family policy.
+  returned_credential:
+    type: json
+    packet: runx.payment.credential_reference.v1
+    required: true
+    description: Settlement family and one opaque credential reference.
+  verify_capability_ref:
+    type: string
+    required: true
+    description: Single-use provider verification capability reference.
+    schema: { minLength: 1, maxLength: 512 }
+  idempotency_seed:
+    type: string
+    required: true
+    description: Stable caller-owned challenge idempotency material.
+    schema: { minLength: 1, maxLength: 256 }
 runners:
   mock:
     default: true
     type: graph
     inputs:
       mcp_tool_call:
-        type: object
-        required: true
-        description: Inbound MCP operation request.
+        definition: mcp_tool_call
       provider_policy:
-        type: object
-        required: true
-        description: Provider-owned price and settlement-family policy.
+        definition: provider_policy
       returned_credential:
-        type: object
-        required: true
-        description: Opaque mock credential family and reference.
+        definition: returned_credential
       verify_capability_ref:
-        type: string
-        required: true
-        description: Single-use verifier capability reference.
+        definition: verify_capability_ref
       idempotency_seed:
-        type: string
-        required: true
-        description: Stable caller-owned challenge seed.
+        definition: idempotency_seed
+    examples:
+      - mcp_tool_call: { tool: search.paid, arguments: { query: runx } }
+        provider_policy:
+          price_minor: 125
+          currency: USD
+          accepted_settlement_families: [mock]
+          counterparty: provider:demo
+          realm: test
+        returned_credential: { family: mock, credential_ref: credential:mock:paid-search-001 }
+        verify_capability_ref: capability:charge-verify:paid-search-001
+        idempotency_seed: paid-search-001
     graph:
       name: charge-mock-plan
       result_from: [finalize]
@@ -80,25 +107,26 @@ runners:
     type: graph
     inputs:
       mcp_tool_call:
-        type: object
-        required: true
-        description: Inbound MCP operation request.
+        definition: mcp_tool_call
       provider_policy:
-        type: object
-        required: true
-        description: Provider-owned price and settlement-family policy.
+        definition: provider_policy
       returned_credential:
-        type: object
-        required: true
-        description: Opaque mpp credential family and reference.
+        definition: returned_credential
       verify_capability_ref:
-        type: string
-        required: true
-        description: Single-use verifier capability reference.
+        definition: verify_capability_ref
       idempotency_seed:
-        type: string
-        required: true
-        description: Stable caller-owned challenge seed.
+        definition: idempotency_seed
+    examples:
+      - mcp_tool_call: { tool: search.paid, arguments: { query: runx } }
+        provider_policy:
+          price_minor: 125
+          currency: USD
+          accepted_settlement_families: [mpp]
+          counterparty: provider:demo
+          realm: test
+        returned_credential: { family: mpp, credential_ref: credential:mpp:paid-search-001 }
+        verify_capability_ref: capability:charge-verify:paid-search-001
+        idempotency_seed: paid-search-001
     graph:
       name: charge-mpp-plan
       result_from: [finalize]
@@ -145,25 +173,26 @@ runners:
     type: graph
     inputs:
       mcp_tool_call:
-        type: object
-        required: true
-        description: Inbound MCP operation request.
+        definition: mcp_tool_call
       provider_policy:
-        type: object
-        required: true
-        description: Provider-owned price and settlement-family policy.
+        definition: provider_policy
       returned_credential:
-        type: object
-        required: true
-        description: Opaque stripe credential family and reference.
+        definition: returned_credential
       verify_capability_ref:
-        type: string
-        required: true
-        description: Single-use verifier capability reference.
+        definition: verify_capability_ref
       idempotency_seed:
-        type: string
-        required: true
-        description: Stable caller-owned challenge seed.
+        definition: idempotency_seed
+    examples:
+      - mcp_tool_call: { tool: search.paid, arguments: { query: runx } }
+        provider_policy:
+          price_minor: 125
+          currency: USD
+          accepted_settlement_families: [stripe]
+          counterparty: provider:demo
+          realm: test
+        returned_credential: { family: stripe, credential_ref: credential:stripe:paid-search-001 }
+        verify_capability_ref: capability:charge-verify:paid-search-001
+        idempotency_seed: paid-search-001
     graph:
       name: charge-stripe-plan
       result_from: [finalize]

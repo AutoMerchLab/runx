@@ -1,4 +1,7 @@
-use runx_contracts::JsonObject;
+use std::num::NonZeroU64;
+
+use runx_contracts::schema::{BoundedString, BoundedVec};
+use runx_contracts::{AuthorityTerm, CurrencyCode, JsonObject, PaymentSignal, Reference};
 use runx_runtime::{
     CapabilityAdmission, CapabilityApproval, CapabilityArtifacts, CapabilityDefinition,
     CapabilityEffect, CapabilityField, CapabilityInput, TypedCapability,
@@ -11,21 +14,21 @@ pub(crate) const RESERVE_TOOL: &str = "payment.reserve";
 #[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
 #[serde(deny_unknown_fields)]
 pub(super) struct QuoteInput {
-    payment_signal: JsonObject,
-    parent_payment_authority: JsonObject,
+    payment_signal: PaymentSignal,
+    parent_payment_authority: AuthorityTerm,
     #[serde(skip_serializing_if = "Option::is_none")]
-    realm: Option<String>,
+    realm: Option<BoundedString<64>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    rail_preferences: Option<Vec<String>>,
+    rail_preferences: Option<BoundedVec<BoundedString<64>, 1, 10>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    max_per_call_units: Option<u64>,
+    max_per_call_units: Option<NonZeroU64>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    currency: Option<String>,
+    currency: Option<CurrencyCode>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    operation: Option<String>,
+    operation: Option<BoundedString<256>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    counterparty: Option<String>,
-    idempotency_seed: String,
+    counterparty: Option<BoundedString<256>>,
+    idempotency_seed: BoundedString<256>,
 }
 
 impl CapabilityInput for QuoteInput {}
@@ -34,10 +37,10 @@ impl CapabilityInput for QuoteInput {}
 #[serde(deny_unknown_fields)]
 pub(super) struct ReserveInput {
     payment_quote_packet: JsonObject,
-    parent_payment_authority: JsonObject,
-    idempotency_seed: String,
-    target_harness_ref: JsonObject,
-    target_act_id: String,
+    parent_payment_authority: AuthorityTerm,
+    idempotency_seed: BoundedString<256>,
+    target_harness_ref: Reference,
+    target_act_id: BoundedString<256>,
 }
 
 impl CapabilityInput for ReserveInput {}

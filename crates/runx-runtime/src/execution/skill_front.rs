@@ -75,6 +75,11 @@ pub enum SkillRunError {
     Invalid(String),
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
+    #[error("{source}; refusal receipt: {receipt_id}")]
+    PreflightRefused {
+        source: Box<RuntimeError>,
+        receipt_id: String,
+    },
     #[error(transparent)]
     ReceiptStore(#[from] ReceiptStoreError),
 }
@@ -232,8 +237,14 @@ fn execute_skill_run_with_resolved_trust(
         package_digest,
         execution_closure_digest,
     } = resolved;
-    let (request, workspace, receipts) =
-        prepare_skill_execution(request, runner, trusted_prepared)?;
+    let (request, workspace, receipts) = prepare_skill_execution(
+        request,
+        manifest,
+        runner,
+        package_digest,
+        execution_closure_digest,
+        trusted_prepared,
+    )?;
     let request = &request;
     let skill_env = workspace.skill_env_for_skill(skill_dir);
     if !trusted_prepared {
@@ -333,16 +344,94 @@ fn generated_run_id(
     Ok(format!("run_{}_{}", identifier_segment(segment), suffix))
 }
 
+pub(super) fn seal_skill_preflight_refusal(
+    request: &SkillRunRequest,
+    manifest: &SkillRunnerManifest,
+    runner: &SkillRunnerDefinition,
+    package_digest: &str,
+    execution_closure_digest: Option<&str>,
+    failure: JsonObject,
+) -> Result<String, SkillRunError> {
+    let workspace =
+        WorkspaceEnv::new(request.env.clone(), request.cwd.clone()).map_err(RuntimeError::from)?;
+    let receipts = ReceiptServices::from_env_or_local_development(workspace.env())
+        .map_err(|error| SkillRunError::Invalid(error.to_string()))?;
+    let run_id = match &request.run_id {
+        Some(run_id) => run_id.clone(),
+        None => generated_run_id(
+            &runner.name,
+            manifest,
+            runner,
+            None,
+            &request.inputs,
+            package_digest,
+            execution_closure_digest,
+        )?,
+    };
+    let message = failure
+        .get("message")
+        .and_then(JsonValue::as_str)
+        .unwrap_or("skill preparation was refused")
+        .to_owned();
+    let mut receipt_metadata = failure.clone();
+    receipt_metadata.remove("accepted_schema");
+    let output = InvocationOutput::runtime_failure(
+        JsonValue::Object(failure),
+        message.clone(),
+        0,
+        JsonObject::new(),
+    );
+    let receipt = SkillSealContext::from_services(&run_id, runner, &receipts, &workspace)
+        .seal_output(
+            &output,
+            None,
+            StepSealClosure {
+                disposition: ClosureDisposition::Blocked,
+                reason_code: "preflight_refused".to_owned(),
+                summary: message,
+            },
+            Some(receipt_metadata),
+        )?;
+    runner_manifest::write_skill_receipt(request, &workspace, &receipts, &receipt)?;
+    Ok(receipt.id.to_string())
+}
+
 fn prepare_skill_execution(
     request: &SkillRunRequest,
+    manifest: &SkillRunnerManifest,
     runner: &SkillRunnerDefinition,
+    package_digest: &str,
+    execution_closure_digest: Option<&str>,
     trusted_prepared: bool,
 ) -> Result<(SkillRunRequest, WorkspaceEnv, ReceiptServices), SkillRunError> {
     let mut request = request.clone();
     crate::input_contract::apply_defaults(&runner.inputs, &mut request.inputs);
-    request.inputs =
-        crate::input_contract::materialize_present_runner_inputs(&runner.inputs, &request.inputs)
-            .map_err(|error| SkillRunError::Runtime(error.into_runtime_error()))?;
+    request.inputs = match crate::input_contract::materialize_present_runner_inputs(
+        &runner.inputs,
+        &request.inputs,
+    ) {
+        Ok(inputs) => inputs,
+        Err(error) => {
+            let source = error.into_runtime_error();
+            let mut failure = source.public_failure_projection();
+            failure.insert(
+                "stage".to_owned(),
+                JsonValue::String("validate_inputs".to_owned()),
+            );
+            let receipt_id = seal_skill_preflight_refusal(
+                &request,
+                manifest,
+                runner,
+                package_digest,
+                execution_closure_digest,
+                failure,
+            )?;
+            return Err(SkillRunError::PreflightRefused {
+                source: Box::new(source),
+                receipt_id,
+            });
+        }
+    };
     let raw_workspace =
         WorkspaceEnv::new(request.env.clone(), request.cwd.clone()).map_err(RuntimeError::from)?;
     let receipts = ReceiptServices::from_env_or_local_development(raw_workspace.env())
