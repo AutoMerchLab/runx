@@ -7,7 +7,7 @@ use std::process::ExitCode;
 use runx_contracts::{JsonObject, JsonValue};
 use runx_runtime::skill_front::{PreparedEntryProvenance, PreparedSkillRunStatus};
 use runx_runtime::{
-    ManagedAgentPolicy, SkillCredentialContext, SkillRunRequest, WorkspaceEnv,
+    ManagedAgentPolicy, OrchestratorError, SkillCredentialContext, SkillRunRequest, WorkspaceEnv,
     resolve_skill_credential_for_path,
 };
 
@@ -188,8 +188,8 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
         ) {
             Ok(prepared) => prepared,
             Err(error) => {
-                return write_skill_failure(
-                    &error.to_string(),
+                return write_orchestrator_failure(
+                    &error,
                     plan.json,
                     "skill_error",
                     1,
@@ -238,8 +238,8 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
             let exit_code = skill_result_exit_code(&result.output);
             write_skill_output(&result.output, plan.json, exit_code, resume)
         }
-        Err(error) => write_skill_failure(
-            &error.to_string(),
+        Err(error) => write_orchestrator_failure(
+            &error,
             plan.json,
             "skill_error",
             1,
@@ -571,18 +571,80 @@ fn write_skill_failure(
     exit_code: u8,
     provenance: Option<JsonObject>,
 ) -> ExitCode {
+    write_skill_failure_with_detail(message, json, code, exit_code, provenance, None)
+}
+
+fn write_orchestrator_failure(
+    error: &OrchestratorError,
+    json: bool,
+    code: &str,
+    exit_code: u8,
+    provenance: Option<JsonObject>,
+) -> ExitCode {
+    write_skill_failure_with_detail(
+        &error.to_string(),
+        json,
+        code,
+        exit_code,
+        provenance,
+        input_contract_detail(error),
+    )
+}
+
+fn write_skill_failure_with_detail(
+    message: &str,
+    json: bool,
+    code: &str,
+    exit_code: u8,
+    provenance: Option<JsonObject>,
+    detail: Option<JsonObject>,
+) -> ExitCode {
     if json {
-        let output = skill_json_failure_output(message, code, provenance);
+        let output = skill_json_failure_output(message, code, provenance, detail);
         return crate::cli_io::write_stdout_code(&output, exit_code);
     }
     let _ignored = writeln!(io::stderr(), "runx: {message}");
     ExitCode::from(exit_code)
 }
 
-fn skill_json_failure_output(message: &str, code: &str, provenance: Option<JsonObject>) -> String {
+fn input_contract_detail(error: &OrchestratorError) -> Option<JsonObject> {
+    let runtime = match error {
+        OrchestratorError::SkillRun(
+            runx_runtime::execution::skill_front::SkillRunError::Runtime(runtime),
+        )
+        | OrchestratorError::Runtime(runtime) => runtime,
+        _ => return None,
+    };
+    let runx_runtime::RuntimeError::InputContract {
+        owner,
+        input,
+        path,
+        accepted_schema,
+        ..
+    } = runtime
+    else {
+        return None;
+    };
+    Some(JsonObject::from([
+        ("owner".to_owned(), JsonValue::String((*owner).to_owned())),
+        ("input".to_owned(), JsonValue::String(input.clone())),
+        ("path".to_owned(), JsonValue::String(path.clone())),
+        ("accepted_schema".to_owned(), accepted_schema.clone()),
+    ]))
+}
+
+fn skill_json_failure_output(
+    message: &str,
+    code: &str,
+    provenance: Option<JsonObject>,
+    detail: Option<JsonObject>,
+) -> String {
     let mut error = JsonObject::new();
     error.insert("message".to_owned(), JsonValue::String(message.to_owned()));
     error.insert("code".to_owned(), JsonValue::String(code.to_owned()));
+    if let Some(detail) = detail {
+        error.extend(detail);
+    }
     let mut output = JsonObject::new();
     output.insert("status".to_owned(), JsonValue::String("failure".to_owned()));
     output.insert("error".to_owned(), JsonValue::Object(error));

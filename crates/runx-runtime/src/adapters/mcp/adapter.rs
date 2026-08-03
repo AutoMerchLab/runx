@@ -6,8 +6,7 @@ use crate::RuntimeError;
 use crate::adapter::{InvocationOutput, InvocationStatus, SkillAdapter, SkillInvocation};
 use crate::adapter_pipeline::AdapterExecutionContext;
 use crate::credentials::CredentialDelivery;
-use crate::sandbox::sandbox_metadata;
-use crate::services::SandboxServices;
+use crate::process_invocation::prepare_mcp_process_invocation;
 
 use super::arguments::map_mcp_arguments;
 use super::transport::ProcessMcpTransport;
@@ -129,28 +128,13 @@ fn prepare_mcp_tool_call(
         return Ok(Err(missing_mcp_metadata(context)));
     };
     let arguments = map_mcp_arguments(source.arguments.as_ref(), &inputs, &resolved_inputs)?;
-    let sandbox = match SandboxServices.mcp_process_plan(
-        &source,
-        &requirements.environment,
-        &server,
-        &skill_directory,
-        &env,
-    ) {
-        Ok(plan) => plan,
-        Err(RuntimeError::SandboxViolation { message }) => {
-            return Ok(Err(failure(
-                format!("MCP sandbox denied: {message}"),
-                context,
-                metadata_for(&source, Some(sandbox_metadata(source.sandbox.as_ref())))?,
-            )));
-        }
-        Err(error) => return Err(error),
-    };
-    let success_metadata = metadata_for(&source, Some(sandbox.metadata.clone()))?;
-    let failure_metadata = metadata_for(&source, None)?;
+    let process =
+        prepare_mcp_process_invocation(&requirements.environment, &server, &skill_directory, &env)?;
+    let success_metadata = metadata_for(&source, &process.metadata)?;
+    let failure_metadata = metadata_for(&source, &process.metadata)?;
     credential_delivery
-        .ensure_environment_disjoint(&sandbox.env)
-        .map_err(|error| RuntimeError::SandboxViolation {
+        .ensure_environment_disjoint(&process.env)
+        .map_err(|error| RuntimeError::InvalidProcessInvocation {
             message: error.to_string(),
         })?;
     Ok(Ok(PreparedMcpToolCall {
@@ -159,7 +143,7 @@ fn prepare_mcp_tool_call(
             tool,
             arguments,
             timeout: timeout_from_source(source.timeout_seconds),
-            sandbox,
+            process,
             secret_env: credential_delivery.secret_env().clone(),
         },
         credential_delivery,
@@ -178,7 +162,7 @@ fn missing_mcp_metadata(context: &AdapterExecutionContext) -> InvocationOutput {
 
 fn metadata_for(
     source: &runx_parser::SkillSource,
-    sandbox: Option<JsonObject>,
+    execution_boundary: &JsonObject,
 ) -> Result<JsonObject, RuntimeError> {
     let mut mcp = JsonObject::new();
     mcp.insert(
@@ -203,9 +187,7 @@ fn metadata_for(
 
     let mut metadata = JsonObject::new();
     metadata.insert("mcp".to_owned(), JsonValue::Object(mcp));
-    if let Some(sandbox) = sandbox.filter(|sandbox| !sandbox.is_empty()) {
-        metadata.insert("sandbox".to_owned(), JsonValue::Object(sandbox));
-    }
+    metadata.extend(execution_boundary.clone());
     Ok(metadata)
 }
 

@@ -1413,6 +1413,7 @@ fn parse_registry_plan(args: &[OsString]) -> Result<RegistryPlan, String> {
     let action = parse_registry_action(subcommand)?;
     let mut state = RegistryParseState::default();
     parse_registry_args(args, &mut state)?;
+    validate_registry_action_flags(&action, &state)?;
     let subject = registry_subject(&action, subcommand, &mut state.positionals)?;
 
     Ok(RegistryPlan {
@@ -1430,6 +1431,28 @@ fn parse_registry_plan(args: &[OsString]) -> Result<RegistryPlan, String> {
         upsert: state.upsert,
         json: state.json,
     })
+}
+
+fn validate_registry_action_flags(
+    action: &RegistryAction,
+    state: &RegistryParseState,
+) -> Result<(), String> {
+    if *action != RegistryAction::Package {
+        return Ok(());
+    }
+    if state.registry.is_some()
+        || state.registry_dir.is_some()
+        || state.version.is_some()
+        || state.expected_digest.is_some()
+        || state.destination.is_some()
+        || state.owner.is_some()
+        || state.trust_tier.is_some()
+        || state.limit.is_some()
+        || state.upsert
+    {
+        return Err("runx registry package accepts only --profile and --json".to_owned());
+    }
+    Ok(())
 }
 
 #[derive(Default)]
@@ -1454,6 +1477,7 @@ fn parse_registry_action(subcommand: &str) -> Result<RegistryAction, String> {
         "read" => Ok(RegistryAction::Read),
         "resolve" => Ok(RegistryAction::Resolve),
         "install" => Ok(RegistryAction::Install),
+        "package" => Ok(RegistryAction::Package),
         "publish" => Ok(RegistryAction::Publish),
         _ => Err(format!("unknown registry subcommand {subcommand}")),
     }
@@ -1622,11 +1646,11 @@ fn registry_subject(
             validate_registry_ref_version(&subject)?;
             Ok(subject)
         }
-        RegistryAction::Publish => {
+        RegistryAction::Package | RegistryAction::Publish => {
             if positionals.len() != 1 {
-                return Err(
-                    "runx registry publish requires exactly one skill markdown path".to_owned(),
-                );
+                return Err(format!(
+                    "runx registry {subcommand} requires exactly one skill markdown path"
+                ));
             }
             Ok(positionals.remove(0))
         }

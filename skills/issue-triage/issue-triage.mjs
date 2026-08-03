@@ -1,17 +1,13 @@
 export function indexIssues(inputs) {
-  const snapshots = Array.isArray(inputs.issue_snapshots) ? inputs.issue_snapshots : [];
-  if (snapshots.length === 0 || snapshots.length > 100) {
-    throw new Error("issue_snapshots must contain 1 to 100 items");
-  }
+  const snapshots = inputs.issue_snapshots;
   const seen = new Set();
-  const issues = snapshots.map((value, index) => {
-    const issue = normalizeIssue(value, index);
+  const issues = snapshots.map((value) => {
+    const issue = normalizeIssue(value);
     if (seen.has(issue.id)) throw new Error(`duplicate issue id: ${issue.id}`);
     seen.add(issue.id);
     return issue;
   });
-  const query = text(inputs.query);
-  if (!query) throw new Error("query is required");
+  const query = inputs.query.trim();
   const snapshotDigest = requiredDigest(inputs.snapshot_digest, "snapshot_digest");
   return {
     issue_index: {
@@ -51,7 +47,6 @@ export function finalizeDiscovery(inputs) {
       query: index.query,
       issue_candidates: selected,
       selection_rationale: object(inputs.selection_rationale),
-      operator_notes: object(inputs.operator_notes),
       evidence_refs: [requiredDigest(index.snapshot_digest, "issue_index.snapshot_digest")],
       provider_status: "supplied_snapshot",
     },
@@ -141,17 +136,13 @@ export function finalizeResponse(inputs) {
   };
 }
 
-function normalizeIssue(value, index) {
+function normalizeIssue(value) {
   const issue = object(value);
   const repository = text(issue.repository);
-  const number = text(issue.number || issue.id);
+  const number = text(issue.number);
   const title = text(issue.title);
   const state = text(issue.state);
   const body = text(issue.body);
-  if (!repository || !number || !title || !state) {
-    throw new Error(`issue_snapshots[${index}] is incomplete`);
-  }
-  if (body.length > 20_000) throw new Error(`issue_snapshots[${index}].body exceeds 20000 characters`);
   const id = `${repository}#${number}`;
   return { id, repository, number, title, state, body };
 }

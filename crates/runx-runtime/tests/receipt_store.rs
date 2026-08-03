@@ -474,6 +474,28 @@ fn write_receipt_allows_identical_and_rejects_divergent_rewrite()
 }
 
 #[test]
+fn write_receipts_coalesces_identical_ids_and_rejects_divergent_content()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let store = LocalReceiptStore::new(temp.path());
+    let receipt = success_receipt()?;
+
+    store.write_receipts(&[receipt.clone(), receipt.clone()])?;
+    assert_eq!(store.list()?.len(), 1);
+    assert_eq!(store.load_index()?.entries.len(), 1);
+
+    let mut changed = receipt.clone();
+    changed.signature.value = "sig:different".into();
+    let result = store.write_receipts(&[receipt, changed]);
+
+    assert!(matches!(
+        result,
+        Err(ReceiptStoreError::ReceiptAlreadyExists { .. })
+    ));
+    Ok(())
+}
+
+#[test]
 fn identical_receipt_retry_repairs_a_missing_index_projection()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;

@@ -32,10 +32,6 @@ pub enum WorkspaceFileError {
     InvalidPath,
     #[error("workspace root is unavailable: {0}")]
     RootUnavailable(std::io::Error),
-    #[error("workspace root must be relative to the runtime workspace")]
-    AbsoluteRoot,
-    #[error("workspace root escapes the runtime workspace")]
-    RootEscapesWorkspace,
     #[error("workspace root is not a directory")]
     RootNotDirectory,
     #[error("path_scope must be workspace or skill")]
@@ -247,14 +243,12 @@ pub(crate) fn resolve_scoped_root(
         return Err(WorkspaceFileError::RootNotDirectory);
     }
     let requested = Path::new(requested_root);
-    if requested.is_absolute() {
-        return Err(WorkspaceFileError::AbsoluteRoot);
-    }
-    let root = std::fs::canonicalize(workspace.join(requested))
-        .map_err(WorkspaceFileError::RootUnavailable)?;
-    if root != workspace && !root.starts_with(&workspace) {
-        return Err(WorkspaceFileError::RootEscapesWorkspace);
-    }
+    let unresolved = if requested.is_absolute() {
+        requested.to_path_buf()
+    } else {
+        workspace.join(requested)
+    };
+    let root = std::fs::canonicalize(unresolved).map_err(WorkspaceFileError::RootUnavailable)?;
     if !root.is_dir() {
         return Err(WorkspaceFileError::RootNotDirectory);
     }

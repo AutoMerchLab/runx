@@ -9,7 +9,7 @@ use crate::protocol::WORKER_WORKING_SET_BYTES;
 pub(crate) enum WorkerLimitError {
     #[error("worker inherited an environment; the supervisor must spawn it with env_clear")]
     EnvironmentPresent,
-    #[error("worker resource containment could not be installed: {0}")]
+    #[error("worker resource limits could not be installed: {0}")]
     Installation(String),
 }
 
@@ -59,6 +59,6 @@ fn install_platform_limits() -> Result<(), WorkerLimitError> {
 #[cfg(not(any(unix, windows)))]
 fn install_platform_limits() -> Result<(), WorkerLimitError> {
     Err(WorkerLimitError::Installation(
-        "this release target has no worker memory/process containment backend".to_owned(),
+        "this release target has no worker memory/process resource-limit backend".to_owned(),
     ))
 }

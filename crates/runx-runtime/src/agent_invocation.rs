@@ -116,6 +116,9 @@ fn envelope(
                 &request.requirements.environment,
                 &request.env,
             ),
+            execution_boundary: runx_contracts::ExecutionBoundaryObservation {
+                kind: runx_contracts::ExecutionBoundaryKind::RemoteProvider,
+            },
         },
         current_context: request.current_context.clone(),
         historical_context: Vec::new(),

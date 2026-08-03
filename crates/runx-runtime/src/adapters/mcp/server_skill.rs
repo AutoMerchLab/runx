@@ -123,46 +123,7 @@ fn mcp_runner_error(skill_name: &str, error: impl std::fmt::Display) -> RuntimeE
 }
 
 fn skill_inputs_to_json_schema(inputs: &BTreeMap<String, SkillInput>) -> JsonObject {
-    let properties = inputs
-        .iter()
-        .map(|(name, input)| (name.clone(), JsonValue::Object(skill_input_schema(input))))
-        .collect::<JsonObject>();
-    let required = inputs
-        .iter()
-        .filter(|(_name, input)| input.required)
-        .map(|(name, _input)| JsonValue::String(name.clone()))
-        .collect::<Vec<_>>();
-    [
-        ("type".to_owned(), JsonValue::String("object".to_owned())),
-        ("properties".to_owned(), JsonValue::Object(properties)),
-        ("required".to_owned(), JsonValue::Array(required)),
-        ("additionalProperties".to_owned(), JsonValue::Bool(false)),
-    ]
-    .into()
-}
-
-fn skill_input_schema(input: &SkillInput) -> JsonObject {
-    let mut schema = JsonObject::new();
-    if let Some(input_type) = normalize_input_type(&input.input_type) {
-        schema.insert("type".to_owned(), JsonValue::String(input_type.to_owned()));
-    }
-    if let Some(description) = &input.description {
-        schema.insert(
-            "description".to_owned(),
-            JsonValue::String(description.clone()),
-        );
-    }
-    if let Some(default) = &input.default {
-        schema.insert("default".to_owned(), default.clone());
-    }
-    schema
-}
-
-fn normalize_input_type(input_type: &str) -> Option<&str> {
-    match input_type {
-        "string" | "number" | "integer" | "boolean" | "object" | "array" => Some(input_type),
-        _ => None,
-    }
+    runx_contracts::input_contract_schema(inputs)
 }
 
 pub(super) fn execute_mcp_server_skill(

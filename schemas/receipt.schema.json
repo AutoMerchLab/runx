@@ -5877,6 +5877,35 @@
         "enforcement": {
           "additionalProperties": false,
           "properties": {
+            "execution_boundary": {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "anyOf": [
+                    {
+                      "const": "trusted_host_process",
+                      "type": "string"
+                    },
+                    {
+                      "const": "deterministic_worker",
+                      "type": "string"
+                    },
+                    {
+                      "const": "native_capability",
+                      "type": "string"
+                    },
+                    {
+                      "const": "remote_provider",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "kind"
+              ],
+              "type": "object"
+            },
             "profile_hash": {
               "minLength": 1,
               "type": "string"
@@ -7985,10 +8014,6 @@
                         },
                         {
                           "const": "within_budget",
-                          "type": "string"
-                        },
-                        {
-                          "const": "sandbox_enforced",
                           "type": "string"
                         },
                         {

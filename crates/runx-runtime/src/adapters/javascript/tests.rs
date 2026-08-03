@@ -27,27 +27,6 @@ fn rejects_credentials_before_loading_a_module() -> Result<(), Box<dyn std::erro
 }
 
 #[test]
-fn rejects_author_selected_sandbox_controls() -> Result<(), Box<dyn std::error::Error>> {
-    let directory = tempfile::tempdir()?;
-    let mut request = invocation(directory.path());
-    request.source.sandbox = Some(runx_parser::SkillSandbox {
-        profile: runx_core::policy::SandboxProfile::Readonly,
-        cwd_policy: None,
-        network: Some(false),
-        writable_paths: Vec::new(),
-        require_enforcement: Some(true),
-        approved_escalation: None,
-        raw: JsonObject::new(),
-    });
-    let error = JavaScriptAdapter::default()
-        .invoke(request)
-        .err()
-        .map(|error| error.to_string());
-    assert!(error.is_some_and(|message| message.contains("runtime owns")));
-    Ok(())
-}
-
-#[test]
 fn wall_limit_failure_records_exact_receipt_metadata() -> Result<(), Box<dyn std::error::Error>> {
     let limits = runx_contracts::javascript_worker::InvocationLimits {
         wall_milliseconds: 7_000,
@@ -62,7 +41,9 @@ fn wall_limit_failure_records_exact_receipt_metadata() -> Result<(), Box<dyn std
                 message: "wall limit reached".to_owned(),
                 disposition: runx_contracts::javascript_worker::WorkerDisposition::Discard,
             },
-            isolation: JsonObject::new(),
+            execution_boundary: crate::process_invocation::boundary_metadata(
+                runx_contracts::ExecutionBoundaryKind::DeterministicWorker,
+            )?,
         },
         limits,
     )?;
@@ -114,7 +95,6 @@ fn invocation(skill_directory: &std::path::Path) -> SkillInvocation {
             timeout_seconds: None,
             input_mode: None,
             environment: Default::default(),
-            sandbox: None,
             server: None,
             tool: None,
             arguments: None,

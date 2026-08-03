@@ -50,7 +50,7 @@
       "description": "Optional public Nitrosend brand SID."
     }
   },
-  "scopes": ["fs:read", "net:http", "nitrosend:write"],
+  "scopes": ["nitrosend:write", "net:http", "fs:read"],
   "mutating": true,
   "retry": { "max_attempts": 1 },
   "artifacts": {

@@ -147,6 +147,8 @@ fn catalog_input(
             description,
             default,
             artifact: None,
+            packet: None,
+            schema: None,
         },
     ))
 }

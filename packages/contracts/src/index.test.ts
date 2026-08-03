@@ -362,6 +362,9 @@ describe("@runxhq/contracts", () => {
         authority_kind: "read_only",
         target_repo: "runxhq/runx",
       },
+      execution_boundary: {
+        kind: "remote_provider",
+      },
       redaction: {
         status: "applied",
         secret_material: "omitted",
@@ -402,6 +405,7 @@ describe("@runxhq/contracts", () => {
       allowed_tools: ["fs.read"],
       requirements: {
         declaration: {},
+        execution_boundary: { kind: "remote_provider" },
       },
       current_context: [],
       historical_context: [],
@@ -426,6 +430,7 @@ describe("@runxhq/contracts", () => {
       allowed_tools: [],
       requirements: {
         declaration: {},
+        execution_boundary: { kind: "remote_provider" },
       },
       current_context: [],
       historical_context: [],
@@ -446,6 +451,7 @@ describe("@runxhq/contracts", () => {
       allowed_tools: ["fs.read"],
       requirements: {
         declaration: {},
+        execution_boundary: { kind: "remote_provider" },
       },
       current_context: [],
       historical_context: [],

@@ -14,7 +14,7 @@ pub(super) fn validated_module(
             .source
             .module
             .as_deref()
-            .ok_or_else(|| RuntimeError::SandboxViolation {
+            .ok_or_else(|| RuntimeError::InvalidProcessInvocation {
                 message: "javascript source is missing module".to_owned(),
             })?;
     let entry_module = package_relative(profile_directory(loaded.profile_path.as_deref()), module);
@@ -55,7 +55,7 @@ fn reachable_modules(
     entry_module: &str,
 ) -> Result<BTreeMap<String, String>, RuntimeError> {
     if !package.javascript_modules.contains_key(entry_module) {
-        return Err(RuntimeError::SandboxViolation {
+        return Err(RuntimeError::InvalidProcessInvocation {
             message: format!(
                 "javascript entry module {entry_module:?} is not in the aggregate validated package bundle"
             ),
@@ -69,15 +69,18 @@ fn reachable_modules(
             continue;
         }
         let metadata = package.javascript_modules.get(&path).ok_or_else(|| {
-            RuntimeError::SandboxViolation {
+            RuntimeError::InvalidProcessInvocation {
                 message: format!("validated JavaScript dependency {path:?} is missing"),
             }
         })?;
-        let source = package
-            .file_text(&path)
-            .ok_or_else(|| RuntimeError::SandboxViolation {
-                message: format!("validated JavaScript dependency {path:?} is not UTF-8 source"),
-            })?;
+        let source =
+            package
+                .file_text(&path)
+                .ok_or_else(|| RuntimeError::InvalidProcessInvocation {
+                    message: format!(
+                        "validated JavaScript dependency {path:?} is not UTF-8 source"
+                    ),
+                })?;
         modules.insert(path.clone(), source.to_owned());
         for specifier in &metadata.imports {
             queue.push_back(

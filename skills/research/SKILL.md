@@ -19,9 +19,10 @@ well-supported findings over a broad report whose conclusions cannot be traced.
 
 ## Where it fits
 
-`research` consumes governed source packets. Fetch or read evidence first with
-`web-fetch`, a provider-specific reader, or another skill that returns stable
-source and content digests. URLs, model memory, operator context, and target
+`research` consumes governed source packets. Fetch evidence with `web-fetch` or
+a provider reader, or use the `local-files` runner to admit bounded UTF-8 files
+through Runx's native filesystem reader. Both paths converge on the same source
+and content-digest index. URLs, paths, model memory, operator context, and target
 names do not become evidence merely because they were supplied.
 
 The packet is a reusable primitive for `deep-research`, `content-pipeline`,
@@ -32,9 +33,10 @@ their own authority, approval, and readback boundary.
 ## How it works
 
 1. State a bounded objective and the decision the research should inform.
-2. Supply up to the declared source limit as governed readback packets. Runx
-   indexes their provenance, observation times, source digests, and provider
-   content digests before synthesis.
+2. Supply up to the declared source limit as governed readback packets, or name
+   bounded local files through the dedicated runner. Runx indexes their
+   provenance, observation times, source digests, and content digests before
+   synthesis.
 3. Synthesis separates verified facts from inference, explains relevance,
    records confidence, and carries open questions rather than filling gaps with
    plausible prose.
@@ -52,7 +54,8 @@ evidence from turning into confident downstream content.
 
 - `objective` is the exact question to answer.
 - `source_packets` are bounded provider or fetch readback packets with stable
-  provenance and content digests.
+  provenance and content digests. `local-files` instead accepts contained paths
+  and never requires HTTP or a hosted connector.
 - `domain`, `deliverable`, `operator_context`, and `target_entities` narrow the
   analysis. They are interpretation context, never source evidence.
 
@@ -81,14 +84,3 @@ The packet can compare the evidence, state which user problem is verified, and
 recommend build, defer, or investigate. It cannot cite a remembered forum post
 or operator hunch as verified demand, and it should name the missing evidence if
 that gap changes the recommendation.
-
-## Agent task contract
-
-### `research-synthesize`
-
-Synthesize only the supplied source index. Preserve the objective exactly and
-return a bounded brief, evidence log, decision support, and risks. Each material
-claim must cite admitted source and provider-content digests; each recommendation
-must cite the source digests behind its rationale. Distinguish verified evidence
-from inference and return `needs_more_evidence` when support is insufficient.
-Do not browse, publish, or invent provider, delivery, or certification claims.

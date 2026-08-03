@@ -28,8 +28,8 @@ Package names carry trust claims:
 - Rust `runx-core` owns pure state-machine and policy decisions.
 - Deleted TypeScript core packages must not be restored as compatibility shims
   or build-only fallbacks.
-- `runx-runtime` coordinates local execution, adapters, sandbox planning,
-  caller interaction, and receipts.
+- `runx-runtime` coordinates local execution, adapters, exact process
+  invocation and supervision, caller interaction, and receipts.
 - host adapters and protocol adapters touch external processes and protocols.
 - `runx-cli` is the native command shell over the runtime.
 

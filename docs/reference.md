@@ -271,8 +271,9 @@ boundary map:
 - `runx-parser`: pure skill, graph, runner, and tool manifest parsing.
 - `runx-receipts`: canonical receipt model, hashing, signatures, and tree
   verification.
-- `runx-runtime`: impure local runtime, adapters, sandbox planning, harness
-  replay, journals, registry clients, payment gates, MCP, and execution.
+- `runx-runtime`: impure local runtime, adapters, exact process invocation and
+  supervision, harness replay, journals, registry clients, payment gates, MCP,
+  and execution.
 - `runx-cli`: native `runx` binary over the runtime.
 - `runx-sdk`: blocking CLI-backed SDK over stable contracts.
 
@@ -290,10 +291,9 @@ generated-contract layer:
 For the generated package export index, see [docs/api-surface.md](api-surface.md).
 
 `runx-runtime` is the canonical local runtime. It owns local skill, graph,
-harness, receipt, history, policy, authority, payment, sandbox admission and
-metadata, MCP, built-in adapter execution, and external execution-adapter
-supervision for the native CLI path. OS sandbox enforcement remains a separate
-runtime hardening lane and must not be assumed from sandbox declarations alone.
+harness, receipt, history, policy, authority, payment, typed
+execution-boundary evidence, MCP, built-in adapter execution, and external
+execution-adapter supervision for the native CLI path.
 
 TypeScript remains for generated contracts, CLI/client wrappers,
 cloud/product integrations, host adapters, and protocol helper SDKs over
@@ -358,27 +358,25 @@ the default page is 1 MiB. The 4 MiB limit is a page ceiling, not a total-file
 ceiling. `fs.read` and `fs.read_bundle` share the same containment and hashing
 owner for bounded text; they are not alternate large-file transports.
 
-### Local Sandbox Posture
+### Local Process Boundary
 
-`cli-tool` and MCP process sources declare sandbox intent in `X.yaml`: profile,
-cwd policy, network intent, and writable paths. Their exact non-secret host
-configuration is declared separately through `environment.required` and
-`environment.optional`. Receipts record both the declaration and actual local
-enforcement mode.
+`cli-tool`, MCP, and external-adapter process sources are trusted host code.
+Their exact non-secret configuration is declared through
+`environment.required` and `environment.optional`; credentials use the
+separate credential contract. Runx controls exact argv, cwd, delivered
+environment, stdin, timeouts, bounded output, process groups or Job Objects,
+kill-tree behavior, and cleanup.
 
-For every restricted profile, Runx selects a trusted OS enforcer: Bubblewrap on
-Linux or `sandbox-exec` on macOS. Filesystem and network policy are applied by
-that enforcer and the exact backend is recorded in the receipt. If no usable
-backend exists, restricted execution fails closed by default. A scoped local
-development run may explicitly opt into declared-policy-only degradation with
-`RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY=local`; the receipt then records
-filesystem and network isolation as `not-enforced-local`.
+Receipts record `trusted_host_process`. That is an honest observation, not a
+filesystem, network, or syscall-confinement claim. Capability and provider
+scopes still govern the native or hosted operations Runx performs on the
+skill's behalf; a local subprocess cannot turn those strings into OS
+permissions.
 
-Set `sandbox.require_enforcement: true` when even that explicit local
-degradation must remain unavailable. JavaScript-module sources cannot select a
-sandbox. Runx gives their worker no workspace mount, network, writable paths,
-ambient OS environment, or credentials; only exact manifest-declared
-non-secret values cross the typed worker protocol.
+JavaScript modules use a different boundary. Their worker receives no ambient
+OS environment, credentials, workspace path, network API, process API, clock,
+or randomness; only the validated in-memory module closure, JSON input, exact
+declared non-secret environment, and fixed limits cross the worker protocol.
 
 ## Capability Packs
 
@@ -437,6 +435,11 @@ Registry search and install now normalize public trust into three tiers:
 `first_party`, `verified`, and `community`. Richer provenance and attestation
 metadata still travels with the registry row, but the user-facing install/search
 surface stays readable.
+
+`runx registry package <SKILL.md|skill-dir> --json` projects the exact
+parser-owned publish artifact without writing a registry row. Hosted and
+third-party publishers should consume that output instead of implementing
+their own package-file discovery.
 
 Use [skill-catalog.md](skill-catalog.md) for the maintained category list,
 catalog search flow, and duplicate-check standard before proposing a new
@@ -804,9 +807,9 @@ The package must include `dist/index.js` and `dist/index.d.ts`, and `dist/index.
 
 - `oss/` (this repository) must not import from `cloud/` (the private companion workspace, not part of this checkout).
 - State-machine and policy packages remain pure.
-- Rust owns trusted local runtime/execution, including sandbox, receipts,
-  policy, authority, payment, harness, built-in adapters, and external
-  execution-adapter supervision.
+- Rust owns trusted local runtime/execution, including exact process
+  supervision, receipts, policy, authority, payment, harness, built-in
+  adapters, and external execution-adapter supervision.
 - TypeScript runtime-local and adapters packages must not be fallback
   executors for trusted local behavior.
 - External execution adapters own their side effects behind language-neutral

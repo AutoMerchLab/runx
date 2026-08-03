@@ -886,7 +886,6 @@
                                   "type": "object"
                                 },
                                 "runtime": {},
-                                "sandbox": {},
                                 "scopes": {
                                   "items": {
                                     "type": "string"
@@ -918,10 +917,40 @@
                                 "type": "object"
                               },
                               "type": "array"
+                            },
+                            "execution_boundary": {
+                              "additionalProperties": false,
+                              "properties": {
+                                "kind": {
+                                  "anyOf": [
+                                    {
+                                      "const": "trusted_host_process",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "deterministic_worker",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "native_capability",
+                                      "type": "string"
+                                    },
+                                    {
+                                      "const": "remote_provider",
+                                      "type": "string"
+                                    }
+                                  ]
+                                }
+                              },
+                              "required": [
+                                "kind"
+                              ],
+                              "type": "object"
                             }
                           },
                           "required": [
-                            "declaration"
+                            "declaration",
+                            "execution_boundary"
                           ],
                           "type": "object"
                         },

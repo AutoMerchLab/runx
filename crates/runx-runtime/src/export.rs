@@ -3,8 +3,8 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use runx_parser::{
-    CatalogVisibility, SkillInput, SkillPackageSource, SkillRunnerDefinition, SkillRunnerManifest,
-    ValidatedSkill, ValidatedSkillPackage, validate_skill_package,
+    CatalogVisibility, SkillInput, SkillPackageSource, SkillRunnerManifest, ValidatedSkill,
+    ValidatedSkillPackage, validate_skill_package,
 };
 
 mod discovery;
@@ -13,16 +13,15 @@ mod resolve;
 use discovery::{canonicalize, discover_skill_paths, display_path};
 use resolve::resolve_skill_ref;
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct RunxExportSkill {
     pub name: String,
     pub description: String,
-    pub inputs: BTreeMap<String, RunxExportSkillInput>,
-    pub runner_names: Vec<String>,
-    pub requires_runner_selection: bool,
+    pub runners: Vec<RunxExportRunner>,
     pub abs_dir: PathBuf,
     pub manual_markdown: String,
     pub manual_digest: String,
+    pub package_digest: String,
     pub mode: RunxExportMode,
 }
 
@@ -32,10 +31,14 @@ pub enum RunxExportMode {
     NativeInstructions,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct RunxExportSkillInput {
-    pub required: bool,
-    pub description: Option<String>,
+#[derive(Clone, Debug, PartialEq)]
+pub struct RunxExportRunner {
+    /// `None` is the unnamed SKILL.md execution front used by packages without
+    /// X.yaml. Named X.yaml runners are always explicit in generated commands.
+    pub name: Option<String>,
+    pub default: bool,
+    pub inputs: BTreeMap<String, SkillInput>,
+    pub examples: Vec<runx_contracts::JsonObject>,
 }
 
 #[derive(Clone, Debug)]
@@ -123,37 +126,20 @@ fn export_skill(
 ) -> Result<RunxExportSkill, RunxExportLoadError> {
     let skill = package.skill;
     let mode = export_mode(&skill, manifest.as_ref());
-    let inputs = export_skill_inputs(manifest.as_ref());
-    validate_export_skill_inputs(&inputs)?;
-    let runner_names = manifest
-        .as_ref()
-        .map(|manifest| manifest.runners.keys().cloned().collect::<Vec<_>>())
-        .unwrap_or_default();
-    let requires_runner_selection = manifest.as_ref().is_some_and(|manifest| {
-        manifest.runners.len() > 1 && default_runner(Some(manifest)).is_none()
-    });
+    let runners = export_runners(&skill, manifest.as_ref());
+    for runner in &runners {
+        validate_export_skill_inputs(&runner.inputs)?;
+    }
     Ok(RunxExportSkill {
         name: export_skill_name(&skill.name)?,
         description: skill
             .description
             .unwrap_or_else(|| "Run this skill through runx governance.".to_owned()),
-        inputs: inputs
-            .into_iter()
-            .map(|(name, input)| {
-                (
-                    name,
-                    RunxExportSkillInput {
-                        required: input.required,
-                        description: input.description,
-                    },
-                )
-            })
-            .collect(),
-        runner_names,
-        requires_runner_selection,
+        runners,
         abs_dir: directory,
         manual_markdown: package.manual_markdown,
         manual_digest: package.manual_digest,
+        package_digest: package.package_digest,
         mode,
     })
 }
@@ -195,23 +181,28 @@ fn export_mode(skill: &ValidatedSkill, manifest: Option<&SkillRunnerManifest>) -
     RunxExportMode::Delegated
 }
 
-fn export_skill_inputs(manifest: Option<&SkillRunnerManifest>) -> BTreeMap<String, SkillInput> {
-    default_runner(manifest)
-        .map(|runner| runner.inputs.clone())
-        .unwrap_or_default()
-}
-
-fn default_runner(manifest: Option<&SkillRunnerManifest>) -> Option<&SkillRunnerDefinition> {
-    let manifest = manifest?;
+fn export_runners(
+    skill: &ValidatedSkill,
+    manifest: Option<&SkillRunnerManifest>,
+) -> Vec<RunxExportRunner> {
+    let Some(manifest) = manifest else {
+        return vec![RunxExportRunner {
+            name: None,
+            default: true,
+            inputs: skill.inputs.clone(),
+            examples: Vec::new(),
+        }];
+    };
     manifest
         .runners
         .values()
-        .find(|runner| runner.default)
-        .or_else(|| {
-            (manifest.runners.len() == 1)
-                .then(|| manifest.runners.values().next())
-                .flatten()
+        .map(|runner| RunxExportRunner {
+            name: Some(runner.name.clone()),
+            default: runner.default || manifest.runners.len() == 1,
+            inputs: runner.inputs.clone(),
+            examples: runner.examples.clone(),
         })
+        .collect()
 }
 
 fn export_skill_name(name: &str) -> Result<String, RunxExportLoadError> {

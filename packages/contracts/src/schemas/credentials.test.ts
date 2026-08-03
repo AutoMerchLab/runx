@@ -48,7 +48,6 @@ const validAuthorityProof: AuthorityProofContract = {
     scope_family: "github_repo",
     authority_kind: "constructive",
     target_repo: "runxhq/runx",
-    sandbox_profile: "readonly",
   },
   scope_admission: validScopeAdmission,
   credential_material: {
@@ -63,25 +62,8 @@ const validAuthorityProof: AuthorityProofContract = {
     authority_kind: "constructive",
     target_repo: "runxhq/runx",
   },
-  sandbox: {
-    profile: "readonly",
-    cwd_policy: "skill-directory",
-    require_enforcement: false,
-    network: {
-      declared: false,
-      enforcement: "not-enforced-local",
-    },
-    filesystem: {
-      enforcement: "not-enforced-local",
-      readonly_paths: true,
-      writable_paths_enforced: false,
-      private_tmp: false,
-    },
-    runtime: {
-      enforcer: "declared-policy-only",
-    },
-    approval_required: false,
-    approval_approved: false,
+  execution_boundary: {
+    kind: "remote_provider",
   },
   redaction: {
     status: "applied",

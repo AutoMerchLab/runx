@@ -56,8 +56,15 @@
           "description": {
             "type": "string"
           },
+          "packet": {
+            "type": "string"
+          },
           "required": {
             "type": "boolean"
+          },
+          "schema": {
+            "additionalProperties": {},
+            "type": "object"
           },
           "type": {
             "type": "string"
@@ -129,6 +136,24 @@
         "cwd": {
           "type": "string"
         },
+        "environment": {
+          "additionalProperties": false,
+          "properties": {
+            "optional": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "required": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "type": "object"
+        },
         "export": {
           "type": "string"
         },
@@ -150,69 +175,6 @@
         },
         "module": {
           "type": "string"
-        },
-        "sandbox": {
-          "additionalProperties": false,
-          "properties": {
-            "cwd_policy": {
-              "anyOf": [
-                {
-                  "const": "skill-directory",
-                  "type": "string"
-                },
-                {
-                  "const": "workspace",
-                  "type": "string"
-                },
-                {
-                  "const": "custom",
-                  "type": "string"
-                }
-              ]
-            },
-            "env_allowlist": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            },
-            "network": {
-              "type": "boolean"
-            },
-            "profile": {
-              "anyOf": [
-                {
-                  "const": "readonly",
-                  "type": "string"
-                },
-                {
-                  "const": "workspace-write",
-                  "type": "string"
-                },
-                {
-                  "const": "network",
-                  "type": "string"
-                },
-                {
-                  "const": "unrestricted-local-dev",
-                  "type": "string"
-                }
-              ]
-            },
-            "require_enforcement": {
-              "type": "boolean"
-            },
-            "writable_paths": {
-              "items": {
-                "type": "string"
-              },
-              "type": "array"
-            }
-          },
-          "required": [
-            "profile"
-          ],
-          "type": "object"
         },
         "server": {
           "additionalProperties": false,

@@ -13,7 +13,7 @@ pub(super) fn build(inputs: &EvidenceVerifyInput) -> Result<JsonValue, RuntimeEr
     let source_records = inputs.source_records.as_slice();
     let (admitted_sources, allowed_sources) =
         admitted_sources(&inputs.source_digests, source_records);
-    let provider_digests = provider_digests(source_records);
+    let content_digests = content_digests(source_records);
     let claim_bindings = inputs.claim_bindings.as_slice();
     let context_requirements = inputs.context_requirements.as_slice();
     let mut findings = Vec::new();
@@ -23,7 +23,7 @@ pub(super) fn build(inputs: &EvidenceVerifyInput) -> Result<JsonValue, RuntimeEr
         inputs.require_claim_bindings,
         claim_bindings,
         &allowed_sources,
-        &provider_digests,
+        &content_digests,
         &mut findings,
     );
     verify_references(&inputs.reference_bindings, &allowed_sources, &mut findings);
@@ -114,14 +114,14 @@ fn admitted_sources(
     (ordered, admitted)
 }
 
-fn provider_digests(records: &[JsonValue]) -> BTreeMap<String, String> {
+fn content_digests(records: &[JsonValue]) -> BTreeMap<String, String> {
     records
         .iter()
         .filter_map(|record| {
             let record = object(Some(record));
             let source = text(record.get("source_digest"));
-            let provider = text(record.get("provider_content_digest"));
-            (is_sha256(&source) && is_sha256(&provider)).then_some((source, provider))
+            let content = text(record.get("content_digest"));
+            (is_sha256(&source) && is_sha256(&content)).then_some((source, content))
         })
         .collect()
 }
@@ -140,7 +140,7 @@ fn verify_claims(
     require_claim_bindings: bool,
     bindings: &[JsonValue],
     allowed: &BTreeSet<String>,
-    provider_digests: &BTreeMap<String, String>,
+    content_digests: &BTreeMap<String, String>,
     findings: &mut Vec<Finding>,
 ) {
     if require_claim_bindings && bindings.is_empty() {
@@ -171,13 +171,13 @@ fn verify_claims(
                 Some(format!("claim_bindings[{index}].source_digests")),
             ));
         }
-        if let Some(expected) = provider_digests.get(&single)
-            && text(binding.get("provider_content_digest")) != *expected
+        if let Some(expected) = content_digests.get(&single)
+            && text(binding.get("content_digest")) != *expected
         {
             findings.push(Finding::new(
-                "artifact.provider_digest.mismatch",
-                "provider content digest does not match the admitted source",
-                Some(format!("claim_bindings[{index}].provider_content_digest")),
+                "artifact.content_digest.mismatch",
+                "content digest does not match the admitted source",
+                Some(format!("claim_bindings[{index}].content_digest")),
             ));
         }
     }

@@ -2,7 +2,7 @@
 //!
 //! When the model chooses a tool, the agent invokes it through the governed
 //! runtime. This reuses the canonical native-or-local dispatcher, so agent
-//! tool calls get the same resolution, sandbox, credential
+//! tool calls get the same resolution, authority, credential
 //! delivery, and artifact projection as graph tool steps.
 
 use std::borrow::Cow;
@@ -138,7 +138,7 @@ mod tests {
             RuntimeEffectRegistry::default(),
             "2026-01-01T00:00:00Z",
             ["git.status".to_owned()],
-            Vec::new(),
+            vec!["git.read".to_owned()],
         );
 
         let output = executor.execute("git.status", &JsonValue::Object(Default::default()))?;

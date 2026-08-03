@@ -47,9 +47,6 @@ jobs:
         with:
           tool: cargo-deny
 
-      - name: Install Linux sandbox
-        uses: ./.github/actions/setup-linux-sandbox
-
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
         with:

@@ -1020,7 +1020,6 @@ export const runxSchemaArtifacts = {
                                     "type": "object"
                                   },
                                   "runtime": {},
-                                  "sandbox": {},
                                   "scopes": {
                                     "items": {
                                       "type": "string"
@@ -1052,10 +1051,40 @@ export const runxSchemaArtifacts = {
                                   "type": "object"
                                 },
                                 "type": "array"
+                              },
+                              "execution_boundary": {
+                                "additionalProperties": false,
+                                "properties": {
+                                  "kind": {
+                                    "anyOf": [
+                                      {
+                                        "const": "trusted_host_process",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "deterministic_worker",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "native_capability",
+                                        "type": "string"
+                                      },
+                                      {
+                                        "const": "remote_provider",
+                                        "type": "string"
+                                      }
+                                    ]
+                                  }
+                                },
+                                "required": [
+                                  "kind"
+                                ],
+                                "type": "object"
                               }
                             },
                             "required": [
-                              "declaration"
+                              "declaration",
+                              "execution_boundary"
                             ],
                             "type": "object"
                           },
@@ -6823,7 +6852,6 @@ export const runxSchemaArtifacts = {
                     "type": "object"
                   },
                   "runtime": {},
-                  "sandbox": {},
                   "scopes": {
                     "items": {
                       "type": "string"
@@ -6855,10 +6883,40 @@ export const runxSchemaArtifacts = {
                   "type": "object"
                 },
                 "type": "array"
+              },
+              "execution_boundary": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "trusted_host_process",
+                        "type": "string"
+                      },
+                      {
+                        "const": "deterministic_worker",
+                        "type": "string"
+                      },
+                      {
+                        "const": "native_capability",
+                        "type": "string"
+                      },
+                      {
+                        "const": "remote_provider",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
               }
             },
             "required": [
-              "declaration"
+              "declaration",
+              "execution_boundary"
             ],
             "type": "object"
           },
@@ -7486,7 +7544,6 @@ export const runxSchemaArtifacts = {
                 "type": "object"
               },
               "runtime": {},
-              "sandbox": {},
               "scopes": {
                 "items": {
                   "type": "string"
@@ -7518,10 +7575,40 @@ export const runxSchemaArtifacts = {
               "type": "object"
             },
             "type": "array"
+          },
+          "execution_boundary": {
+            "additionalProperties": false,
+            "properties": {
+              "kind": {
+                "anyOf": [
+                  {
+                    "const": "trusted_host_process",
+                    "type": "string"
+                  },
+                  {
+                    "const": "deterministic_worker",
+                    "type": "string"
+                  },
+                  {
+                    "const": "native_capability",
+                    "type": "string"
+                  },
+                  {
+                    "const": "remote_provider",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ],
+            "type": "object"
           }
         },
         "required": [
-          "declaration"
+          "declaration",
+          "execution_boundary"
         ],
         "type": "object"
       },
@@ -9876,6 +9963,35 @@ export const runxSchemaArtifacts = {
         ],
         "type": "object"
       },
+      "execution_boundary": {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "anyOf": [
+              {
+                "const": "trusted_host_process",
+                "type": "string"
+              },
+              {
+                "const": "deterministic_worker",
+                "type": "string"
+              },
+              {
+                "const": "native_capability",
+                "type": "string"
+              },
+              {
+                "const": "remote_provider",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "type": "object"
+      },
       "redaction": {
         "additionalProperties": false,
         "properties": {
@@ -9953,10 +10069,6 @@ export const runxSchemaArtifacts = {
           "mutating": {
             "type": "boolean"
           },
-          "sandbox_profile": {
-            "minLength": 1,
-            "type": "string"
-          },
           "scope_family": {
             "minLength": 1,
             "type": "string"
@@ -9987,78 +10099,6 @@ export const runxSchemaArtifacts = {
       "run_id": {
         "minLength": 1,
         "type": "string"
-      },
-      "sandbox": {
-        "additionalProperties": false,
-        "properties": {
-          "approval_approved": {
-            "type": "boolean"
-          },
-          "approval_required": {
-            "type": "boolean"
-          },
-          "cwd_policy": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "filesystem": {
-            "additionalProperties": false,
-            "properties": {
-              "enforcement": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "private_tmp": {
-                "type": "boolean"
-              },
-              "readonly_paths": {
-                "type": "boolean"
-              },
-              "writable_paths_enforced": {
-                "type": "boolean"
-              }
-            },
-            "type": "object"
-          },
-          "network": {
-            "additionalProperties": false,
-            "properties": {
-              "declared": {
-                "type": "boolean"
-              },
-              "enforcement": {
-                "minLength": 1,
-                "type": "string"
-              }
-            },
-            "type": "object"
-          },
-          "profile": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "require_enforcement": {
-            "type": "boolean"
-          },
-          "runtime": {
-            "additionalProperties": false,
-            "properties": {
-              "enforcer": {
-                "minLength": 1,
-                "type": "string"
-              },
-              "reason": {
-                "minLength": 1,
-                "type": "string"
-              }
-            },
-            "type": "object"
-          }
-        },
-        "required": [
-          "profile"
-        ],
-        "type": "object"
       },
       "schema_version": {
         "anyOf": [
@@ -10137,6 +10177,7 @@ export const runxSchemaArtifacts = {
       "requested",
       "scope_admission",
       "credential_material",
+      "execution_boundary",
       "redaction"
     ],
     "type": "object"
@@ -13525,10 +13566,6 @@ export const runxSchemaArtifacts = {
                       },
                       {
                         "const": "within_budget",
-                        "type": "string"
-                      },
-                      {
-                        "const": "sandbox_enforced",
                         "type": "string"
                       },
                       {
@@ -22263,7 +22300,6 @@ export const runxSchemaArtifacts = {
                                 "type": "object"
                               },
                               "runtime": {},
-                              "sandbox": {},
                               "scopes": {
                                 "items": {
                                   "type": "string"
@@ -22295,10 +22331,40 @@ export const runxSchemaArtifacts = {
                               "type": "object"
                             },
                             "type": "array"
+                          },
+                          "execution_boundary": {
+                            "additionalProperties": false,
+                            "properties": {
+                              "kind": {
+                                "anyOf": [
+                                  {
+                                    "const": "trusted_host_process",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "deterministic_worker",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "native_capability",
+                                    "type": "string"
+                                  },
+                                  {
+                                    "const": "remote_provider",
+                                    "type": "string"
+                                  }
+                                ]
+                              }
+                            },
+                            "required": [
+                              "kind"
+                            ],
+                            "type": "object"
                           }
                         },
                         "required": [
-                          "declaration"
+                          "declaration",
+                          "execution_boundary"
                         ],
                         "type": "object"
                       },
@@ -23510,35 +23576,6 @@ export const runxSchemaArtifacts = {
           }
         ]
       },
-      "sandbox_intent": {
-        "additionalProperties": false,
-        "properties": {
-          "cwd_policy": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "network": {
-            "type": "boolean"
-          },
-          "profile": {
-            "minLength": 1,
-            "type": "string"
-          },
-          "writable_paths": {
-            "items": {
-              "minLength": 1,
-              "type": "string"
-            },
-            "type": "array"
-          }
-        },
-        "required": [
-          "profile",
-          "network",
-          "cwd_policy"
-        ],
-        "type": "object"
-      },
       "schema": {
         "anyOf": [
           {
@@ -23618,8 +23655,7 @@ export const runxSchemaArtifacts = {
       "version",
       "supported_source_types",
       "transport",
-      "timeouts",
-      "sandbox_intent"
+      "timeouts"
     ],
     "type": "object",
     "x-runx-schema": "runx.external_adapter.manifest.v1"
@@ -34127,6 +34163,35 @@ export const runxSchemaArtifacts = {
           "enforcement": {
             "additionalProperties": false,
             "properties": {
+              "execution_boundary": {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "anyOf": [
+                      {
+                        "const": "trusted_host_process",
+                        "type": "string"
+                      },
+                      {
+                        "const": "deterministic_worker",
+                        "type": "string"
+                      },
+                      {
+                        "const": "native_capability",
+                        "type": "string"
+                      },
+                      {
+                        "const": "remote_provider",
+                        "type": "string"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "kind"
+                ],
+                "type": "object"
+              },
               "profile_hash": {
                 "minLength": 1,
                 "type": "string"
@@ -36235,10 +36300,6 @@ export const runxSchemaArtifacts = {
                           },
                           {
                             "const": "within_budget",
-                            "type": "string"
-                          },
-                          {
-                            "const": "sandbox_enforced",
                             "type": "string"
                           },
                           {
@@ -43616,7 +43677,6 @@ export const runxSchemaArtifacts = {
                             "type": "object"
                           },
                           "runtime": {},
-                          "sandbox": {},
                           "scopes": {
                             "items": {
                               "type": "string"
@@ -43648,10 +43708,40 @@ export const runxSchemaArtifacts = {
                           "type": "object"
                         },
                         "type": "array"
+                      },
+                      "execution_boundary": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "kind": {
+                            "anyOf": [
+                              {
+                                "const": "trusted_host_process",
+                                "type": "string"
+                              },
+                              {
+                                "const": "deterministic_worker",
+                                "type": "string"
+                              },
+                              {
+                                "const": "native_capability",
+                                "type": "string"
+                              },
+                              {
+                                "const": "remote_provider",
+                                "type": "string"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "kind"
+                        ],
+                        "type": "object"
                       }
                     },
                     "required": [
-                      "declaration"
+                      "declaration",
+                      "execution_boundary"
                     ],
                     "type": "object"
                   },
@@ -57704,8 +57794,15 @@ export const runxSchemaArtifacts = {
             "description": {
               "type": "string"
             },
+            "packet": {
+              "type": "string"
+            },
             "required": {
               "type": "boolean"
+            },
+            "schema": {
+              "additionalProperties": {},
+              "type": "object"
             },
             "type": {
               "type": "string"
@@ -57777,6 +57874,24 @@ export const runxSchemaArtifacts = {
           "cwd": {
             "type": "string"
           },
+          "environment": {
+            "additionalProperties": false,
+            "properties": {
+              "optional": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "required": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "type": "object"
+          },
           "export": {
             "type": "string"
           },
@@ -57798,69 +57913,6 @@ export const runxSchemaArtifacts = {
           },
           "module": {
             "type": "string"
-          },
-          "sandbox": {
-            "additionalProperties": false,
-            "properties": {
-              "cwd_policy": {
-                "anyOf": [
-                  {
-                    "const": "skill-directory",
-                    "type": "string"
-                  },
-                  {
-                    "const": "workspace",
-                    "type": "string"
-                  },
-                  {
-                    "const": "custom",
-                    "type": "string"
-                  }
-                ]
-              },
-              "env_allowlist": {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              },
-              "network": {
-                "type": "boolean"
-              },
-              "profile": {
-                "anyOf": [
-                  {
-                    "const": "readonly",
-                    "type": "string"
-                  },
-                  {
-                    "const": "workspace-write",
-                    "type": "string"
-                  },
-                  {
-                    "const": "network",
-                    "type": "string"
-                  },
-                  {
-                    "const": "unrestricted-local-dev",
-                    "type": "string"
-                  }
-                ]
-              },
-              "require_enforcement": {
-                "type": "boolean"
-              },
-              "writable_paths": {
-                "items": {
-                  "type": "string"
-                },
-                "type": "array"
-              }
-            },
-            "required": [
-              "profile"
-            ],
-            "type": "object"
           },
           "server": {
             "additionalProperties": false,

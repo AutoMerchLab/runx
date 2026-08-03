@@ -1,7 +1,7 @@
 //! Exact, non-secret requirements declared by one executable skill act.
 //!
 //! These values are transport contracts. Runx validates their shape and
-//! preserves their values; provider adapters, sandboxes, and workers decide
+//! preserves their values; provider adapters and workers decide
 //! how an admitted requirement is fulfilled.
 
 use std::collections::BTreeMap;
@@ -63,8 +63,6 @@ pub struct ExecutionRequirements {
     pub credential: Option<ExecutionCredentialRequirement>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime: Option<JsonValue>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sandbox: Option<JsonValue>,
 }
 
 /// Safe environment readiness visible to an operating agent. The value is
@@ -78,10 +76,11 @@ pub struct EnvironmentRequirementStatus {
     pub available: bool,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize, RunxSchema)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, RunxSchema)]
 #[serde(deny_unknown_fields)]
 pub struct AgentExecutionRequirements {
     pub declaration: ExecutionRequirements,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub environment: Vec<EnvironmentRequirementStatus>,
+    pub execution_boundary: crate::ExecutionBoundaryObservation,
 }

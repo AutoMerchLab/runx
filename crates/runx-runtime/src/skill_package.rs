@@ -1,5 +1,6 @@
 //! Filesystem admission for parser-owned skill package truth.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -11,6 +12,8 @@ use crate::filesystem::{DirectoryEntry, find_files_named, read_dir_sorted};
 mod inspection;
 
 pub(crate) use inspection::inspect_loaded_execution_closure_binding;
+#[cfg(feature = "cli-tool")]
+pub(crate) use inspection::{LocalExecutionClosure, inspect_loaded_local_execution_closure};
 pub use inspection::{SkillInspectionError, inspect_skill_package};
 
 pub(crate) const MAX_PACKAGE_FILES: usize = 500;
@@ -25,6 +28,10 @@ pub struct LoadedSkillPackage {
     pub package_root: PathBuf,
     pub profile_path: Option<String>,
     pub package: ValidatedSkillPackage,
+    /// Exact catalog documents admitted for packet-valued inputs. Publication
+    /// and harness staging reuse these bytes instead of rereading mutable files.
+    pub(crate) resolved_input_packet_schemas:
+        BTreeMap<String, crate::packet_schemas::PacketSchemaEntry>,
 }
 
 impl LoadedSkillPackage {
@@ -86,14 +93,20 @@ pub fn load_validated_skill_package(path: &Path) -> Result<LoadedSkillPackage, R
     let mut source = SkillPackageSource::default();
     let mut totals = PackageTotals::default();
     collect_package_source(&package_root, &package_root, &mut source, &mut totals)?;
-    let package = validate_skill_package(source)?;
+    let mut package = validate_skill_package(source)?;
     let profile_path = selected_profile_path(&package_root, &directory)?
         .filter(|path| package.manifest_at(path).is_some());
+    let resolved_input_packet_schemas = crate::packet_schemas::hydrate_packet_input_contracts(
+        &mut package,
+        &directory,
+        &package_root,
+    )?;
     Ok(LoadedSkillPackage {
         directory,
         package_root,
         profile_path,
         package,
+        resolved_input_packet_schemas,
     })
 }
 

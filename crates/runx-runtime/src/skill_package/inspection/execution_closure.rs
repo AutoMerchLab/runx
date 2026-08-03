@@ -19,9 +19,26 @@ struct ClosureAccumulator {
     direct_external_skill_edges: BTreeSet<DirectExternalSkillEdge>,
     unresolved_skill_edges: BTreeSet<String>,
     package_bindings: BTreeSet<ExecutionPackageBinding>,
+    local_packages: BTreeMap<PathBuf, BTreeSet<String>>,
+    local_skill_edges: BTreeSet<LocalSkillEdge>,
     profiles: BTreeSet<String>,
     agent_acts: usize,
     declared_artifact: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub(crate) struct LocalSkillEdge {
+    pub source_package_root: PathBuf,
+    pub graph_directory: PathBuf,
+    pub reference: String,
+    pub target_package_root: PathBuf,
+}
+
+#[derive(Default)]
+#[cfg(feature = "cli-tool")]
+pub(crate) struct LocalExecutionClosure {
+    pub packages: BTreeMap<PathBuf, BTreeSet<String>>,
+    pub skill_edges: BTreeSet<LocalSkillEdge>,
 }
 
 #[derive(Serialize)]
@@ -45,8 +62,16 @@ struct ExecutionPackageBinding {
     skill: String,
     runner: String,
     package_digest: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    input_packet_schemas: Vec<InputPacketSchemaBinding>,
     source_path: String,
     source_files: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+struct InputPacketSchemaBinding {
+    packet: String,
+    schema_digest: String,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
@@ -85,6 +110,71 @@ pub(super) fn inspect_execution_closures(
         .collect()
 }
 
+#[cfg(feature = "cli-tool")]
+pub(super) fn inspect_local_execution_closure(
+    loaded: Arc<LoadedSkillPackage>,
+    env: &BTreeMap<String, String>,
+) -> Result<LocalExecutionClosure, SkillInspectionError> {
+    let runner_names = loaded
+        .manifest()
+        .map(|manifest| manifest.runners.keys().cloned().collect::<Vec<_>>())
+        .unwrap_or_default();
+    let mut inspector = ExecutionClosureInspector::new(loaded, Some(env))?;
+    let mut closure = LocalExecutionClosure::default();
+    for runner_name in runner_names {
+        merge_local_execution_closure(
+            &mut closure,
+            inspector
+                .inspect_root_runner_accumulator(&runner_name)?
+                .into_local_execution_closure(),
+        );
+    }
+    let harness_graphs = inspector
+        .root
+        .package
+        .harness_fixtures
+        .iter()
+        .filter(|(_, fixture)| {
+            fixture.kind == runx_parser::harness_fixture::HarnessFixtureKind::Graph
+        })
+        .map(|(relative, fixture)| (relative.clone(), fixture.target.clone()))
+        .collect::<Vec<_>>();
+    for (fixture_path, target) in harness_graphs {
+        merge_local_execution_closure(
+            &mut closure,
+            inspector
+                .inspect_harness_graph_accumulator(&fixture_path, &target)?
+                .into_local_execution_closure(),
+        );
+    }
+    Ok(closure)
+}
+
+#[cfg(feature = "cli-tool")]
+impl ClosureAccumulator {
+    fn into_local_execution_closure(self) -> LocalExecutionClosure {
+        LocalExecutionClosure {
+            packages: self.local_packages,
+            skill_edges: self.local_skill_edges,
+        }
+    }
+}
+
+#[cfg(feature = "cli-tool")]
+fn merge_local_execution_closure(
+    target: &mut LocalExecutionClosure,
+    source: LocalExecutionClosure,
+) {
+    for (package_root, packet_ids) in source.packages {
+        target
+            .packages
+            .entry(package_root)
+            .or_default()
+            .extend(packet_ids);
+    }
+    target.skill_edges.extend(source.skill_edges);
+}
+
 struct ExecutionClosureInspector<'a> {
     root: Arc<LoadedSkillPackage>,
     root_directory: PathBuf,
@@ -111,6 +201,13 @@ impl<'a> ExecutionClosureInspector<'a> {
         &mut self,
         runner_name: &str,
     ) -> Result<JsonValue, SkillInspectionError> {
+        serialize_closure(self.inspect_root_runner_accumulator(runner_name)?)
+    }
+
+    fn inspect_root_runner_accumulator(
+        &mut self,
+        runner_name: &str,
+    ) -> Result<ClosureAccumulator, SkillInspectionError> {
         let mut closure = ClosureAccumulator::default();
         let mut visited = BTreeSet::new();
         let mut walk = ExecutionWalkState {
@@ -124,38 +221,89 @@ impl<'a> ExecutionClosureInspector<'a> {
             .unwrap_or("X.yaml")
             .to_owned();
         self.walk_runner(
-            self.root.clone(),
-            self.root_directory.clone(),
-            profile_path,
-            runner_name.to_owned(),
-            EdgeDepth::Direct,
+            RunnerWalkTarget {
+                loaded: self.root.clone(),
+                skill_directory: self.root_directory.clone(),
+                profile_path,
+                runner_name: runner_name.to_owned(),
+                edge_depth: EdgeDepth::Direct,
+                materialize_local: true,
+            },
             &mut walk,
         )?;
-        serialize_closure(closure)
+        Ok(closure)
+    }
+
+    #[cfg(feature = "cli-tool")]
+    fn inspect_harness_graph_accumulator(
+        &mut self,
+        fixture_path: &str,
+        target: &str,
+    ) -> Result<ClosureAccumulator, SkillInspectionError> {
+        let fixture_path = self.package_root.join(fixture_path);
+        let fixture_directory =
+            fixture_path
+                .parent()
+                .ok_or_else(|| SkillInspectionError::ProfileEscape {
+                    reference: fixture_path.to_string_lossy().into_owned(),
+                })?;
+        let target_path =
+            canonical_directory(&fixture_directory.join(target), "harness graph target")?;
+        let graph_directory =
+            target_path
+                .parent()
+                .ok_or_else(|| SkillInspectionError::ProfileEscape {
+                    reference: target.to_owned(),
+                })?;
+        let profile_path = target_path
+            .strip_prefix(&self.package_root)
+            .map_err(|_| SkillInspectionError::ProfileEscape {
+                reference: target.to_owned(),
+            })?
+            .to_string_lossy()
+            .into_owned();
+        let graph = crate::execution::graph::load_graph(&target_path)?;
+        let mut closure = ClosureAccumulator::default();
+        let mut visited = BTreeSet::new();
+        let mut walk = ExecutionWalkState {
+            closure: &mut closure,
+            visited: &mut visited,
+        };
+        self.walk_graph(
+            self.root.clone(),
+            GraphWalkContext {
+                directory: graph_directory,
+                profile_path: &profile_path,
+                edge_depth: EdgeDepth::Direct,
+                materialize_local: true,
+            },
+            &graph,
+            &mut walk,
+        )?;
+        Ok(closure)
     }
 
     fn walk_runner(
         &mut self,
-        loaded: Arc<LoadedSkillPackage>,
-        skill_directory: PathBuf,
-        profile_path: String,
-        runner_name: String,
-        edge_depth: EdgeDepth,
+        target: RunnerWalkTarget,
         walk: &mut ExecutionWalkState<'_>,
     ) -> Result<(), SkillInspectionError> {
-        if !walk.visited.insert((skill_directory, runner_name.clone())) {
+        let RunnerWalkTarget {
+            loaded,
+            skill_directory,
+            profile_path,
+            runner_name,
+            edge_depth,
+            materialize_local,
+        } = target;
+        if !walk.visited.insert((
+            skill_directory.clone(),
+            runner_name.clone(),
+            materialize_local,
+        )) {
             return Ok(());
         }
         let package_root = canonical_directory(&loaded.package_root, "bound skill package")?;
-        walk.closure
-            .package_bindings
-            .insert(ExecutionPackageBinding {
-                skill: loaded.package.skill.name.clone(),
-                runner: runner_name.clone(),
-                package_digest: loaded.package.package_digest.clone(),
-                source_path: package_root.to_string_lossy().into_owned(),
-                source_files: loaded.package.source.files.keys().cloned().collect(),
-            });
         let runner = loaded
             .manifest()
             .and_then(|manifest| manifest.runners.get(&runner_name))
@@ -163,15 +311,60 @@ impl<'a> ExecutionClosureInspector<'a> {
                 path: loaded.directory.clone(),
                 runner: runner_name.clone(),
             })?;
+        let mut input_packet_ids = crate::packet_schemas::declared_input_packet_ids(&runner.inputs);
+        for package_tool in loaded.package.tools.values() {
+            input_packet_ids.extend(crate::packet_schemas::declared_input_packet_ids(
+                &package_tool.tool.inputs,
+            ));
+        }
+        let input_packet_schemas = input_packet_ids
+            .into_iter()
+            .map(|packet| {
+                let schema = loaded
+                    .resolved_input_packet_schemas
+                    .get(&packet)
+                    .ok_or_else(|| SkillInspectionError::ClosureInvalid {
+                        runner: runner_name.clone(),
+                        problem: "omitted an admitted input packet schema",
+                    })?;
+                Ok(InputPacketSchemaBinding {
+                    packet,
+                    schema_digest: schema.schema.sha256.clone(),
+                })
+            })
+            .collect::<Result<Vec<_>, SkillInspectionError>>()?;
+        walk.closure
+            .package_bindings
+            .insert(ExecutionPackageBinding {
+                skill: loaded.package.skill.name.clone(),
+                runner: runner_name.clone(),
+                package_digest: loaded.package.package_digest.clone(),
+                input_packet_schemas,
+                source_path: package_root.to_string_lossy().into_owned(),
+                source_files: loaded.package.source.files.keys().cloned().collect(),
+            });
+        if materialize_local {
+            let packet_ids = walk.closure.local_packages.entry(package_root).or_default();
+            packet_ids.extend(crate::packet_schemas::declared_runner_packet_ids(runner));
+            for package_tool in loaded.package.tools.values() {
+                packet_ids.extend(crate::packet_schemas::declared_tool_packet_ids(
+                    &package_tool.tool,
+                ));
+            }
+        }
         walk.closure
             .profiles
             .insert(format!("{profile_path}#{runner_name}"));
         self.walk_source(
             loaded.clone(),
-            &profile_path,
+            GraphWalkContext {
+                directory: &skill_directory,
+                profile_path: &profile_path,
+                edge_depth,
+                materialize_local,
+            },
             &runner.source,
             runner.artifacts.is_some(),
-            edge_depth,
             walk,
         )
     }
@@ -179,10 +372,9 @@ impl<'a> ExecutionClosureInspector<'a> {
     fn walk_source(
         &mut self,
         loaded: Arc<LoadedSkillPackage>,
-        profile_path: &str,
+        context: GraphWalkContext<'_>,
         source: &runx_parser::SkillSource,
         declared_artifact: bool,
-        edge_depth: EdgeDepth,
         walk: &mut ExecutionWalkState<'_>,
     ) -> Result<(), SkillInspectionError> {
         match source.source_type {
@@ -191,53 +383,7 @@ impl<'a> ExecutionClosureInspector<'a> {
                     .graph
                     .as_ref()
                     .ok_or(SkillInspectionError::GraphMissing)?;
-                for step in &graph.steps {
-                    if let Some(tool) = &step.tool {
-                        walk.closure.components.insert(format!("tool:{tool}"));
-                    }
-                    if let Some(resolved) =
-                        self.resolve_step_skill(loaded.clone(), profile_path, step)?
-                    {
-                        let ResolvedStepSkill {
-                            edge,
-                            static_external_name,
-                            nested,
-                        } = resolved;
-                        walk.closure.skill_edges.insert(edge.clone());
-                        if nested.is_none() {
-                            walk.closure.unresolved_skill_edges.insert(edge);
-                        }
-                        if edge_depth.records_direct_edges() {
-                            record_direct_external_skill_edge(
-                                static_external_name,
-                                nested.as_ref(),
-                                step,
-                                &self.package_root,
-                                &mut walk.closure.direct_external_skill_edges,
-                            );
-                        }
-                        if let Some(nested) = nested {
-                            self.walk_runner(
-                                nested.loaded,
-                                nested.canonical_directory,
-                                nested.profile_path,
-                                nested.runner_name,
-                                EdgeDepth::Nested,
-                                walk,
-                            )?;
-                        }
-                    }
-                    if let Some(run_source) = step.run.as_ref().and_then(|run| run.source()) {
-                        self.walk_source(
-                            loaded.clone(),
-                            profile_path,
-                            run_source,
-                            step.artifacts.is_some(),
-                            edge_depth,
-                            walk,
-                        )?;
-                    }
-                }
+                self.walk_graph(loaded, context, graph, walk)?;
             }
             SourceKind::Agent | SourceKind::AgentStep => {
                 walk.closure.agent_acts = walk.closure.agent_acts.saturating_add(1);
@@ -277,9 +423,99 @@ impl<'a> ExecutionClosureInspector<'a> {
         Ok(())
     }
 
-    fn resolve_step_skill(
+    fn walk_graph(
         &mut self,
         loaded: Arc<LoadedSkillPackage>,
+        context: GraphWalkContext<'_>,
+        graph: &runx_parser::ExecutionGraph,
+        walk: &mut ExecutionWalkState<'_>,
+    ) -> Result<(), SkillInspectionError> {
+        if context.materialize_local {
+            let package_root = canonical_directory(&loaded.package_root, "bound graph package")?;
+            let packet_ids = walk.closure.local_packages.entry(package_root).or_default();
+            for step in &graph.steps {
+                packet_ids.extend(crate::packet_schemas::declared_artifact_packet_ids(
+                    step.artifacts.as_ref(),
+                ));
+            }
+        }
+        for step in &graph.steps {
+            if let Some(tool) = &step.tool {
+                walk.closure.components.insert(format!("tool:{tool}"));
+            }
+            if let Some(resolved) =
+                self.resolve_step_skill(context.directory, context.profile_path, step)?
+            {
+                let ResolvedStepSkill {
+                    edge,
+                    static_external_name,
+                    nested,
+                } = resolved;
+                if context.materialize_local
+                    && !is_registry_step_ref(step.skill.as_deref().unwrap_or_default())
+                    && let Some(nested) = nested.as_ref()
+                {
+                    let source_package_root =
+                        canonical_directory(&loaded.package_root, "bound graph package")?;
+                    let target_package_root =
+                        canonical_directory(&nested.loaded.package_root, "referenced sub-skill")?;
+                    if source_package_root != target_package_root {
+                        walk.closure.local_skill_edges.insert(LocalSkillEdge {
+                            source_package_root,
+                            graph_directory: canonical_directory(
+                                context.directory,
+                                "bound graph directory",
+                            )?,
+                            reference: step.skill.clone().unwrap_or_default(),
+                            target_package_root,
+                        });
+                    }
+                }
+                walk.closure.skill_edges.insert(edge.clone());
+                if nested.is_none() {
+                    walk.closure.unresolved_skill_edges.insert(edge);
+                }
+                if context.edge_depth.records_direct_edges() {
+                    record_direct_external_skill_edge(
+                        static_external_name,
+                        nested.as_ref(),
+                        step,
+                        &self.package_root,
+                        &mut walk.closure.direct_external_skill_edges,
+                    );
+                }
+                if let Some(nested) = nested {
+                    let nested_materialize_local = context.materialize_local
+                        && !is_registry_step_ref(step.skill.as_deref().unwrap_or_default());
+                    self.walk_runner(
+                        RunnerWalkTarget {
+                            loaded: nested.loaded,
+                            skill_directory: nested.canonical_directory,
+                            profile_path: nested.profile_path,
+                            runner_name: nested.runner_name,
+                            edge_depth: EdgeDepth::Nested,
+                            materialize_local: nested_materialize_local,
+                        },
+                        walk,
+                    )?;
+                }
+            }
+            if let Some(run_source) = step.run.as_ref().and_then(|run| run.source()) {
+                self.walk_source(
+                    loaded.clone(),
+                    context,
+                    run_source,
+                    step.artifacts.is_some(),
+                    walk,
+                )?;
+            }
+        }
+        Ok(())
+    }
+
+    fn resolve_step_skill(
+        &mut self,
+        graph_directory: &Path,
         profile_path: &str,
         step: &GraphStep,
     ) -> Result<Option<ResolvedStepSkill>, SkillInspectionError> {
@@ -297,7 +533,7 @@ impl<'a> ExecutionClosureInspector<'a> {
         let empty_env = BTreeMap::new();
         let env = self.env.unwrap_or(&empty_env);
         let loaded_step = crate::execution::graph::load_step_skill_package(
-            &loaded.directory,
+            graph_directory,
             step,
             crate::execution::graph::StepSkillLoadOptions { env },
         )?;
@@ -334,9 +570,26 @@ impl<'a> ExecutionClosureInspector<'a> {
     }
 }
 
+struct RunnerWalkTarget {
+    loaded: Arc<LoadedSkillPackage>,
+    skill_directory: PathBuf,
+    profile_path: String,
+    runner_name: String,
+    edge_depth: EdgeDepth,
+    materialize_local: bool,
+}
+
+#[derive(Clone, Copy)]
+struct GraphWalkContext<'a> {
+    directory: &'a Path,
+    profile_path: &'a str,
+    edge_depth: EdgeDepth,
+    materialize_local: bool,
+}
+
 struct ExecutionWalkState<'a> {
     closure: &'a mut ClosureAccumulator,
-    visited: &'a mut BTreeSet<(PathBuf, String)>,
+    visited: &'a mut BTreeSet<(PathBuf, String, bool)>,
 }
 
 struct ResolvedStepSkill {
@@ -425,6 +678,10 @@ fn execution_closure_digest(
         append_digest_field(&mut canonical, binding.skill.as_bytes());
         append_digest_field(&mut canonical, binding.runner.as_bytes());
         append_digest_field(&mut canonical, binding.package_digest.as_bytes());
+        for packet in &binding.input_packet_schemas {
+            append_digest_field(&mut canonical, packet.packet.as_bytes());
+            append_digest_field(&mut canonical, packet.schema_digest.as_bytes());
+        }
     }
     for edge in unresolved_skill_edges {
         append_digest_field(&mut canonical, b"unresolved");

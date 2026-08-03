@@ -56,13 +56,11 @@ pub(crate) enum TokioProcessSupervisorError {
 pub(crate) fn spawn_tokio_process(
     spec: TokioProcessSpec,
 ) -> Result<OwnedTokioProcess, TokioProcessSupervisorError> {
-    super::ensure_host_process_containment().map_err(|source| {
-        TokioProcessSupervisorError::Spawn {
-            label: spec.label,
-            command: spec.command.clone(),
-            cwd: spec.cwd.display().to_string(),
-            source,
-        }
+    super::ensure_windows_host_job().map_err(|source| TokioProcessSupervisorError::Spawn {
+        label: spec.label,
+        command: spec.command.clone(),
+        cwd: spec.cwd.display().to_string(),
+        source,
     })?;
     let mut command = tokio::process::Command::new(&spec.command);
     command

@@ -196,7 +196,9 @@ guaranteed:
 - **Deterministic modules** perform isolated JSON-to-JSON domain computation
   with no ambient filesystem, network, process, environment, clock, or random
   authority.
-- **CLI tools** are intentional local executables under an explicit sandbox.
+- **CLI tools** are intentional trusted local executables under an exact
+  resolved grant. Runx controls argv, cwd, delivered environment, credentials,
+  supervision, and evidence; it does not claim portable OS confinement.
 - **Provider adapters** perform governed HTTP, MCP, external-adapter, outbox,
   or Connect operations under typed authority and effect contracts.
 
@@ -220,10 +222,10 @@ Runx resolves explicit profiles, project bindings, global defaults, hosted
 handles, and the workspace environment through one canonical path. Skill runs,
 resume, inspect, managed agents, and MCP use the same readiness contract.
 
-Receipts may include requested and granted scopes, grant references, sandbox
-posture, approval decisions, provider observations, and hashes. They must not
-contain raw tokens, passwords, ambient environment dumps, or unchecked private
-provider bodies.
+Receipts may include requested and granted scopes, grant references, typed
+execution-boundary observations, approval decisions, provider observations,
+and hashes. They must not contain raw tokens, passwords, ambient environment
+dumps, or unchecked private provider bodies.
 
 See [Credential Resolution](docs/credentials.md) and
 [Security Authority Proof](docs/security-authority-proof.md).
@@ -236,7 +238,7 @@ A Runx receipt answers the questions that matter after the agent has moved on:
 | --- | --- |
 | What ran? | subject, skill ref, source type, runner metadata |
 | Who or what admitted it? | actor ref, grant refs, authority proof refs |
-| What was allowed? | scopes, sandbox policy, approval metadata |
+| What was allowed? | scopes, resolved grants, approval metadata |
 | What happened? | acts, output artifacts, exit status, closure summary |
 | Can it be checked later? | content-addressed id, canonical digest, signature, lineage |
 | Did secrets leak into proof? | redaction metadata and hashed material refs |
@@ -244,7 +246,7 @@ A Runx receipt answers the questions that matter after the agent has moved on:
 Every governed execution passes through one invariant:
 
 ```text
-admit -> deliver credentials -> sandbox -> seal
+admit -> resolve grant -> deliver credentials -> execute -> seal
 ```
 
 Run a local verification with the explicit development-signature allowance:
@@ -311,7 +313,7 @@ Runx has one owner for every contract and behavior:
 | pure policy, authority, and state transitions | `runx-core` |
 | package parsing and the aggregate validated package IR | `runx-parser` |
 | canonical receipts, hashing, signatures, verification | `runx-receipts` |
-| execution, capabilities, sandboxing, adapters, effects | `runx-runtime` |
+| execution, capabilities, process supervision, adapters, effects | `runx-runtime` |
 | argument parsing and presentation | `runx-cli` |
 | generated language bindings and narrow extension protocols | `packages/` |
 | operator knowledge and irreducible domain computation | `skills/` and product-owned packages |

@@ -97,6 +97,17 @@ For remote publishes the CLI sends a bounded skill package:
   - `references/**/*.md` advisory markdown;
   - bundled tool manifests and their complete static local source closure.
 
+Publishers that need the exact artifact without writing a registry row use the
+same native materializer:
+
+```bash
+runx registry package ./skills/<your-skill> --json
+```
+
+The command is read-only. Its `markdown`, `profile_document`, and
+`package_files` output is the sole portable package shape used by hosted
+tooling; hosted code must not rediscover those files with a parallel crawler.
+
 Nothing else is package material. Undeclared fixtures, build output,
 `node_modules`, assets, dotfiles, local registry state, repo metadata, and
 random helper files are not uploaded. A `src/` directory is not special: only

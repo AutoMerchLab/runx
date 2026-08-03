@@ -379,10 +379,14 @@ export {
 } from "./schemas/act-assignment.js";
 
 export {
+  executionBoundaryObservationSchema,
+  type ExecutionBoundaryObservationContract,
+} from "./schemas/execution-boundary.js";
+
+export {
   externalAdapterProtocolVersion,
   externalAdapterTransportSchema,
   externalAdapterCredentialNeedSchema,
-  externalAdapterSandboxIntentSchema,
   externalAdapterTimeoutsSchema,
   externalAdapterManifestV1Schema,
   externalAdapterCredentialRequestV1Schema,
@@ -402,7 +406,6 @@ export {
   validateExternalAdapterCredentialRequestContract,
   type ExternalAdapterTransportContract,
   type ExternalAdapterCredentialNeedContract,
-  type ExternalAdapterSandboxIntentContract,
   type ExternalAdapterTimeoutsContract,
   type ExternalAdapterManifestContract,
   type ExternalAdapterCredentialRequestContract,

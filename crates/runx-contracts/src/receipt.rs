@@ -176,6 +176,8 @@ pub struct Subject {
 #[serde(deny_unknown_fields)]
 pub struct ReceiptEnforcement {
     pub profile_hash: NonEmptyString,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_boundary: Option<crate::ExecutionBoundaryObservation>,
     #[serde(default)]
     pub redaction_refs: Vec<Reference>,
     #[serde(default)]

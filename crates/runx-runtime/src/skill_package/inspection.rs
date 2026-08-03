@@ -8,7 +8,11 @@ use runx_contracts::{JsonObject, JsonValue};
 use runx_parser::{CatalogMetadata, SkillRunnerDefinition, SourceKind};
 
 use super::LoadedSkillPackage;
+#[cfg(feature = "cli-tool")]
+pub(crate) use execution_closure::LocalExecutionClosure;
 use execution_closure::inspect_execution_closures;
+#[cfg(feature = "cli-tool")]
+use execution_closure::inspect_local_execution_closure;
 use runner::{catalog_capabilities, fixture_examples, inspect_runner};
 use thiserror::Error;
 
@@ -188,6 +192,14 @@ pub(crate) fn inspect_loaded_execution_closure_binding(
         digest,
         fully_bound,
     })
+}
+
+#[cfg(feature = "cli-tool")]
+pub(crate) fn inspect_loaded_local_execution_closure(
+    loaded: &LoadedSkillPackage,
+    env: &std::collections::BTreeMap<String, String>,
+) -> Result<LocalExecutionClosure, SkillInspectionError> {
+    inspect_local_execution_closure(Arc::new(loaded.clone()), env)
 }
 
 fn base_inspection(loaded: &LoadedSkillPackage) -> JsonObject {

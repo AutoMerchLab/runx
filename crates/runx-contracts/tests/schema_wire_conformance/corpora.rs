@@ -193,13 +193,8 @@ pub(super) fn tool_manifest_corpus() -> Vec<(&'static str, Value)> {
             "command": "node",
             "args": ["tool.mjs"],
             "input_mode": "stdin",
-            "sandbox": {
-                "profile": "readonly",
-                "cwd_policy": "skill-directory",
-                "env_allowlist": ["HOME"],
-                "network": false,
-                "writable_paths": [],
-                "require_enforcement": true
+            "environment": {
+                "optional": ["HOME"]
             }
         },
         "inputs": {
@@ -622,11 +617,12 @@ pub(super) fn authority_proof_corpus() -> Vec<(&'static str, Value)> {
             "decision_summary": "granted",
         },
         "credential_material": authority_proof_credential_material(),
+        "execution_boundary": { "kind": "remote_provider" },
         "redaction": authority_proof_redaction(),
     });
     vec![
         ("minimal valid", valid.clone()),
-        ("full valid (sandbox + approval + targeting)", {
+        ("full valid (approval + targeting)", {
             let mut v = valid.clone();
             v["run_id"] = json!("run_1");
             v["requested"] = json!({
@@ -637,7 +633,6 @@ pub(super) fn authority_proof_corpus() -> Vec<(&'static str, Value)> {
                 "authority_kind": "constructive",
                 "target_repo": "acme/widgets",
                 "target_locator": "issue/1",
-                "sandbox_profile": "workspace-write",
             });
             v["credential_material"] = json!({
                 "status": "resolved",
@@ -651,15 +646,6 @@ pub(super) fn authority_proof_corpus() -> Vec<(&'static str, Value)> {
                     "scope_family": "github",
                     "authority_kind": "constructive",
                 },
-            });
-            v["sandbox"] = json!({
-                "profile": "workspace-write",
-                "cwd_policy": "skill-directory",
-                "require_enforcement": true,
-                "network": { "declared": false },
-                "filesystem": { "readonly_paths": true, "private_tmp": true },
-                "runtime": { "enforcer": "seatbelt" },
-                "approval_required": false,
             });
             v["approval_gate"] = json!({
                 "gate_id": "gate_1",
@@ -2208,7 +2194,6 @@ pub(super) fn external_adapter_manifest_corpus() -> Vec<(&'static str, Value)> {
         "supported_source_types": ["github_issue"],
         "transport": { "kind": "process", "command": "node" },
         "timeouts": { "startup_ms": 1000, "invocation_ms": 5000 },
-        "sandbox_intent": { "profile": "readonly", "network": false, "cwd_policy": "workspace" },
     });
     vec![
         ("minimal valid", valid.clone()),
@@ -2478,7 +2463,7 @@ pub(super) fn approval_gate_corpus() -> Vec<(&'static str, Value)> {
         ("minimal valid", valid.clone()),
         ("full valid", {
             let mut v = valid.clone();
-            v["type"] = json!("sandbox");
+            v["type"] = json!("filesystem_write");
             v["summary"] = json!({ "k": 1 });
             v
         }),

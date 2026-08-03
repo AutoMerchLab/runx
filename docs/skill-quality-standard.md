@@ -68,7 +68,7 @@ Proof must match the claim:
 `caller.answers` can prove graph wiring and an agent-artifact contract. It
 cannot prove a provider mutation, network result, payment, send, publish, or
 other external effect. Live destructive proof is never required when a faithful
-sandbox plus refusal and approval cases establish the same boundary safely.
+isolated fixture plus refusal and approval cases establish the same boundary safely.
 
 ## Provider operation contract
 
@@ -197,6 +197,13 @@ operator.
 
 `X.yaml` owns executable capability and governance:
 
+- runner-owned nested inputs declare their JSON Schema fragment inline;
+- an input that is exactly one canonical packet declares `type: json` and
+  `packet: <packet-id>`, so the runtime resolves one catalog-owned schema for
+  validation, inspection, export, harness, and registry packaging;
+- consumers never copy packet schemas, and a weak canonical packet contract is
+  fixed at its producer before downstream adoption;
+
 - runners, typed inputs and outputs, and default selection;
 - agent-versus-deterministic step boundaries;
 - tool, adapter, context-skill, and graph wiring;
@@ -236,17 +243,34 @@ Skill authoring must decide ownership before it writes files:
   in OSS or the product, not in a Cloud dogfood script.
 - Prefer a declarative graph composed from existing native tools and canonical
   skills.
+- Treat the selected runner's execution requirements as the complete
+  permission request. Opaque scopes, exact non-secret environment names, a
+  named credential requirement, and runtime metadata stay on their canonical
+  typed fields. Native capabilities and providers enforce the scopes they own;
+  Runx does not reconstruct authority from prose or `runx` metadata.
+- Prove permission-bearing native and provider paths through the package
+  harness using the production catalog, dispatcher, and enforcement owner. A
+  realistic admitted case and an exercisable withheld-scope or withheld-grant
+  case are part of the capability proof. Do not introduce a harness-only scope
+  vocabulary, evaluator, or report. Trusted host processes remain explicitly
+  trusted because a portable harness cannot prove the absence of arbitrary
+  filesystem, network, or syscall access.
 - Add package executable code only for irreducible domain computation. Its
   admission names the domain boundary, why the graph cannot express it, and
   which existing owners and tools were inspected.
 - Express irreducible JavaScript through `source.type: javascript`: a cohesive
   package module exposes focused functions from resolved inputs and frozen
   declared non-secret environment to JSON values, while Runx owns process
-  input, output, errors, wall limits, and sandboxing. Do not simulate named
+  input, output, errors, wall limits, and worker isolation. Do not simulate named
   operations with public inputs or create one process wrapper per graph step.
   The runtime must enforce a read-only, no-network worker with no workspace,
   writable paths, ambient OS environment, or injected credentials. Reserve
   `cli-tool` for a genuine executable or protocol boundary.
+- Local CLI tools, process MCP servers, and process adapters are trusted host
+  code. Runx supervises exact invocation and delivered authority but does not
+  claim portable filesystem, network, or syscall confinement. Use this lane
+  only for irreducible protocol work; never generate sandbox declarations,
+  wrappers, or degradation flags.
 - Generic packet and evidence digests belong to native `data.digest`. A
   package-local canonical hash is admissible only when the hash is an intrinsic
   field of an established domain or wire protocol, never as a replacement for
@@ -285,6 +309,11 @@ to the first-party `runx` namespace. The field guides repository release
 tooling but grants no publish authority. Moving a package between namespaces
 requires an explicit ownership transfer, never an automatic rewrite during
 merge or hardening.
+
+Registry admission executes the exact digest-bound package that will install.
+Local cross-package edges are carried in that package bundle; a harness may
+not borrow sibling files from the source checkout that are absent from the
+published artifact.
 
 The catalog gate blocks structural dishonesty and unusable packages:
 

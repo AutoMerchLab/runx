@@ -18,7 +18,6 @@ expect:
               command: node
               args: [./provider.mjs, publish]
               cwd: .
-              network: false
               timeout_ms: 10000
               env_names:
                 - RUNX_RELEASE_CHANNEL

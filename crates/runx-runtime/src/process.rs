@@ -63,9 +63,15 @@ pub(crate) use self::supervisor::run_process;
 #[cfg(feature = "mcp")]
 pub(crate) use self::tokio_supervisor::{OwnedTokioProcess, TokioProcessSpec, spawn_tokio_process};
 #[cfg(windows)]
-pub(crate) use self::windows_host_job::ensure_host_process_containment;
+pub(crate) use self::windows_host_job::ensure_windows_host_job;
+
+pub(crate) fn cleanup_paths_quietly(paths: &[std::path::PathBuf]) {
+    for path in paths {
+        let _ = std::fs::remove_dir_all(path);
+    }
+}
 
 #[cfg(not(windows))]
-pub(crate) fn ensure_host_process_containment() -> std::io::Result<()> {
+pub(crate) fn ensure_windows_host_job() -> std::io::Result<()> {
     Ok(())
 }

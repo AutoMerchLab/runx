@@ -18,8 +18,6 @@ export function checkServiceBoundary(findings) {
     /\bRuntimeReceiptSignatureConfig::from_env\b/u,
     /\bLocalReceiptStore::new\b/u,
     /\bresolve_receipt_path\s*\(/u,
-    /\bprepare_process_sandbox\s*\(/u,
-    /\bprepare_mcp_process_sandbox\s*\(/u,
     /\bstd::env::(?:var|vars)\s*\(/u,
   ];
   for (const root of roots) {
@@ -27,7 +25,7 @@ export function checkServiceBoundary(findings) {
       const source = productionRustSource(readFileSync(filePath, "utf8"));
       for (const pattern of forbidden) {
         if (pattern.test(source)) {
-          findings.push(`${relative(filePath)} still constructs env, receipts, or sandbox state outside runtime services`);
+          findings.push(`${relative(filePath)} still constructs environment or receipt state outside runtime services`);
         }
       }
     }

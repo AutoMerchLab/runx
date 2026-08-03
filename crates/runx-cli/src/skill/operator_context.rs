@@ -27,11 +27,18 @@ pub(super) fn write_operator_context(
         out.push_str(&format!("  Receipts: {}\n", receipt_dir.display()));
     }
     let total_steps = report.governance.declared_steps + report.governance.conditional_steps;
+    let execution_boundaries = report
+        .governance
+        .execution_boundaries
+        .iter()
+        .map(|kind| kind.as_str().to_owned())
+        .collect::<Vec<_>>();
     out.push_str(&format!(
-        "  Steps:  {total_steps} total, {} mutating, {} conditional\n  Tools:  {}\n",
+        "  Steps:  {total_steps} total, {} mutating, {} conditional\n  Tools:  {}\n  Boundaries: {}\n",
         report.governance.mutating_steps.len(),
         report.governance.conditional_steps,
         list_or_none(&report.governance.tool_refs),
+        list_or_none(&execution_boundaries),
     ));
     out.push_str(&format!(
         "  Managed agent: {} act(s), {}\n",
@@ -175,12 +182,16 @@ fn append_node(
         ));
     }
     out.push_str(&format!(
-        "runner_name: {}\nrunner_type: {}\nrunner_selection: {}\nrunner_mutating: {}\nrunner_scopes: {}\nterminal: {}\n",
+        "runner_name: {}\nrunner_type: {}\nrunner_selection: {}\nrunner_mutating: {}\nrunner_scopes: {}\nrunner_execution_boundary: {}\nterminal: {}\n",
         node.runner.name,
         node.runner.source_type,
         node.runner.selection,
         node.runner.mutating,
         list_or_none(&node.runner.scopes),
+        node.runner
+            .execution_boundary
+            .map(|observation| observation.kind.as_str())
+            .unwrap_or("none"),
         terminal_label(&node.terminal),
     ));
     if let Some(requested) = &node.runner.requested_name {
@@ -216,10 +227,13 @@ fn append_step(out: &mut String, step: &SkillOperatorContextStep) -> Result<(), 
     let definition = &step.definition;
     out.push_str(&format!("\n--- graph step: {} ---\n", step.node_path));
     out.push_str(&format!(
-        "step_id: {}\ntarget: {}\nmutation: {}\n",
+        "step_id: {}\ntarget: {}\nmutation: {}\nexecution_boundary: {}\n",
         definition.id,
         step.target_label(),
         definition.mutating,
+        step.execution_boundary
+            .map(|observation| observation.kind.as_str())
+            .unwrap_or("none"),
     ));
     append_string_list(
         out,
@@ -267,13 +281,19 @@ fn append_tools(out: &mut String, node_path: &str, tools: &[SkillOperatorContext
         match (&tool.path, &tool.sha256, &tool.content) {
             (Some(path), Some(sha256), Some(content)) => {
                 out.push_str(&format!(
-                    "\n--- tool manifest: {} at {node_path} ---\npath: {}\nsha256: {sha256}\nsource: {}\n\n```json\n{content}\n```\n",
+                    "\n--- tool manifest: {} at {node_path} ---\npath: {}\nsha256: {sha256}\nsource: {}\nexecution_boundary: {}\n\n```json\n{content}\n```\n",
                     tool.name,
                     path.display(),
                     tool.source,
+                    tool.execution_boundary.kind.as_str(),
                 ));
             }
-            _ => out.push_str(&format!("tool: {}\nsource: {}\n", tool.name, tool.source)),
+            _ => out.push_str(&format!(
+                "tool: {}\nsource: {}\nexecution_boundary: {}\n",
+                tool.name,
+                tool.source,
+                tool.execution_boundary.kind.as_str(),
+            )),
         }
     }
 }

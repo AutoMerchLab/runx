@@ -44,9 +44,9 @@ caller:
               outputs:
                 summary: string
                 caveats: array
+              scopes:
+                - runx:content:read
               runx:
-                scopes:
-                  - runx:content:read
                 allowed_tools: []
                 tags:
                   - summarization
@@ -57,9 +57,6 @@ caller:
                     path: SKILL.md
                     commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
                     blob_sha: 66cececa3c93fc6b128e9d4341ecfe2a208cd2b9
-                sandbox:
-                  profile: readonly
-                  cwd_policy: workspace
           harness:
             cases:
               - name: summarize-ready

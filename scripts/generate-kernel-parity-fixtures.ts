@@ -429,30 +429,9 @@ function fixtureCases(): readonly KernelFixtureCase[] {
           grants: [githubReadGrant],
           connectedAuthCheckedAt,
           credential: githubCredential,
-          sandboxDeclaration: {
-            profile: "workspace-write",
-            cwdPolicy: "workspace",
-            network: false,
-            requireEnforcement: true,
-          },
-          sandboxMetadata: {
-            profile: "workspace-write",
-            cwd_policy: "workspace",
-            require_enforcement: true,
-            network: {
-              declared: false,
-              enforcement: "isolated-namespace",
-            },
-            filesystem: {
-              enforcement: "bubblewrap-mount-namespace",
-              readonly_paths: false,
-              writable_paths_enforced: true,
-              private_tmp: true,
-            },
-            runtime: {
-              enforcer: "bubblewrap",
-              reason: "fixture",
-            },
+          scopes: ["opaque capability with spaces"],
+          executionBoundary: {
+            kind: "remote_provider",
           },
           approval: {
             gate: {
@@ -463,50 +442,6 @@ function fixtureCases(): readonly KernelFixtureCase[] {
             approved: true,
           },
           mutating: true,
-        },
-      },
-    },
-    {
-      name: "authority-proof-prunes-empty-sandbox-objects",
-      input: {
-        kind: "policy.buildAuthorityProofMetadata",
-        options: {
-          runId: "run_policy_fixture",
-          skillName: "issue-intake",
-          sourceType: "agent-task",
-          auth: githubReadAuth,
-          grants: [githubReadGrant],
-          connectedAuthCheckedAt,
-          credential: githubCredential,
-          sandboxMetadata: {
-            profile: "workspace-write",
-            network: {},
-            filesystem: {},
-            runtime: {},
-          },
-          mutating: false,
-        },
-      },
-    },
-    {
-      name: "authority-proof-trims-sandbox-declaration",
-      input: {
-        kind: "policy.buildAuthorityProofMetadata",
-        options: {
-          runId: "run_policy_fixture",
-          skillName: "issue-intake",
-          sourceType: "agent-task",
-          auth: githubReadAuth,
-          grants: [githubReadGrant],
-          connectedAuthCheckedAt,
-          credential: githubCredential,
-          sandboxDeclaration: {
-            profile: "  workspace-write  ",
-            cwdPolicy: "  workspace  ",
-            network: false,
-            requireEnforcement: true,
-          },
-          mutating: false,
         },
       },
     },
@@ -991,40 +926,6 @@ function fixtureCases(): readonly KernelFixtureCase[] {
             },
           ],
           connectedAuthCheckedAt,
-        },
-      },
-    },
-    {
-      name: "sandbox-normalize-defaults",
-      input: {
-        kind: "policy.normalizeSandboxDeclaration",
-      },
-    },
-    {
-      name: "sandbox-denies-readonly-network",
-      input: {
-        kind: "policy.admitSandbox",
-        sandbox: {
-          profile: "readonly",
-          network: true,
-        },
-      },
-    },
-    {
-      name: "sandbox-requires-unrestricted-approval",
-      input: {
-        kind: "policy.admitSandbox",
-        sandbox: {
-          profile: "unrestricted-local-dev",
-        },
-      },
-    },
-    {
-      name: "sandbox-requires-approval-boolean",
-      input: {
-        kind: "policy.sandboxRequiresApproval",
-        sandbox: {
-          profile: "unrestricted-local-dev",
         },
       },
     },

@@ -40,7 +40,6 @@ mod http;
 mod input;
 mod policy;
 mod receipt_tools;
-mod sandbox_plan;
 #[cfg(feature = "async-http")]
 mod web;
 mod workspace;
@@ -85,7 +84,6 @@ const CAPABILITY_GROUPS: &[&[&dyn NativeCapability]] = &[
     artifacts::CAPABILITIES,
     receipt_tools::CAPABILITIES,
     policy::CAPABILITIES,
-    sandbox_plan::CAPABILITIES,
 ];
 
 fn core_capabilities() -> impl Iterator<Item = &'static dyn NativeCapability> {
@@ -120,7 +118,6 @@ fn capability_index() -> &'static CapabilityIndex {
 pub(super) struct NativeInvocation<'a, I: ?Sized = JsonObject> {
     pub inputs: &'a I,
     pub observed_at: &'a str,
-    pub scopes: &'a [String],
     /// Runtime-owned binding resolved before native dispatch. Capability input
     /// schemas must never expose this routing state to an operator or agent.
     pub data_source_binding: Option<&'a JsonObject>,
@@ -148,7 +145,13 @@ pub(crate) struct NativeToolInvocation<'a> {
 }
 
 #[cfg(feature = "catalog")]
-pub(crate) fn invoke(request: NativeToolInvocation<'_>) -> Option<Result<JsonValue, RuntimeError>> {
+pub(crate) struct NativeToolInvocationResult {
+    pub(crate) result: Result<JsonValue, RuntimeError>,
+    pub(crate) execution_boundary: runx_contracts::ExecutionBoundaryKind,
+}
+
+#[cfg(feature = "catalog")]
+pub(crate) fn invoke(request: NativeToolInvocation<'_>) -> Option<NativeToolInvocationResult> {
     if let Some(tool) = definition(request.tool_ref) {
         let invocation = RawNativeInvocation {
             inputs: request.inputs,
@@ -161,19 +164,42 @@ pub(crate) fn invoke(request: NativeToolInvocation<'_>) -> Option<Result<JsonVal
             local_artifacts: request.local_artifacts,
             effects: request.effects,
         };
-        return Some(tool.invoke(invocation));
+        return Some(NativeToolInvocationResult {
+            result: tool.invoke(invocation),
+            execution_boundary: tool.execution_boundary(),
+        });
     }
 
-    request.effects.capability(request.tool_ref)?;
-    request.effects.invoke_tool(EffectToolRequest {
-        tool_ref: request.tool_ref,
-        observed_at: request.observed_at,
-        inputs: &request.inputs,
-        env: request.env,
-        skill_directory: request.skill_directory,
-        credential_delivery: request.credential_delivery,
-        admission: request.effect_admission,
-    })
+    let capability = request.effects.capability(request.tool_ref)?;
+    if let Err(error) = crate::capability::enforce_required_scopes(
+        capability.definition().id,
+        capability.definition().scopes.iter().copied(),
+        request.scopes,
+    ) {
+        return Some(NativeToolInvocationResult {
+            result: Err(error),
+            execution_boundary: runx_contracts::ExecutionBoundaryKind::NativeCapability,
+        });
+    }
+    let execution_boundary = request
+        .effects
+        .capability_execution_boundary(request.tool_ref)
+        .unwrap_or(runx_contracts::ExecutionBoundaryKind::NativeCapability);
+    request
+        .effects
+        .invoke_tool(EffectToolRequest {
+            tool_ref: request.tool_ref,
+            observed_at: request.observed_at,
+            inputs: &request.inputs,
+            env: request.env,
+            skill_directory: request.skill_directory,
+            credential_delivery: request.credential_delivery,
+            admission: request.effect_admission,
+        })
+        .map(|result| NativeToolInvocationResult {
+            result,
+            execution_boundary,
+        })
 }
 
 fn definition(tool_ref: &str) -> Option<&'static dyn NativeCapability> {
@@ -184,8 +210,22 @@ fn definition(tool_ref: &str) -> Option<&'static dyn NativeCapability> {
     index.by_id.get(tool_ref).copied()
 }
 
+#[cfg(test)]
+pub(super) fn required_scopes(tool_ref: &str) -> Option<&'static [&'static str]> {
+    definition(tool_ref).map(|capability| capability.definition().scopes)
+}
+
 pub(crate) fn is_core_tool(tool_ref: &str) -> bool {
     definition(tool_ref).is_some()
+}
+
+pub(crate) fn execution_boundary(
+    tool_ref: &str,
+    effects: &crate::effects::RuntimeEffectRegistry,
+) -> Option<runx_contracts::ExecutionBoundaryKind> {
+    definition(tool_ref)
+        .map(NativeCapability::execution_boundary)
+        .or_else(|| effects.capability_execution_boundary(tool_ref))
 }
 
 #[cfg(test)]

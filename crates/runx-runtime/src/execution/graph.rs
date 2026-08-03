@@ -277,6 +277,18 @@ fn resolve_step_skill_directory(
         if is_registry_step_ref(skill) {
             return materialize_registry_step_skill(graph_dir, step, skill, options);
         }
+        if let Some(directory) = crate::registry::package_bundle::resolve_bundled_skill(
+            graph_dir, skill,
+        )
+        .map_err(|reason| RuntimeError::InvalidRunStep {
+            step_id: step.id.clone(),
+            reason,
+        })? {
+            return Ok(ResolvedStepSkillDirectory {
+                directory,
+                registry: None,
+            });
+        }
         return Ok(ResolvedStepSkillDirectory {
             directory: graph_dir.join(skill),
             registry: None,

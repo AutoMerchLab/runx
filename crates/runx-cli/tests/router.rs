@@ -933,6 +933,41 @@ fn routes_registry_to_native_plan() {
             json: true,
         })
     );
+    assert_eq!(
+        plan(&[
+            "registry",
+            "package",
+            "skills/example",
+            "--profile",
+            "profiles/X.yaml",
+            "--json",
+        ]),
+        RouterAction::RunRegistry(RegistryPlan {
+            action: RegistryAction::Package,
+            subject: "skills/example".to_owned(),
+            registry: None,
+            registry_dir: None,
+            version: None,
+            expected_digest: None,
+            destination: None,
+            owner: None,
+            profile: Some(PathBuf::from("profiles/X.yaml")),
+            trust_tier: None,
+            limit: None,
+            upsert: false,
+            json: true,
+        })
+    );
+    assert_eq!(
+        plan(&[
+            "registry",
+            "package",
+            "skills/example",
+            "--registry",
+            "https://runx.example",
+        ]),
+        RouterAction::Error("runx registry package accepts only --profile and --json".to_owned())
+    );
 }
 
 #[test]

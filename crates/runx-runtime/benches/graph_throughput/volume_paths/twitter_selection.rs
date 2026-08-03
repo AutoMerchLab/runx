@@ -85,7 +85,6 @@ impl TwitterFixture {
                 timeout_seconds: None,
                 input_mode: None,
                 environment: Default::default(),
-                sandbox: None,
                 server: None,
                 tool: None,
                 arguments: None,

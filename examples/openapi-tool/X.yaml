@@ -6,6 +6,9 @@ runners:
     type: external-adapter
     external_adapter:
       manifest_path: manifest.json
+    environment:
+      optional: [RUNX_OPENAPI_BASE_URL]
+    scopes: [net:http]
     inputs:
       operation_id:
         type: string

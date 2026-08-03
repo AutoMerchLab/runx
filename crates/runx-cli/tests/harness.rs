@@ -26,7 +26,6 @@ expect:
     )?;
 
     let output = unsigned_runx_command()?
-        .env("RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY", "local")
         .args([
             "harness",
             skill_dir.to_str().ok_or("non-utf8 skill dir")?,
@@ -77,7 +76,6 @@ fn package_mode_keeps_default_receipts_after_isolated_replay() -> TestResult {
 
     let output = unsigned_runx_command()?
         .env("RUNX_CWD", &root)
-        .env("RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY", "local")
         .args([
             "harness",
             skill_dir.to_str().ok_or("non-utf8 skill dir")?,
@@ -108,6 +106,79 @@ fn package_mode_keeps_default_receipts_after_isolated_replay() -> TestResult {
     assert!(receipt_dir.join(file_name).is_file());
     assert!(receipt_dir.join("index.json").is_file());
     assert!(root.join(".runx/harness").read_dir()?.next().is_none());
+    Ok(())
+}
+
+#[test]
+fn package_mode_persists_complete_nested_receipt_lineage() -> TestResult {
+    let root = crate::support::temp_root("runx-package-harness-nested-receipts");
+    let skill_dir = root.join("parent");
+    let child_dir = root.join("child");
+    let receipt_dir = root.join("receipts");
+    fs::create_dir_all(skill_dir.join("fixtures"))?;
+    fs::create_dir_all(&child_dir)?;
+    write_nested_harness_parent(&skill_dir)?;
+    write_cli_tool_skill(&child_dir)?;
+    fs::write(
+        skill_dir.join("fixtures/conventional.yaml"),
+        r#"
+name: nested-conventional
+kind: skill
+target: ..
+runner: default
+expect:
+  status: sealed
+"#,
+    )?;
+
+    for _ in 0..2 {
+        let output = unsigned_runx_command()?
+            .args([
+                "harness",
+                skill_dir.to_str().ok_or("non-utf8 skill dir")?,
+                "--receipt-dir",
+                receipt_dir.to_str().ok_or("non-utf8 receipt dir")?,
+                "--json",
+            ])
+            .output()?;
+        assert_eq!(
+            output.status.code(),
+            Some(0),
+            "stdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    for entry in fs::read_dir(&receipt_dir)? {
+        let path = entry?.path();
+        if !path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.starts_with("sha256-") && name.ends_with(".json"))
+        {
+            continue;
+        }
+        let receipt = serde_json::from_slice::<serde_json::Value>(&fs::read(&path)?)?;
+        for child in receipt["lineage"]["children"]
+            .as_array()
+            .into_iter()
+            .flatten()
+        {
+            let child_id = child["uri"]
+                .as_str()
+                .and_then(|uri| uri.strip_prefix("runx:receipt:"))
+                .ok_or("invalid child receipt reference")?;
+            let child_path = receipt_dir.join(format!(
+                "sha256-{}.json",
+                child_id
+                    .strip_prefix("sha256:")
+                    .ok_or("invalid child receipt id")?
+            ));
+            let stored = serde_json::from_slice::<serde_json::Value>(&fs::read(child_path)?)?;
+            assert_eq!(child["locator"], stored["digest"]);
+        }
+    }
     Ok(())
 }
 
@@ -186,7 +257,6 @@ expect:
     )?;
 
     let output = unsigned_runx_command()?
-        .env("RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY", "local")
         .args([
             "harness",
             fixture_path.to_str().ok_or("non-utf8 fixture path")?,
@@ -254,10 +324,33 @@ runners:
       - -c
       - 'printf "{\"ok\":true}"'
     timeout_seconds: 5
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
-      require_enforcement: false
+"#,
+    )?;
+    Ok(())
+}
+
+fn write_nested_harness_parent(skill_dir: &std::path::Path) -> TestResult {
+    fs::write(
+        skill_dir.join("SKILL.md"),
+        "---\nname: harness-parent\n---\n# Harness Parent\n",
+    )?;
+    fs::write(
+        skill_dir.join("X.yaml"),
+        r#"
+skill: harness-parent
+version: "0.1.0"
+
+runners:
+  default:
+    default: true
+    type: graph
+    graph:
+      name: harness-parent
+      result_from: [nested]
+      steps:
+        - id: nested
+          skill: ../child
+          runner: default
 "#,
     )?;
     Ok(())
@@ -297,16 +390,11 @@ runners:
             timeout_seconds: 5
             outputs:
               ok: boolean
-            sandbox:
-              profile: readonly
-              cwd_policy: skill-directory
-              require_enforcement: false
 "#
     .replace("__EXPECTATION__", expectation);
     fs::write(skill_dir.join("X.yaml"), manifest)?;
 
     let output = unsigned_runx_command()?
-        .env("RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY", "local")
         .args([
             "harness",
             skill_dir.to_str().ok_or("non-utf8 skill dir")?,

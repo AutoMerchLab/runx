@@ -22,6 +22,7 @@ steps:
     mutation: true
     scopes:
       - fs.delete
+      - fs.write
     inputs:
       deletes:
         - .runx-tmp/issue-to-pr-native-boundary.md

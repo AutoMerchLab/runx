@@ -207,7 +207,7 @@ const VERIFY_FIELDS: &[CapabilityField] = &[
     ),
     field(
         "source_records",
-        "Records used to verify provider content digests.",
+        "Admitted records used to verify source content digests.",
     ),
 ];
 
@@ -218,9 +218,9 @@ const fn field(name: &'static str, description: &'static str) -> CapabilityField
 static INDEX: TypedNativeCapability<EvidenceIndexInput, EvidenceIndexOutput> =
     TypedNativeCapability::new(
         CapabilityDefinition {
-            id: "evidence.index_fetch_sources",
+            id: "evidence.index_sources",
             owner: "runx-runtime/evidence",
-            summary: "Bound, deduplicate, and digest governed source packets.",
+            summary: "Bound, deduplicate, and digest governed remote or local source packets.",
             scopes: &["runx:evidence:read"],
             effect: CapabilityEffect::Read,
             approval: CapabilityApproval::None,
@@ -228,7 +228,7 @@ static INDEX: TypedNativeCapability<EvidenceIndexInput, EvidenceIndexOutput> =
             admission: CapabilityAdmission::ReusedBy(&["research", "content-pipeline"]),
             fields: INDEX_FIELDS,
         },
-        super::index_fetch_sources,
+        super::index_sources,
     );
 
 static VERIFY: TypedNativeCapability<EvidenceVerifyInput, EvidenceVerifyOutput> =

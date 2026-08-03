@@ -13,6 +13,7 @@ pub mod decision;
 pub mod dev;
 pub mod doctor;
 pub mod execution;
+pub mod execution_boundary;
 pub mod execution_requirements;
 pub mod external_adapter;
 pub mod fingerprint;
@@ -95,7 +96,10 @@ pub use doctor::{
 pub use execution::{
     ArtifactContract, ExecutionSemantics, GovernedDisposition, IdempotencyPolicy,
     InputContextCapture, InputDefinition, OutcomeState, ReceiptOutcome, ReceiptSurfaceRef,
-    RetryPolicy,
+    RetryPolicy, input_contract_schema, input_contract_schema_with_examples,
+};
+pub use execution_boundary::{
+    EXECUTION_BOUNDARY_METADATA, ExecutionBoundaryKind, ExecutionBoundaryObservation,
 };
 pub use execution_requirements::{
     AgentExecutionRequirements, EnvironmentRequirementStatus, EnvironmentRequirements,
@@ -110,9 +114,8 @@ pub use external_adapter::{
     ExternalAdapterHostResolutionFrame, ExternalAdapterHostResolutionSchema,
     ExternalAdapterInvocation, ExternalAdapterInvocationSchema, ExternalAdapterManifest,
     ExternalAdapterManifestSchema, ExternalAdapterProtocolVersion, ExternalAdapterResponse,
-    ExternalAdapterSandboxIntent, ExternalAdapterStatus, ExternalAdapterTelemetryObservation,
-    ExternalAdapterTelemetryValue, ExternalAdapterTimeouts, ExternalAdapterTransport,
-    ExternalAdapterTransportKind,
+    ExternalAdapterStatus, ExternalAdapterTelemetryObservation, ExternalAdapterTelemetryValue,
+    ExternalAdapterTimeouts, ExternalAdapterTransport, ExternalAdapterTransportKind,
 };
 pub use fingerprint::{Fingerprint, FingerprintAlgorithm, hex_lower, sha256_hex, sha256_prefixed};
 pub use fixture::{Fixture, FixtureLane};
@@ -178,10 +181,9 @@ pub use policy_proof::{
     AuthorityProofApprovalDecisionValue, AuthorityProofCredentialMaterial,
     AuthorityProofCredentialMaterialStatus, AuthorityProofRedaction,
     AuthorityProofRedactionSecretMaterial, AuthorityProofRedactionStatus,
-    AuthorityProofRedactionStream, AuthorityProofRequested, AuthorityProofSandbox,
-    AuthorityProofSandboxFilesystem, AuthorityProofSandboxNetwork, AuthorityProofSandboxRuntime,
-    AuthorityProofSchemaVersion, CredentialEnvelope, CredentialEnvelopeKind,
-    CredentialGrantReference, ScopeAdmission, ScopeAdmissionStatus,
+    AuthorityProofRedactionStream, AuthorityProofRequested, AuthorityProofSchemaVersion,
+    CredentialEnvelope, CredentialEnvelopeKind, CredentialGrantReference, ScopeAdmission,
+    ScopeAdmissionStatus,
 };
 pub use receipt::{
     EFFECT_FINALITY_RECEIPT_SCHEMA, EffectFinalityPhase, EffectFinalityReceipt,
@@ -238,8 +240,7 @@ pub use thread_outbox_provider::{
 };
 pub use tools::{
     RuntimeCommand, ToolCommandInputMode, ToolIdempotencyPolicy, ToolInput, ToolManifest,
-    ToolManifestSchema, ToolMcpServer, ToolRetryPolicy, ToolSandbox, ToolSandboxCwdPolicy,
-    ToolSandboxProfile, ToolSource, ToolSourceType,
+    ToolManifestSchema, ToolMcpServer, ToolRetryPolicy, ToolSource, ToolSourceType,
 };
 pub use verification::{
     ReceiptVerificationSummary, VERIFICATION_SCHEMA, Verification, VerificationCheck,

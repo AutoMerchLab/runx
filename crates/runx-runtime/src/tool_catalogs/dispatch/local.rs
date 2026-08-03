@@ -81,6 +81,16 @@ pub(super) fn invoke(
     let declared_inputs = resolution.tool.inputs.clone();
     let source_type = resolution.tool.source.source_type;
     let requirements = resolution.tool.execution_requirements();
+    if let Err(error) = crate::capability::enforce_required_scopes(
+        &resolution.tool.name,
+        requirements.scopes.iter().map(String::as_str),
+        request.scopes,
+    ) {
+        return Ok(Some(LocalInvocationOutput {
+            output: failure(error.to_string(), started),
+            artifacts,
+        }));
+    }
     let tool_directory = manifest_directory(&resolution.manifest_path, request.skill_directory);
     let (inputs, resolved_inputs) = match contract {
         InvocationContract::DeclaredTool => {

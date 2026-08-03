@@ -69,7 +69,6 @@
         "command",
         "args",
         "cwd",
-        "network",
         "timeout_ms",
         "env_names",
         "approval_status"
@@ -79,7 +78,6 @@
         "command": { "type": "string", "minLength": 1 },
         "args": { "type": "array", "items": { "type": "string" } },
         "cwd": { "type": "string", "minLength": 1 },
-        "network": { "type": "boolean" },
         "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 3600000 },
         "env_names": { "type": "array", "items": { "type": "string" } },
         "approval_status": { "type": "string", "const": "pending" }
@@ -93,7 +91,6 @@
         "command",
         "args",
         "cwd",
-        "network",
         "timeout_ms",
         "env_names",
         "required_status"
@@ -103,7 +100,6 @@
         "command": { "type": "string", "minLength": 1 },
         "args": { "type": "array", "items": { "type": "string" } },
         "cwd": { "type": "string", "minLength": 1 },
-        "network": { "type": "boolean" },
         "timeout_ms": { "type": "integer", "minimum": 1000, "maximum": 3600000 },
         "env_names": { "type": "array", "items": { "type": "string" } },
         "required_status": { "type": "string", "const": "verified" }

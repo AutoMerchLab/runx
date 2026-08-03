@@ -139,9 +139,6 @@ jobs:
         with:
           components: rustfmt, clippy
 
-      - name: Install Linux sandbox
-        uses: ./.github/actions/setup-linux-sandbox
-
       - name: Install Rust test and advisory tools
         uses: taiki-e/install-action@v2
         with:
@@ -204,8 +201,6 @@ jobs:
         run: pnpm install --frozen-lockfile
       - name: Build workspace packages
         run: node scripts/build-workspace.mjs
-      - name: Install Linux sandbox
-        uses: ./.github/actions/setup-linux-sandbox
       - name: Cargo cache
         uses: Swatinem/rust-cache@v2
         with:
@@ -230,7 +225,7 @@ jobs:
           node scripts/harness-sweep.mjs \
             --runx-bin crates/target/debug/runx --no-build
 
-  windows-process-containment:
+  windows-process-lifecycle:
     # The Windows Job Object boundary cannot be proved by Linux emulation.
     # Keep this lane deliberately narrow: two runtime ownership tests and the
     # platform watchdog self-test, not another workspace-wide matrix build.
@@ -262,7 +257,7 @@ jobs:
       - demo-checks
       - rust-checks
       - skill-harness
-      - windows-process-containment
+      - windows-process-lifecycle
     steps:
       - name: Done
         run: echo "All CI lanes passed."

@@ -3,7 +3,6 @@
 // build boundary.
 use runx_contracts::maturity::MaturityTier;
 use runx_contracts::{JsonObject, JsonValue, sha256_hex};
-use runx_parser::{SkillRunnerManifest, ValidatedSkill};
 use serde::Deserialize;
 
 use super::super::package_files::{
@@ -21,6 +20,7 @@ use crate::registry::local::trust::{
 use crate::registry::local::util::{
     missing_field, now_iso8601, required_string, validate_publisher, validate_source_metadata,
 };
+use crate::registry::package_metadata::project_registry_package_metadata;
 
 pub(super) fn build_registry_skill_version(
     markdown: &str,
@@ -39,7 +39,7 @@ pub(super) fn build_registry_skill_version(
         profile_digest,
         package_digest,
     } = registry_package_digests(markdown, options, &package_files);
-    let catalog = registry_catalog(manifest);
+    let metadata = project_registry_package_metadata(skill, manifest);
     let defaults = registry_version_defaults(
         &digest,
         profile_digest.as_deref(),
@@ -50,10 +50,10 @@ pub(super) fn build_registry_skill_version(
     Ok(RegistrySkillVersion {
         skill_id,
         owner: defaults.owner,
-        name: skill.name.clone(),
-        description: skill.description.clone(),
-        category: skill.runx_category.clone(),
-        source_category: skill.category.clone(),
+        name: metadata.name,
+        description: metadata.description,
+        category: metadata.category,
+        source_category: metadata.source_category,
         version: defaults.version,
         digest,
         signed_manifest: None,
@@ -62,31 +62,26 @@ pub(super) fn build_registry_skill_version(
         profile_digest,
         package_files,
         package_digest,
-        runner_names: registry_runner_names(manifest),
-        source_type: registry_source_type(manifest),
+        runner_names: metadata.runner_names,
+        source_type: metadata.source_type,
         trust_tier: defaults.trust_tier,
         maturity: initial_registry_maturity(),
-        catalog_kind: Some(catalog.kind.as_str().to_owned()),
-        catalog_audience: Some(catalog.audience.as_str().to_owned()),
-        catalog_visibility: Some(catalog.visibility.as_str().to_owned()),
+        catalog_kind: Some(metadata.catalog_kind),
+        catalog_audience: Some(metadata.catalog_audience),
+        catalog_visibility: Some(metadata.catalog_visibility),
         source_metadata: defaults.source_metadata,
         attestations: defaults.attestations,
-        required_scopes: registry_required_scopes(manifest),
-        runtime: registry_runtime(manifest),
-        auth: selected_registry_runner(manifest).and_then(|runner| runner.auth.clone()),
-        risk: registry_risk(manifest),
-        runx: skill.runx.clone(),
-        tags: registry_tags(skill, manifest),
+        required_scopes: metadata.required_scopes,
+        runtime: metadata.runtime,
+        auth: metadata.auth,
+        risk: metadata.risk,
+        runx: metadata.runx,
+        tags: metadata.tags,
+        harness_cases: metadata.harness_cases,
         publisher: defaults.publisher,
         created_at: defaults.created_at,
         updated_at: now_iso8601(),
     })
-}
-
-fn registry_runner_names(manifest: Option<&SkillRunnerManifest>) -> Vec<String> {
-    manifest
-        .map(|manifest| manifest.runners.keys().cloned().collect())
-        .unwrap_or_default()
 }
 
 fn initial_registry_maturity() -> MaturityTier {
@@ -163,85 +158,6 @@ fn registry_version_defaults(
     }
 }
 
-pub(super) fn registry_catalog(
-    manifest: Option<&SkillRunnerManifest>,
-) -> runx_parser::CatalogMetadata {
-    manifest
-        .and_then(|manifest| manifest.catalog.clone())
-        .unwrap_or(runx_parser::CatalogMetadata {
-            kind: runx_parser::CatalogKind::Skill,
-            audience: runx_parser::CatalogAudience::Public,
-            visibility: runx_parser::CatalogVisibility::Public,
-            role: runx_parser::CatalogRole::Context,
-            canonical_skill: None,
-            provider: None,
-            runtime_path: None,
-            part_of: Vec::new(),
-            execution: None,
-            completion: None,
-            requires_adapter: None,
-            approval: None,
-        })
-}
-
-pub(super) fn registry_required_scopes(manifest: Option<&SkillRunnerManifest>) -> Vec<String> {
-    unique(
-        manifest
-            .into_iter()
-            .flat_map(|manifest| manifest.runners.values())
-            .flat_map(runx_parser::SkillRunnerDefinition::declared_scopes)
-            .collect(),
-    )
-}
-
-pub(super) fn registry_runtime(manifest: Option<&SkillRunnerManifest>) -> Option<JsonValue> {
-    extract_runner_runtime(manifest)
-}
-
-pub(super) fn registry_risk(manifest: Option<&SkillRunnerManifest>) -> Option<JsonValue> {
-    selected_registry_runner(manifest).and_then(|runner| runner.risk.clone())
-}
-
-pub(super) fn registry_tags(
-    skill: &ValidatedSkill,
-    manifest: Option<&SkillRunnerManifest>,
-) -> Vec<String> {
-    unique(
-        extract_tags(skill)
-            .into_iter()
-            .chain(skill.runx_category.clone())
-            .chain(extract_runner_tags(manifest))
-            .collect(),
-    )
-}
-
-fn registry_source_type(manifest: Option<&SkillRunnerManifest>) -> String {
-    selected_registry_runner(manifest)
-        .map(|runner| runner.source.source_type.as_str().to_owned())
-        .unwrap_or_else(|| {
-            if manifest.is_some_and(|manifest| !manifest.runners.is_empty()) {
-                "multi-runner".to_owned()
-            } else {
-                "manual".to_owned()
-            }
-        })
-}
-
-fn selected_registry_runner(
-    manifest: Option<&SkillRunnerManifest>,
-) -> Option<&runx_parser::SkillRunnerDefinition> {
-    let manifest = manifest?;
-    manifest
-        .runners
-        .values()
-        .find(|runner| runner.default)
-        .or_else(|| {
-            (manifest.runners.len() == 1)
-                .then(|| manifest.runners.values().next())
-                .flatten()
-        })
-}
-
 // Function rationale: normalization validates the package digest,
 // manifest, and registry row in one pass over the submitted version payload.
 pub(super) fn normalize_registry_skill_version(
@@ -308,6 +224,7 @@ pub(super) fn normalize_registry_skill_version(
         risk: payload.risk,
         runx: payload.runx,
         tags: payload.tags.unwrap_or_default(),
+        harness_cases: payload.harness_cases.unwrap_or_default(),
         publisher: governance.publisher,
         updated_at: governance.updated_at,
         created_at: governance.created_at,
@@ -438,6 +355,7 @@ pub(super) struct RegistrySkillVersionPayload {
     risk: Option<JsonValue>,
     runx: Option<JsonObject>,
     tags: Option<Vec<String>>,
+    harness_cases: Option<Vec<super::super::RegistryHarnessCaseMetadata>>,
     publisher: Option<RegistryPublisher>,
     created_at: Option<String>,
     updated_at: Option<String>,
@@ -490,67 +408,4 @@ pub(super) fn derive_registry_trust_tier(
     trust_tier: Option<&TrustTier>,
 ) -> TrustTier {
     trust_tier.cloned().unwrap_or(TrustTier::Community)
-}
-
-pub(super) fn extract_runner_runtime(manifest: Option<&SkillRunnerManifest>) -> Option<JsonValue> {
-    let manifest = manifest?;
-    let runners = manifest
-        .runners
-        .values()
-        .filter(|runner| runner.runtime.is_some())
-        .map(|runner| JsonValue::String(runner.name.clone()))
-        .collect::<Vec<_>>();
-    if runners.is_empty() {
-        None
-    } else {
-        Some(JsonValue::Object(
-            [("runners".to_owned(), JsonValue::Array(runners))].into(),
-        ))
-    }
-}
-
-pub(super) fn extract_runner_tags(manifest: Option<&SkillRunnerManifest>) -> Vec<String> {
-    let Some(manifest) = manifest else {
-        return Vec::new();
-    };
-    unique(
-        manifest
-            .runners
-            .values()
-            .flat_map(|runner| record_array_field_from_object(runner.runx.as_ref(), "tags"))
-            .collect(),
-    )
-}
-
-pub(super) fn extract_tags(skill: &ValidatedSkill) -> Vec<String> {
-    unique(record_array_field_from_object(skill.runx.as_ref(), "tags"))
-}
-
-pub(super) fn record_array_field_from_object(
-    value: Option<&JsonObject>,
-    field: &str,
-) -> Vec<String> {
-    let Some(record) = value else {
-        return Vec::new();
-    };
-    let Some(JsonValue::Array(values)) = record.get(field) else {
-        return Vec::new();
-    };
-    values
-        .iter()
-        .filter_map(|value| match value {
-            JsonValue::String(value) if !value.is_empty() => Some(value.clone()),
-            _ => None,
-        })
-        .collect()
-}
-
-pub(super) fn unique(values: Vec<String>) -> Vec<String> {
-    let mut unique_values = Vec::new();
-    for value in values {
-        if !unique_values.contains(&value) {
-            unique_values.push(value);
-        }
-    }
-    unique_values
 }

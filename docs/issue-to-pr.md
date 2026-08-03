@@ -177,7 +177,7 @@ that the workspace is on the intended issue branch, that the selected scafld
 binary can run in that workspace, that `--runx-bin`, `RUNX_BIN`, a local
 `crates/target/{debug,release}/runx`, or `runx` on `PATH` points at an
 executable native CLI, and that provider publication has explicit token env
-available to the sandbox. It returns JSON with blocked checks and the exact
+available to the provider process. It returns JSON with blocked checks and the exact
 dogfood command to run next.
 
 Live create/observe requires an explicit proving-ground repo allowlist. Pass

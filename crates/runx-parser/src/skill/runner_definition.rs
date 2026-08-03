@@ -26,6 +26,7 @@ const RUNNER_FIELDS: &[&str] = &[
     "cwd",
     "default",
     "environment",
+    "examples",
     "execution",
     "external_adapter",
     "export",
@@ -46,7 +47,6 @@ const RUNNER_FIELDS: &[&str] = &[
     "risk",
     "runx",
     "runtime",
-    "sandbox",
     "server",
     "scopes",
     "source",
@@ -70,6 +70,23 @@ pub(crate) fn validate_runner_definition(
     }
     FIELDS.reject_unknown_fields(&runner, &format!("runners.{name}"), RUNNER_FIELDS)?;
     let runx = FIELDS.optional_object(runner.get("runx"), &format!("runners.{name}.runx"))?;
+    for field in [
+        "auth",
+        "credential",
+        "environment",
+        "runtime",
+        "sandbox",
+        "scopes",
+    ] {
+        if runx
+            .as_ref()
+            .is_some_and(|metadata| metadata.contains_key(field))
+        {
+            return Err(FIELDS.validation_error(format!(
+                "runners.{name}.runx contains unknown field '{field}'; execution requirements belong on the runner or its source"
+            )));
+        }
+    }
     crate::runner::resolve_post_run_reflect_policy(runx.as_ref(), &format!("runners.{name}.runx"))?;
     let source_record =
         match FIELDS.optional_object(runner.get("source"), &format!("runners.{name}.source"))? {
@@ -81,19 +98,24 @@ pub(crate) fn validate_runner_definition(
         };
     let risk = runner.get("risk").cloned();
     let governance = validate_runner_governance(name, &runner, runx.as_ref(), risk.as_ref())?;
-    let source = validate_source(&source_record, runx.as_ref())?;
+    let source = validate_source(&source_record)?;
     validate_runner_lane_constraints(name, &runner, &source, governance.artifacts.as_ref())?;
+    let inputs = validate_inputs(
+        FIELDS
+            .optional_object(runner.get("inputs"), &format!("runners.{name}.inputs"))?
+            .unwrap_or_default(),
+        &format!("runners.{name}.inputs"),
+    )?;
+    let examples = parse_runner_examples(name, runner.get("examples"))?;
+    validate_input_examples(&format!("runners.{name}.examples"), &examples, &inputs)?;
     Ok(SkillRunnerDefinition {
         name: name.to_owned(),
         default: FIELDS
             .optional_bool(runner.get("default"), &format!("runners.{name}.default"))?
             .unwrap_or(false),
         source,
-        inputs: validate_inputs(
-            FIELDS
-                .optional_object(runner.get("inputs"), &format!("runners.{name}.inputs"))?
-                .unwrap_or_default(),
-        )?,
+        inputs,
+        examples,
         scopes: validate_scopes(
             FIELDS
                 .optional_string_array(runner.get("scopes"), &format!("runners.{name}.scopes"))?
@@ -116,6 +138,55 @@ pub(crate) fn validate_runner_definition(
         runx,
         raw: runner,
     })
+}
+
+fn parse_runner_examples(
+    name: &str,
+    value: Option<&JsonValue>,
+) -> Result<Vec<JsonObject>, ValidationError> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    let field = format!("runners.{name}.examples");
+    let values = FIELDS.required_plain_array(Some(value), &field)?;
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            FIELDS
+                .required_object(Some(value), &format!("{field}[{index}]"))
+                .cloned()
+        })
+        .collect::<Result<Vec<_>, _>>()
+}
+
+/// Validate already-parsed, copy-valid examples against the canonical input
+/// contract. Runtime packet hydration calls this same function after replacing
+/// packet references with their catalog-owned schemas.
+pub fn validate_input_examples(
+    field: &str,
+    examples: &[JsonObject],
+    inputs: &std::collections::BTreeMap<String, super::SkillInput>,
+) -> Result<(), ValidationError> {
+    let schema =
+        serde_json::to_value(runx_contracts::input_contract_schema(inputs)).map_err(|error| {
+            FIELDS.validation_error(format!("{field} schema could not be serialized: {error}"))
+        })?;
+    let validator = jsonschema::draft202012::options()
+        .build(&schema)
+        .map_err(|error| FIELDS.validation_error(format!("{field} schema is invalid: {error}")))?;
+    for (index, example) in examples.iter().enumerate() {
+        let instance = serde_json::to_value(example).map_err(|error| {
+            FIELDS.validation_error(format!("{field}[{index}] could not be serialized: {error}"))
+        })?;
+        if let Some(error) = validator.iter_errors(&instance).next() {
+            return Err(FIELDS.validation_error(format!(
+                "{field}[{index}]{} does not match the runner input contract: {error}",
+                error.instance_path()
+            )));
+        }
+    }
+    Ok(())
 }
 
 fn validate_runner_lane_constraints(

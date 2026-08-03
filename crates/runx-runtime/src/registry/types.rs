@@ -214,6 +214,8 @@ pub struct RegistrySkillVersion {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runx: Option<runx_contracts::JsonObject>,
     pub tags: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub harness_cases: Vec<super::RegistryHarnessCaseMetadata>,
     pub publisher: RegistryPublisher,
     pub created_at: String,
     pub updated_at: String,

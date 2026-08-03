@@ -85,7 +85,7 @@ channel that downloads its archives):
    beyond one megabyte, preserve opaque scopes, close one human approval
    without a duplicate gate, and terminate active JavaScript work on
    interruption. Windows process-tree interruption remains covered by the
-   dedicated Windows containment gate. A broken, incomplete, wrong-arch, or
+   dedicated Windows host-job lifecycle gate. A broken, incomplete, wrong-arch, or
    semantically incomplete archive fails before anything is published. The
    same smoke runs in dry-runs.
 4. **github-release** — assemble `checksums.txt`, generate a CycloneDX SBOM, emit

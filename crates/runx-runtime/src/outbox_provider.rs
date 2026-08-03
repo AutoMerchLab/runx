@@ -6,9 +6,10 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use runx_contracts::{
-    JsonValue, ThreadOutboxProviderFetch, ThreadOutboxProviderManifest,
-    ThreadOutboxProviderObservation, ThreadOutboxProviderObservationStatus,
-    ThreadOutboxProviderOperation, ThreadOutboxProviderPush, ThreadOutboxProviderTransportKind,
+    ExecutionBoundaryKind, JsonObject, JsonValue, ThreadOutboxProviderFetch,
+    ThreadOutboxProviderManifest, ThreadOutboxProviderObservation,
+    ThreadOutboxProviderObservationStatus, ThreadOutboxProviderOperation, ThreadOutboxProviderPush,
+    ThreadOutboxProviderTransportKind,
 };
 use thiserror::Error;
 
@@ -49,6 +50,7 @@ pub struct ThreadOutboxProviderProcessOutcome {
     pub redacted_stderr: String,
     pub process_exit_code: Option<i32>,
     pub duration_ms: u64,
+    pub execution_boundary: Option<JsonObject>,
 }
 
 #[derive(Clone, Debug, Default)]
@@ -98,8 +100,15 @@ impl ThreadOutboxProviderProcessSupervisor {
         request: ThreadOutboxProviderRequest<'_>,
         credential_delivery: &CredentialDelivery,
     ) -> Result<ThreadOutboxProviderProcessOutcome, ThreadOutboxProviderSupervisorError> {
-        let output = self.run_provider_process(manifest, &request, credential_delivery)?;
-        self.interpret_provider_process_output(manifest, &request, credential_delivery, output)
+        let (output, execution_boundary) =
+            self.run_provider_process(manifest, &request, credential_delivery)?;
+        self.interpret_provider_process_output(
+            manifest,
+            &request,
+            credential_delivery,
+            output,
+            execution_boundary,
+        )
     }
 
     fn run_provider_process(
@@ -107,31 +116,52 @@ impl ThreadOutboxProviderProcessSupervisor {
         manifest: &ThreadOutboxProviderManifest,
         request: &ThreadOutboxProviderRequest<'_>,
         credential_delivery: &CredentialDelivery,
-    ) -> Result<ProcessOutcome, ThreadOutboxProviderSupervisorError> {
+    ) -> Result<(ProcessOutcome, JsonObject), ThreadOutboxProviderSupervisorError> {
         let cwd = provider_process_cwd(&self.options)?;
         let command = process_command(manifest, &self.options.environment)?;
-        run_process(
+        let mut process = crate::process_invocation::prepare_exact_process_invocation(
+            command.to_string_lossy().into_owned(),
+            manifest.transport.args.clone().unwrap_or_default(),
+            cwd,
+            self.options.environment.clone(),
+            Vec::new(),
+            ExecutionBoundaryKind::TrustedHostProcess,
+        )
+        .map_err(|source| ThreadOutboxProviderSupervisorError::Process {
+            context: "preparing thread outbox provider process".to_owned(),
+            detail: source.to_string(),
+        })?
+        .into_execution_plan();
+        credential_delivery
+            .ensure_environment_disjoint(&process.env)
+            .map_err(|source| ThreadOutboxProviderSupervisorError::Process {
+                context: "preparing thread outbox provider credential delivery".to_owned(),
+                detail: source.to_string(),
+            })?;
+        for (name, value) in credential_delivery.secret_env().iter() {
+            process.env.insert(name.to_owned(), value.to_owned());
+        }
+        let execution_boundary = process.metadata.clone();
+        let output = run_process(
             ProcessSpec::new(
                 "thread-outbox-provider",
-                command.to_string_lossy().into_owned(),
+                process.command,
                 self.options.output_limit_bytes,
             )
-            .args(manifest.transport.args.clone().unwrap_or_default())
-            .env(provider_process_env(
-                &self.options.environment,
-                credential_delivery,
-            ))
+            .args(process.args)
+            .env(process.env)
             .stdin(Some(ProcessStdin::new(
                 request_bytes(request)?,
                 "writing thread outbox provider request",
             )))
             .timeout(Some(Duration::from_millis(self.options.timeout_ms)))
-            .cwd(cwd),
+            .cwd(process.cwd),
         )
         .map_err(|source| ThreadOutboxProviderSupervisorError::Process {
             context: "running thread outbox provider process".to_owned(),
             detail: source.to_string(),
-        })
+        })?;
+        Ok((output, execution_boundary))
     }
 
     fn interpret_provider_process_output(
@@ -140,6 +170,7 @@ impl ThreadOutboxProviderProcessSupervisor {
         request: &ThreadOutboxProviderRequest<'_>,
         credential_delivery: &CredentialDelivery,
         output: ProcessOutcome,
+        execution_boundary: JsonObject,
     ) -> Result<ThreadOutboxProviderProcessOutcome, ThreadOutboxProviderSupervisorError> {
         if output.timed_out {
             return Err(ThreadOutboxProviderSupervisorError::TimedOut {
@@ -179,6 +210,7 @@ impl ThreadOutboxProviderProcessSupervisor {
             redacted_stderr,
             process_exit_code: output.status.code(),
             duration_ms: output.duration_ms,
+            execution_boundary: Some(execution_boundary),
         })
     }
 }
@@ -529,26 +561,6 @@ fn provider_process_cwd(
     Ok(cwd)
 }
 
-fn provider_process_env(
-    environment: &BTreeMap<String, String>,
-    credential_delivery: &CredentialDelivery,
-) -> BTreeMap<String, String> {
-    provider_process_env_from(environment.clone(), credential_delivery)
-}
-
-fn provider_process_env_from(
-    mut env: BTreeMap<String, String>,
-    credential_delivery: &CredentialDelivery,
-) -> BTreeMap<String, String> {
-    env.extend(
-        credential_delivery
-            .secret_env()
-            .iter()
-            .map(|(key, value)| (key.to_owned(), value.to_owned())),
-    );
-    env
-}
-
 fn json_error(
     context: impl Into<String>,
     source: serde_json::Error,
@@ -564,8 +576,7 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
 
-    use super::{provider_process_env_from, resolve_process_command};
-    use crate::credentials::CredentialDelivery;
+    use super::resolve_process_command;
 
     #[test]
     fn provider_process_env_preserves_host_paths_without_leaking_ambient_secrets() {
@@ -578,8 +589,7 @@ mod tests {
                 "must-not-cross-boundary".to_owned(),
             ),
         ]);
-        let admitted = crate::execution_environment::process_baseline_environment(&ambient);
-        let env = provider_process_env_from(admitted, &CredentialDelivery::none());
+        let env = crate::execution_environment::process_baseline_environment(&ambient);
 
         assert_eq!(
             env.get("PATH").map(String::as_str),

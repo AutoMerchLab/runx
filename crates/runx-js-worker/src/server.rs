@@ -133,7 +133,7 @@ fn engine_failure(invocation_id: String, error: &EngineError) -> WorkerResponse 
         // Each invocation receives a fresh Boa context and module loader. A
         // typed module/execution failure therefore invalidates only this
         // invocation; process retirement is reserved for protocol or process
-        // containment failures.
+        // lifecycle failures.
         disposition: WorkerDisposition::Reuse,
     }
 }

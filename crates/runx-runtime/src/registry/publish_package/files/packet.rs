@@ -3,7 +3,7 @@ use std::path::Path;
 
 use super::insert_source_file;
 use crate::LoadedSkillPackage;
-use crate::packet_schemas::{PacketSchemaCatalog, declared_packet_ids, packet_schema_directories};
+use crate::packet_schemas::{PacketSchemaCatalog, packet_schema_directories};
 use crate::registry::RegistryPackageFile;
 use crate::registry::publish_package::RegistryPublishPackageError;
 
@@ -12,8 +12,8 @@ pub(super) fn append_declared_packet_schemas(
     loaded: &LoadedSkillPackage,
     env: &BTreeMap<String, String>,
     cwd: &Path,
+    packet_ids: &std::collections::BTreeSet<String>,
 ) -> Result<(), RegistryPublishPackageError> {
-    let packet_ids = declared_packet_ids(loaded.manifest());
     if packet_ids.is_empty() {
         return Ok(());
     }
@@ -25,6 +25,11 @@ pub(super) fn append_declared_packet_schemas(
     schemas
         .discover_directories(
             packet_schema_directories(&loaded.directory, &loaded.package_root, &workspace)
+                .map_err(|error| {
+                    RegistryPublishPackageError::invalid(format!(
+                        "packet schema roots failed: {error}"
+                    ))
+                })?
                 .into_iter()
                 .filter(|directory| {
                     directory != &loaded.directory.join("packets")
@@ -35,7 +40,11 @@ pub(super) fn append_declared_packet_schemas(
             RegistryPublishPackageError::invalid(format!("packet schema catalog failed: {error}"))
         })?;
     for packet_id in packet_ids {
-        let Some(schema) = schemas.get(&packet_id) else {
+        let Some(schema) = loaded
+            .resolved_input_packet_schemas
+            .get(packet_id)
+            .or_else(|| schemas.get(packet_id))
+        else {
             return Err(RegistryPublishPackageError::invalid(format!(
                 "declared packet schema '{packet_id}' was not found"
             )));

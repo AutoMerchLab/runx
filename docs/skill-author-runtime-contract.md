@@ -8,9 +8,8 @@ module, accept the resolved input object plus its frozen execution context, and
 return a JSON-compatible value; Runx then owns every process detail described
 below.
 
-The subprocess ABI is shared by the TypeScript adapter while it survives and
-the Rust runtime cutover. Internal receipt IDs, artifact IDs, sandbox metadata
-internals, and temporary paths are not part of this contract unless named here.
+Internal receipt IDs, artifact IDs, execution-boundary metadata internals, and
+temporary paths are not part of this contract unless named here.
 
 ## JavaScript module boundary
 
@@ -105,9 +104,9 @@ rather than an ever-growing array.
 Use `artifact.admit`/`artifact.read` directly when a graph or tool needs exact
 byte pages instead of a domain transform. Use `fs.read` and `fs.read_bundle`
 only for bounded text. If a format cannot be framed safely or needs genuine
-streaming protocol behavior, use one declared sandboxed `cli-tool`; never add
-ambient filesystem access to a deterministic module or duplicate the runtime's
-containment, hashing, and page loop in package JavaScript.
+streaming protocol behavior, use one declared trusted-host `cli-tool`; never
+add ambient filesystem access to a deterministic module or duplicate the
+runtime's hashing and page loop in package JavaScript.
 
 ## Managed-agent tools
 
@@ -132,6 +131,22 @@ static local source closure. Registry publication consumes that admitted set—i
 does not rescan or reinterpret tool source—so a missing import, uncompiled Node
 TypeScript entrypoint, or path/name mismatch fails before execution or publish.
 
+## Permission proof
+
+Runner and tool scopes are opaque exact strings. Native capabilities and
+provider operations declare the scopes they own, and the production dispatcher
+refuses invocation when the selected step does not declare them. The package
+harness uses that same catalog and dispatcher; a permission-bearing path should
+therefore include an admitted case and, where the owner is harnessable, a
+withheld-scope or withheld-grant case. There is no harness-only permission
+evaluator or scope vocabulary.
+
+This is positive enforcement evidence for native capabilities and provider
+boundaries. It is not negative syscall evidence for a `cli-tool`, process MCP
+server, or process adapter. Those sources are trusted host code: Runx can prove
+the exact invocation and authority it delivered, but not that the process
+avoided other host filesystem or network access.
+
 ## Process
 
 The runtime starts the declared command with `shell: false` semantics. Arguments
@@ -146,9 +161,26 @@ contracts fail closed when their retained body is truncated.
 
 The child environment is deny-by-default. The selected runner's
 `environment.required` and `environment.optional` declaration admits exact
-non-secret host variables. A small runtime-owned host-interoperability baseline
-preserves locale, proxy, CA-bundle, timezone, and platform process behavior.
-Receipt-signing material and other runtime-owned secret variables are never
+non-secret host variables. Values are resolved at execution time; a missing
+required name stops before spawn and an absent optional name is omitted.
+Credential delivery is a separate channel, and a credential variable may not
+collide with this environment.
+
+Runx clears the inherited environment and reconstructs a documented
+host-interoperability baseline from these names when present:
+
+- process launch and user paths: `PATH`, `HOME`, `TMPDIR`, `TMP`, `TEMP`,
+  `SystemRoot`, `WINDIR`, `COMSPEC`, `PATHEXT`, `USER`, `LOGNAME`;
+- certificates: `CURL_CA_BUNDLE`, `GIT_SSL_CAINFO`, `NODE_EXTRA_CA_CERTS`,
+  `REQUESTS_CA_BUNDLE`, `SSL_CERT_DIR`, `SSL_CERT_FILE`;
+- locale and terminal behavior: `LANG`, `LANGUAGE`, `LC_ALL`, `LC_CTYPE`,
+  `LC_MESSAGES`, `TERM`, `COLORTERM`, `TZ`.
+
+Proxy variables are not part of this baseline because proxy URLs may contain
+credentials. A skill that needs a non-secret proxy setting declares its exact
+name explicitly. Runtime transport may additionally include `RUNX_CWD`,
+`RUNX_RECEIPT_DIR`, and the receipt-verification key id and public key. Private
+receipt-signing material and other undeclared secret variables are never
 admissible.
 
 Guaranteed variables:
@@ -171,24 +203,23 @@ conveniences only; payload size never removes the complete path transport.
 When `inputMode` is `stdin`, stdin receives the full input object as JSON and
 then closes. Otherwise stdin closes without input.
 
-## Cwd Policy
+## Working directory
 
-Relative source cwd values resolve from the skill directory. Non-unrestricted
-profiles fail closed when cwd escapes the declared policy boundary:
+Relative source cwd values resolve from the skill directory; absolute values
+remain absolute. Runx records and supervises that exact directory but does not
+claim it confines a trusted host process. Filesystem containment belongs to
+native `fs.*` capabilities, not to a subprocess cwd declaration.
 
-- `skill-directory`: cwd must stay within the skill directory.
-- `workspace`: cwd must stay within `RUNX_CWD ?? INIT_CWD ?? current_dir`.
-- `custom`: cwd must stay within the skill directory or workspace.
-
-`unrestricted-local-dev` may escape after explicit approval metadata, but the
-runtime must not claim approval when no runner approval was supplied.
+Use the exact `cwd: "{{env.RUNX_CWD}}"` runtime token when a subprocess must
+operate on the caller's admitted workspace. No other ambient environment value
+is interpolated into `cwd`; package-relative paths remain package-relative.
 
 ## Timeout
 
 Timeout is terminal. On Unix, the runtime starts the skill in a new process
 group, sends `SIGTERM` to the group, then sends `SIGKILL` after a short grace
-period. Non-Unix runtimes must at least terminate the direct child and report
-the platform limitation in tests or docs.
+period. On Windows, the runtime owns the process tree through a per-execution
+Job Object and terminates that job on timeout or cancellation.
 
 ## Output
 

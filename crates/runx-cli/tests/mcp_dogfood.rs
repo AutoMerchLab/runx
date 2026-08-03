@@ -309,10 +309,7 @@ fn spawn_mcp_server_at(
 ) -> Result<McpProcess, Box<dyn std::error::Error>> {
     let mut command = Command::new(env!("CARGO_BIN_EXE_runx"));
     crate::support::apply_fixture_signing(&mut command, "mcp-dogfood-test-key");
-    command
-        .current_dir(cwd)
-        .env_remove("MCP_DOGFOOD_MARKER")
-        .env("RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY", "local");
+    command.current_dir(cwd).env_remove("MCP_DOGFOOD_MARKER");
     if let Some(runx_cwd) = runx_cwd {
         command.env("RUNX_CWD", runx_cwd);
     } else {
@@ -568,10 +565,6 @@ runners:
     arguments:
       message: "{{message}}"
     timeout_seconds: 15
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
-      require_enforcement: false
     inputs:
       message:
         type: string
@@ -614,10 +607,6 @@ runners:
     environment:
       required:
         - MCP_DOGFOOD_MARKER
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
-      require_enforcement: false
 "#,
     )?;
     Ok(skill_dir)
@@ -663,10 +652,6 @@ runners:
     args:
       - ./default.sh
     input_mode: none
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
-      require_enforcement: false
     credential: example
   alternate:
     type: cli-tool
@@ -674,10 +659,6 @@ runners:
     args:
       - ./alternate.sh
     input_mode: none
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
-      require_enforcement: false
     credential: example
 "#,
     )?;

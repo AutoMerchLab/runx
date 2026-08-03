@@ -637,7 +637,7 @@ fn thread_outbox_source(
         "thread_outbox_provider".to_owned(),
         JsonValue::Object(config),
     );
-    runx_parser::validate_skill_source(&raw, None)
+    runx_parser::validate_skill_source(&raw)
 }
 
 #[cfg(feature = "thread-outbox-provider")]
@@ -662,7 +662,7 @@ fn thread_outbox_dynamic_source(
         "thread_outbox_provider".to_owned(),
         JsonValue::Object(config),
     );
-    runx_parser::validate_skill_source(&raw, None)
+    runx_parser::validate_skill_source(&raw)
 }
 
 fn credential_delivery() -> Result<CredentialDelivery, Box<dyn std::error::Error>> {

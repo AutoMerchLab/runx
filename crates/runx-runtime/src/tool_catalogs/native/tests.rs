@@ -39,7 +39,7 @@ fn capability_registry_definitions_are_unique_and_valid() {
 
 #[test]
 fn capability_registry_defaults_keep_declared_json_types() {
-    let capability = definition("evidence.index_fetch_sources")
+    let capability = definition("evidence.index_sources")
         .expect("native evidence capability should be registered");
     let default = capability
         .catalog_inputs()
@@ -58,7 +58,9 @@ fn capability_registry_defaults_keep_declared_json_types() {
 #[cfg(feature = "catalog")]
 #[test]
 fn capability_registry_owns_inspect_search_and_artifacts() {
-    let effects = RuntimeEffectRegistry::default();
+    let effects =
+        RuntimeEffectRegistry::with_effect(crate::effects::ProviderPermissionEffect::default())
+            .expect("provider permission effect should register");
     let inspected = super::inspect("runx.skill.apply", std::path::Path::new("."), &effects)
         .expect("native capability should inspect");
     assert_eq!(inspected.tool.execution_source_type, "native");
@@ -67,6 +69,10 @@ fn capability_registry_owns_inspect_search_and_artifacts() {
         super::search("skill", 20, &effects)
             .iter()
             .any(|tool| tool.name == "runx.skill.apply")
+    );
+    assert_eq!(
+        super::execution_boundary("provider.read", &effects),
+        Some(runx_contracts::ExecutionBoundaryKind::RemoteProvider)
     );
 }
 
@@ -92,7 +98,13 @@ fn capability_registry_dispatch_projects_only_declared_inputs() {
     })
     .expect("capability should resolve");
 
-    let output = result.expect("ambient graph inputs must not enter the typed handler");
+    assert_eq!(
+        result.execution_boundary,
+        runx_contracts::ExecutionBoundaryKind::NativeCapability
+    );
+    let output = result
+        .result
+        .expect("ambient graph inputs must not enter the typed handler");
     assert!(
         output
             .as_object()

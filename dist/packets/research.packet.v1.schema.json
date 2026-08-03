@@ -21,11 +21,11 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["claim", "source_digest", "provider_content_digest", "confidence", "relevance"],
+        "required": ["claim", "source_digest", "content_digest", "confidence", "relevance"],
         "properties": {
           "claim": { "type": "string" },
           "source_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-          "provider_content_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "content_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
           "confidence": { "enum": ["verified", "inference"] },
           "relevance": { "type": "string" }
         },
@@ -50,11 +50,12 @@
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["evidence_digest", "provider_content_digest", "final_url", "provenance"],
+        "required": ["evidence_digest", "content_digest", "source_ref", "source_kind", "provenance"],
         "properties": {
           "evidence_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-          "provider_content_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
-          "final_url": { "type": "string" },
+          "content_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" },
+          "source_ref": { "type": "string" },
+          "source_kind": { "enum": ["fetch", "local_file"] },
           "provenance": { "type": "object" }
         },
         "additionalProperties": false

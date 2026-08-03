@@ -50,16 +50,13 @@ function invocation(
 }
 
 describe("example external adapters emit contract-conformant response frames", () => {
-  it("the openapi adapter manifest declares network intent honestly", () => {
+  it("the openapi adapter manifest validates without self-attested authority", () => {
     const manifest = JSON.parse(
       readFileSync(new URL("../../../../examples/openapi-tool/manifest.json", import.meta.url), "utf8"),
     ) as unknown;
     const validated = validateExternalAdapterManifestContract(manifest);
     expect(validated.adapter_id).toBe("adapter.example.openapi");
-    expect(validated.sandbox_intent).toMatchObject({
-      profile: "network",
-      network: true,
-    });
+    expect(validated.transport.kind).toBe("process");
   });
 
   it("the echo adapter emits a valid response frame", () => {

@@ -113,9 +113,6 @@ jobs:
         run: |
           rustup show               # installs the version pinned by rust-toolchain.toml
           rustup target add ${{ matrix.target }}
-      - name: Install Linux sandbox
-        if: contains(matrix.target, 'musl')
-        uses: ./.github/actions/setup-linux-sandbox
       - name: Install musl toolchain
         if: contains(matrix.target, 'musl')
         run: sudo apt-get install -y musl-tools
@@ -204,9 +201,6 @@ jobs:
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
-      - name: Install Linux sandbox
-        if: contains(matrix.target, 'musl')
-        uses: ./.github/actions/setup-linux-sandbox
       - name: Download built archive
         uses: actions/download-artifact@v8
         with:

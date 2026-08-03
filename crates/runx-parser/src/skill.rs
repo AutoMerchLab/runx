@@ -10,7 +10,6 @@ mod fixtures;
 mod governance;
 mod markdown;
 mod runner_definition;
-mod sandbox;
 mod source;
 mod types;
 
@@ -24,11 +23,12 @@ pub use fixtures::{
 };
 pub use governance::validate_skill_artifact_contract;
 pub use markdown::parse_skill_markdown;
+pub use runner_definition::validate_input_examples;
 pub use source::validate_skill_source;
 pub use types::{
     ActDeclaration, ArtifactPageFraming, ArtifactPageSource, CredentialRequirement, InputMode,
     RawSkillIr, SkillArtifactContract, SkillExternalAdapterManifest, SkillIdempotencyPolicy,
-    SkillInput, SkillMcpServer, SkillRetryPolicy, SkillRunnerDefinition, SkillSandbox, SkillSource,
+    SkillInput, SkillMcpServer, SkillRetryPolicy, SkillRunnerDefinition, SkillSource,
     SkillThreadOutboxProviderSource, SourceKind, ValidateSkillMode, ValidateSkillOptions,
     ValidatedSkill,
 };
@@ -49,7 +49,6 @@ use governance::{
     validate_allowed_tools, validate_artifact_contract, validate_idempotency, validate_mutating,
     validate_retry,
 };
-use sandbox::validate_sandbox;
 use source::default_agent_source;
 use source::flattened_source_record;
 use source::validate_source;
@@ -97,11 +96,12 @@ pub fn validate_skill_with_options(
         runx_category,
         registry_owner,
         body: raw.body.clone(),
-        source: validate_source(&source, runx.as_ref())?,
+        source: validate_source(&source)?,
         inputs: validate_inputs(
             FIELDS
                 .optional_object(raw.frontmatter.get("inputs"), "inputs")?
                 .unwrap_or_default(),
+            "inputs",
         )?,
         auth: raw.frontmatter.get("auth").cloned(),
         risk: risk.clone(),

@@ -1,5 +1,5 @@
 skill: slack
-version: "0.2.3"
+version: "0.2.4"
 
 catalog:
   kind: graph
@@ -23,6 +23,28 @@ runners:
         type: object
         required: true
         description: Bounded Slack search object; requires author_external_id (member-id string), mentions_connected_subject (boolean), or keywords (one phrase string, never an array).
+        schema:
+          additionalProperties: false
+          properties:
+            author_external_id: { type: string, pattern: '^[UW][A-Z0-9]{2,}$', maxLength: 100 }
+            mentions_connected_subject: { const: true }
+            keywords: { type: string, minLength: 1, maxLength: 500, pattern: '^[^?\r\n\u0000-\u001f]+$' }
+            after: { type: string, format: date-time, maxLength: 100 }
+            before: { type: string, format: date-time, maxLength: 100 }
+            channel_types:
+              type: array
+              minItems: 1
+              maxItems: 4
+              uniqueItems: true
+              items: { type: string, enum: [public_channel, private_channel, mpim, im] }
+            limit: { type: integer, minimum: 1, maximum: 20, default: 20 }
+            cursor: { type: string, minLength: 1, maxLength: 500 }
+          anyOf:
+            - required: [author_external_id]
+            - required: [mentions_connected_subject]
+            - required: [keywords]
+    examples:
+      - query: { keywords: release readiness, channel_types: [public_channel, private_channel], limit: 20 }
     graph:
       name: slack-search
       result_from: [search]
@@ -56,6 +78,9 @@ runners:
         type: string
         required: false
         description: Opaque cursor returned by the preceding thread page.
+    examples:
+      - thread_locator: slack://T123ABC/C123ABC/1750000000.000001
+        limit: 15
     graph:
       name: slack-read-thread
       result_from: [read]
@@ -94,6 +119,9 @@ runners:
         type: string
         required: false
         description: Opaque cursor returned by the preceding thread page.
+    examples:
+      - permalink: https://example.slack.com/archives/C123ABC/p1750000000000001
+        limit: 15
     graph:
       name: slack-read-link
       result_from: [read]
@@ -121,6 +149,8 @@ runners:
         type: string
         required: true
         description: Exact slack-file://workspace/file locator returned by read_thread.
+    examples:
+      - file_locator: slack-file://T123ABC/F123ABC
     graph:
       name: slack-read-file
       result_from: [read]
@@ -164,6 +194,12 @@ runners:
         type: string
         required: false
         description: Purpose, constraints, and approval posture for this reply.
+    examples:
+      - principal: user:kam
+        thread_locator: slack://T123ABC/C123ABC/1750000000.000001
+        text: I’ll verify this now.
+        provider_context: { connector: runx-connect, workspace: T123ABC }
+        operator_context: Reply only in the supplied thread and require approval before delivery.
     graph:
       name: slack-plan-reply
       result_from: [authorize]
@@ -207,6 +243,17 @@ runners:
         type: string
         required: true
         description: Stable UUID for this exact Slack reply.
+    examples:
+      - send_plan:
+          decision: ready
+          provider: { name: slack }
+          channel: chat
+          audience: { type: thread, ref: 'slack://T123ABC/C123ABC/1750000000.000001' }
+          content: { digest: 'sha256:8604f5c08db8d76b6fa8066c769fbdc6a4992101373d0d17bcfe426cf8e77647' }
+          gates: { human_approval_required: true }
+        thread_locator: slack://T123ABC/C123ABC/1750000000.000001
+        text: I’ll verify this now.
+        idempotency_key: 178d473e-8431-4d15-8de6-e29227bfa90d
     graph:
       name: slack-deliver-reply
       result_from: [readback]

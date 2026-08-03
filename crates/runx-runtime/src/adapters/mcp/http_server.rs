@@ -5,7 +5,7 @@
 //!
 //! rmcp's [`StreamableHttpService`] is a `tower` service that carries the same
 //! governed [`RmcpProofServer`] the stdio path uses; this drives it over a TCP
-//! listener with hyper. Governance (admission, sandbox, receipt sealing) lives in
+//! listener with hyper. Governance (admission, grants, receipt sealing) lives in
 //! the server, not the transport, so the HTTP surface seals exactly like the stdio
 //! surface. Each session gets a fresh governed server from the same options.
 use std::convert::Infallible;

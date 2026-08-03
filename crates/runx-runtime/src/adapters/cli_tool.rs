@@ -10,7 +10,7 @@ use crate::process::{
     CapturedOutput, ProcessOutcome, ProcessSpec, ProcessStdin, STANDARD_PROCESS_OUTPUT_BYTES,
     run_process,
 };
-use crate::services::SandboxServices;
+use crate::process_invocation::prepare_process_invocation;
 
 const DEFAULT_TIMEOUT_SECONDS: u64 = 60;
 #[cfg(test)]
@@ -32,7 +32,7 @@ impl CliToolAdapter {
             &request.env,
         )?;
         let credential_delivery = request.credential_delivery.clone();
-        let mut sandbox = SandboxServices.process_plan(
+        let process = prepare_process_invocation(
             &request.source,
             &request.requirements.environment,
             &request.skill_directory,
@@ -40,23 +40,23 @@ impl CliToolAdapter {
             &request.env,
         )?;
         credential_delivery
-            .ensure_environment_disjoint(&sandbox.env)
-            .map_err(|error| RuntimeError::SandboxViolation {
+            .ensure_environment_disjoint(&process.env)
+            .map_err(|error| RuntimeError::InvalidProcessInvocation {
                 message: error.to_string(),
             })?;
-        for (name, value) in credential_delivery.secret_env().iter() {
-            sandbox.env.insert(name.to_owned(), value.to_owned());
-        }
         let stdin = cli_tool_stdin(&request)?;
-        let sandbox = sandbox.into_process_plan();
+        let mut process = process.into_execution_plan();
+        for (name, value) in credential_delivery.secret_env().iter() {
+            process.env.insert(name.to_owned(), value.to_owned());
+        }
         let mut outcome = run_process(
-            ProcessSpec::new("cli-tool", sandbox.command, output_limit_bytes)
-                .args(sandbox.args)
-                .cwd(sandbox.cwd)
-                .env(sandbox.env)
+            ProcessSpec::new("cli-tool", process.command, output_limit_bytes)
+                .args(process.args)
+                .cwd(process.cwd)
+                .env(process.env)
                 .stdin(stdin)
                 .timeout(Some(cli_tool_timeout(request.source.timeout_seconds)))
-                .cleanup_paths(sandbox.cleanup_paths),
+                .cleanup_paths(process.cleanup_paths),
         )
         .map_err(|error| match error {
             crate::process::ProcessSupervisorError::Io { context, source } => {
@@ -67,7 +67,7 @@ impl CliToolAdapter {
         let mut output = cli_tool_output(
             outcome,
             &credential_delivery,
-            sandbox.metadata,
+            process.metadata,
             output_limit_bytes,
         );
         if !cleanup_errors.is_empty() {
@@ -209,15 +209,6 @@ mod tests {
                 timeout_seconds: None,
                 input_mode: None,
                 environment: Default::default(),
-                sandbox: Some(runx_parser::SkillSandbox {
-                    profile: runx_core::policy::SandboxProfile::UnrestrictedLocalDev,
-                    cwd_policy: Some(runx_core::policy::CwdPolicy::Workspace),
-                    network: None,
-                    writable_paths: Vec::new(),
-                    require_enforcement: None,
-                    approved_escalation: Some(true),
-                    raw: JsonObject::new(),
-                }),
                 server: None,
                 tool: None,
                 arguments: None,

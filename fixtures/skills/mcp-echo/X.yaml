@@ -12,9 +12,6 @@ runners:
     arguments:
       message: "{{message}}"
     timeout_seconds: 15
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
     inputs:
       message:
         type: string

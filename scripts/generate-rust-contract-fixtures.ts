@@ -13,6 +13,7 @@ import {
 
 const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url)));
 const fixtureRoot = path.join(workspaceRoot, "fixtures", "contracts");
+const sdkFixtureRoot = path.join(workspaceRoot, "fixtures", "sdk-rust");
 const actAssignmentRoot = path.join(fixtureRoot, "act-assignment");
 const governanceControlRoot = path.join(fixtureRoot, "governance-control");
 const executionRoot = path.join(fixtureRoot, "execution");
@@ -93,7 +94,14 @@ if (selectedScope === undefined || selectedScope === "execution") {
   await writeFixtures(buildExecutionFixtures(), executionRoot);
 }
 if (selectedScope === undefined || selectedScope === "host-protocol") {
-  await writeFixtures(buildHostProtocolFixtures(), path.join(fixtureRoot, "host-protocol"));
+  const fixtures = buildHostProtocolFixtures();
+  await writeFixtures(fixtures, path.join(fixtureRoot, "host-protocol"));
+  await writeFixtures(
+    fixtures.filter(({ name }) =>
+      ["inspect-host-state-needs-agent", "result-host-run-completed"].includes(name),
+    ),
+    path.join(sdkFixtureRoot, "host-protocol"),
+  );
 }
 
 async function writeFixtures(fixtures: readonly ContractFixture[], directory: string): Promise<void> {
@@ -716,7 +724,7 @@ function hostResultFixtures(): readonly ContractFixture[] {
       status: "denied",
       skillName: "review-receipt",
       receiptId: "rx_denied",
-      reasons: ["sandbox denied"],
+      reasons: ["authority denied"],
       events: [event("admitted")],
     }),
   ];
@@ -802,7 +810,7 @@ function approvalResolutionRequest(): Readonly<Record<string, unknown>> {
     gate: {
       id: "workspace-write",
       reason: "Allow workspace write",
-      type: "sandbox",
+      type: "mutation",
       summary: {
         path: "docs/guide.md",
       },
@@ -827,7 +835,10 @@ function agentActResolutionRequest(): Readonly<Record<string, unknown>> {
         instructions: "Summarize receipt",
         instructions_sha256: sha256Prefixed("Summarize receipt"),
         provenance: [],
-        requirements: { declaration: {} },
+        requirements: {
+          declaration: {},
+          execution_boundary: { kind: "remote_provider" },
+        },
         run_id: "run_1",
         skill: "review-receipt",
         step_id: "step_1",
@@ -858,9 +869,9 @@ function terminalState(status: string, verificationStatus: string): Readonly<Rec
     runnerProvider: "runx",
     approval: {
       gateId: "workspace-write",
-      gateType: "sandbox",
+      gateType: "mutation",
       decision: status === "denied" ? "denied" : "approved",
-      reason: status === "denied" ? "sandbox denied" : undefined,
+      reason: status === "denied" ? "authority denied" : undefined,
     },
     lineage: lineage(),
   };

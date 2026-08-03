@@ -22,6 +22,7 @@ pub(super) struct AuthoringContext {
     pub(super) base_digest: String,
     pub(super) target_files: Vec<PackageFile>,
     pub(super) target_metrics: SkillPackageMetrics,
+    pub(super) target_inspection: Option<JsonObject>,
     pub(super) catalog_root: String,
     pub(super) catalog_skills: Vec<CatalogItem>,
     pub(super) core_tools: Vec<CatalogItem>,

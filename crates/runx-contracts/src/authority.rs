@@ -158,7 +158,6 @@ pub enum AuthorityConditionPredicate {
     ApprovalPresent,
     WithinTimeWindow,
     WithinBudget,
-    SandboxEnforced,
     EffectProofPresent,
     EffectRecoveryAvailable,
 }

@@ -229,7 +229,7 @@ fn invoke_native_tool(
     started: Instant,
 ) -> Result<InvocationOutput, RuntimeError> {
     let inputs = std::mem::replace(&mut request.inputs, Cow::Owned(JsonObject::new())).into_owned();
-    let Some(result) =
+    let Some(invocation) =
         crate::tool_catalogs::native::invoke(crate::tool_catalogs::native::NativeToolInvocation {
             tool_ref: request.tool_ref.as_ref(),
             observed_at,
@@ -249,7 +249,7 @@ fn invoke_native_tool(
             message: "registered native capability disappeared during dispatch".to_owned(),
         });
     };
-    let mut output = match result {
+    let mut output = match invocation.result {
         Ok(payload) => success(payload, started),
         Err(error @ RuntimeError::ProviderEffectUnknown { .. })
         | Err(error @ RuntimeError::EffectState { .. }) => return Err(error),
@@ -258,6 +258,11 @@ fn invoke_native_tool(
     if let Some(observation) = request.credential_delivery.public_observation() {
         output.record_credential_observation(observation)?;
     }
+    output
+        .metadata
+        .extend(crate::process_invocation::boundary_metadata(
+            invocation.execution_boundary,
+        )?);
     Ok(output)
 }
 

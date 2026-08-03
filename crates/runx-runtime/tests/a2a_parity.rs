@@ -489,7 +489,6 @@ fn source(
         timeout_seconds: Some(0),
         input_mode: None,
         environment: Default::default(),
-        sandbox: None,
         server: None,
         tool: None,
         arguments,

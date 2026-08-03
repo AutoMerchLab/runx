@@ -105,6 +105,7 @@ runners:
           label: write docs
           tool: fs.apply_bundle
           scopes:
+            - fs.delete
             - fs.write
           mutation: true
           inputs:
@@ -167,6 +168,7 @@ runners:
           label: write revisions
           tool: fs.apply_bundle
           scopes:
+            - fs.delete
             - fs.write
           mutation: true
           inputs:

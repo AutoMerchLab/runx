@@ -1,19 +1,19 @@
 use std::collections::BTreeMap;
+use std::collections::BTreeSet;
 use std::path::Path;
 
 mod packet;
 
-use super::{
-    MAX_PUBLISH_FILE_BYTES, MAX_PUBLISH_FILE_COUNT, MAX_PUBLISH_TOTAL_BYTES,
-    RegistryPublishPackageError,
-};
+use super::RegistryPublishPackageError;
 use crate::LoadedSkillPackage;
 use crate::registry::RegistryPackageFile;
+use crate::skill_package::{MAX_PACKAGE_BYTES, MAX_PACKAGE_FILES};
 
 pub(super) fn collect_publish_package_files(
     loaded: &LoadedSkillPackage,
     env: &BTreeMap<String, String>,
     cwd: &Path,
+    packet_ids: &BTreeSet<String>,
 ) -> Result<Vec<RegistryPackageFile>, RegistryPublishPackageError> {
     let mut files = BTreeMap::new();
     for relative in &loaded.package.consumed_files {
@@ -27,7 +27,7 @@ pub(super) fn collect_publish_package_files(
         })?;
         insert_source_file(&mut files, relative, contents)?;
     }
-    packet::append_declared_packet_schemas(&mut files, loaded, env, cwd)?;
+    packet::append_declared_packet_schemas(&mut files, loaded, env, cwd, packet_ids)?;
     validate_package_limits(&files)?;
     Ok(files.into_values().collect())
 }
@@ -40,11 +40,6 @@ pub(super) fn insert_source_file(
     if should_reject_publish_file(relative) {
         return Err(RegistryPublishPackageError::invalid(format!(
             "publish package file {relative} looks like a secret or local credential"
-        )));
-    }
-    if contents.len() > MAX_PUBLISH_FILE_BYTES {
-        return Err(RegistryPublishPackageError::invalid(format!(
-            "publish package file {relative} exceeds {MAX_PUBLISH_FILE_BYTES} bytes"
         )));
     }
     let content = std::str::from_utf8(contents).map_err(|error| {
@@ -66,7 +61,7 @@ pub(super) fn insert_source_file(
     Ok(())
 }
 
-fn validate_package_limits(
+pub(super) fn validate_package_limits(
     files: &BTreeMap<String, RegistryPackageFile>,
 ) -> Result<(), RegistryPublishPackageError> {
     let total_bytes = files.values().try_fold(0usize, |total, file| {
@@ -74,9 +69,9 @@ fn validate_package_limits(
             RegistryPublishPackageError::invalid("publish package byte count overflow")
         })
     })?;
-    if files.len() > MAX_PUBLISH_FILE_COUNT || total_bytes > MAX_PUBLISH_TOTAL_BYTES {
+    if files.len() > MAX_PACKAGE_FILES || total_bytes > MAX_PACKAGE_BYTES {
         return Err(RegistryPublishPackageError::invalid(format!(
-            "publish package exceeds {MAX_PUBLISH_FILE_COUNT} files or {MAX_PUBLISH_TOTAL_BYTES} total bytes"
+            "publish package exceeds {MAX_PACKAGE_FILES} files or {MAX_PACKAGE_BYTES} total bytes"
         )));
     }
     Ok(())

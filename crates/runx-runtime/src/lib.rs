@@ -1,7 +1,7 @@
 //! Native Rust runtime skeleton for runx execution.
 //!
 //! The runtime owns impure boundaries: filesystem reads, subprocess execution,
-//! sandbox preparation, host reporting, and receipt emission. Pure
+//! process preparation, host reporting, and receipt emission. Pure
 //! parser/core/receipt crates stay upstream of this crate.
 //!
 //! The root exports are a facade for CLI, SDK, and test consumers. Helper
@@ -46,11 +46,11 @@ mod packet_schemas;
 mod packet_validation;
 mod path_util;
 mod process;
+pub mod process_invocation;
 #[cfg(feature = "async-http")]
 mod provider_operations;
 pub mod receipts;
 pub mod registry;
-pub mod sandbox;
 mod services;
 mod skill_package;
 mod time;

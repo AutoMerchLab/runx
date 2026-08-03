@@ -925,7 +925,6 @@ impl GraphExecution {
         });
     }
 
-    #[cfg(feature = "agent")]
     pub(super) fn record_terminal_step_failure<A>(
         &mut self,
         runtime: &Runtime<A>,

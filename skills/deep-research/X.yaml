@@ -1,5 +1,5 @@
 skill: deep-research
-version: "0.2.1"
+version: "0.2.2"
 
 catalog:
   kind: graph
@@ -10,6 +10,39 @@ catalog:
   completion: runtime_receipt
   requires_adapter: false
   approval: none
+
+input_definitions:
+  objective:
+    type: string
+    required: true
+    description: Exact decision question the brief must answer.
+    schema: { minLength: 1, maxLength: 4000 }
+  audience:
+    type: string
+    required: false
+    default: operators
+    description: Primary reader for the decision brief.
+  channel:
+    type: string
+    required: false
+    default: brief
+    description: Local package format; this runner does not deliver it.
+  domain:
+    type: string
+    required: false
+    description: Domain context for interpretation.
+  operator_context:
+    type: string
+    required: false
+    description: Local constraints that do not count as evidence.
+  target_entities:
+    type: json
+    required: false
+    description: Bounded entity names or caller-owned structured selectors to include or compare.
+    schema:
+      oneOf:
+        - { type: array, maxItems: 100 }
+        - { type: object, maxProperties: 100 }
 
 harness:
   cases:
@@ -53,12 +86,12 @@ harness:
               evidence_log:
                 - claim: Receipts bind actions to authority and verification evidence.
                   source_digest: sha256:9056e1b5caa4e78583d0bc47bb731468b31155929a3aa3a35fcadf6136534a36
-                  provider_content_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+                  content_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
                   confidence: verified
                   relevance: Establishes the governance half of the architecture.
                 - claim: Portable skills separate judgment from deterministic operations.
                   source_digest: sha256:c951e0e102215f739709aa280773536f95d4560e1299999af9c2362db6a118dc
-                  provider_content_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+                  content_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
                   confidence: verified
                   relevance: Establishes the packaging and execution half.
               decision_support:
@@ -134,41 +167,98 @@ harness:
         receipt:
           schema: runx.receipt.v1
 
+    - name: deep-research-drafts-from-native-local-evidence
+      runner: local-files
+      inputs:
+        objective: Decide where generic evidence admission belongs.
+        paths: [fixtures/local-architecture-evidence.txt]
+        path_scope: skill
+        audience: operators
+        channel: brief
+      caller:
+        answers:
+          agent_task.research-synthesize.output:
+            research_candidate:
+              decision: ready
+              research_brief:
+                objective: Decide where generic evidence admission belongs.
+                scope: supplied architecture evidence
+                summary: Generic evidence admission belongs in the native runtime, while skills own domain judgment.
+                open_questions: []
+              evidence_log:
+                - claim: Generic evidence admission belongs in the native runtime.
+                  source_digest: sha256:684d3c1ea722d675969c1abd8b00d3a91ff22c0088b6b71ab3c1e70382e82e45
+                  content_digest: sha256:684d3c1ea722d675969c1abd8b00d3a91ff22c0088b6b71ab3c1e70382e82e45
+                  confidence: verified
+                  relevance: Establishes the reusable ownership boundary.
+              decision_support:
+                - option: Keep evidence admission native and domain interpretation in skills.
+                  rationale: The admitted local evidence states that boundary directly.
+                  source_digests: [sha256:684d3c1ea722d675969c1abd8b00d3a91ff22c0088b6b71ab3c1e70382e82e45]
+              risks: []
+          agent_task.ghostwrite-draft.output:
+            content_draft:
+              decision: ready
+              content_brief:
+                objective: Decide where generic evidence admission belongs.
+                audience: operators
+                channel: brief
+              draft:
+                title: Keep generic evidence admission native
+                body: Runx should admit and bind evidence once, while skills supply domain judgment.
+                claim_refs:
+                  - claim: Generic evidence admission belongs in the native runtime.
+                    source_digests: [sha256:684d3c1ea722d675969c1abd8b00d3a91ff22c0088b6b71ab3c1e70382e82e45]
+              review_checklist: [Preserve the native ownership boundary.]
+              distribution_notes: { primary_channel: brief }
+              context_binding: { applied: [] }
+      expect:
+        status: sealed
+        steps: [research-topic, draft-brief]
+        step_outputs:
+          research-topic:
+            subset:
+              research_packet:
+                data:
+                  decision: ready
+                  validation: { status: pass }
+                  source_evidence:
+                    - source_kind: local_file
+          draft-brief:
+            subset:
+              content_draft_packet:
+                data:
+                  decision: ready
+                  validation: { status: pass }
+        receipt: { schema: runx.receipt.v1 }
+
 runners:
   deep-research:
     default: true
     type: graph
     inputs:
-      objective:
-        type: string
-        required: true
-        description: Exact decision question the brief must answer.
+      objective: { definition: objective }
       source_packets:
-        type: json
+        type: array
         required: true
         description: Bounded governed source packets, normally runx.fetch.v1 evidence.
-      audience:
-        type: string
-        required: false
-        default: operators
-        description: Primary reader for the decision brief.
-      channel:
-        type: string
-        required: false
-        default: brief
-        description: Local package format; this runner does not deliver it.
-      domain:
-        type: string
-        required: false
-        description: Domain context for interpretation.
-      operator_context:
-        type: string
-        required: false
-        description: Local constraints that do not count as evidence.
-      target_entities:
-        type: json
-        required: false
-        description: Entities to include or compare.
+        schema: { maxItems: 20 }
+      audience: { definition: audience }
+      channel: { definition: channel }
+      domain: { definition: domain }
+      operator_context: { definition: operator_context }
+      target_entities: { definition: target_entities }
+    examples:
+      - objective: Decide whether the supplied architecture evidence supports native ownership.
+        audience: operators
+        channel: brief
+        source_packets:
+          - decision: ready
+            final_url: https://example.com/architecture
+            status: 200
+            content_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+            extracted: The operation is reused across multiple independently governed skills.
+            provenance: { fetched_at: '2026-07-18T00:00:00Z', bytes: 68, truncated: false, redirects: [] }
     graph:
       name: deep-research
       result_from: [research-topic, draft-brief]
@@ -192,6 +282,78 @@ runners:
           skill: ../ghostwrite
           scopes:
             - runx:content:draft
+          inputs:
+            objective: $input.objective
+            audience: $input.audience
+            channel: $input.channel
+            voice_guide: Lead with the decision, distinguish verified evidence from inference, and preserve open questions.
+          context:
+            evidence_pack: research-topic.research_packet.data
+
+  local-files:
+    type: graph
+    inputs:
+      objective: { definition: objective }
+      paths:
+        type: array
+        required: true
+        description: One to sixteen UTF-8 evidence paths below the selected root.
+        schema:
+          minItems: 1
+          maxItems: 16
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 4096 }
+      repo_root:
+        type: string
+        required: false
+        default: .
+        description: Workspace-relative or explicit absolute root containing the files.
+      path_scope:
+        type: string
+        required: false
+        default: workspace
+        description: Root ownership boundary used by the native filesystem reader.
+        schema: { enum: [workspace, skill] }
+      max_bytes:
+        type: integer
+        required: false
+        default: 500000
+        description: Maximum UTF-8 bytes read from each source file.
+        schema: { minimum: 1, maximum: 8388608 }
+      audience: { definition: audience }
+      channel: { definition: channel }
+      domain: { definition: domain }
+      operator_context: { definition: operator_context }
+      target_entities: { definition: target_entities }
+    examples:
+      - objective: Identify the strongest architecture decision in the local design notes.
+        paths: [docs/architecture.md, docs/constraints.md]
+        repo_root: .
+        audience: operators
+        channel: brief
+    graph:
+      name: deep-research-local-files
+      result_from: [research-topic, draft-brief]
+      steps:
+        - id: research-topic
+          skill: ../research
+          runner: local-files
+          scopes: [fs.read, runx:evidence:read]
+          inputs:
+            objective: $input.objective
+            paths: $input.paths
+            repo_root: $input.repo_root
+            path_scope: $input.path_scope
+            max_bytes: $input.max_bytes
+            domain: $input.domain
+            deliverable: deep research brief
+            operator_context: $input.operator_context
+            target_entities: $input.target_entities
+
+        - id: draft-brief
+          when: { field: research-topic.research_packet.data.decision, equals: ready }
+          skill: ../ghostwrite
+          scopes: [runx:content:draft]
           inputs:
             objective: $input.objective
             audience: $input.audience

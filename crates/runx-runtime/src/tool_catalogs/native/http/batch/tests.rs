@@ -45,7 +45,6 @@ fn native_http_credential_binding_cannot_be_widened_by_caller_hosts()
     let effects = RuntimeEffectRegistry::default();
     let invocation = NativeInvocation {
         inputs: &inputs,
-        scopes: &[],
         observed_at: "2026-01-01T00:00:00Z",
         data_source_binding: None,
         env: &env,
@@ -92,7 +91,6 @@ fn native_http_credential_binding_requires_a_resolved_audience()
     let effects = RuntimeEffectRegistry::default();
     let invocation = NativeInvocation {
         inputs: &inputs,
-        scopes: &[],
         observed_at: "2026-01-01T00:00:00Z",
         data_source_binding: None,
         env: &env,
@@ -132,7 +130,6 @@ fn native_http_credential_binding_accepts_an_exact_bound_host()
     let effects = RuntimeEffectRegistry::default();
     let invocation = NativeInvocation {
         inputs: &inputs,
-        scopes: &[],
         observed_at: "2026-01-01T00:00:00Z",
         data_source_binding: None,
         env: &env,

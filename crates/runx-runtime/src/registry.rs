@@ -3,7 +3,9 @@ mod http;
 mod index;
 mod install;
 mod local;
+pub(crate) mod package_bundle;
 mod package_files;
+mod package_metadata;
 mod payload;
 #[cfg(feature = "async-http")]
 mod publish;
@@ -33,6 +35,7 @@ pub use local::{
     resolve_runx_link, runx_link_for_version, search_registry_with_options, slugify,
     split_skill_id,
 };
+pub use package_metadata::{RegistryHarnessCaseMetadata, RegistryPackageMetadata};
 #[cfg(feature = "async-http")]
 pub use publish::{
     HostedAdminSkillPublishRequest, HostedSkillPublishRequest, HostedSkillPublishResult,

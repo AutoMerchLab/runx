@@ -55,16 +55,7 @@ fn classify_runner(
     runner: &runx_parser::SkillRunnerDefinition,
     usage: &mut CandidateResourceUsage,
 ) {
-    classify_source(
-        runner.source.source_type,
-        runner
-            .source
-            .sandbox
-            .as_ref()
-            .and_then(|sandbox| sandbox.network)
-            .unwrap_or(false),
-        usage,
-    );
+    classify_source(runner.source.source_type, usage);
     let Some(graph) = &runner.source.graph else {
         return;
     };
@@ -82,7 +73,6 @@ fn classify_runner(
 }
 
 fn classify_graph_step(step: &runx_parser::GraphStep, usage: &mut CandidateResourceUsage) {
-    classify_scopes(&step.scopes, usage);
     if let Some(tool) = &step.tool {
         classify_native_tool(tool, usage);
     }
@@ -92,37 +82,29 @@ fn classify_graph_step(step: &runx_parser::GraphStep, usage: &mut CandidateResou
     let Some(source) = run.source() else {
         return;
     };
-    let network = source
-        .sandbox
-        .as_ref()
-        .and_then(|sandbox| sandbox.network)
-        .unwrap_or(false);
-    classify_source(source.source_type, network, usage);
+    classify_source(source.source_type, usage);
 }
 
-fn classify_scopes(scopes: &[String], usage: &mut CandidateResourceUsage) {
-    usage.network |= scopes.iter().any(|scope| scope == "net:process");
+fn classify_source(kind: SourceKind, usage: &mut CandidateResourceUsage) {
+    classify_source_name(kind.as_str(), usage);
 }
 
-fn classify_source(kind: SourceKind, network: bool, usage: &mut CandidateResourceUsage) {
-    classify_source_name(kind.as_str(), network, usage);
-}
-
-fn classify_source_name(kind: &str, network: bool, usage: &mut CandidateResourceUsage) {
+fn classify_source_name(kind: &str, usage: &mut CandidateResourceUsage) {
     match kind {
         "javascript" => usage.domain_modules = true,
         "cli-tool" | "mcp" | "external-adapter" | "thread-outbox-provider" => {
             usage.process_spawns = usage.process_spawns.saturating_add(1);
+            usage.network = true;
         }
         "a2a" => usage.network = true,
         _ => {}
     }
-    usage.network |= network;
 }
 
 fn classify_native_tool(tool: &str, usage: &mut CandidateResourceUsage) {
     if tool == "command.execute" {
         usage.process_spawns = usage.process_spawns.saturating_add(1);
+        usage.network = true;
     }
     if tool.starts_with("http.") || tool.starts_with("provider.") || tool == "web.fetch" {
         usage.network = true;
@@ -148,7 +130,7 @@ pub(super) fn validate_architecture_resources(
     }
     if usage.network && !budget.network_allowed {
         return Err(invalid_skill_change(
-            "candidate declares a network lane but its architecture forbids network access",
+            "candidate includes a network-capable lane but its architecture forbids network access",
         ));
     }
     let planned_domain_module = architecture
@@ -165,13 +147,13 @@ pub(super) fn validate_architecture_resources(
 
 #[cfg(test)]
 mod tests {
-    use super::{CandidateResourceUsage, classify_native_tool, classify_scopes};
+    use super::{CandidateResourceUsage, classify_native_tool, classify_source_name};
 
     #[test]
     fn supplied_evidence_indexing_does_not_claim_network_access() {
         let mut usage = CandidateResourceUsage::default();
 
-        classify_native_tool("evidence.index_fetch_sources", &mut usage);
+        classify_native_tool("evidence.index_sources", &mut usage);
 
         assert!(!usage.network);
     }
@@ -186,12 +168,20 @@ mod tests {
     }
 
     #[test]
-    fn process_network_scope_claims_network_access() {
-        let mut usage = CandidateResourceUsage::default();
-        let scopes = vec!["net:process".to_owned()];
+    fn trusted_host_processes_are_network_capable() {
+        for source in [
+            "cli-tool",
+            "mcp",
+            "external-adapter",
+            "thread-outbox-provider",
+        ] {
+            let mut usage = CandidateResourceUsage::default();
+            classify_source_name(source, &mut usage);
+            assert!(usage.network, "{source} must consume the network budget");
+        }
 
-        classify_scopes(&scopes, &mut usage);
-
-        assert!(usage.network);
+        let mut command = CandidateResourceUsage::default();
+        classify_native_tool("command.execute", &mut command);
+        assert!(command.network);
     }
 }

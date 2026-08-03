@@ -23,7 +23,7 @@ brokerage and hosted credential custody.
   delivery contracts.
 - `runx-core` keeps policy and authority admission. It does not call providers
   or issue grants.
-- `runx-runtime` keeps local credential consumption, sandbox delivery, and
+- `runx-runtime` keeps local credential consumption, resolved delivery, and
   redaction. Its provider-neutral hosted client authenticates the operator,
   reads opaque grant metadata, and invokes one registered operation without
   receiving provider credentials.

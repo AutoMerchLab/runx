@@ -276,8 +276,10 @@ fn exports_default_runner_inputs_when_skill_frontmatter_has_none()
     let shim = fixture.read_home_file(".codex/skills/send-as/SKILL.md")?;
     assert!(shim.contains("--objective \"<objective>\""));
     assert!(shim.contains("--principal \"<principal>\""));
-    assert!(shim.contains("- objective (required) - Bounded send objective."));
-    assert!(shim.contains("- provider_context (optional) - Provider readiness."));
+    assert!(shim.contains("\"objective\": {"));
+    assert!(shim.contains("\"provider_context\": {"));
+    assert!(shim.contains("\"required\": ["));
+    assert!(shim.contains("skill inspect"));
     assert!(shim.contains("A planning runner seals a plan, not the downstream external action"));
     assert!(!shim.contains("Do not perform the work yourself"));
     Ok(())
@@ -301,14 +303,14 @@ fn exports_multi_runner_skill_without_default_with_explicit_selection()
     )?;
 
     let shim = fixture.read_home_file(".codex/skills/frantic-operator/SKILL.md")?;
-    assert!(shim.contains("This skill has no generic default action."));
-    assert!(shim.contains("- `payments`"));
-    assert!(shim.contains("- `payout_preflight`"));
+    assert!(shim.contains("## Runner `payments`"));
+    assert!(shim.contains("## Runner `payout_preflight`"));
     assert!(shim.contains("skill inspect"));
-    assert!(shim.contains("\"<runner>\""));
-    assert!(shim.contains("Use the local launcher required by the owning `SKILL.md`"));
+    assert!(shim.contains("frantic-operator payments --json"));
+    assert!(shim.contains("frantic-operator payout_preflight"));
+    assert!(shim.contains("--claim \"<claim>\""));
     assert!(!shim.contains("\n+  --json"));
-    assert!(!shim.contains("Inputs: none."));
+    assert!(shim.contains("package-digest=sha256:"));
     Ok(())
 }
 

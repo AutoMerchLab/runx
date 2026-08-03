@@ -37,16 +37,16 @@ before they may be added to `deny.toml`.
   registry/tool records, act assignment, harness spine, generic authority and
   effect finality, target-repo runner planning, and the post-merge observer.
 - `runx-core`: pure decisions. State-machine parity and policy parity
-  (admission, sandbox, authority proof, public-work, retry, graph-step scope,
-  generic authority subset).
+  (admission, authority proof, public-work, retry, graph-step scope, generic
+  authority subset).
 - `runx-parser`: pure YAML → AST → IR parity for graphs, skills, runners, tool
   manifests, and skill installs. Raw object subtrees use
   `runx_contracts::JsonValue`.
 - `runx-receipts`: pure receipt model, canonical hashing, and tree
   verification with an adversarial unit matrix.
-- `runx-runtime`: impure runtime. Owns filesystem, subprocess, sandbox
-  enforcement, journals, registry clients, harness replay, doctor,
-  dev loop, project initialization, generic authority gating, and the adapter set. Adapter
+- `runx-runtime`: impure runtime. Owns filesystem, exact process invocation and
+  supervision, journals, registry clients, harness replay, doctor, dev loop,
+  project initialization, generic authority gating, and the adapter set. Adapter
   families are opt-in features: `async-http`, `cli-tool`, `mcp`,
   `mcp-http-server`, `a2a`, `agent`, `catalog`, `external-adapter`, and
   `thread-outbox-provider`; `a2a` is

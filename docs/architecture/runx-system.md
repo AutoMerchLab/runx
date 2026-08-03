@@ -8,8 +8,9 @@ here, but they do not override this contract.
 
 Runx is an operator runtime. A skill is the durable operating manual and bounded
 program that teaches a human and an acting agent how to perform one operation.
-The runtime supplies reusable execution capabilities, authority, isolation,
-receipts, replay, and provider boundaries. Product-owned skills retain domain
+The runtime supplies reusable execution capabilities, authority, deterministic
+worker isolation, process supervision, receipts, replay, and provider
+boundaries. Product-owned skills retain domain
 judgment. Runx Cloud is a hosted control plane and provider-execution service;
 it is not the owner of local operator workflows.
 
@@ -44,8 +45,8 @@ consume those owners; none is a parallel implementation.
   Markdown or YAML.
 - `runx-receipts` owns canonical receipt/proof encoding and verification.
 - `runx-runtime` owns filesystem loading, execution, typed native capability
-  registration, sandbox supervision, adapter lifecycles, effects, and receipt
-  emission.
+  registration, exact process invocation and supervision, adapter lifecycles,
+  effects, typed execution-boundary evidence, and receipt emission.
 - `runx-cli` owns argument parsing and presentation only. It calls runtime
   services and does not implement a second executor, parser, credential loader,
   authoring engine, or provider client.
@@ -110,9 +111,10 @@ Each target has one meaning and one authority boundary:
   network, process environment, credential, host clock, or host randomness
   authority; only exact manifest-declared non-secret values cross its typed
   worker protocol.
-- **CLI tool:** an intentional local executable with explicit command,
-  arguments, filesystem, environment, network, timeout, and output policy,
-  enforced by the runtime sandbox. Bundled tool manifests and their local
+- **CLI tool:** intentional trusted host code with explicit command, arguments,
+  declared environment, timeout, and output policy. Runx supervises the
+  process and records the boundary but does not claim filesystem, network, or
+  syscall confinement. Bundled tool manifests and their local
   source closure are parser-owned skill-package truth, not a second runtime or
   registry scan.
 - **Provider adapter:** a supervised HTTP, MCP, A2A, external-adapter, outbox,
@@ -185,7 +187,7 @@ HTTP, schema, file, data, receipt, and effect mechanics are native candidates.
 Caller paths are always interpreted under an invocation-owned workspace or
 runtime-issued opaque handle. Absolute roots, fixture roots, traversal, and
 symlink escapes are rejected. Generic command execution is credential-free and
-must have an enforced runtime sandbox. Authenticated HTTP destinations are
+runs under exact process supervision. Authenticated HTTP destinations are
 derived from the resolved grant; caller input can only narrow that set.
 
 New or changed Rust files stay at roughly 350 lines and functions at 60 lines.

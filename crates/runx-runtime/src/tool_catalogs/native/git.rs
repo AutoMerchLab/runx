@@ -8,7 +8,7 @@ use crate::RuntimeError;
 mod capability;
 
 use crate::process::{ProcessOutcome, ProcessSpec, run_process};
-use crate::services::SandboxServices;
+use crate::process_invocation::process_base_environment;
 pub(super) use capability::CAPABILITIES;
 use capability::{
     GitBlobDigest, GitBlobDigestInput, GitBlobDigestOutput, GitBranchOutput, GitDiffInput,
@@ -181,7 +181,7 @@ fn validate_base(base: &str) -> Result<(), RuntimeError> {
 fn git_env<I: ?Sized>(
     invocation: &NativeInvocation<'_, I>,
 ) -> Result<std::collections::BTreeMap<String, String>, RuntimeError> {
-    let mut env = SandboxServices.child_base_env(invocation.env)?;
+    let mut env = process_base_environment(invocation.env)?;
     env.insert("GIT_OPTIONAL_LOCKS".to_owned(), "0".to_owned());
     env.insert("GIT_PAGER".to_owned(), "cat".to_owned());
     Ok(env)

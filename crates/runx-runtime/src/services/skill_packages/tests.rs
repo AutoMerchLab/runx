@@ -139,6 +139,16 @@ fn skill_authoring_workspace_inspection_includes_base_digest()
 
     assert_eq!(report["target_exists"], JsonValue::Bool(true));
     assert_eq!(report["base_digest"], JsonValue::String(expected_digest));
+    let target_inspection = report
+        .get("target_inspection")
+        .and_then(JsonValue::as_object)
+        .expect("existing skill inspection must include its resolved contract");
+    assert!(
+        target_inspection
+            .get("runner_inspections")
+            .and_then(JsonValue::as_array)
+            .is_some_and(|runners| !runners.is_empty())
+    );
     let target_metrics = report
         .get("target_metrics")
         .and_then(JsonValue::as_object)
@@ -172,6 +182,39 @@ fn skill_authoring_workspace_inspection_includes_base_digest()
                     .and_then(JsonValue::as_str)
                     == Some("skills/team/demo/X.yaml")
             }))
+    );
+    Ok(())
+}
+
+#[test]
+fn skill_authoring_workspace_keeps_invalid_target_repairable()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    let skill = temp.path().join("skills/team/demo");
+    fs::create_dir_all(&skill)?;
+    fs::write(skill.join("SKILL.md"), VALID_MANUAL)?;
+    fs::write(skill.join("X.yaml"), "skill: demo\nrunners: []\n")?;
+
+    let report = inspect_skill_workspace(
+        temp.path(),
+        Some("skills/team/demo"),
+        &RuntimeEffectRegistry::default(),
+    )?;
+
+    assert_eq!(report["target_exists"], JsonValue::Bool(true));
+    let target_inspection = report
+        .get("target_inspection")
+        .and_then(JsonValue::as_object)
+        .expect("invalid skill inspection must remain available as repair context");
+    assert_eq!(
+        target_inspection.get("status").and_then(JsonValue::as_str),
+        Some("invalid")
+    );
+    assert!(
+        target_inspection
+            .get("error")
+            .and_then(JsonValue::as_str)
+            .is_some_and(|error| !error.is_empty())
     );
     Ok(())
 }

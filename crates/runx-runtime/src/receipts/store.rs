@@ -1,6 +1,6 @@
 // Module rationale: local store read/write/index semantics stay
 // together until the receipt-store API finishes the hard-cutover review.
-use std::collections::BTreeSet;
+use std::collections::BTreeMap;
 use std::ffi::OsStr;
 use std::fs::{self, File, OpenOptions};
 use std::io::{ErrorKind, Write};
@@ -132,14 +132,10 @@ impl LocalReceiptStore {
         }
         self.ensure_or_create_store_dir()?;
         let _lock = self.lock_mutations()?;
-        let mut ids = BTreeSet::new();
-        let mut pending = Vec::new();
-        let mut index_entries = Vec::new();
+        let mut unique_by_id = BTreeMap::<String, usize>::new();
+        let mut unique = Vec::<(&Receipt, String, String, PathBuf, Vec<u8>)>::new();
         for receipt in receipts {
             let receipt_id = receipt.id.to_string();
-            if !ids.insert(receipt_id.clone()) {
-                return Err(ReceiptStoreError::ReceiptAlreadyExists { receipt_id });
-            }
             let file_name = receipt_file_name(&receipt_id)?;
             let file_path = self.root.join(&file_name);
             let contents = serde_json::to_vec(receipt).map_err(|source| {
@@ -148,6 +144,19 @@ impl LocalReceiptStore {
                     message: source.to_string(),
                 }
             })?;
+            if let Some(index) = unique_by_id.get(&receipt_id).copied() {
+                if unique[index].4 != contents {
+                    return Err(ReceiptStoreError::ReceiptAlreadyExists { receipt_id });
+                }
+                continue;
+            }
+            unique_by_id.insert(receipt_id.clone(), unique.len());
+            unique.push((receipt, receipt_id, file_name, file_path, contents));
+        }
+
+        let mut pending = Vec::new();
+        let mut index_entries = Vec::new();
+        for (receipt, receipt_id, file_name, file_path, contents) in unique {
             if file_path.exists() {
                 let existing = fs::read(&file_path).map_err(|source| {
                     ReceiptStoreError::ReceiptUnreadable {

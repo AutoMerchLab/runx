@@ -3,12 +3,6 @@ use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::Mutex;
-#[cfg(target_os = "linux")]
-use std::sync::OnceLock;
-#[cfg(target_os = "linux")]
-use std::sync::mpsc;
-#[cfg(target_os = "linux")]
-use std::thread;
 
 use runx_contracts::javascript_worker::MAX_STDERR_BYTES;
 
@@ -45,65 +39,6 @@ impl Drop for StartingChild {
     }
 }
 
-#[cfg(target_os = "linux")]
-struct SpawnRequest {
-    command: Command,
-    response: mpsc::SyncSender<std::io::Result<Child>>,
-}
-
-#[cfg(target_os = "linux")]
-struct WorkerSpawnBroker {
-    sender: mpsc::Sender<SpawnRequest>,
-}
-
-#[cfg(target_os = "linux")]
-static WORKER_SPAWN_BROKER: OnceLock<Result<WorkerSpawnBroker, String>> = OnceLock::new();
-
-#[cfg(target_os = "linux")]
-pub(super) fn spawn_child(command: Command) -> Result<StartingChild, RuntimeError> {
-    // bubblewrap's --die-with-parent follows the exact Linux task that spawned
-    // it, not the surrounding process. A single process-lifetime broker gives
-    // every worker a stable parent task without adding one idle host thread per
-    // JavaScript session. Sessions still own and explicitly stop their child.
-    let broker = worker_spawn_broker()?;
-    let (response, receiver) = mpsc::sync_channel(1);
-    broker
-        .sender
-        .send(SpawnRequest { command, response })
-        .map_err(|_| worker_error("JavaScript worker spawn broker is unavailable"))?;
-    let child = receiver
-        .recv()
-        .map_err(|_| worker_error("JavaScript worker spawn broker exited before responding"))?
-        .map_err(|source| RuntimeError::io("spawning deterministic JavaScript worker", source))?;
-    Ok(StartingChild::new(child))
-}
-
-#[cfg(target_os = "linux")]
-fn worker_spawn_broker() -> Result<&'static WorkerSpawnBroker, RuntimeError> {
-    match WORKER_SPAWN_BROKER.get_or_init(start_worker_spawn_broker) {
-        Ok(broker) => Ok(broker),
-        Err(message) => Err(worker_error(message.clone())),
-    }
-}
-
-#[cfg(target_os = "linux")]
-fn start_worker_spawn_broker() -> Result<WorkerSpawnBroker, String> {
-    let (sender, receiver) = mpsc::channel::<SpawnRequest>();
-    thread::Builder::new()
-        .name("runx-js-worker-spawn".to_owned())
-        .spawn(move || {
-            while let Ok(mut request) = receiver.recv() {
-                let result = request.command.spawn();
-                if let Err(mpsc::SendError(Ok(mut child))) = request.response.send(result) {
-                    stop_child(&mut child);
-                }
-            }
-        })
-        .map_err(|source| format!("starting JavaScript worker spawn broker: {source}"))?;
-    Ok(WorkerSpawnBroker { sender })
-}
-
-#[cfg(not(target_os = "linux"))]
 pub(super) fn spawn_child(mut command: Command) -> Result<StartingChild, RuntimeError> {
     let child = command
         .spawn()

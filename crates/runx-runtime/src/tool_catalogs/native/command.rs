@@ -1,7 +1,7 @@
 //! Native exact-command execution for project-owned operator profiles.
 //!
 //! Skills retain their domain-specific profile and result semantics. Runx owns
-//! argv execution, workspace containment, environment admission, process-tree
+//! argv execution, workspace anchoring, environment admission, process-tree
 //! supervision, output bounds, credential redaction, and evidence digests.
 
 use std::collections::BTreeMap;
@@ -13,7 +13,9 @@ use runx_contracts::{JsonNumber, JsonObject, JsonValue};
 use super::{NativeInvocation, invalid_input};
 use crate::RuntimeError;
 use crate::process::{ProcessSpec, STANDARD_PROCESS_OUTPUT_BYTES, run_process};
-use crate::services::{NativeCommandSandboxRequest, SandboxServices};
+use crate::process_invocation::{
+    NativeCommandInvocationRequest, prepare_native_command_invocation,
+};
 
 mod capability;
 mod input;
@@ -34,7 +36,6 @@ const MAX_COMMAND_ARGS: usize = 128;
 const MAX_COMMAND_ARG_BYTES: usize = 8 * 1024;
 const MAX_ENV: usize = 64;
 const MAX_ENV_VALUE_BYTES: usize = 8 * 1024;
-const NETWORK_SCOPE: &str = "net:process";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum OutputMode {
@@ -60,7 +61,6 @@ struct PreparedCommand {
     cwd: PathBuf,
     cwd_relative: String,
     explicit_env: BTreeMap<String, String>,
-    network: bool,
     timeout_ms: u64,
     output_mode: OutputMode,
     command_digest: String,
@@ -75,7 +75,6 @@ fn plan(
             schema: "runx.command.plan.v1".to_owned(),
             command_digest: command.command_digest,
             cwd: command.cwd_relative,
-            network: command.network,
             timeout_ms: command.timeout_ms,
             output_mode: command.output_mode.as_str().to_owned(),
             env_names: command.explicit_env.keys().cloned().collect(),
@@ -91,23 +90,22 @@ fn execute(
         .credential_delivery
         .reject_process_env_boundary("native command.execute")
         .map_err(|error| invalid_input(TOOL, error.to_string()))?;
-    let sandbox = SandboxServices.native_command_plan(NativeCommandSandboxRequest {
+    let process = prepare_native_command_invocation(NativeCommandInvocationRequest {
         command: command.command.clone(),
         args: command.args.clone(),
         cwd: &command.cwd,
         workspace_root: &command.repo_root,
         explicit_env: &command.explicit_env,
-        network: command.network,
         base_env: invocation.env,
     })?;
-    let sandbox = sandbox.into_process_plan();
+    let process = process.into_execution_plan();
     let outcome = run_process(
-        ProcessSpec::new("native command", sandbox.command, OUTPUT_LIMIT_BYTES)
-            .args(sandbox.args)
-            .cwd(sandbox.cwd)
-            .env(sandbox.env)
+        ProcessSpec::new("native command", process.command, OUTPUT_LIMIT_BYTES)
+            .args(process.args)
+            .cwd(process.cwd)
+            .env(process.env)
             .timeout(Some(Duration::from_millis(command.timeout_ms)))
-            .cleanup_paths(sandbox.cleanup_paths),
+            .cleanup_paths(process.cleanup_paths),
     )
     .map_err(|error| invalid_input(TOOL, error.to_string()))?;
     let observation = observe_command(command.output_mode, outcome, invocation.credential_delivery);
@@ -170,7 +168,6 @@ mod tests {
         let effects = RuntimeEffectRegistry::default();
         let output = json_output(execute(&NativeInvocation {
             inputs: &inputs,
-            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,
@@ -226,7 +223,6 @@ mod tests {
         let effects = RuntimeEffectRegistry::default();
         let output = json_output(plan(&NativeInvocation {
             inputs: &inputs,
-            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,
@@ -248,85 +244,6 @@ mod tests {
     }
 
     #[test]
-    fn network_is_scope_bound_and_committed_to_the_command_plan()
-    -> Result<(), Box<dyn std::error::Error>> {
-        let workspace = tempfile::tempdir()?;
-        let env = BTreeMap::from([(
-            RUNX_CWD_ENV.to_owned(),
-            workspace.path().to_string_lossy().into_owned(),
-        )]);
-        let mut inputs = fixture_input::<CommandInput>(JsonObject::from([
-            ("command".to_owned(), JsonValue::String("true".to_owned())),
-            ("network".to_owned(), JsonValue::Bool(true)),
-        ]))?;
-        let delivery = CredentialDelivery::none();
-        #[cfg(feature = "catalog")]
-        let effects = RuntimeEffectRegistry::default();
-
-        let denied = plan(&NativeInvocation {
-            inputs: &inputs,
-            scopes: &[],
-            observed_at: "2026-01-01T00:00:00Z",
-            data_source_binding: None,
-            env: &env,
-            skill_directory: workspace.path(),
-            credential_delivery: &delivery,
-            local_artifacts: crate::tool_catalogs::native::fixture_local_artifacts(),
-            #[cfg(feature = "catalog")]
-            effects: &effects,
-        })
-        .expect_err("network without net:process must fail closed");
-        assert!(denied.to_string().contains("net:process"));
-
-        let scopes = vec!["net:process".to_owned()];
-        let network_plan = json_output(plan(&NativeInvocation {
-            inputs: &inputs,
-            scopes: &scopes,
-            observed_at: "2026-01-01T00:00:00Z",
-            data_source_binding: None,
-            env: &env,
-            skill_directory: workspace.path(),
-            credential_delivery: &delivery,
-            local_artifacts: crate::tool_catalogs::native::fixture_local_artifacts(),
-            #[cfg(feature = "catalog")]
-            effects: &effects,
-        })?)?;
-        let network_plan = network_plan
-            .as_object()
-            .and_then(|value| value.get("command_plan"))
-            .and_then(JsonValue::as_object)
-            .ok_or("missing network command plan")?;
-        assert_eq!(network_plan.get("network"), Some(&JsonValue::Bool(true)));
-        let network_digest = network_plan
-            .get("command_digest")
-            .and_then(JsonValue::as_str)
-            .ok_or("missing network command digest")?;
-
-        inputs.network = false;
-        let offline_plan = json_output(plan(&NativeInvocation {
-            inputs: &inputs,
-            scopes: &[],
-            observed_at: "2026-01-01T00:00:00Z",
-            data_source_binding: None,
-            env: &env,
-            skill_directory: workspace.path(),
-            credential_delivery: &delivery,
-            local_artifacts: crate::tool_catalogs::native::fixture_local_artifacts(),
-            #[cfg(feature = "catalog")]
-            effects: &effects,
-        })?)?;
-        let offline_digest = offline_plan
-            .as_object()
-            .and_then(|value| value.get("command_plan"))
-            .and_then(JsonValue::as_object)
-            .and_then(|value| value.get("command_digest"))
-            .and_then(JsonValue::as_str)
-            .ok_or("missing offline command digest")?;
-        assert_ne!(network_digest, offline_digest);
-        Ok(())
-    }
-
-    #[test]
     fn accepts_hour_long_operator_commands_without_unbounded_timeouts()
     -> Result<(), Box<dyn std::error::Error>> {
         let workspace = tempfile::tempdir()?;
@@ -344,7 +261,6 @@ mod tests {
         inputs.timeout_ms = 3_600_000;
         plan(&NativeInvocation {
             inputs: &inputs,
-            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,
@@ -358,7 +274,6 @@ mod tests {
         inputs.timeout_ms = 3_600_001;
         let error = plan(&NativeInvocation {
             inputs: &inputs,
-            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,
@@ -374,7 +289,7 @@ mod tests {
     }
 
     #[test]
-    fn native_command_sandbox_rejects_runtime_delivered_credentials_before_spawning()
+    fn native_command_boundary_rejects_runtime_delivered_credentials_before_spawning()
     -> Result<(), Box<dyn std::error::Error>> {
         let workspace = tempfile::tempdir()?;
         let env = BTreeMap::from([(
@@ -397,7 +312,6 @@ mod tests {
         let effects = RuntimeEffectRegistry::default();
         let error = execute(&NativeInvocation {
             inputs: &inputs,
-            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,
@@ -430,7 +344,6 @@ mod tests {
         let effects = RuntimeEffectRegistry::default();
         let planned = json_output(plan(&NativeInvocation {
             inputs: &inputs,
-            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,
@@ -452,7 +365,6 @@ mod tests {
         inputs.expected_command_digest = Some(digest);
         let error = execute(&NativeInvocation {
             inputs: &inputs,
-            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,

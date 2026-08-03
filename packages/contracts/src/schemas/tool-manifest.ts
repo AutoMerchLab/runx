@@ -19,7 +19,10 @@ export type ToolManifestSourceContract = DeepReadonly<{
   cwd?: string;
   input_mode?: ToolCommandInputModeContract;
   timeout_seconds?: number;
-  sandbox?: UnknownRecord;
+  environment?: {
+    required?: readonly string[];
+    optional?: readonly string[];
+  };
   server?: ToolManifestMcpServerContract;
   tool?: string;
   arguments?: UnknownRecord;
@@ -33,6 +36,8 @@ export type ToolManifestInputContract = DeepReadonly<{
   description?: string;
   default?: unknown;
   artifact?: boolean;
+  packet?: string;
+  schema?: UnknownRecord;
 }>;
 
 export type ToolManifestArtifactContract = DeepReadonly<{

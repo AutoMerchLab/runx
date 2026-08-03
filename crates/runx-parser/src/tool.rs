@@ -49,11 +49,6 @@ impl ValidatedTool {
         runx_contracts::ExecutionRequirements {
             scopes: self.scopes.clone(),
             environment: self.source.environment.clone(),
-            sandbox: self
-                .source
-                .sandbox
-                .as_ref()
-                .map(|sandbox| JsonValue::Object(sandbox.raw.clone())),
             ..runx_contracts::ExecutionRequirements::default()
         }
     }
@@ -104,7 +99,6 @@ pub fn validate_tool_manifest(raw: RawToolManifestIr) -> Result<ValidatedTool, V
             &FIELDS
                 .required_object(raw.document.get("source"), "source")?
                 .clone(),
-            None,
         )?,
         "source.type",
     )?;
@@ -117,6 +111,7 @@ pub fn validate_tool_manifest(raw: RawToolManifestIr) -> Result<ValidatedTool, V
             FIELDS
                 .optional_object(raw.document.get("inputs"), "inputs")?
                 .unwrap_or_default(),
+            "inputs",
         )?,
         scopes: validate_scopes(
             FIELDS

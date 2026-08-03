@@ -198,7 +198,7 @@ fn approval_optional_fields_omit_null_via_host_protocol_serde()
 #[test]
 fn raw_gate_type_alternate_shape_rejected_by_host_protocol_serde() {
     let result = serde_json::from_str::<ResolutionRequest>(
-        r#"{"kind":"approval","id":"req_approval","gate":{"id":"workspace-write","reason":"Allow workspace write","gate_type":"sandbox"}}"#,
+        r#"{"kind":"approval","id":"req_approval","gate":{"id":"workspace-write","reason":"Allow workspace write","gate_type":"filesystem_write"}}"#,
     );
 
     assert!(result.is_err());
@@ -243,7 +243,7 @@ fn gate() -> ApprovalGate {
     ApprovalGate {
         id: "workspace-write".into(),
         reason: "Allow workspace write".into(),
-        gate_type: Some("sandbox".to_owned()),
+        gate_type: Some("filesystem_write".to_owned()),
         summary: Some(summary()),
     }
 }
@@ -269,7 +269,7 @@ fn assert_approval_request(
     };
     assert_eq!(id, expected_id);
     assert_eq!(gate.id, "workspace-write");
-    assert_eq!(gate.gate_type.as_deref(), Some("sandbox"));
+    assert_eq!(gate.gate_type.as_deref(), Some("filesystem_write"));
     Ok(())
 }
 

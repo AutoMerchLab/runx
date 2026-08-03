@@ -1,8 +1,10 @@
 # Security Authority Proof
 
 Runx receipts must explain the authority boundary without becoming a secret
-side channel. The compact proof lives in receipt metadata under
-`authority_proof` and validates against `runx.authority-proof.v1`.
+side channel. The compact policy projection lives under `authority_proof` and
+validates against `runx.authority-proof.v1`. The adapter-observed execution
+boundary is also copied into `receipt.authority.enforcement` before sealing, so
+it is part of the signed receipt body rather than unsigned read metadata.
 
 Allowed public fields:
 
@@ -10,7 +12,7 @@ Allowed public fields:
 - requested connected-auth scopes and whether the skill declared mutating work
 - scope admission status, granted scopes, grant id, and decision summary
 - provider, connection id, grant reference, and `material_ref` hash
-- sandbox profile, declared enforcement, runtime enforcer, and approval result
+- typed execution-boundary observation and approval result
 - redaction policy status
 
 Banned fields:
@@ -35,13 +37,13 @@ evidence. See [Credential Resolution](./credentials.md).
 
 ## Ownership Boundary
 
-The Rust `AuthorityProof` wire structs are policy-owned in `runx-core`, not
-promoted into `runx-contracts`. The proof is produced only by the policy kernel,
-shares admission support types such as `ScopeAdmission`, `AuthorityKind`, and
-`CredentialGrantReference`, and is validated as a contract through generated
-schema checks in `runx-contracts`. Future contract-spine work should treat this
-as an explicit exception unless it can move the full boundary without changing
-the `runx.authority-proof.v1` JSON shape.
+The Rust `AuthorityProof` wire structs and
+`ExecutionBoundaryObservation` live in `runx-contracts`, which owns their
+portable JSON shape and generated schemas. `runx-core` alone owns the policy
+projection that constructs an authority proof from admission decisions. The
+runtime adapter alone owns the observed execution-boundary value and binds it
+into the receipt at seal time. Neither a skill nor an agent may self-attest that
+observation.
 
 The local runner applies authority in this order:
 
@@ -49,11 +51,11 @@ The local runner applies authority in this order:
    credential requirement.
 2. The credential resolver selects one profile, project binding, hosted handle,
    or declared workspace source and constructs a redacted delivery.
-3. Structural policy admission and sandbox approval gate process execution.
-4. The adapter injects only the declared delivery name at the execution
-   boundary and redacts captured output.
-5. The signed receipt records public observations and hashes outputs without raw
-   material.
+3. Structural policy admission resolves the exact authority grant.
+4. The adapter delivers only the resolved environment and credential material,
+   executes through the lane's canonical boundary, and redacts captured output.
+5. The signed receipt records the observed boundary, public observations, and
+   output hashes without raw material.
 
 ## Provider-Permission Grants
 

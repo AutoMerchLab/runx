@@ -97,8 +97,13 @@ fn persist_fixture_receipts(
 ) -> Result<(), SkillRunError> {
     receipt_services.write_local_receipts(
         output
-            .step_receipts
+            .steps
             .iter()
+            .flat_map(|step| {
+                step.nested_receipts
+                    .iter()
+                    .chain(std::iter::once(&step.receipt))
+            })
             .chain(std::iter::once(&output.receipt)),
         receipt_dir,
     )?;
@@ -175,6 +180,30 @@ impl PackageHarnessEnvironment {
         &self,
         loaded: &crate::LoadedSkillPackage,
     ) -> Result<(), SkillRunError> {
+        let mut packet_schemas = crate::packet_schemas::PacketSchemaCatalog::default();
+        for schema in loaded.resolved_input_packet_schemas.values() {
+            packet_schemas
+                .insert(schema.clone())
+                .map_err(|error| RuntimeError::SkillFailed {
+                    skill_name: "package-harness".to_owned(),
+                    message: format!("packet schema catalog failed: {error}"),
+                })?;
+        }
+        packet_schemas
+            .discover_directories([
+                loaded.directory.join("packets"),
+                loaded.package_root.join("packets"),
+            ])
+            .map_err(|error| RuntimeError::SkillFailed {
+                skill_name: "package-harness".to_owned(),
+                message: format!("packet schema catalog failed: {error}"),
+            })?;
+        for schema in packet_schemas.entries() {
+            self.stage_file(
+                &format!("packets/{}", schema.file_name),
+                schema.source.as_bytes(),
+            )?;
+        }
         let Some(harness) = loaded
             .manifest()
             .and_then(|manifest| manifest.harness.as_ref())
@@ -198,22 +227,27 @@ impl PackageHarnessEnvironment {
                     ),
                 }
             })?;
-            let destination = self.workspace.join(declared);
-            if let Some(parent) = destination.parent() {
-                fs::create_dir_all(parent).map_err(|source| {
-                    RuntimeError::io(
-                        format!("creating harness fixture directory {}", parent.display()),
-                        source,
-                    )
-                })?;
-            }
-            fs::write(&destination, contents).map_err(|source| {
+            self.stage_file(declared, contents)?;
+        }
+        Ok(())
+    }
+
+    fn stage_file(&self, relative: &str, contents: &[u8]) -> Result<(), SkillRunError> {
+        let destination = self.workspace.join(relative);
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).map_err(|source| {
                 RuntimeError::io(
-                    format!("staging harness support file {}", destination.display()),
+                    format!("creating harness fixture directory {}", parent.display()),
                     source,
                 )
             })?;
         }
+        fs::write(&destination, contents).map_err(|source| {
+            RuntimeError::io(
+                format!("staging harness support file {}", destination.display()),
+                source,
+            )
+        })?;
         Ok(())
     }
 
@@ -283,8 +317,66 @@ mod tests {
 
     use super::{
         PackageHarnessEnvironment, PackageHarnessReport, RUNX_CWD_ENV, RUNX_RECEIPT_DIR_ENV,
-        finalize_report,
+        finalize_report, run_package_harness_with_effects,
     };
+
+    #[test]
+    fn package_harness_proves_missing_native_scope_is_refused()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let operator_workspace = unique_test_root("permission-claim")?;
+        let skill_dir = operator_workspace.join("skills/permission-claim");
+        fs::create_dir_all(&skill_dir)?;
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: permission-claim\ndescription: Proves harness scope admission.\n---\n\n# Permission Claim\n",
+        )?;
+        fs::create_dir_all(skill_dir.join("fixtures"))?;
+        fs::write(skill_dir.join("fixtures/present.txt"), "present\n")?;
+        fs::write(
+            skill_dir.join("X.yaml"),
+            r#"skill: permission-claim
+version: "0.1.0"
+harness:
+  files:
+    - fixtures/present.txt
+  cases:
+    - name: refuses-missing-filesystem-scope
+      runner: inspect
+      inputs: {}
+      expect:
+        status: failure
+runners:
+  inspect:
+    default: true
+    type: graph
+    graph:
+      name: permission-claim
+      result_from: [read]
+      steps:
+        - id: read
+          tool: fs.read
+          inputs:
+            path: fixtures/present.txt
+"#,
+        )?;
+        let env = BTreeMap::from([(
+            RUNX_CWD_ENV.to_owned(),
+            operator_workspace.to_string_lossy().into_owned(),
+        )]);
+
+        let report = run_package_harness_with_effects(
+            &skill_dir,
+            None,
+            &env,
+            &crate::RuntimeEffectRegistry::default(),
+        )?;
+
+        assert_eq!(report.status, "passed");
+        assert_eq!(report.case_names, ["refuses-missing-filesystem-scope"]);
+        assert!(report.assertion_errors.is_empty());
+        fs::remove_dir_all(operator_workspace)?;
+        Ok(())
+    }
 
     #[test]
     fn empty_package_harness_remains_not_declared() {

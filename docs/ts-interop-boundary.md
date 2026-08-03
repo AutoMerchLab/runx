@@ -9,12 +9,12 @@ packages during the final runtime cutover.
 Rust is canonical for trusted local runtime and execution: local skill and
 graph execution, harness and dogfood execution, receipt sealing and
 verification, history, policy and registry configuration, generic authority and
-effect admission, sandbox admission/metadata, built-in adapter execution, and
-external execution-adapter supervision (defined as a contract; see the
-shipped-vs-defined note below for what the CLI actually enables). OS sandbox
-enforcement is implemented in the Rust runtime for the local sandbox profile
-(bubblewrap on Linux, sandbox-exec/seatbelt on macOS); TypeScript is not a
-fallback confinement layer.
+effect admission, exact process invocation and supervision, typed
+execution-boundary evidence, built-in adapter execution, and external
+execution-adapter supervision. Runx is a permissions broker, not a portable OS
+jail: Runx delivers a documented launch baseline plus resolved inputs, declared
+environment, and credential material to trusted host processes, then reports
+them honestly without a filesystem, network, or syscall-confinement claim.
 TypeScript remains for generated contracts, CLI/client wrappers,
 cloud/product integrations, host adapters, docs, and narrow helper SDKs over
 language-neutral external protocols. Native authoring plus Skill Lab own skill

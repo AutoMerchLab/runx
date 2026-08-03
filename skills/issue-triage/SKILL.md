@@ -90,9 +90,9 @@ other admitted evidence establishes that fact, and it cannot post the reply.
 
 ### `issue-triage-discover`
 
-Rank only issues in the supplied index. Return bounded candidates, selection
-rationale, and operator notes. Never invent issue ids, provider state, promises,
-or completed work.
+Rank only issues in the supplied index. Return bounded candidates and the
+selection rationale an operator needs to review the ranking. Never invent issue
+ids, provider state, promises, or completed work.
 
 ### `issue-triage-respond`
 

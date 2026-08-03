@@ -46,7 +46,6 @@ source:
     assert_eq!(skill.source.javascript_export.as_deref(), Some("execute"));
     assert_eq!(skill.source.command, None);
     assert_eq!(skill.source.source_type.as_str(), "javascript");
-    assert_eq!(skill.source.sandbox, None);
     Ok(())
 }
 
@@ -183,46 +182,46 @@ fn javascript_source_accepts_a_bounded_wall_limit() -> Result<(), String> {
 }
 
 #[test]
-fn javascript_runner_rejects_runx_level_sandbox_controls() -> Result<(), String> {
-    let raw = parse_runner_manifest_yaml(
-        r#"skill: sandboxed-javascript
+fn retired_sandbox_field_is_rejected() -> Result<(), String> {
+    let manifest = format!(
+        r#"skill: retired-field-javascript
 runners:
   transform:
     type: javascript
     module: domain.mjs
     runx:
-      sandbox:
+      {}:
         profile: readonly
         network: false
+"#,
+        "sandbox"
+    );
+    let raw = parse_runner_manifest_yaml(&manifest).map_err(|error| error.to_string())?;
+    let error = validate_runner_manifest(raw)
+        .err()
+        .ok_or_else(|| "retired sandbox field unexpectedly passed".to_owned())?;
+    assert!(error.to_string().contains("unknown field"));
+    Ok(())
+}
+
+#[test]
+fn misplaced_permission_fields_are_not_silently_ignored_under_runx() -> Result<(), String> {
+    let raw = parse_runner_manifest_yaml(
+        r#"skill: misplaced-permissions
+runners:
+  transform:
+    type: javascript
+    module: domain.mjs
+    runx:
+      scopes:
+        - "opaque capability with spaces"
 "#,
     )
     .map_err(|error| error.to_string())?;
     let error = validate_runner_manifest(raw)
         .err()
-        .ok_or_else(|| "runx-level javascript sandbox unexpectedly passed".to_owned())?;
-    assert!(error.to_string().contains("cannot declare a sandbox"));
-    Ok(())
-}
-
-#[test]
-fn javascript_source_rejects_every_author_selected_sandbox() -> Result<(), String> {
-    for sandbox in [
-        "      profile: readonly\n      cwd_policy: skill-directory\n      network: false",
-        "      profile: network\n      network: true",
-        "      profile: workspace-write\n      writable_paths: [out]",
-        "      profile: readonly\n      cwd_policy: workspace",
-        "      profile: readonly\n      env_allowlist: [EXAMPLE_TOKEN]",
-        "      profile: readonly\n      require_enforcement: false",
-    ] {
-        let raw = parse_skill_markdown(&format!(
-            "---\nname: effectful-javascript\nsource:\n  type: javascript\n  module: domain.mjs\n  sandbox:\n{sandbox}\n---\n# JavaScript\n"
-        ))
-        .map_err(|error| error.to_string())?;
-        let error = validate_skill(raw)
-            .err()
-            .ok_or_else(|| format!("effectful javascript sandbox passed: {sandbox}"))?;
-        assert!(error.to_string().contains("cannot declare a sandbox"));
-    }
+        .ok_or_else(|| "misplaced runx.scopes unexpectedly passed".to_owned())?;
+    assert!(error.to_string().contains("unknown field 'scopes'"));
     Ok(())
 }
 

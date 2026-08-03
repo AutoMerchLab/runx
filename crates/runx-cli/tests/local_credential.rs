@@ -152,8 +152,7 @@ fn workspace_env_supports_quoted_values() -> Result<(), Box<dyn std::error::Erro
 }
 
 #[test]
-fn workspace_env_remains_blocked_without_sandbox_allowlist()
--> Result<(), Box<dyn std::error::Error>> {
+fn workspace_env_remains_blocked_when_not_declared() -> Result<(), Box<dyn std::error::Error>> {
     let temp = crate::support::temp_root("runx-cli-workspace-env-denied");
     fs::create_dir_all(&temp)?;
     let skill_dir = write_env_denial_skill(&temp)?;
@@ -281,7 +280,7 @@ fn official_nitrosend_contract_delivers_fake_profile_to_fixture_without_leak()
     fs::write(
         skill_dir.join("X.yaml"),
         format!(
-            "skill: nitrosend\ncredentials:\n  nitrosend:\n    provider: {}\n{audience}    auth:\n      {}:\n        delivery:\n          env: {}\nrunners:\n  status:\n    default: true\n    type: cli-tool\n    command: sh\n    args: [probe.sh]\n    input_mode: none\n    credential: nitrosend\n    sandbox:\n      profile: readonly\n      cwd_policy: skill-directory\n      require_enforcement: false\n",
+            "skill: nitrosend\ncredentials:\n  nitrosend:\n    provider: {}\n{audience}    auth:\n      {}:\n        delivery:\n          env: {}\nrunners:\n  status:\n    default: true\n    type: cli-tool\n    command: sh\n    args: [probe.sh]\n    input_mode: none\n    credential: nitrosend\n",
             serde_json::to_string(&requirement.provider)?,
             serde_json::to_string(auth_mode)?,
             serde_json::to_string(delivery_env)?,
@@ -643,12 +642,9 @@ fn cli_rejects_secret_env_value_on_argv() -> Result<(), Box<dyn std::error::Erro
 }
 
 fn native_command() -> Result<Command, Box<dyn std::error::Error>> {
-    let mut command =
-        crate::support::isolated_runx_command_with_inherited_cwd("local-credential-test-key");
-    // These tests exercise credential and env delivery, not OS sandbox support.
-    // Keep them portable to runners where namespace creation is unavailable.
-    command.env("RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY", "local");
-    Ok(command)
+    Ok(crate::support::isolated_runx_command_with_inherited_cwd(
+        "local-credential-test-key",
+    ))
 }
 
 fn run_with_stdin(
@@ -734,8 +730,6 @@ runners:
     args:
       - "-c"
       - "printf '%s' \"$GITHUB_TOKEN\""
-    sandbox:
-      profile: readonly
 "#,
     )?;
     Ok(skill_dir)
@@ -771,10 +765,6 @@ runners:
     environment:
       optional:
         - EXPECTED_TOKEN
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
-      require_enforcement: false
 "#,
     )?;
     Ok(skill_dir)
@@ -799,10 +789,6 @@ runners:
     args:
       - "-c"
       - 'test -z "$GITHUB_TOKEN" && printf ''{"blocked":true}'''
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
-      require_enforcement: false
 "#,
     )?;
     Ok(skill_dir)
@@ -846,10 +832,6 @@ runners:
             environment:
               required:
                 - RESUME_PROBE_TOKEN
-            sandbox:
-              profile: readonly
-              cwd_policy: skill-directory
-              require_enforcement: false
 "#,
     )?;
     Ok(skill_dir)
@@ -897,10 +879,6 @@ runners:
             args:
               - "-c"
               - 'test "$GITHUB_TOKEN" = "{ROTATED_SECRET}"'
-            sandbox:
-              profile: readonly
-              cwd_policy: skill-directory
-              require_enforcement: false
 "#
         ),
     )?;
@@ -933,10 +911,6 @@ runners:
               - "-c"
               - "sleep 5"
             timeout_seconds: 1
-            sandbox:
-              profile: readonly
-              cwd_policy: skill-directory
-              require_enforcement: false
 "#,
     )?;
     Ok(skill_dir)

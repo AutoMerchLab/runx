@@ -33,6 +33,9 @@ pub(super) enum RegistryPayload {
         install: Box<runx_runtime::registry::InstallLocalSkillResult>,
         receipt_metadata: runx_contracts::JsonObject,
     },
+    Package {
+        package: runx_runtime::registry::RegistryPublishPackageParts,
+    },
     Publish {
         publish: PublishPayload,
     },

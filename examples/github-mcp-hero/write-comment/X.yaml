@@ -13,10 +13,9 @@ runners:
       repository: "{{repository}}"
       number: "{{issue_number}}"
       body: "{{body}}"
+    mutating: true
+    scopes: [github:write, net:http]
     timeout_seconds: 15
-    sandbox:
-      profile: network
-      cwd_policy: skill-directory
     inputs:
       repository:
         type: string

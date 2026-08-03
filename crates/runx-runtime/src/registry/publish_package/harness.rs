@@ -5,8 +5,6 @@ use std::path::{Path, PathBuf};
 use std::process;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use runx_parser::harness_fixture::HarnessFixtureKind;
-
 use super::RegistryPublishPackageError;
 use crate::registry::{RegistryPackageFile, RegistryPublishHarnessReport};
 use crate::{
@@ -46,7 +44,6 @@ pub(super) fn stage_publish_harness(
     for file in package_files {
         write_text(root.path().join(&file.path), &file.content)?;
     }
-    copy_standalone_fixtures(loaded, root.path())?;
     Ok(Some(PublishHarnessPackage { root }))
 }
 
@@ -59,6 +56,7 @@ pub(super) fn run_publish_harness(
     let orchestrator = orchestrator.with_environment(publish_harness_env(
         workspace_env,
         &receipt_root.path().join("home"),
+        harness_path,
     ));
     let request = PackageHarnessRequest {
         skill_path: harness_path.to_path_buf(),
@@ -95,27 +93,6 @@ pub(super) fn run_publish_harness(
         )));
     }
     Ok(report)
-}
-
-fn copy_standalone_fixtures(
-    loaded: &LoadedSkillPackage,
-    destination_root: &Path,
-) -> Result<(), RegistryPublishPackageError> {
-    for (relative, fixture) in &loaded.package.harness_fixtures {
-        let Some(file_name) = relative.strip_prefix("fixtures/") else {
-            continue;
-        };
-        if file_name.contains('/') || fixture.kind == HarnessFixtureKind::Graph {
-            continue;
-        }
-        let contents = loaded.package.source.files.get(relative).ok_or_else(|| {
-            RegistryPublishPackageError::invalid(format!(
-                "validated harness fixture {relative} is missing from package source"
-            ))
-        })?;
-        write_bytes(destination_root.join(relative), contents)?;
-    }
-    Ok(())
 }
 
 fn write_text(path: PathBuf, content: &str) -> Result<(), RegistryPublishPackageError> {
@@ -169,6 +146,7 @@ fn mark_executable_if_script(
 fn publish_harness_env(
     workspace_env: &BTreeMap<String, String>,
     runx_home: &Path,
+    harness_path: &Path,
 ) -> BTreeMap<String, String> {
     let mut env = workspace_env.clone();
     env.retain(|key, _| !key.starts_with("RUNX_HOSTED_"));
@@ -178,6 +156,10 @@ fn publish_harness_env(
     env.insert(
         "RUNX_HOME".to_owned(),
         runx_home.to_string_lossy().into_owned(),
+    );
+    env.insert(
+        crate::RUNX_CWD_ENV.to_owned(),
+        harness_path.to_string_lossy().into_owned(),
     );
     ensure_signing_env(&mut env);
     env
@@ -259,12 +241,20 @@ mod tests {
             ("RUNX_AGENT_API_KEY".to_owned(), "agent-secret".to_owned()),
             ("HTTP_PROXY".to_owned(), "http://proxy.test".to_owned()),
         ]);
-        let env = publish_harness_env(&workspace_env, Path::new("/tmp/runx-publish-home"));
+        let env = publish_harness_env(
+            &workspace_env,
+            Path::new("/tmp/runx-publish-home"),
+            Path::new("/tmp/runx-publish-workspace"),
+        );
         assert!(env.keys().all(|key| !key.starts_with("RUNX_HOSTED_")));
         assert!(!env.contains_key("RUNX_AGENT_API_KEY"));
         assert_eq!(
             env.get("HTTP_PROXY").map(String::as_str),
             Some("http://proxy.test")
+        );
+        assert_eq!(
+            env.get(crate::RUNX_CWD_ENV).map(String::as_str),
+            Some("/tmp/runx-publish-workspace")
         );
         assert!(env.contains_key(RUNX_RECEIPT_SIGN_KID_ENV));
     }

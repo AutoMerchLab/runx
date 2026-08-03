@@ -216,7 +216,6 @@ fn javascript_source() -> SkillSource {
         timeout_seconds: None,
         input_mode: None,
         environment: EnvironmentRequirements::default(),
-        sandbox: None,
         server: None,
         tool: None,
         arguments: None,

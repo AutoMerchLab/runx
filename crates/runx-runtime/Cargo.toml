@@ -3,12 +3,12 @@ name = "runx-runtime"
 version = "0.1.0"
 edition.workspace = true
 rust-version.workspace = true
-description = "Native Rust runtime for local runx execution, adapters, harness replay, receipts, and sandboxing."
+description = "Native Rust runtime for local runx execution, adapters, process supervision, harness replay, and receipts."
 license.workspace = true
 repository.workspace = true
 homepage.workspace = true
 readme = "README.md"
-keywords = ["runx", "runtime", "agents", "sandbox", "mcp"]
+keywords = ["runx", "runtime", "agents", "governance", "mcp"]
 categories = ["development-tools"]
 include = ["Cargo.toml", "README.md", "assets/VOICE.md", "src/**/*.rs"]
 # Integration tests are compiled as a single binary (tests/integration.rs) so the

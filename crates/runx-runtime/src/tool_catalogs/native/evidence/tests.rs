@@ -50,7 +50,7 @@ fn indexes_a_governed_fetch_packet() {
     ]))
     .expect("typed index input");
 
-    let output = index::build(&inputs).expect("valid source should index");
+    let output = index::build(&inputs, "2026-07-18T00:00:00Z").expect("valid source should index");
     let index = output
         .as_object()
         .and_then(|value| value.get("source_index"))
@@ -95,7 +95,8 @@ fn invalid_fetch_evidence_is_blocked_without_runtime_failure() {
     ]))
     .expect("typed index input");
 
-    let output = index::build(&inputs).expect("invalid source is a governed outcome");
+    let output = index::build(&inputs, "2026-07-18T00:00:00Z")
+        .expect("invalid source is a governed outcome");
     assert_eq!(
         output
             .as_object()
@@ -104,6 +105,62 @@ fn invalid_fetch_evidence_is_blocked_without_runtime_failure() {
             .and_then(|value| value.get("decision"))
             .and_then(JsonValue::as_str),
         Some("needs_more_evidence")
+    );
+}
+
+#[test]
+fn indexes_a_native_local_file_read_without_remote_transport() {
+    let contents = "Local architecture evidence\n";
+    let content_digest = runx_contracts::sha256_prefixed(contents.as_bytes());
+    let inputs = fixture_input::<EvidenceIndexInput>(JsonObject::from([
+        (
+            "objective".to_owned(),
+            JsonValue::String("Inspect local architecture evidence".to_owned()),
+        ),
+        (
+            "source_packets".to_owned(),
+            JsonValue::Array(vec![JsonValue::Object(JsonObject::from([
+                (
+                    "path".to_owned(),
+                    JsonValue::String("docs/architecture.md".to_owned()),
+                ),
+                (
+                    "repo_root".to_owned(),
+                    JsonValue::String("/workspace".to_owned()),
+                ),
+                (
+                    "contents".to_owned(),
+                    JsonValue::String(contents.to_owned()),
+                ),
+                ("bytes".to_owned(), JsonValue::Number(JsonNumber::U64(28))),
+                ("truncated".to_owned(), JsonValue::Bool(false)),
+                (
+                    "content_digest".to_owned(),
+                    JsonValue::String(content_digest.clone()),
+                ),
+            ]))]),
+        ),
+    ]))
+    .expect("typed index input");
+
+    let output =
+        index::build(&inputs, "2026-07-18T00:00:00Z").expect("native file evidence should index");
+    let source = output
+        .as_object()
+        .and_then(|value| value.get("source_index"))
+        .and_then(JsonValue::as_object)
+        .and_then(|value| value.get("sources"))
+        .and_then(JsonValue::as_array)
+        .and_then(|values| values.first())
+        .and_then(JsonValue::as_object)
+        .expect("indexed local source");
+    assert_eq!(
+        source.get("source_kind").and_then(JsonValue::as_str),
+        Some("local_file")
+    );
+    assert_eq!(
+        source.get("content_digest").and_then(JsonValue::as_str),
+        Some(content_digest.as_str())
     );
 }
 

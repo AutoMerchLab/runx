@@ -19,12 +19,12 @@ pub(super) use capability::CAPABILITIES;
 use capability::{EvidenceIndexInput, EvidenceVerifyInput};
 use output::{EvidenceIndexOutput, EvidenceVerifyOutput};
 
-fn index_fetch_sources(
+fn index_sources(
     invocation: &NativeInvocation<'_, EvidenceIndexInput>,
 ) -> Result<EvidenceIndexOutput, RuntimeError> {
     decode_typed_output(
-        "evidence.index_fetch_sources",
-        index::build(invocation.inputs)?,
+        "evidence.index_sources",
+        index::build(invocation.inputs, invocation.observed_at)?,
     )
 }
 

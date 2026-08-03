@@ -353,12 +353,13 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "registry",
-        top_level_usage: &["runx registry search|read|resolve|install|publish ... --json"],
+        top_level_usage: &["runx registry search|read|resolve|install|package|publish ... --json"],
         usage: &[
             "runx registry search <query> [--registry url|path] [--registry-dir dir] [--limit n] [-j|--json]",
             "runx registry read <ref> [--registry url|path] [--registry-dir dir] [--version version] [-j|--json]",
             "runx registry resolve <ref> [--registry url|path] [--registry-dir dir] [--version version] [-j|--json]",
             "runx registry install <ref> [--registry url|path] [--registry-dir dir] [--version version] [--digest sha256] [--to dir] [-j|--json]",
+            "runx registry package <SKILL.md|skill-dir> [--profile X.yaml] [-j|--json]",
             "runx registry publish <SKILL.md|skill-dir> [--registry url|path] [--owner owner] [--version version] [--profile X.yaml] [--trust-tier tier] [--upsert] [-j|--json]",
         ],
         notes: &[],

@@ -190,7 +190,6 @@ function commandIntent(value) {
     command: text(command.command, 2_000),
     args: list(command.args, 64, 2_000),
     cwd: text(command.cwd, 512),
-    network: command.network === true,
     timeout_ms: Number(command.timeout_ms),
     env_names: Object.keys(object(command.env)).sort().slice(0, 64),
   };
@@ -215,15 +214,10 @@ function normalizeCommand(value, phase, identity) {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 1_000 || timeoutMs > 3_600_000) {
     throw new Error(`commands.${phase}.timeout_ms must be 1000-3600000`);
   }
-  const network = value.network ?? false;
-  if (typeof network !== "boolean") {
-    throw new Error(`commands.${phase}.network must be a boolean`);
-  }
   return {
     command: argv[0],
     args: argv.slice(1),
     cwd,
-    network,
     timeout_ms: timeoutMs,
     env: {
       RUNX_RELEASE_PHASE: phase,

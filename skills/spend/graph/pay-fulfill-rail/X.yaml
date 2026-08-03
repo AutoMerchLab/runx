@@ -217,6 +217,8 @@ runners:
     artifacts:
       wrap_as: effect_evidence_packet
       packet: runx.effect.evidence.v1
+    scopes:
+      - net:http
     runx:
       payment_authority:
         phase: fulfill

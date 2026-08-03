@@ -257,9 +257,11 @@ fn run_loaded_skill_step<A>(
 where
     A: SkillAdapter,
 {
-    let inputs =
-        crate::input_contract::materialize_runner_inputs(&skill.runner.inputs, &request.inputs)
-            .map_err(|error| runner_input_contract_error(request.step, &error))?;
+    let inputs = crate::input_contract::materialize_nested_runner_inputs(
+        &skill.runner.inputs,
+        &request.inputs,
+    )
+    .map_err(crate::input_contract::InputContractError::into_runtime_error)?;
     let request = StepHandlerCtx { inputs, ..request };
     let authority = request.authority.as_ref();
     // The invoked runner's artifact contract travels with the loaded skill so the
@@ -316,29 +318,6 @@ where
         },
         regular,
     )
-}
-
-fn runner_input_contract_error(
-    step: &GraphStep,
-    error: &crate::input_contract::InputContractError,
-) -> RuntimeError {
-    let reason = step
-        .context_edges
-        .iter()
-        .find(|edge| edge.input == error.input())
-        .map_or_else(
-            || error.to_string(),
-            |edge| {
-                format!(
-                    "context edge from step '{}' path '{}' into {}",
-                    edge.from_step, edge.output, error
-                )
-            },
-        );
-    RuntimeError::InvalidRunStep {
-        step_id: step.id.clone(),
-        reason,
-    }
 }
 
 fn run_nested_graph_skill_step<A>(
@@ -843,7 +822,7 @@ where
     // local-runtime witness when none was admitted. Handlers produce the output and
     // receipt; they never set the authority witness, so a new step type cannot
     // regress the uniform-governance invariant. See `docs/governance-invariant.md`
-    // for the full admit -> credentials -> sandbox -> seal contract.
+    // for the full admit -> credentials -> execution -> seal contract.
     let step_id = request.step.id.clone();
     let authority = request.authority.clone();
     let mut run = match kind {
@@ -1127,10 +1106,6 @@ fn inline_step_requirements(
     runx_contracts::ExecutionRequirements {
         scopes: step.scopes.clone(),
         environment: source.environment.clone(),
-        sandbox: source
-            .sandbox
-            .as_ref()
-            .map(|sandbox| JsonValue::Object(sandbox.raw.clone())),
         ..runx_contracts::ExecutionRequirements::default()
     }
 }
@@ -1622,22 +1597,20 @@ pub(super) fn runtime_error_step_run<A>(
 where
     A: SkillAdapter,
 {
-    #[cfg(feature = "agent")]
-    let (value, metadata, receipt_metadata) = match &error {
+    let (metadata, receipt_metadata) = match &error {
+        #[cfg(feature = "agent")]
         RuntimeError::ManagedAgentResolution { source, .. } => {
-            let projection = source.public_failure_projection();
             let metadata = source.receipt_metadata();
-            (
-                JsonValue::Object(projection),
-                metadata.clone(),
-                Some(metadata),
-            )
+            (metadata.clone(), Some(metadata))
         }
-        _ => (JsonValue::Null, JsonObject::new(), None),
+        _ => (JsonObject::new(), None),
     };
-    #[cfg(not(feature = "agent"))]
-    let (value, metadata, receipt_metadata) = (JsonValue::Null, JsonObject::new(), None);
-    let output = InvocationOutput::runtime_failure(value, error.to_string(), 0, metadata);
+    let output = InvocationOutput::runtime_failure(
+        JsonValue::Object(error.public_failure_projection()),
+        error.to_string(),
+        0,
+        metadata,
+    );
     let mut projection = project_step_claim(JsonObject::new());
     let receipt = seal_step(
         StepSeal {

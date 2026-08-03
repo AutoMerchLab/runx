@@ -45,14 +45,47 @@ pub(crate) fn materialize_tool_inputs(
     static_inputs: &JsonObject,
     resolved_inputs: &JsonObject,
 ) -> Result<JsonObject, InputContractError> {
-    materialize_declared_inputs(declared, static_inputs, resolved_inputs, "tool")
+    materialize_declared_inputs(
+        declared,
+        static_inputs,
+        resolved_inputs,
+        "tool",
+        MissingRequired::Reject,
+        UnknownInputs::Project,
+    )
 }
 
-pub(crate) fn materialize_runner_inputs(
+/// Materialize the declared boundary of a nested runner from the parent
+/// graph's ambient parameter map. Parent-only parameters are not child input;
+/// explicitly mapped values still receive the child's complete validation.
+pub(crate) fn materialize_nested_runner_inputs(
     declared: &BTreeMap<String, SkillInput>,
     supplied: &JsonObject,
 ) -> Result<JsonObject, InputContractError> {
-    materialize_declared_inputs(declared, supplied, &JsonObject::new(), "runner")
+    materialize_declared_inputs(
+        declared,
+        supplied,
+        &JsonObject::new(),
+        "runner",
+        MissingRequired::Reject,
+        UnknownInputs::Project,
+    )
+}
+
+/// Validate and normalize all values already supplied by a caller while
+/// preserving absent required inputs for the existing resolution flow.
+pub(crate) fn materialize_present_runner_inputs(
+    declared: &BTreeMap<String, SkillInput>,
+    supplied: &JsonObject,
+) -> Result<JsonObject, InputContractError> {
+    materialize_declared_inputs(
+        declared,
+        supplied,
+        &JsonObject::new(),
+        "runner",
+        MissingRequired::Preserve,
+        UnknownInputs::Reject,
+    )
 }
 
 fn materialize_declared_inputs(
@@ -60,14 +93,28 @@ fn materialize_declared_inputs(
     static_inputs: &JsonObject,
     resolved_inputs: &JsonObject,
     owner: &'static str,
+    missing_required: MissingRequired,
+    unknown_inputs: UnknownInputs,
 ) -> Result<JsonObject, InputContractError> {
     let mut supplied = static_inputs.clone();
     supplied.extend(resolved_inputs.clone());
 
+    if unknown_inputs == UnknownInputs::Reject
+        && let Some(name) = supplied.keys().find(|name| !declared.contains_key(*name))
+    {
+        return Err(InputContractError::new(
+            owner,
+            name,
+            format!("/{name}"),
+            format!("{owner} input '{name}' is not declared"),
+            JsonValue::Object(runx_contracts::input_contract_schema(declared)),
+        ));
+    }
+
     declared
         .iter()
         .filter_map(|(name, input)| {
-            materialize_input(owner, name, input, supplied.get(name)).transpose()
+            materialize_input(owner, name, input, supplied.get(name), missing_required).transpose()
         })
         .collect()
 }
@@ -77,23 +124,28 @@ fn materialize_input(
     name: &str,
     input: &SkillInput,
     supplied: Option<&JsonValue>,
+    missing_required: MissingRequired,
 ) -> Result<Option<(String, JsonValue)>, InputContractError> {
     let value = supplied.or(input.default.as_ref());
     let Some(value) = value else {
-        return if input.required {
-            Err(InputContractError::new(
+        return if input.required && missing_required == MissingRequired::Reject {
+            Err(input_error(
+                owner,
                 name,
                 format!("{owner} input '{name}' is required"),
+                input,
             ))
         } else {
             Ok(None)
         };
     };
     if matches!(value, JsonValue::Null) {
-        return if input.required {
-            Err(InputContractError::new(
+        return if input.required && missing_required == MissingRequired::Reject {
+            Err(input_error(
+                owner,
                 name,
                 format!("{owner} input '{name}' is required"),
+                input,
             ))
         } else {
             Ok(None)
@@ -101,31 +153,104 @@ fn materialize_input(
     }
 
     let value = if input.artifact == Some(true) {
-        unwrap_artifact(value, name).map_err(|message| InputContractError::new(name, message))?
+        unwrap_artifact(value, name).map_err(|message| input_error(owner, name, message, input))?
     } else {
         value.clone()
     };
     if matches!(value, JsonValue::Null) {
-        return if input.required {
-            Err(InputContractError::new(
+        return if input.required && missing_required == MissingRequired::Reject {
+            Err(input_error(
+                owner,
                 name,
                 format!("{owner} input '{name}' is required"),
+                input,
             ))
         } else {
             Ok(None)
         };
     }
     if !input.accepts_value(&value) {
-        return Err(InputContractError::new(
+        return Err(input_error(
+            owner,
             name,
             format!(
                 "{owner} input '{name}' must be {}, received {}",
                 input.input_type,
                 json_type(&value),
             ),
+            input,
         ));
     }
+    if input.schema.is_some() {
+        validate_schema_value(owner, name, input, &value)?;
+    }
     Ok(Some((name.to_owned(), value)))
+}
+
+fn validate_schema_value(
+    owner: &'static str,
+    name: &str,
+    input: &SkillInput,
+    value: &JsonValue,
+) -> Result<(), InputContractError> {
+    let accepted_schema = JsonValue::Object(input.effective_schema());
+    let schema = serde_json::to_value(&accepted_schema).map_err(|error| {
+        input_error(
+            owner,
+            name,
+            format!("declared input schema could not be serialized: {error}"),
+            input,
+        )
+    })?;
+    let validator = jsonschema::draft202012::options()
+        .build(&schema)
+        .map_err(|error| {
+            input_error(
+                owner,
+                name,
+                format!("declared input schema is invalid: {error}"),
+                input,
+            )
+        })?;
+    let instance = serde_json::to_value(value).map_err(|error| {
+        input_error(
+            owner,
+            name,
+            format!("input value could not be serialized: {error}"),
+            input,
+        )
+    })?;
+    let Some(error) = validator.iter_errors(&instance).next() else {
+        return Ok(());
+    };
+    let nested = error.instance_path().as_str();
+    let path = if nested.is_empty() {
+        format!("/{name}")
+    } else {
+        format!("/{name}{nested}")
+    };
+    Err(InputContractError::new(
+        owner,
+        name,
+        path,
+        error.to_string(),
+        accepted_schema,
+    ))
+}
+
+fn input_error(
+    owner: &'static str,
+    name: &str,
+    message: impl Into<String>,
+    input: &SkillInput,
+) -> InputContractError {
+    InputContractError::new(
+        owner,
+        name,
+        format!("/{name}"),
+        message,
+        JsonValue::Object(input.effective_schema()),
+    )
 }
 
 fn unwrap_artifact(value: &JsonValue, name: &str) -> Result<JsonValue, String> {
@@ -162,27 +287,180 @@ fn json_type(value: &JsonValue) -> &'static str {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MissingRequired {
+    Reject,
+    Preserve,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum UnknownInputs {
+    Reject,
+    Project,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub(crate) struct InputContractError {
+    owner: &'static str,
     input: String,
+    path: String,
     message: String,
+    accepted_schema: JsonValue,
 }
 
 impl InputContractError {
-    fn new(input: impl Into<String>, message: impl Into<String>) -> Self {
+    fn new(
+        owner: &'static str,
+        input: impl Into<String>,
+        path: impl Into<String>,
+        message: impl Into<String>,
+        accepted_schema: JsonValue,
+    ) -> Self {
         Self {
+            owner,
             input: input.into(),
+            path: path.into(),
             message: message.into(),
+            accepted_schema,
         }
     }
 
-    pub(crate) fn input(&self) -> &str {
-        &self.input
+    pub(crate) fn into_runtime_error(self) -> crate::RuntimeError {
+        crate::RuntimeError::InputContract {
+            step_id: None,
+            owner: self.owner,
+            input: self.input,
+            path: self.path,
+            message: self.message,
+            accepted_schema: self.accepted_schema,
+        }
     }
 }
 
 impl fmt::Display for InputContractError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str(&self.message)
+        write!(
+            formatter,
+            "{} input contract failed at '{}': {}",
+            self.owner, self.path, self.message
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use runx_contracts::{InputDefinition, JsonNumber, JsonObject, JsonValue};
+
+    use super::{materialize_nested_runner_inputs, materialize_present_runner_inputs};
+
+    fn string_input(required: bool) -> InputDefinition {
+        InputDefinition {
+            input_type: "string".to_owned(),
+            required,
+            description: None,
+            default: None,
+            artifact: None,
+            packet: None,
+            schema: None,
+        }
+    }
+
+    #[test]
+    fn nested_runner_projects_its_contract_from_parent_graph_parameters() {
+        let declared = BTreeMap::from([("objective".to_owned(), string_input(true))]);
+        let supplied = JsonObject::from([
+            (
+                "objective".to_owned(),
+                JsonValue::String("Bounded question".to_owned()),
+            ),
+            (
+                "parent_only".to_owned(),
+                JsonValue::String("must not cross the child boundary".to_owned()),
+            ),
+        ]);
+
+        let nested = materialize_nested_runner_inputs(&declared, &supplied)
+            .expect("parent-only graph parameters should be projected out");
+        assert_eq!(nested.len(), 1);
+        assert_eq!(
+            nested.get("objective").and_then(JsonValue::as_str),
+            Some("Bounded question")
+        );
+        assert!(materialize_present_runner_inputs(&declared, &supplied).is_err());
+    }
+
+    #[test]
+    fn nested_contract_error_names_the_failing_path_and_accepted_shape() {
+        let resources = InputDefinition {
+            input_type: "object".to_owned(),
+            required: true,
+            description: Some("Bounded issue selector.".to_owned()),
+            default: None,
+            artifact: None,
+            packet: None,
+            schema: Some(JsonObject::from([
+                (
+                    "required".to_owned(),
+                    JsonValue::Array(vec![JsonValue::String("filters".to_owned())]),
+                ),
+                (
+                    "properties".to_owned(),
+                    JsonValue::Object(JsonObject::from([(
+                        "filters".to_owned(),
+                        JsonValue::Object(JsonObject::from([
+                            ("type".to_owned(), JsonValue::String("object".to_owned())),
+                            (
+                                "properties".to_owned(),
+                                JsonValue::Object(JsonObject::from([(
+                                    "limit".to_owned(),
+                                    JsonValue::Object(JsonObject::from([
+                                        (
+                                            "type".to_owned(),
+                                            JsonValue::String("integer".to_owned()),
+                                        ),
+                                        (
+                                            "maximum".to_owned(),
+                                            JsonValue::Number(JsonNumber::U64(25)),
+                                        ),
+                                    ])),
+                                )])),
+                            ),
+                        ])),
+                    )])),
+                ),
+            ])),
+        };
+        let declared = BTreeMap::from([("resources".to_owned(), resources)]);
+        let supplied = JsonObject::from([(
+            "resources".to_owned(),
+            JsonValue::Object(JsonObject::from([(
+                "filters".to_owned(),
+                JsonValue::Object(JsonObject::from([(
+                    "limit".to_owned(),
+                    JsonValue::Number(JsonNumber::U64(26)),
+                )])),
+            )])),
+        )]);
+
+        let error = materialize_present_runner_inputs(&declared, &supplied)
+            .expect_err("out-of-range nested input must fail")
+            .into_runtime_error();
+        let crate::RuntimeError::InputContract {
+            path,
+            accepted_schema,
+            ..
+        } = error
+        else {
+            panic!("expected input-contract error");
+        };
+        assert_eq!(path, "/resources/filters/limit");
+        let accepted_schema =
+            serde_json::to_value(accepted_schema).expect("accepted input schema must serialize");
+        assert_eq!(
+            accepted_schema["properties"]["filters"]["properties"]["limit"]["maximum"],
+            25
+        );
     }
 }

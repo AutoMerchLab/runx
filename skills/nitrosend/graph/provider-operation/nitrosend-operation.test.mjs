@@ -7,14 +7,14 @@ import {
   prepareOperation,
 } from "./nitrosend-operation.mjs";
 
-function mcpPayload(result) {
+function mcpPayload(result, meta = { tool: "fixture" }) {
   return {
     jsonrpc: "2.0",
     id: "fixture",
     result: {
       content: [{
         type: "text",
-        text: JSON.stringify({ meta: { tool: "fixture" }, result }),
+        text: JSON.stringify({ meta, result }),
       }],
     },
   };
@@ -117,6 +117,105 @@ test("threads exact flow revisions and preserves campaign lifecycle behavior", (
     arguments: { target_type: "campaign", target_id: 42, operation: "approve" },
   }).operation_plan;
   assert.equal(campaignApprove.decision, "ready");
+});
+
+test("requires exact brand-scoped sender settings before HTTP", () => {
+  for (const mode of ["read", "act"]) {
+    const operation = mode === "read" ? "sender_settings" : "configure_sender";
+    const plan = prepareOperation({
+      mode,
+      operation,
+      arguments:
+        mode === "read"
+          ? {}
+          : {
+              from_name: "Sourcey",
+              from_email: "hello@sourcey.com",
+              reply_to: "hello@sourcey.com",
+              test_email_recipients: [],
+            },
+    }).operation_plan;
+    assert.equal(plan.decision, "refused");
+    assert.deepEqual(plan.requests, []);
+  }
+
+  const invalid = prepareOperation({
+    mode: "act",
+    operation: "configure_sender",
+    brand_sid: "br_sourcey",
+    arguments: {
+      from_name: "Sourcey",
+      from_email: "hello@sourcey.com",
+      reply_to: "not-an-email",
+      test_email_recipients: [],
+    },
+  }).operation_plan;
+  assert.equal(invalid.decision, "needs_input");
+  assert.deepEqual(invalid.requests, []);
+});
+
+test("prepares and normalizes exact brand-scoped sender configuration", () => {
+  const requested = {
+    from_name: "Sourcey",
+    from_email: "hello@sourcey.com",
+    reply_to: "hello@sourcey.com",
+    test_email_recipients: ["kam@sourcey.com"],
+  };
+  const plan = prepareOperation({
+    mode: "act",
+    operation: "configure_sender",
+    arguments: requested,
+    brand_sid: "br_sourcey",
+  }).operation_plan;
+
+  assert.equal(plan.decision, "ready");
+  assert.equal(plan.tool, "nitro_configure_account");
+  assert.equal(plan.brand_sid, "br_sourcey");
+  assert.equal(plan.requests[0].headers["x-brand-sid"], "br_sourcey");
+  assert.deepEqual(plan.requests[0].body.params.arguments, requested);
+
+  const { provider_evidence: evidence } = normalizeOperation({
+    operation_plan: plan,
+    http_execution: {
+      responses: [
+        {
+          id: "nitrosend-configure_sender",
+          status: 200,
+          ok: true,
+          body_digest: "sha256:sender",
+          json: mcpPayload(
+            {
+              sender: {
+                from_name: requested.from_name,
+                from_email: requested.from_email,
+                reply_to: requested.reply_to,
+              },
+              test_email_recipients: requested.test_email_recipients,
+            },
+            {
+              tool: "nitro_configure_account",
+              current_brand: { sid: "br_sourcey", name: "Sourcey" },
+            },
+          ),
+        },
+      ],
+    },
+  });
+
+  assert.equal(evidence.decision, "ok");
+  assert.equal(evidence.result.current_brand.sid, "br_sourcey");
+  assert.deepEqual(evidence.result.sender, {
+    from_name: "Sourcey",
+    from_email: "hello@sourcey.com",
+    reply_to: "hello@sourcey.com",
+  });
+  assert.deepEqual(evidence.result.sender_settings, {
+    brand_sid: "br_sourcey",
+    from_name: "Sourcey",
+    from_email: "hello@sourcey.com",
+    reply_to: "hello@sourcey.com",
+    test_email_recipients: ["kam@sourcey.com"],
+  });
 });
 
 test("maps consented inline imports without forwarding audit-only fields", () => {

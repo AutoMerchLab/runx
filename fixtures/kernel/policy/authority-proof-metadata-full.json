@@ -27,6 +27,9 @@
           ],
           "status": "resolved"
         },
+        "execution_boundary": {
+          "kind": "remote_provider"
+        },
         "redaction": {
           "metadata_secret_keys": [
             "token-like metadata keys",
@@ -44,36 +47,15 @@
           "authority_kind": "read_only",
           "connected_auth": true,
           "mutating": true,
-          "sandbox_profile": "workspace-write",
           "scope_family": "github_repo",
           "scopes": [
+            "opaque capability with spaces",
             "repo:read"
           ],
           "target_locator": "runxhq/runx#issue/4",
           "target_repo": "runxhq/runx"
         },
         "run_id": "run_policy_fixture",
-        "sandbox": {
-          "approval_approved": true,
-          "approval_required": false,
-          "cwd_policy": "workspace",
-          "filesystem": {
-            "enforcement": "bubblewrap-mount-namespace",
-            "private_tmp": true,
-            "readonly_paths": false,
-            "writable_paths_enforced": true
-          },
-          "network": {
-            "declared": false,
-            "enforcement": "isolated-namespace"
-          },
-          "profile": "workspace-write",
-          "require_enforcement": true,
-          "runtime": {
-            "enforcer": "bubblewrap",
-            "reason": "fixture"
-          }
-        },
         "schema_version": "runx.authority-proof.v1",
         "scope_admission": {
           "decision_summary": "matching active grant admitted",
@@ -135,6 +117,9 @@
           "repo:read"
         ]
       },
+      "executionBoundary": {
+        "kind": "remote_provider"
+      },
       "grants": [
         {
           "authority_kind": "read_only",
@@ -154,31 +139,9 @@
       ],
       "mutating": true,
       "runId": "run_policy_fixture",
-      "sandboxDeclaration": {
-        "cwdPolicy": "workspace",
-        "network": false,
-        "profile": "workspace-write",
-        "requireEnforcement": true
-      },
-      "sandboxMetadata": {
-        "cwd_policy": "workspace",
-        "filesystem": {
-          "enforcement": "bubblewrap-mount-namespace",
-          "private_tmp": true,
-          "readonly_paths": false,
-          "writable_paths_enforced": true
-        },
-        "network": {
-          "declared": false,
-          "enforcement": "isolated-namespace"
-        },
-        "profile": "workspace-write",
-        "require_enforcement": true,
-        "runtime": {
-          "enforcer": "bubblewrap",
-          "reason": "fixture"
-        }
-      },
+      "scopes": [
+        "opaque capability with spaces"
+      ],
       "skillName": "issue-intake",
       "sourceType": "agent-task"
     }

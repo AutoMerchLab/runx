@@ -19,6 +19,9 @@ work. Those are product-operator concerns owned by the Nitrosend repository.
 
 - `status` (default): live account, brand, sender, domain, provider, warmup, and
   deliverability readiness.
+- `configure-sender`: read, approve, update, and independently read back one
+  explicitly selected brand's exact sender defaults. It configures no content,
+  audience, campaign, flow, or delivery.
 - `analytics`: live account, campaign, flow, or message insights.
 - `review-delivery`: read-only content and preflight review. Flow review requires
   the exact immutable `revision_id`; campaigns and templates do not.
@@ -53,21 +56,29 @@ into another repo-local skill.
 
 1. Run `status` and stop on sender, domain, suspension, warmup, or account
    blockers.
-2. For email authoring, use `compose-email` so Nitrosend supplies current brand
+2. Correct sender defaults only through `configure-sender`. Supply the public
+   brand SID even when the credential currently defaults to that brand, plus
+   the complete sender name, sender address, reply-to address, saved test
+   recipients, and a stable idempotency key. The runner reads the selected
+   brand before approval and independently reads it again after mutation.
+   A missing brand SID, different readback brand, or changed field stops the
+   operation; never fall back to an account default.
+3. For email authoring, use `compose-email` so Nitrosend supplies current brand
    and memory context before the model writes. Treat its MCP validation as
    authoritative; repair in another bounded turn when requested. For other
    planning, use the matching planning runner.
-3. Apply only validated arguments through `apply-draft`; that separate runner
+4. Apply only validated arguments through `apply-draft`; that separate runner
    retains the approval gate and is the first persistence boundary.
-4. Run `review-delivery` before approval. For flows, carry the exact current
+5. Run `review-delivery` before approval. For flows, carry the exact current
    `revision_id` unchanged through review, approval, and activation. Use
    `approve-delivery` separately so retries never combine approval-state
    mutation with recipient delivery.
-5. Use `send-campaign` or `activate-flow` only after provider approval state is
+6. Use `send-campaign` or `activate-flow` only after provider approval state is
    established. A fresh review and Runx approval gate are mandatory.
-6. Give every real transactional send, campaign delivery, and import a stable
+7. Give every sender update, real transactional send, campaign delivery, and
+   import a stable
    idempotency key. Reuse that key after a timeout; do not mint a new one.
-7. Treat completion as real only when the sealed receipt contains Nitrosend
+8. Treat completion as real only when the sealed receipt contains Nitrosend
    provider evidence. A plan receipt is not proof of send, schedule, activation,
    or import.
 
@@ -85,6 +96,8 @@ rather than keeping a resident polling loop.
 ## Stop conditions
 
 - Missing provider credential or brand context.
+- Missing explicit brand SID or incomplete sender defaults for a sender update.
+- Sender readback that resolves another brand or differs from the exact request.
 - Unsupported operation, audience, segment filter, or lifecycle transition.
 - Missing consent source, recipient, schedule time, or idempotency key.
 - Failed provider review or preflight.

@@ -11,7 +11,6 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 use runx_contracts::OutputType;
-use runx_contracts::tools::ToolInput;
 use runx_contracts::{
     AgentContextEnvelope, JsonObject, JsonValue, OutputField, ResolutionRequest,
     output_value_schema,
@@ -117,48 +116,8 @@ fn tool_definitions<'a>(
     Ok(tools)
 }
 
-fn tool_input_schema(inputs: &BTreeMap<String, ToolInput>) -> JsonValue {
-    let properties = inputs
-        .iter()
-        .map(|(name, input)| (name.clone(), JsonValue::Object(tool_input_property(input))))
-        .collect::<JsonObject>();
-    let required = inputs
-        .iter()
-        .filter(|(_, input)| input.required)
-        .map(|(name, _)| JsonValue::String(name.clone()))
-        .collect();
-    JsonValue::Object(JsonObject::from([
-        ("type".to_owned(), JsonValue::String("object".to_owned())),
-        ("properties".to_owned(), JsonValue::Object(properties)),
-        ("required".to_owned(), JsonValue::Array(required)),
-        ("additionalProperties".to_owned(), JsonValue::Bool(false)),
-    ]))
-}
-
-fn tool_input_property(input: &ToolInput) -> JsonObject {
-    let mut schema = JsonObject::new();
-    if matches!(
-        input.input_type.as_str(),
-        "string" | "number" | "integer" | "boolean" | "object" | "array"
-    ) {
-        schema.insert(
-            "type".to_owned(),
-            JsonValue::String(input.input_type.clone()),
-        );
-    }
-    if let Some(description) = &input.description {
-        schema.insert(
-            "description".to_owned(),
-            JsonValue::String(description.clone()),
-        );
-    }
-    if let Some(default) = &input.default
-        && let Ok(wire) = serde_json::to_value(default)
-        && let Ok(value) = serde_json::from_value(wire)
-    {
-        schema.insert("default".to_owned(), value);
-    }
-    schema
+fn tool_input_schema(inputs: &BTreeMap<String, runx_contracts::tools::ToolInput>) -> JsonValue {
+    JsonValue::Object(runx_contracts::input_contract_schema(inputs))
 }
 
 fn build_prompt(envelope: &AgentContextEnvelope) -> Result<String, AgentResolverError> {
@@ -431,7 +390,13 @@ mod tests {
             instructions: non_empty(instructions),
             inputs,
             allowed_tools: vec![non_empty("fs.read")],
-            requirements: runx_contracts::AgentExecutionRequirements::default(),
+            requirements: runx_contracts::AgentExecutionRequirements {
+                declaration: runx_contracts::ExecutionRequirements::default(),
+                environment: Vec::new(),
+                execution_boundary: runx_contracts::ExecutionBoundaryObservation {
+                    kind: runx_contracts::ExecutionBoundaryKind::RemoteProvider,
+                },
+            },
             current_context,
             historical_context: Vec::new(),
             provenance: Vec::new(),

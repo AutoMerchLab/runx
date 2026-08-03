@@ -1141,10 +1141,7 @@ mod tests {
         let mut options = RuntimeOptions {
             created_at: "2026-05-18T00:00:00Z".to_owned(),
             env: BTreeMap::from([
-                (
-                    "RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY".to_owned(),
-                    "local".to_owned(),
-                ),
+                ("OPERATOR_ENV".to_owned(), "preserved".to_owned()),
                 ("FIXTURE_OVERRIDE".to_owned(), "operator".to_owned()),
             ]),
             receipt_signature: RuntimeReceiptSignatureConfig::local_development(),
@@ -1159,8 +1156,8 @@ mod tests {
         overlay_harness_env(&mut options, &fixture_env);
 
         assert_eq!(
-            options.env.get("RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY"),
-            Some(&"local".to_owned())
+            options.env.get("OPERATOR_ENV"),
+            Some(&"preserved".to_owned())
         );
         assert_eq!(
             options.env.get("FIXTURE_OVERRIDE"),

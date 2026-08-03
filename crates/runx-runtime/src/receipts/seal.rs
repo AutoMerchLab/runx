@@ -238,7 +238,8 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
         authority_override: None,
         previous: None,
     });
-    bind_step_output_identity(receipt.as_mut(), output, claim)?;
+    bind_step_identity(receipt.as_mut(), output, claim)?;
+    bind_execution_boundary(receipt.as_mut(), output)?;
     receipt.as_mut().metadata = receipt_metadata_with_execution_limits(receipt_metadata, output)?;
     let receipt = receipt.seal(signature_policy)?;
     if !child_receipts.is_empty() {
@@ -249,6 +250,25 @@ fn step_receipt_with_disposition_projection_authority_and_policy(
         )?;
     }
     Ok(receipt)
+}
+
+fn bind_execution_boundary(
+    receipt: &mut Receipt,
+    output: &InvocationOutput,
+) -> Result<(), RuntimeError> {
+    let Some(value) = output
+        .metadata
+        .get(runx_contracts::EXECUTION_BOUNDARY_METADATA)
+    else {
+        return Ok(());
+    };
+    let observation = serde_json::to_value(value)
+        .and_then(serde_json::from_value)
+        .map_err(|source| RuntimeError::ReceiptInvalid {
+            message: format!("invalid execution boundary metadata: {source}"),
+        })?;
+    receipt.authority.enforcement.execution_boundary = Some(observation);
+    Ok(())
 }
 
 fn receipt_metadata_with_execution_limits(
@@ -791,17 +811,17 @@ fn build_graph_receipt(
     receipt
 }
 
-// Output identity binds the sealed contract claim: status plus the step's
-// declared outputs. Raw transport values and diagnostics (duration, stderr,
-// exit codes) are observability, deliberately excluded: a sealed-effect replay
-// rebuilds identity from the durable claim alone and must bind to the same
-// locator.
-fn bind_step_output_identity(
+// Step identity binds the sealed contract claim and the semantic identities of
+// direct child receipts. Raw transport values, diagnostics, and child proof
+// envelopes remain excluded: a replay of the same declared claim and child
+// identities must retain its address, while a changed nested execution must
+// propagate to every ancestor.
+fn bind_step_identity(
     receipt: &mut Receipt,
     output: &InvocationOutput,
     claim: &JsonObject,
 ) -> Result<(), RuntimeError> {
-    let material = canonical_stable_json(&JsonValue::Object(JsonObject::from([
+    let mut identity = JsonObject::from([
         (
             "status".to_owned(),
             JsonValue::String(
@@ -814,9 +834,21 @@ fn bind_step_output_identity(
             ),
         ),
         ("claim".to_owned(), JsonValue::Object(claim.clone())),
-    ])))
-    .map_err(|error| RuntimeError::ReceiptInvalid {
-        message: error.to_string(),
+    ]);
+    let child_ids = receipt
+        .lineage
+        .as_ref()
+        .into_iter()
+        .flat_map(|lineage| &lineage.children)
+        .map(|reference| JsonValue::String(reference.uri.to_string()))
+        .collect::<Vec<_>>();
+    if !child_ids.is_empty() {
+        identity.insert("children".to_owned(), JsonValue::Array(child_ids));
+    }
+    let material = canonical_stable_json(&JsonValue::Object(identity)).map_err(|error| {
+        RuntimeError::ReceiptInvalid {
+            message: error.to_string(),
+        }
     })?;
     receipt.subject.reference.locator =
         Some(format!("sha256:{}", sha256_hex(material.as_bytes())).into());
@@ -1067,6 +1099,7 @@ fn authority(grant_refs: Vec<Reference>, scope_refs: Vec<Reference>) -> ReceiptA
         mandate_ref: None,
         enforcement: ReceiptEnforcement {
             profile_hash: enforcement_profile_hash(&redaction_refs, &setup_refs, &teardown_refs),
+            execution_boundary: None,
             redaction_refs,
             setup_refs,
             teardown_refs,
@@ -1211,6 +1244,7 @@ pub(crate) fn domain_act_receipt(
         mandate_ref: None,
         enforcement: ReceiptEnforcement {
             profile_hash: enforcement_profile_hash(&redaction_refs, &setup_refs, &teardown_refs),
+            execution_boundary: None,
             redaction_refs,
             setup_refs,
             teardown_refs,
@@ -1803,10 +1837,31 @@ mod tests {
                 "{key} must not be silently discarded"
             );
         }
+
+        let output = InvocationOutput::runtime_success(
+            JsonValue::Object(JsonObject::new()),
+            1,
+            JsonObject::from([(
+                runx_contracts::EXECUTION_BOUNDARY_METADATA.to_owned(),
+                JsonValue::String("untrusted".to_owned()),
+            )]),
+        );
+        assert!(
+            step_receipt(
+                "evidence_graph",
+                "boundary_step",
+                1,
+                &output,
+                &JsonObject::new(),
+                "2026-05-28T00:00:00Z"
+            )
+            .is_err(),
+            "malformed execution boundary must not be silently discarded"
+        );
     }
 
     #[test]
-    fn execution_limit_hit_is_copied_into_signed_receipt_metadata() -> Result<(), TestError> {
+    fn execution_limit_hit_is_copied_into_receipt_read_metadata() -> Result<(), TestError> {
         let limits = JsonObject::from([(
             "hit".to_owned(),
             JsonValue::Object(JsonObject::from([
@@ -1844,6 +1899,34 @@ mod tests {
                 .as_ref()
                 .and_then(|metadata| metadata.get(EXECUTION_LIMITS_METADATA)),
             Some(&JsonValue::Object(limits))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn observed_execution_boundary_is_bound_into_signed_authority() -> Result<(), TestError> {
+        let output = InvocationOutput::runtime_success(
+            JsonValue::Object(JsonObject::new()),
+            1,
+            crate::process_invocation::boundary_metadata(
+                runx_contracts::ExecutionBoundaryKind::TrustedHostProcess,
+            )?,
+        );
+
+        let receipt = step_receipt(
+            "boundary_graph",
+            "boundary_step",
+            1,
+            &output,
+            &JsonObject::new(),
+            "2026-05-28T00:00:00Z",
+        )?;
+
+        assert_eq!(
+            receipt.authority.enforcement.execution_boundary,
+            Some(runx_contracts::ExecutionBoundaryObservation {
+                kind: runx_contracts::ExecutionBoundaryKind::TrustedHostProcess,
+            })
         );
         Ok(())
     }
@@ -1911,6 +1994,44 @@ mod tests {
             first.subject.reference.locator,
             changed.subject.reference.locator
         );
+        Ok(())
+    }
+
+    #[test]
+    fn step_receipt_identity_commits_direct_child_identities() -> Result<(), TestError> {
+        let child = |value: &str| {
+            identity_receipt(
+                "transport",
+                JsonObject::from([("value".to_owned(), JsonValue::String(value.to_owned()))]),
+            )
+        };
+        let outer = |child: &Receipt| {
+            let output = successful_output("outer transport");
+            step_receipt_with_disposition_projection_authority_and_policy(StepReceiptSeal {
+                params: StepReceiptWithDisposition::with_default_closure(
+                    "outer_graph",
+                    "outer_step",
+                    1,
+                    &output,
+                    "2026-05-28T00:00:00Z",
+                ),
+                claim: &JsonObject::new(),
+                projection_refs: StepOutputRefs::default(),
+                child_receipts: std::slice::from_ref(child),
+                descendant_receipts: &[],
+                authority_grant_refs: Vec::new(),
+                authority_scope_refs: Vec::new(),
+                receipt_metadata: None,
+                signature_policy: RuntimeReceiptSignaturePolicy::local_development(),
+            })
+        };
+
+        let first = outer(&child("first")?)?;
+        let replay = outer(&child("first")?)?;
+        let changed = outer(&child("changed")?)?;
+
+        assert_eq!(first.id, replay.id);
+        assert_ne!(first.id, changed.id);
         Ok(())
     }
 

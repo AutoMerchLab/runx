@@ -1,4 +1,4 @@
-use runx_contracts::AuthorityVerb;
+use runx_contracts::{AuthorityVerb, JsonObject, JsonValue};
 use runx_core::state_machine::FanoutSyncDecision;
 use thiserror::Error;
 
@@ -106,8 +106,8 @@ pub enum RuntimeError {
     UnsupportedRunnerSelection { runner: String },
     #[error("cli-tool source is missing command")]
     MissingCommand,
-    #[error("sandbox violation: {message}")]
-    SandboxViolation { message: String },
+    #[error("process invocation is invalid: {message}")]
+    InvalidProcessInvocation { message: String },
     #[error(
         "required environment variable(s) are unavailable: {}",
         .names.join(", ")
@@ -129,6 +129,15 @@ pub enum RuntimeError {
     },
     #[error("skill '{skill_name}' failed: {message}")]
     SkillFailed { skill_name: String, message: String },
+    #[error("{owner} input contract failed at '{path}': {message}")]
+    InputContract {
+        step_id: Option<String>,
+        owner: &'static str,
+        input: String,
+        path: String,
+        message: String,
+        accepted_schema: runx_contracts::JsonValue,
+    },
     #[error("receipt validation failed: {message}")]
     ReceiptInvalid { message: String },
 }
@@ -203,11 +212,12 @@ impl RuntimeError {
             | Self::UnsupportedSource { .. }
             | Self::UnsupportedRunnerSelection { .. }
             | Self::MissingCommand
-            | Self::SandboxViolation { .. }
+            | Self::InvalidProcessInvocation { .. }
             | Self::MissingEnvironment { .. }
             | Self::JavaScriptWorker { .. }
             | Self::CredentialDelivery(_)
             | Self::SkillFailed { .. } => false,
+            Self::InputContract { .. } => false,
             #[cfg(feature = "agent")]
             Self::ManagedAgentResolution { .. } => false,
         }
@@ -231,6 +241,68 @@ impl RuntimeError {
         }))
     }
 
+    /// Safe structured failure returned by both direct and graph-backed skill
+    /// fronts. The same projection is bound into the failed step receipt and
+    /// returned to the caller, so diagnostics never depend on scraping prose.
+    pub(crate) fn public_failure_projection(&self) -> JsonObject {
+        let mut projection = JsonObject::from([
+            (
+                "code".to_owned(),
+                JsonValue::String("runtime_error".to_owned()),
+            ),
+            ("message".to_owned(), JsonValue::String(self.to_string())),
+        ]);
+        match self {
+            Self::InputContract {
+                step_id,
+                owner,
+                input,
+                path,
+                accepted_schema,
+                ..
+            } => {
+                projection.insert(
+                    "code".to_owned(),
+                    JsonValue::String("input_contract_invalid".to_owned()),
+                );
+                if let Some(step_id) = step_id {
+                    projection.insert("step_id".to_owned(), JsonValue::String(step_id.clone()));
+                }
+                projection.insert("owner".to_owned(), JsonValue::String((*owner).to_owned()));
+                projection.insert("input".to_owned(), JsonValue::String(input.clone()));
+                projection.insert("path".to_owned(), JsonValue::String(path.clone()));
+                projection.insert("accepted_schema".to_owned(), accepted_schema.clone());
+            }
+            #[cfg(feature = "agent")]
+            Self::ManagedAgentResolution { source, .. } => {
+                projection = source.public_failure_projection();
+            }
+            _ => {}
+        }
+        projection
+    }
+
+    /// Authoritative graph-step identity attached by the dispatch chokepoint.
+    /// Terminal sealing consumes this instead of guessing identity from error
+    /// prose or nested capability names.
+    pub(crate) fn graph_step_id(&self) -> Option<&str> {
+        match self {
+            Self::StepMissing { step_id }
+            | Self::StepMissingSkill { step_id }
+            | Self::InvalidRunStep { step_id, .. }
+            | Self::UnsupportedRunStep { step_id, .. }
+            | Self::GraphBlocked { step_id, .. }
+            | Self::AuthorityDenied { step_id, .. }
+            | Self::GraphPlanningFailed { step_id, .. }
+            | Self::GraphPaused { step_id, .. }
+            | Self::GraphEscalated { step_id, .. } => Some(step_id),
+            Self::InputContract { step_id, .. } => step_id.as_deref(),
+            #[cfg(feature = "agent")]
+            Self::ManagedAgentResolution { step_id, .. } => Some(step_id),
+            _ => None,
+        }
+    }
+
     #[cfg(feature = "agent")]
     pub(crate) fn managed_agent_resolution(
         step_id: impl Into<String>,
@@ -244,16 +316,42 @@ impl RuntimeError {
         }
     }
 
-    /// Bind host-resolution failures to the graph step that owns the act.
+    /// Bind every sealable failure to the graph step that owns the act.
     ///
-    /// A referenced agent skill names itself in the agent envelope, which is
-    /// useful provider context but is not necessarily the outer graph step id.
-    /// The execution chokepoint always has the authoritative graph step, so it
-    /// normalizes that identity before terminal failure sealing.
+    /// Nested skills and adapters may name their own capability, which is useful
+    /// diagnostic context but is not necessarily the outer graph step id. The
+    /// dispatch chokepoint owns that identity, so it preserves governed control
+    /// outcomes and normalizes all other sealable faults into one step-scoped
+    /// failure before terminal receipt sealing.
     pub(crate) fn at_graph_step(self, step_id: &str) -> Self {
-        #[cfg(not(feature = "agent"))]
-        let _ = step_id;
         match self {
+            Self::GraphBlocked { reason, .. } => Self::GraphBlocked {
+                step_id: step_id.to_owned(),
+                reason,
+            },
+            Self::AuthorityDenied { verb, reason, .. } => Self::AuthorityDenied {
+                verb,
+                step_id: step_id.to_owned(),
+                reason,
+            },
+            Self::GraphPaused {
+                reason,
+                sync_decision,
+                ..
+            } => Self::GraphPaused {
+                step_id: step_id.to_owned(),
+                reason,
+                sync_decision,
+            },
+            Self::GraphEscalated {
+                reason,
+                sync_decision,
+                ..
+            } => Self::GraphEscalated {
+                step_id: step_id.to_owned(),
+                reason,
+                sync_decision,
+            },
             #[cfg(feature = "agent")]
             Self::ManagedAgentResolution {
                 request_id, source, ..
@@ -262,7 +360,26 @@ impl RuntimeError {
                 request_id,
                 source,
             },
-            error => error,
+            Self::InputContract {
+                owner,
+                input,
+                path,
+                message,
+                accepted_schema,
+                ..
+            } => Self::InputContract {
+                step_id: Some(step_id.to_owned()),
+                owner,
+                input,
+                path,
+                message,
+                accepted_schema,
+            },
+            error if error.is_fatal_step_fault() => error,
+            error => Self::InvalidRunStep {
+                step_id: step_id.to_owned(),
+                reason: error.to_string(),
+            },
         }
     }
 }

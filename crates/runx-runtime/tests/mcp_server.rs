@@ -22,11 +22,6 @@ use runx_runtime::adapters::mcp::{
 use runx_runtime::receipts::store::LocalReceiptStore;
 
 const FIXTURE_CREATED_AT: &str = "2026-05-18T00:00:00Z";
-#[cfg(feature = "mcp")]
-const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV: &str = "RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY";
-#[cfg(feature = "mcp")]
-const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_VALUE: &str = "local";
-
 #[test]
 #[cfg(feature = "mcp")]
 fn mcp_server_initializes_lists_and_calls_tools() -> Result<(), Box<dyn std::error::Error>> {
@@ -208,9 +203,6 @@ runners:
     args:
       - ./run.sh
     timeout_seconds: 5
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
     inputs: {}
 "#,
     )?;
@@ -805,10 +797,6 @@ fn mcp_server_execution_options(
     env.insert(
         "RUNX_CWD".to_owned(),
         repo_root()?.to_string_lossy().into_owned(),
-    );
-    env.insert(
-        RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV.to_owned(),
-        RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_VALUE.to_owned(),
     );
     env.extend(crate::support::test_signing_env());
     Ok(McpServerExecutionOptions {

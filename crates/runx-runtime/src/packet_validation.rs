@@ -21,18 +21,20 @@ pub(crate) fn verify_declared_packets(
     let package_root = crate::skill_package::find_owning_package_root(skill_directory)
         .unwrap_or_else(|| skill_directory.to_path_buf());
     let workspace = crate::config::resolve_runx_workspace_base(env, skill_directory);
-    let schemas = PacketSchemaCatalog::discover(packet_schema_directories(
-        skill_directory,
-        &package_root,
-        &workspace,
-    ))
-    .map_err(|error| RuntimeError::SkillFailed {
-        skill_name: "agent".to_owned(),
-        message: format!("packet schema catalog failed: {error}"),
+    let schema_directories = packet_schema_directories(skill_directory, &package_root, &workspace)
+        .map_err(|error| RuntimeError::SkillFailed {
+            skill_name: "agent".to_owned(),
+            message: format!("packet schema roots failed: {error}"),
+        })?;
+    let schemas = PacketSchemaCatalog::discover(schema_directories.clone()).map_err(|error| {
+        RuntimeError::SkillFailed {
+            skill_name: "agent".to_owned(),
+            message: format!("packet schema catalog failed: {error}"),
+        }
     })?;
     let mut evidence = JsonObject::new();
     for binding in bindings {
-        let (output, verified) = verify_packet_binding(binding, &schemas)?;
+        let (output, verified) = verify_packet_binding(binding, &schemas, &schema_directories)?;
         evidence.insert(output, verified);
     }
     Ok(evidence)
@@ -41,10 +43,19 @@ pub(crate) fn verify_declared_packets(
 fn verify_packet_binding(
     binding: PacketBinding<'_>,
     schemas: &PacketSchemaCatalog,
+    schema_directories: &[std::path::PathBuf],
 ) -> Result<(String, JsonValue), RuntimeError> {
-    let schema = schemas
-        .get(&binding.packet)
-        .ok_or_else(|| packet_error(&binding, "declared packet schema was not found"))?;
+    let schema = schemas.get(&binding.packet).ok_or_else(|| {
+        let searched = schema_directories
+            .iter()
+            .map(|path| path.display().to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        packet_error(
+            &binding,
+            format!("declared packet schema was not found; searched {searched}"),
+        )
+    })?;
     let schema_document = serde_json::to_value(&schema.schema.value)
         .map_err(|source| RuntimeError::json("serializing packet schema for validation", source))?;
     let validator = jsonschema::draft202012::options()

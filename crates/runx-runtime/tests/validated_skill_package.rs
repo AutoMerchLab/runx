@@ -1,7 +1,29 @@
 use std::fs;
 use std::path::PathBuf;
 
-use runx_runtime::load_validated_skill_package;
+use runx_runtime::{inspect_skill_package, load_validated_skill_package};
+
+fn write_packet_input_package(
+    root: &std::path::Path,
+    packet_schema: Option<&str>,
+    example: &str,
+) -> Result<(), Box<dyn std::error::Error>> {
+    fs::write(
+        root.join("SKILL.md"),
+        "---\nname: packet-input\ndescription: canonical packet input\n---\n\n# Packet input\n",
+    )?;
+    fs::write(
+        root.join("X.yaml"),
+        format!(
+            "skill: packet-input\nrunners:\n  inspect:\n    type: agent\n    inputs:\n      plan:\n        type: json\n        required: true\n        packet: runx.test.plan.v1\n    examples:\n      - plan: {example}\n"
+        ),
+    )?;
+    if let Some(packet_schema) = packet_schema {
+        fs::create_dir_all(root.join("packets"))?;
+        fs::write(root.join("packets/plan.schema.json"), packet_schema)?;
+    }
+    Ok(())
+}
 
 #[test]
 fn validated_skill_package_loads_one_digest_bound_aggregate()
@@ -70,6 +92,81 @@ fn validated_skill_package_resolves_internal_profile_to_owning_manual()
     assert_eq!(loaded.profile_path.as_deref(), Some("graph/plan/X.yaml"));
     assert!(loaded.manifest().is_some());
     assert_eq!(loaded.package.manual_markdown, manual);
+    Ok(())
+}
+
+#[test]
+fn packet_input_schema_is_hydrated_into_inspection() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempfile::tempdir()?;
+    write_packet_input_package(
+        temp.path(),
+        Some(
+            r#"{"x-runx-packet-id":"runx.test.plan.v1","type":"object","required":["operation"],"properties":{"operation":{"type":"string","enum":["inspect"]}},"additionalProperties":false}"#,
+        ),
+        "{ operation: inspect }",
+    )?;
+
+    let inspection = inspect_skill_package(temp.path(), Some("inspect"))?;
+    let plan = inspection
+        .as_object()
+        .and_then(|value| value.get("runner"))
+        .and_then(runx_contracts::JsonValue::as_object)
+        .and_then(|value| value.get("input_schema"))
+        .and_then(runx_contracts::JsonValue::as_object)
+        .and_then(|value| value.get("properties"))
+        .and_then(runx_contracts::JsonValue::as_object)
+        .and_then(|value| value.get("plan"))
+        .and_then(runx_contracts::JsonValue::as_object)
+        .ok_or("hydrated plan schema missing")?;
+
+    assert_eq!(
+        plan.get("x-runx-packet-id")
+            .and_then(runx_contracts::JsonValue::as_str),
+        Some("runx.test.plan.v1")
+    );
+    assert!(plan.contains_key("properties"));
+    let inspection_json = serde_json::to_value(&inspection)?;
+    assert_eq!(
+        inspection_json
+            .pointer("/execution_closure/package_bindings/0/input_packet_schemas/0/packet")
+            .and_then(serde_json::Value::as_str),
+        Some("runx.test.plan.v1")
+    );
+    assert!(
+        inspection_json
+            .pointer("/execution_closure/package_bindings/0/input_packet_schemas/0/schema_digest")
+            .and_then(serde_json::Value::as_str)
+            .is_some_and(|digest| digest.starts_with("sha256:"))
+    );
+    Ok(())
+}
+
+#[test]
+fn packet_input_schema_must_exist_and_own_authored_examples()
+-> Result<(), Box<dyn std::error::Error>> {
+    let missing = tempfile::tempdir()?;
+    write_packet_input_package(missing.path(), None, "{ operation: inspect }")?;
+    let missing_error = load_validated_skill_package(missing.path())
+        .err()
+        .ok_or("missing packet schema unexpectedly loaded")?;
+    assert!(missing_error.to_string().contains("missing packet schema"));
+
+    let invalid = tempfile::tempdir()?;
+    write_packet_input_package(
+        invalid.path(),
+        Some(
+            r#"{"x-runx-packet-id":"runx.test.plan.v1","type":"object","required":["operation"],"properties":{"operation":{"const":"inspect"}},"additionalProperties":false}"#,
+        ),
+        "{ operation: mutate }",
+    )?;
+    let example_error = load_validated_skill_package(invalid.path())
+        .err()
+        .ok_or("invalid packet example unexpectedly loaded")?;
+    assert!(
+        example_error
+            .to_string()
+            .contains("examples[0]/plan/operation")
+    );
     Ok(())
 }
 

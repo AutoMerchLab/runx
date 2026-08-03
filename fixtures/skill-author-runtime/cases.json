@@ -7,10 +7,6 @@
       "id": "env-json",
       "mode": "inspect-env",
       "timeout_seconds": 1,
-      "sandbox": {
-        "profile": "readonly",
-        "cwd_policy": "skill-directory"
-      },
       "inputs": {
         "message": "hi",
         "thread.title": "Docs",
@@ -34,10 +30,6 @@
       "mode": "inspect-stdin",
       "input_mode": "stdin",
       "timeout_seconds": 1,
-      "sandbox": {
-        "profile": "readonly",
-        "cwd_policy": "skill-directory"
-      },
       "inputs": {
         "message": "from stdin"
       },
@@ -58,10 +50,6 @@
       "mode": "inspect-large-input",
       "large_input_bytes": 81920,
       "timeout_seconds": 1,
-      "sandbox": {
-        "profile": "readonly",
-        "cwd_policy": "skill-directory"
-      },
       "inputs": {
         "message": "large"
       },
@@ -81,10 +69,6 @@
       "mode": "inspect-env",
       "cwd": "../workspace-target",
       "timeout_seconds": 1,
-      "sandbox": {
-        "profile": "readonly",
-        "cwd_policy": "workspace"
-      },
       "inputs": {
         "message": "cwd"
       },
@@ -105,10 +89,6 @@
       "id": "large-output",
       "mode": "large-output",
       "timeout_seconds": 1,
-      "sandbox": {
-        "profile": "readonly",
-        "cwd_policy": "skill-directory"
-      },
       "inputs": {},
       "expected": {
         "status": "sealed",

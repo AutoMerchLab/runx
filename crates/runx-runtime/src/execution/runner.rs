@@ -430,14 +430,14 @@ where
             .env
             .get(crate::receipts::paths::RUNX_CWD_ENV)
             .map(PathBuf::from)
-            .ok_or_else(|| RuntimeError::SandboxViolation {
+            .ok_or_else(|| RuntimeError::InvalidProcessInvocation {
                 message: format!(
                     "relative graph path '{}' requires RUNX_CWD",
                     graph_path.display()
                 ),
             })?;
         if !workspace.is_absolute() {
-            return Err(RuntimeError::SandboxViolation {
+            return Err(RuntimeError::InvalidProcessInvocation {
                 message: format!(
                     "RUNX_CWD must be an absolute path, got '{}'",
                     workspace.display()
@@ -528,7 +528,6 @@ where
         Ok(execution.finish(graph, receipt))
     }
 
-    #[cfg(feature = "agent")]
     pub(crate) fn seal_failed_graph_checkpoint_with_host(
         &self,
         graph: ExecutionGraph,

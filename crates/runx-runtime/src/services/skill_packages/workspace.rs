@@ -26,6 +26,7 @@ pub(crate) fn inspect_skill_workspace(
     let target_exists = target_root.as_ref().is_some_and(|path| path.is_dir());
     let (target_files, target_metrics, base_digest) =
         inspect_target(target_root.as_deref(), target_exists)?;
+    let target_inspection = inspect_target_package(target_root.as_deref(), target_exists);
     let catalog_root = if repo_root.join("skills").is_dir() {
         repo_root.join("skills")
     } else {
@@ -50,6 +51,7 @@ pub(crate) fn inspect_skill_workspace(
         ("base_digest".to_owned(), base_digest),
         ("target_files".to_owned(), JsonValue::Array(target_files)),
         ("target_metrics".to_owned(), target_metrics),
+        ("target_inspection".to_owned(), target_inspection),
         (
             "catalog_root".to_owned(),
             JsonValue::String(display_repo_path(&repo_root, &catalog_root)),
@@ -59,6 +61,26 @@ pub(crate) fn inspect_skill_workspace(
             JsonValue::Array(catalog_skills),
         ),
         ("core_tools".to_owned(), JsonValue::Array(core_tools)),
+    ]))
+}
+
+fn inspect_target_package(target_root: Option<&Path>, target_exists: bool) -> JsonValue {
+    if !target_exists {
+        return JsonValue::Null;
+    }
+    let Some(target_root) = target_root else {
+        return invalid_target_inspection("existing skill target has no resolved workspace path");
+    };
+    match crate::inspect_skill_package(target_root, None) {
+        Ok(inspection) => inspection,
+        Err(error) => invalid_target_inspection(&error.to_string()),
+    }
+}
+
+fn invalid_target_inspection(error: &str) -> JsonValue {
+    JsonValue::Object(JsonObject::from([
+        ("status".to_owned(), JsonValue::String("invalid".to_owned())),
+        ("error".to_owned(), JsonValue::String(error.to_owned())),
     ]))
 }
 

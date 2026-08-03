@@ -28,7 +28,7 @@ caller:
         evidence_log:
           - claim: The project has external certification.
             source_digest: sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd
-            provider_content_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
+            content_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
             confidence: verified
             relevance: Would materially strengthen the claim.
         decision_support:
@@ -41,10 +41,9 @@ expect:
   status: sealed
   steps:
     - index
-    - synthesize
-    - finalize
+    - analyze
   step_outputs:
-    finalize:
+    analyze:
       subset:
         research_packet:
           data:

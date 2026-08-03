@@ -114,8 +114,9 @@ These rules must not be violated. See `config.yaml` for the canonical invariant 
 ### Rust Trusted Runtime
 
 Rust owns trusted local execution, receipt sealing, runtime policy, harness
-replay, MCP, payment gates, and sandbox planning. TypeScript packages may wrap
-or present those paths, but must not reintroduce local execution fallback logic.
+replay, MCP, payment gates, process supervision, and typed execution-boundary
+evidence. TypeScript packages may wrap or present those paths, but must not
+reintroduce local execution fallback logic.
 
 ### Operator Ownership
 

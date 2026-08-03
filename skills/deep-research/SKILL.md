@@ -22,6 +22,7 @@ that posture.
 <!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
 
 - `ghostwrite#draft`
+- `research#local-files`
 - `research#research`
 
 ## When to use it
@@ -37,8 +38,10 @@ or research whose sources have not been fetched through a governed reader.
 
 ## How the chain works
 
-1. The caller supplies the exact question, audience, and governed source
-   packets, normally produced by `web-fetch` or a provider reader.
+1. The caller supplies the exact question and audience plus either governed
+   source packets or bounded local paths. The `local-files` runner reads those
+   paths through Runx's native filesystem boundary; it does not tunnel local
+   evidence through HTTP.
 2. The canonical `research` skill admits and indexes those sources, separates
    evidence from inference, and verifies every citation and recommendation.
 3. Only a ready research packet proceeds to `ghostwrite`. The writing stage
@@ -55,8 +58,9 @@ readback.
 ## Inputs and result
 
 - `objective` is the exact decision question.
-- `source_packets` are bounded governed evidence; operator context, URLs, and
-  model memory do not substitute for them.
+- `source_packets` are bounded governed evidence. The `local-files` runner
+  accepts bounded paths below a selected local root instead. Operator context,
+  URLs, bare paths, and model memory do not substitute for admitted evidence.
 - `audience` and `channel` shape the memo's presentation.
 - `domain`, `operator_context`, and `target_entities` keep the analysis scoped
   but do not count as evidence.

@@ -272,7 +272,7 @@ as inputs and never as receipt material. Two materials exist:
 
 Use `--profile twitter-user` with `read --auth user` and every `execute` run;
 use `--profile twitter-app` with `read --auth app`. The runner contract maps the
-selected profile's auth mode to exactly one delivery variable. Tool sandbox
+selected profile's auth mode to exactly one delivery variable. Tool permission
 allowlists do not carry credentials. For local development, the same declared
 variable can come from the process or workspace `.env`; if both Twitter
 variables are set, Runx refuses the ambiguous selection.

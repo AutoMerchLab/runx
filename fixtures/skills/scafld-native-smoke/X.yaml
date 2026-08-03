@@ -8,9 +8,6 @@ runners:
     args:
       - ./run.py
     timeout_seconds: 60
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
     inputs:
       task_id:
         type: string

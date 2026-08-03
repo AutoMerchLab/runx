@@ -14,6 +14,40 @@ use crate::{CredentialDelivery, RuntimeEffectRegistry, RuntimeError};
 mod data_store;
 
 #[test]
+fn dispatch_refuses_local_tool_with_undeclared_required_scope()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    write_catalog_tool(
+        &temp.path().join("tools/test/scope-claim"),
+        r#"{
+  "schema": "runx.tool.manifest.v1",
+  "name": "test.scope-claim",
+  "source": {
+    "type": "cli-tool",
+    "command": "/bin/sh",
+    "args": ["./run.sh"]
+  },
+  "scopes": ["example:network"]
+}
+"#,
+        "printf '%s\n' '{\"ok\":true}'\n",
+    )?;
+
+    let output = invoke_with_declared_scopes_in_directory(
+        "test.scope-claim",
+        JsonObject::new(),
+        JsonObject::new(),
+        temp.path().to_path_buf(),
+        tool_root_env(temp.path()),
+        &[],
+    )?;
+
+    assert_eq!(output.status, InvocationStatus::Failure);
+    assert!(diagnostic(&output).contains("missing required scope declaration(s): example:network"));
+    Ok(())
+}
+
+#[test]
 fn dispatch_invokes_local_tool_with_declared_inputs_only() -> Result<(), Box<dyn std::error::Error>>
 {
     let temp = tempdir()?;
@@ -1168,6 +1202,28 @@ fn invoke_with_resolved_in_directory(
     skill_directory: PathBuf,
     env: BTreeMap<String, String>,
 ) -> Result<InvocationOutput, RuntimeError> {
+    let scopes = crate::tool_catalogs::native::required_scopes(tool_ref).map_or_else(
+        || vec![tool_ref.to_owned()],
+        |scopes| scopes.iter().map(|scope| (*scope).to_owned()).collect(),
+    );
+    invoke_with_declared_scopes_in_directory(
+        tool_ref,
+        inputs,
+        resolved_inputs,
+        skill_directory,
+        env,
+        &scopes,
+    )
+}
+
+fn invoke_with_declared_scopes_in_directory(
+    tool_ref: &str,
+    inputs: JsonObject,
+    resolved_inputs: JsonObject,
+    skill_directory: PathBuf,
+    env: BTreeMap<String, String>,
+    scopes: &[String],
+) -> Result<InvocationOutput, RuntimeError> {
     let credential_delivery = CredentialDelivery::none();
     let effects = RuntimeEffectRegistry::default();
     let javascript = crate::adapters::javascript::JavaScriptAdapter::default();
@@ -1177,7 +1233,7 @@ fn invoke_with_resolved_in_directory(
             tool_ref: Cow::Borrowed(tool_ref),
             inputs: Cow::Owned(inputs),
             resolved_inputs: Cow::Owned(resolved_inputs),
-            scopes: &[],
+            scopes,
             env: &env,
             skill_directory: &skill_directory,
             credential_delivery: &credential_delivery,

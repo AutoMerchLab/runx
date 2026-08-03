@@ -160,11 +160,7 @@ enum ParserInput {
     #[serde(rename = "parser.parsePacketSchemaDocument")]
     ParsePacketSchemaDocument { path: String, source: String },
     #[serde(rename = "parser.validateSkillSource")]
-    ValidateSkillSource {
-        source: JsonObject,
-        #[serde(default)]
-        runx: Option<JsonObject>,
-    },
+    ValidateSkillSource { source: JsonObject },
     #[serde(rename = "parser.validateSkillArtifactContract")]
     ValidateSkillArtifactContract {
         #[serde(default)]
@@ -295,8 +291,8 @@ fn evaluate_parser_input(input: ParserInput) -> Result<JsonValue, ParserEvalErro
                 .map_err(|error| ParserEvalError::Validation(error.to_string()))?;
             to_json_value(parsed)
         }
-        ParserInput::ValidateSkillSource { source, runx } => {
-            to_json_value(validate_skill_source(&source, runx.as_ref())?)
+        ParserInput::ValidateSkillSource { source } => {
+            to_json_value(validate_skill_source(&source)?)
         }
         ParserInput::ValidateSkillArtifactContract { artifacts, field } => to_json_value(
             validate_skill_artifact_contract(artifacts.as_ref(), &field)?,

@@ -6,23 +6,23 @@ use runx_contracts::{JsonObject, JsonValue};
 use runx_parser::{SkillMcpServer, SkillRunnerDefinition};
 
 use crate::credentials::SecretEnv;
-use crate::sandbox::SandboxPlan;
+use crate::process_invocation::PreparedProcessInvocation;
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct McpToolCallRequest {
     pub server: SkillMcpServer,
     pub tool: String,
     pub arguments: JsonObject,
     pub timeout: Duration,
-    pub sandbox: SandboxPlan,
+    pub process: PreparedProcessInvocation,
     pub secret_env: SecretEnv,
 }
 
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Debug, PartialEq)]
 pub struct McpListToolsRequest {
     pub server: SkillMcpServer,
     pub timeout: Duration,
-    pub sandbox: SandboxPlan,
+    pub process: PreparedProcessInvocation,
 }
 
 #[derive(Clone, Debug, PartialEq)]

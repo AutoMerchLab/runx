@@ -63,6 +63,8 @@ runners:
             field: admit.dispute_context.data.path
             equals: review
           tool: receipt.prove
+          scopes:
+            - receipt.read
           context:
             receipt_ids: admit.dispute_context.data.receipt_ids
 

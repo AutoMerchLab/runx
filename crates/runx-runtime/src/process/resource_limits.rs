@@ -22,7 +22,7 @@ const CHILD_MAX_CPU_SECONDS: u64 = 60;
 // Node 24 reserves large V8 pointer-compression and WebAssembly address regions
 // before its TypeScript loader executes user code. Smaller ceilings kill an
 // otherwise bounded tool during runtime initialization. This remains a virtual-
-// address limit; CPU, file, descriptor, and sandbox bounds still apply.
+// address limit; CPU, file, descriptor, process, and output bounds still apply.
 const CHILD_MAX_ADDRESS_SPACE_BYTES: u64 = 16 * 1024 * 1024 * 1024;
 
 #[cfg(unix)]

@@ -497,6 +497,9 @@ fn metadata_for(
     }
     let mut metadata = JsonObject::new();
     metadata.insert("a2a".to_owned(), JsonValue::Object(a2a));
+    metadata.extend(crate::process_invocation::boundary_metadata(
+        runx_contracts::ExecutionBoundaryKind::RemoteProvider,
+    )?);
     Ok(metadata)
 }
 

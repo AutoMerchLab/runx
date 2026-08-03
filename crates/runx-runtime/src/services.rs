@@ -2,8 +2,6 @@ mod env;
 mod receipt_proof;
 mod receipt_query;
 mod receipts;
-#[cfg(any(feature = "cli-tool", feature = "external-adapter", feature = "mcp"))]
-mod sandbox;
 #[cfg(feature = "catalog")]
 mod skill_packages;
 mod tool_roots;
@@ -15,10 +13,6 @@ pub(crate) use env::{merge_inferred_tool_roots, process_env_value};
 pub(crate) use receipt_proof::prove_receipts;
 pub(crate) use receipt_query::{ReceiptQueryInput, query_receipts};
 pub(crate) use receipts::ReceiptServices;
-#[cfg(feature = "cli-tool")]
-pub(crate) use sandbox::NativeCommandSandboxRequest;
-#[cfg(any(feature = "cli-tool", feature = "external-adapter", feature = "mcp"))]
-pub(crate) use sandbox::SandboxServices;
 #[cfg(feature = "catalog")]
 pub(crate) use skill_packages::{
     apply_skill_change, bind_skill_change, inspect_skill_workspace, plan_skill_architecture,

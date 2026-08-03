@@ -148,7 +148,7 @@ preserve an opaque provider scope, close one consequential action with one
 host-attested human approval while rejecting the same decision from the agent
 answer lane, and stop an active JavaScript run on interruption. The Windows
 release target relies on the dedicated Windows
-process-containment gate for the interruption invariant; every other packaged
+host-job lifecycle gate for the interruption invariant; every other packaged
 invariant runs against every extracted archive before any channel publishes.
 
 Release preparation separately queries GitHub's check runs for the exact

@@ -9,9 +9,9 @@ expect:
   status: sealed
   steps:
     - index
-    - reject
+    - analyze
   step_outputs:
-    reject:
+    analyze:
       subset:
         research_packet:
           data:

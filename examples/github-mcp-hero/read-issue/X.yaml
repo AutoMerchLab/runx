@@ -18,10 +18,8 @@ runners:
       title: string
       state: string
       body: string
+    scopes: [github:read, net:http]
     timeout_seconds: 15
-    sandbox:
-      profile: network
-      cwd_policy: skill-directory
     inputs:
       repository:
         type: string

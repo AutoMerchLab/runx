@@ -31,6 +31,7 @@ pub enum RegistryAction {
     Read,
     Resolve,
     Install,
+    Package,
     Publish,
 }
 
@@ -78,14 +79,44 @@ fn run_registry(
     env: &BTreeMap<String, String>,
     cwd: &Path,
 ) -> Result<RegistryCliOutput, RegistryCliError> {
+    if plan.action == RegistryAction::Package {
+        return run_package(plan, env, cwd);
+    }
     let target = resolve_registry_target(&plan, env, cwd);
     match plan.action {
         RegistryAction::Search => run_search(plan, target),
         RegistryAction::Read => run_read(plan, target),
         RegistryAction::Resolve => run_resolve(plan, target),
         RegistryAction::Install => run_install(plan, target, env, cwd),
+        RegistryAction::Package => unreachable!("package handled before registry resolution"),
         RegistryAction::Publish => run_publish(plan, target, env, cwd),
     }
+}
+
+// Function rationale: package materialization is the read-only bridge for
+// hosted and third-party publishers that need the exact parser-owned artifact
+// without reimplementing package discovery.
+fn run_package(
+    plan: RegistryPlan,
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+) -> Result<RegistryCliOutput, RegistryCliError> {
+    let package = prepare_registry_publish_package(RegistryPublishPackageRequest {
+        subject: &plan.subject,
+        profile: plan.profile.as_deref(),
+        env,
+        cwd,
+    })
+    .map_err(|error| internal_error(error.to_string()))?
+    .into_parts();
+    output::write_output(
+        plan.json,
+        &output::RegistryEnvelope {
+            status: "success",
+            registry: output::RegistryPayload::Package { package },
+        },
+        || "\n  registry package  ready\n\n".to_owned(),
+    )
 }
 
 fn run_search(

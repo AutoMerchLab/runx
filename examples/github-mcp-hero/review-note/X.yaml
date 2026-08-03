@@ -18,10 +18,9 @@ runners:
       number: string
       review_note_id: string
       body_sha256: string
+    mutating: true
+    scopes: [github:write, net:http]
     timeout_seconds: 15
-    sandbox:
-      profile: network
-      cwd_policy: skill-directory
     inputs:
       repository:
         type: string

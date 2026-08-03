@@ -6,15 +6,12 @@ use std::path::{Path, PathBuf};
 use std::time::Instant;
 
 use runx_contracts::{JsonObject, JsonValue};
-use runx_parser::{SkillSandbox, SkillSource};
+use runx_parser::SkillSource;
 use runx_runtime::RUNX_CWD_ENV;
 use runx_runtime::adapter::{InvocationStatus, SkillAdapter, SkillInvocation};
 use runx_runtime::adapters::cli_tool::CliToolAdapter;
 use runx_runtime::credentials::CredentialDelivery;
 use serde::Deserialize;
-
-const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV: &str = "RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY";
-const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_VALUE: &str = "local";
 
 #[derive(Deserialize)]
 struct FixtureSuite {
@@ -31,15 +28,8 @@ struct FixtureCase {
     input_mode: Option<runx_parser::InputMode>,
     large_input_bytes: Option<usize>,
     timeout_seconds: u64,
-    sandbox: FixtureSandbox,
     inputs: JsonObject,
     expected: FixtureExpected,
-}
-
-#[derive(Deserialize)]
-struct FixtureSandbox {
-    profile: runx_core::policy::SandboxProfile,
-    cwd_policy: Option<runx_core::policy::CwdPolicy>,
 }
 
 #[derive(Deserialize)]
@@ -138,17 +128,6 @@ fn fixture_source(
         cwd: fixture.cwd.clone(),
         timeout_seconds: Some(fixture.timeout_seconds),
         input_mode: fixture.input_mode,
-        sandbox: Some(SkillSandbox {
-            profile: fixture.sandbox.profile.clone(),
-            cwd_policy: fixture.sandbox.cwd_policy.clone(),
-            network: None,
-            writable_paths: Vec::new(),
-            require_enforcement: None,
-            approved_escalation: Some(
-                fixture.sandbox.profile == runx_core::policy::SandboxProfile::UnrestrictedLocalDev,
-            ),
-            raw: JsonObject::new(),
-        }),
         server: None,
         tool: None,
         arguments: None,
@@ -183,10 +162,6 @@ fn fixture_env(
     }
     env.insert(RUNX_CWD_ENV.to_owned(), path_string(fixture_root)?);
     env.insert("TMPDIR".to_owned(), path_string(temp_dir)?);
-    env.insert(
-        RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV.to_owned(),
-        RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_VALUE.to_owned(),
-    );
     Ok(env)
 }
 

@@ -1,7 +1,6 @@
-use std::collections::BTreeMap;
 use std::path::Path;
 
-use runx_runtime::export::{RunxExportMode, RunxExportSkill, RunxExportSkillInput};
+use runx_runtime::export::{RunxExportMode, RunxExportRunner, RunxExportSkill};
 
 use super::{GeneratedFile, Target, display_path};
 
@@ -68,28 +67,20 @@ If any `RUNX_RECEIPT_SIGN_*` variable is present, the complete signer tuple must
 runx fails closed. Never invent, copy, or print signing keys.\n\n",
     );
     output.push_str(&render_source_manual(skill));
-    if skill.requires_runner_selection {
-        output.push_str(&render_runner_selection(
+    for runner in &skill.runners {
+        output.push_str(&render_runner(
             command_target,
-            &skill.runner_names,
+            runner,
             &display_path(runx_bin),
         ));
-    } else {
-        output.push_str("```bash\n");
-        output.push_str(&render_command(
-            command_target,
-            &skill.inputs,
-            &display_path(runx_bin),
-        ));
-        output.push_str("\n```\n\n");
-        output.push_str(&render_inputs(&skill.inputs));
     }
     output.push('\n');
     output.push_str(&render_continuation(&display_path(runx_bin)));
     output.push_str(&format!(
-        "<!-- {} source={} - generated, do not edit -->\n",
+        "<!-- {} source={} package-digest={} - generated, do not edit -->\n",
         target.marker(),
-        display_path(&skill.abs_dir)
+        display_path(&skill.abs_dir),
+        skill.package_digest,
     ));
     output
 }
@@ -118,67 +109,87 @@ fn render_native_instructions(target: Target, skill: &RunxExportSkill, runx_bin:
 
 fn render_source_manual(skill: &RunxExportSkill) -> String {
     format!(
-        "<!-- runx-source-manual-begin digest={} bytes={} -->\n{}<!-- runx-source-manual-end -->\n\n",
+        "<!-- runx-source-manual-begin digest={} package-digest={} bytes={} -->\n{}<!-- runx-source-manual-end -->\n\n",
         skill.manual_digest,
+        skill.package_digest,
         skill.manual_markdown.len(),
         skill.manual_markdown
     )
 }
 
-fn render_command(
+fn render_runner(command_target: &str, runner: &RunxExportRunner, runx_bin: &str) -> String {
+    let mut output = String::new();
+    let title = runner.name.as_deref().unwrap_or("default");
+    let default = if runner.default { " (default)" } else { "" };
+    output.push_str(&format!("## Runner `{title}`{default}\n\n"));
+    output.push_str("Inspect this exact contract from the source package:\n\n```bash\n");
+    output.push_str(&render_inspect_command(command_target, runner, runx_bin));
+    output.push_str("\n```\n\nInput contract:\n\n```json\n");
+    let schema =
+        runx_contracts::input_contract_schema_with_examples(&runner.inputs, &runner.examples);
+    output.push_str(
+        &serde_json::to_string_pretty(&schema)
+            .unwrap_or_else(|_| "{\"type\":\"object\"}".to_owned()),
+    );
+    output.push_str("\n```\n\n");
+    if runner.examples.first().is_some() {
+        output.push_str("Validated invocation example:\n\n");
+    } else {
+        output.push_str("Invocation template (replace placeholders before running):\n\n");
+    }
+    output.push_str("```bash\n");
+    output.push_str(&render_command(command_target, runner, runx_bin));
+    output.push_str("\n```\n\n");
+    output
+}
+
+fn render_inspect_command(
     command_target: &str,
-    inputs: &BTreeMap<String, RunxExportSkillInput>,
+    runner: &RunxExportRunner,
     runx_bin: &str,
 ) -> String {
-    let mut lines = vec![format!(
+    let mut command = format!(
+        "{} skill inspect {}",
+        shell_quote(runx_bin),
+        shell_quote(command_target),
+    );
+    if let Some(name) = &runner.name {
+        command.push(' ');
+        command.push_str(&shell_quote(name));
+    }
+    command.push_str(" --json");
+    command
+}
+
+fn render_command(command_target: &str, runner: &RunxExportRunner, runx_bin: &str) -> String {
+    let mut command = format!(
         "{} skill {}",
         shell_quote(runx_bin),
         shell_quote(command_target)
-    )];
-    for name in inputs.keys() {
-        lines.push(format!("  --{name} \"<{name}>\""));
+    );
+    if let Some(name) = &runner.name {
+        command.push(' ');
+        command.push_str(&shell_quote(name));
+    }
+    let mut lines = vec![command];
+    if let Some(example) = runner.examples.first() {
+        for (name, value) in example {
+            let encoded = serde_json::to_string(value).unwrap_or_else(|_| "null".to_owned());
+            lines.push(format!(
+                "  --input-json {} {}",
+                shell_quote(name),
+                shell_quote(&encoded)
+            ));
+        }
+    } else {
+        for (name, input) in &runner.inputs {
+            if input.required && input.default.is_none() {
+                lines.push(format!("  --{name} \"<{name}>\""));
+            }
+        }
     }
     lines.push("  --json".to_owned());
     lines.join(" \\\n")
-}
-
-fn render_inputs(inputs: &BTreeMap<String, RunxExportSkillInput>) -> String {
-    if inputs.is_empty() {
-        return "Inputs: none.\n".to_owned();
-    }
-    let mut lines = vec!["Inputs:".to_owned()];
-    for (name, input) in inputs {
-        let requirement = if input.required {
-            "required"
-        } else {
-            "optional"
-        };
-        let description = input
-            .description
-            .as_deref()
-            .unwrap_or("No description provided.");
-        lines.push(format!("- {name} ({requirement}) - {description}"));
-    }
-    format!("{}\n", lines.join("\n"))
-}
-
-fn render_runner_selection(
-    command_target: &str,
-    runner_names: &[String],
-    runx_bin: &str,
-) -> String {
-    let runners = runner_names
-        .iter()
-        .map(|name| format!("- `{name}`"))
-        .collect::<Vec<_>>()
-        .join("\n");
-    format!(
-        "This skill has no generic default action. Select the one runner that owns the request; never substitute another skill or guess a mutation. Available runners:\n\n{runners}\n\nRead the owning `SKILL.md`, then inspect the selected runner's exact typed contract before execution:\n\n```bash\n{} skill inspect {} \"<runner>\" --json\n```\n\nUse the local launcher required by the owning `SKILL.md`; it may load signer and credential context that raw runx does not. Only when the source skill declares no launcher, run the exact runner directly with its declared inputs:\n\n```bash\n{} skill {} \"<runner>\" \\\n  --json\n```\n\nRunner inputs come from the inspect result; do not infer missing targets, approvals, credentials, or payment references.\n",
-        shell_quote(runx_bin),
-        shell_quote(command_target),
-        shell_quote(runx_bin),
-        shell_quote(command_target),
-    )
 }
 
 fn render_continuation(runx_bin: &str) -> String {

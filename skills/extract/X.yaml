@@ -62,6 +62,9 @@ runners:
       steps:
         - id: extract_structured_json
           tool: structured.extract
+          scopes:
+            - runx:fixture:read
+            - runx:schema:read
           inputs:
             input_path: "$input.input_path"
             schema_path: "$input.schema_path"

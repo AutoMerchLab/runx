@@ -10,7 +10,7 @@ use std::collections::BTreeMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use runx_contracts::{JsonValue, Reference, ReferenceType, sha256_prefixed};
+use runx_contracts::{ExecutionBoundaryKind, JsonValue, Reference, ReferenceType, sha256_prefixed};
 use runx_parser::{GraphRetryPolicy, GraphRunTarget, SkillRunnerDefinition, SkillRunnerManifest};
 use serde::{Deserialize, Serialize};
 
@@ -93,6 +93,7 @@ pub struct PreparedGovernanceSummary {
     pub mutating_steps: Vec<String>,
     pub tool_refs: Vec<String>,
     pub authority_scopes: Vec<String>,
+    pub execution_boundaries: Vec<ExecutionBoundaryKind>,
     pub gates: Vec<String>,
     pub retry_policies: Vec<String>,
     pub idempotency_keys: Vec<String>,
@@ -334,6 +335,9 @@ pub(crate) fn prepare_skill_run_with_effects(
         entry.execution_closure_digest = execution_closure_digest;
     }
     crate::input_contract::apply_defaults(&runner.inputs, &mut request.inputs);
+    request.inputs =
+        crate::input_contract::materialize_present_runner_inputs(&runner.inputs, &request.inputs)
+            .map_err(|error| SkillRunError::Runtime(error.into_runtime_error()))?;
     let request_summary = request_summary(&request, &skill_dir, &runner.name, entry);
     let context = resolve_prepared_context(&request, &skill_dir, &runner, effects);
     let governance = prepared_governance(&request, &context);
@@ -608,6 +612,8 @@ fn governance_summary(chain: &SkillOperatorContextChain) -> PreparedGovernanceSu
     summary.tool_refs.dedup();
     summary.authority_scopes.sort();
     summary.authority_scopes.dedup();
+    summary.execution_boundaries.sort();
+    summary.execution_boundaries.dedup();
     summary.gates.sort();
     summary.gates.dedup();
     summary.retry_policies.sort();
@@ -624,6 +630,12 @@ fn summarize_node(node: &SkillOperatorContextNode, summary: &mut PreparedGoverna
     summary
         .authority_scopes
         .extend(node.runner.scopes.iter().cloned());
+    if let Some(observation) = node.runner.execution_boundary {
+        summary.execution_boundaries.push(observation.kind);
+    }
+    summary
+        .execution_boundaries
+        .extend(node.tools.iter().map(|tool| tool.execution_boundary.kind));
     if matches!(
         node.runner.source_type.as_str(),
         "agent" | "agent-task" | "agent-step"
@@ -641,6 +653,9 @@ fn summarize_node(node: &SkillOperatorContextNode, summary: &mut PreparedGoverna
             summary.mutating_steps.push(step.node_path.clone());
         }
         summary.tool_refs.extend(step.tool_refs.iter().cloned());
+        if let Some(observation) = step.execution_boundary {
+            summary.execution_boundaries.push(observation.kind);
+        }
         summary
             .authority_scopes
             .extend(definition.scopes.iter().cloned());

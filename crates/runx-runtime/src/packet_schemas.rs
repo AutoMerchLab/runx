@@ -5,18 +5,24 @@
 //! and registry publication consume this catalog instead of maintaining their
 //! own packet registries.
 
-use std::collections::BTreeMap;
-#[cfg(feature = "cli-tool")]
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use runx_parser::{PacketSchemaError, ValidatedPacketSchema, parse_packet_schema_document};
-#[cfg(feature = "cli-tool")]
-use runx_parser::{SkillArtifactContract, SkillPackageSource, SkillRunnerManifest};
+use runx_parser::SkillPackageSource;
+use runx_parser::{
+    PacketSchemaError, SkillArtifactContract, SkillInput, SkillRunnerDefinition,
+    ValidatedPacketSchema, ValidatedSkillPackage, ValidatedTool, parse_packet_schema_document,
+};
 use thiserror::Error;
 
 use crate::RuntimeError;
 use crate::filesystem::{read_dir_sorted, read_to_string};
+
+mod input_contracts;
+
+pub(crate) use input_contracts::{
+    hydrate_packet_input_contracts, hydrate_standalone_tool_input_contracts,
+};
 
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct PacketSchemaEntry {
@@ -32,6 +38,8 @@ pub(crate) enum PacketSchemaCatalogError {
     Runtime(#[from] RuntimeError),
     #[error(transparent)]
     Parse(#[from] PacketSchemaError),
+    #[error("{0}")]
+    PackageBundle(String),
     #[error("packet schema path is not valid UTF-8: {path}")]
     InvalidPath { path: PathBuf },
     #[cfg(feature = "cli-tool")]
@@ -71,6 +79,20 @@ impl PacketSchemaCatalog {
         Ok(())
     }
 
+    /// Add packet schemas from every canonical `packets/` directory in the
+    /// parser-admitted package snapshot. Hydration and publication therefore
+    /// resolve the same immutable bytes instead of rereading package files.
+    pub(crate) fn discover_validated_package(
+        &mut self,
+        package: &ValidatedSkillPackage,
+        package_root: &Path,
+    ) -> Result<(), PacketSchemaCatalogError> {
+        for directory in package_packet_directories(package) {
+            self.discover_source_directory(&package.source, package_root, &directory)?;
+        }
+        Ok(())
+    }
+
     /// Add packet schemas from the exact package snapshot already admitted by
     /// the parser. Registry publication uses this instead of rereading package
     /// files after validation.
@@ -79,20 +101,7 @@ impl PacketSchemaCatalog {
         &mut self,
         loaded: &crate::LoadedSkillPackage,
     ) -> Result<(), PacketSchemaCatalogError> {
-        let mut directories = vec!["packets".to_owned()];
-        if let Some(profile_path) = loaded.profile_path.as_deref()
-            && let Some(profile_directory) = profile_path.strip_suffix("/X.yaml")
-        {
-            directories.insert(0, format!("{profile_directory}/packets"));
-        }
-        for directory in directories {
-            self.discover_source_directory(
-                &loaded.package.source,
-                &loaded.package_root,
-                &directory,
-            )?;
-        }
-        Ok(())
+        self.discover_validated_package(&loaded.package, &loaded.package_root)
     }
 
     pub(crate) fn discover_directory(
@@ -136,6 +145,10 @@ impl PacketSchemaCatalog {
     }
 
     #[cfg(feature = "cli-tool")]
+    pub(crate) fn entries(&self) -> impl Iterator<Item = &PacketSchemaEntry> {
+        self.entries.values()
+    }
+
     fn discover_source_directory(
         &mut self,
         source: &SkillPackageSource,
@@ -199,36 +212,60 @@ pub(crate) fn packet_schema_directories(
     profile_directory: &Path,
     package_root: &Path,
     workspace: &Path,
-) -> Vec<PathBuf> {
+) -> Result<Vec<PathBuf>, PacketSchemaCatalogError> {
     let source_workspace =
         crate::config::resolve_runx_workspace_base(&BTreeMap::new(), package_root);
-    stable_unique_paths([
+    let bundle_root = crate::registry::package_bundle::package_bundle_root(profile_directory)
+        .map_err(PacketSchemaCatalogError::PackageBundle)?;
+    let mut directories = vec![
         profile_directory.join("packets"),
         package_root.join("packets"),
+    ];
+    if let Some(root) = bundle_root {
+        directories.push(root.join("packets"));
+        directories.push(root.join("dist").join("packets"));
+    }
+    directories.extend([
         source_workspace.join("packets"),
         source_workspace.join("dist").join("packets"),
         workspace.join("packets"),
         workspace.join("dist").join("packets"),
-    ])
+    ]);
+    Ok(stable_unique_paths(directories))
 }
 
-#[cfg(feature = "cli-tool")]
-pub(crate) fn declared_packet_ids(manifest: Option<&SkillRunnerManifest>) -> BTreeSet<String> {
-    let mut packet_ids = BTreeSet::new();
-    if let Some(manifest) = manifest {
-        for runner in manifest.runners.values() {
-            extend_packet_ids(runner.artifacts.as_ref(), &mut packet_ids);
-            if let Some(graph) = &runner.source.graph {
-                for step in &graph.steps {
-                    extend_packet_ids(step.artifacts.as_ref(), &mut packet_ids);
-                }
-            }
+pub(crate) fn declared_runner_packet_ids(runner: &SkillRunnerDefinition) -> BTreeSet<String> {
+    let mut packet_ids = declared_artifact_packet_ids(runner.artifacts.as_ref());
+    extend_input_packet_ids(&runner.inputs, &mut packet_ids);
+    if let Some(graph) = &runner.source.graph {
+        for step in &graph.steps {
+            extend_packet_ids(step.artifacts.as_ref(), &mut packet_ids);
         }
     }
     packet_ids
 }
 
-#[cfg(feature = "cli-tool")]
+pub(crate) fn declared_tool_packet_ids(tool: &ValidatedTool) -> BTreeSet<String> {
+    let mut packet_ids = declared_artifact_packet_ids(tool.artifacts.as_ref());
+    extend_input_packet_ids(&tool.inputs, &mut packet_ids);
+    packet_ids
+}
+
+pub(crate) fn declared_input_packet_ids(inputs: &BTreeMap<String, SkillInput>) -> BTreeSet<String> {
+    inputs
+        .values()
+        .filter_map(|input| input.packet.clone())
+        .collect()
+}
+
+pub(crate) fn declared_artifact_packet_ids(
+    artifacts: Option<&SkillArtifactContract>,
+) -> BTreeSet<String> {
+    let mut packet_ids = BTreeSet::new();
+    extend_packet_ids(artifacts, &mut packet_ids);
+    packet_ids
+}
+
 fn extend_packet_ids(artifacts: Option<&SkillArtifactContract>, packet_ids: &mut BTreeSet<String>) {
     let Some(artifacts) = artifacts else {
         return;
@@ -237,6 +274,23 @@ fn extend_packet_ids(artifacts: Option<&SkillArtifactContract>, packet_ids: &mut
     if let Some(packets) = &artifacts.packets {
         packet_ids.extend(packets.values().cloned());
     }
+}
+
+fn extend_input_packet_ids(
+    inputs: &BTreeMap<String, SkillInput>,
+    packet_ids: &mut BTreeSet<String>,
+) {
+    packet_ids.extend(inputs.values().filter_map(|input| input.packet.clone()));
+}
+
+fn package_packet_directories(package: &ValidatedSkillPackage) -> BTreeSet<String> {
+    let mut directories = BTreeSet::from(["packets".to_owned()]);
+    directories.extend(package.profiles.keys().filter_map(|profile| {
+        profile
+            .strip_suffix("/X.yaml")
+            .map(|directory| format!("{directory}/packets"))
+    }));
+    directories
 }
 
 fn stable_unique_paths(paths: impl IntoIterator<Item = PathBuf>) -> Vec<PathBuf> {
@@ -293,7 +347,7 @@ mod tests {
         let profile = package.join("graph/plan");
         let execution = tempfile::tempdir()?;
 
-        let roots = packet_schema_directories(&profile, &package, execution.path());
+        let roots = packet_schema_directories(&profile, &package, execution.path())?;
 
         assert!(roots.contains(&source.path().join("dist/packets")));
         assert!(roots.contains(&execution.path().join("dist/packets")));

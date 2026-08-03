@@ -241,7 +241,7 @@ export function checkCanonicalParserOwnership(findings) {
     if (/source\.raw\.get\(\s*"allowed_tools"\s*\)/u.test(source)) {
       findings.push(`${relative(filePath)} reparses allowed_tools instead of using the typed invocation contract`);
     }
-    if (/validate_skill_source\(\s*run\b|\brun\.get\(\s*"(?:type|outputs|sandbox)"/u.test(source)) {
+    if (/validate_skill_source\(\s*run\b|\brun\.get\(\s*"(?:type|outputs)"/u.test(source)) {
       findings.push(`${relative(filePath)} reparses an inline graph target instead of using GraphRunTarget`);
     }
   }

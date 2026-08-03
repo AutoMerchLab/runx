@@ -1,5 +1,5 @@
 skill: twitter
-version: "0.3.4"
+version: "0.3.6"
 catalog:
   kind: skill
   audience: public
@@ -42,20 +42,33 @@ runners:
         type: string
         required: true
         description: "Evidence query kind: snapshot, posts, mentions, search, following, or followers."
+        schema: { enum: [snapshot, posts, mentions, search, following, followers] }
       params:
-        type: json
+        type: object
         required: false
         description: "Query parameters: user_id, q (search text), pagination_token."
+        schema:
+          additionalProperties: false
+          properties:
+            user_id: { type: string, minLength: 1 }
+            q: { type: string, minLength: 1 }
+            pagination_token: { type: string, minLength: 1 }
       max_items:
-        type: number
+        type: integer
         required: false
         default: 200
         description: Maximum items collected across pages.
+        schema: { minimum: 1, maximum: 10000 }
       auth:
         type: string
         required: false
         default: user
         description: user (OAuth 1.0a user context) or app (bearer token).
+        schema: { enum: [user, app] }
+    examples:
+      - query: snapshot
+        auth: user
+        max_items: 200
     graph:
       name: twitter-read
       result_from: [finalize]
@@ -120,6 +133,7 @@ runners:
         type: string
         required: true
         description: "Archive query kind: posts, following, or followers."
+        schema: { enum: [posts, following, followers] }
       archive_file:
         type: string
         required: true
@@ -129,11 +143,18 @@ runners:
         required: false
         default: workspace
         description: "Archive path base: workspace or skill."
+        schema: { enum: [workspace, skill] }
       max_items:
-        type: number
+        type: integer
         required: false
         default: 200
         description: Maximum items returned from the archive.
+        schema: { minimum: 1, maximum: 10000 }
+    examples:
+      - query: posts
+        archive_file: fixtures/data/archive-tweets.js
+        archive_base: skill
+        max_items: 10
     graph:
       name: twitter-read-archive
       result_from: [finalize]
@@ -201,7 +222,7 @@ runners:
         required: true
         description: The account being operated, for example account:@handle.
       evidence_json:
-        type: json
+        type: object
         required: false
         description: A twitter.evidence.v1 packet (or excerpt) grounding the plan; required for any act that references existing posts or users.
       operator_policy:
@@ -209,13 +230,25 @@ runners:
         required: false
         description: Operator constraints such as prune criteria, posting cadence, or content boundaries.
       brand_context:
-        type: json
+        type: object
         required: false
         description: Brand-voice or taste-profile packet excerpt for public content.
       operator_context:
         type: string
         required: false
         description: Extra operator guardrails.
+    examples:
+      - objective: Delete zero-engagement posts from before 2019.
+        principal: account:@example
+        evidence_json:
+          source: archive
+          query: { kind: posts }
+          items:
+            - id: '1001'
+              text: Old test post
+              created_at: Mon Apr 03 14:00:00 +0000 2017
+              metrics: { likes: 0, reposts: 0 }
+        operator_policy: Keep anything with likes or reposts.
     graph:
       name: twitter-plan
       result_from: [draft, digest]
@@ -257,6 +290,7 @@ runners:
         required: false
         default: posts
         description: "What the selection operates over: posts (tweets.js, delete) or users (following.js, unfollow)."
+        schema: { enum: [posts, users] }
       archive_file:
         type: string
         required: false
@@ -266,6 +300,7 @@ runners:
         required: false
         default: workspace
         description: "Archive path base: workspace or skill."
+        schema: { enum: [workspace, skill] }
       following_file:
         type: string
         required: false
@@ -275,14 +310,41 @@ runners:
         required: false
         description: Path to an X follower.js archive export; required for the non_mutual predicate.
       predicate:
-        type: json
+        type: object
         required: true
         description: "Typed selection predicate. Posts: rt_of, is_retweet, text_prefix, text_contains, max_likes, max_reposts, before_year, after_year. Users: non_mutual (true), user_ids. Every supplied field must match."
+        schema:
+          minProperties: 1
+          additionalProperties: false
+          properties:
+            rt_of: { type: string, minLength: 1 }
+            is_retweet: { type: boolean }
+            text_prefix: { type: string, minLength: 1 }
+            text_contains: { type: string, minLength: 1 }
+            max_likes: { type: integer, minimum: 0 }
+            max_reposts: { type: integer, minimum: 0 }
+            before_year: { type: integer, minimum: 2006, maximum: 9999 }
+            after_year: { type: integer, minimum: 2006, maximum: 9999 }
+            non_mutual: { const: true }
+            user_ids:
+              type: array
+              minItems: 1
+              uniqueItems: true
+              items: { type: string, minLength: 1 }
       max_acts:
-        type: number
+        type: integer
         required: false
         default: 5000
         description: Cap on selected acts; a larger match set is flagged truncated.
+        schema: { minimum: 1 }
+    examples:
+      - objective: Delete all reposts of the BetaList account.
+        principal: account:@example
+        target: posts
+        archive_file: fixtures/data/archive-tweets.js
+        archive_base: skill
+        predicate: { is_retweet: true, rt_of: BetaList }
+        max_acts: 5000
     graph:
       name: twitter-select
       result_from: [finalize-posts, finalize-users]
@@ -413,7 +475,7 @@ runners:
       purpose: Execute one approved twitter act plan, act by act, and nothing beyond it.
     inputs:
       plan_json:
-        type: json
+        type: object
         required: true
         description: The twitter.plan.v1 object to execute.
       plan_digest:
@@ -421,22 +483,41 @@ runners:
         required: true
         description: Expected canonical digest of plan_json; a mismatch is a hard failure.
       max_acts:
-        type: number
+        type: integer
         required: false
         default: 50
         description: Requested per-execution act cap; the provider tool enforces a hard maximum of 50.
+        schema: { minimum: 1, maximum: 50 }
       data_source_ref:
         type: string
         required: true
         description: Logical data source holding the execution ledger; the operator binds it to durable local SQLite.
       expected_version:
-        type: number
+        type: integer
         required: true
         description: Current durable stream version. The runner independently reads and verifies it before any provider call.
+        schema: { minimum: 0 }
       idempotency_key:
         type: string
         required: true
         description: Canonical retry key twitter:<plan_digest>:v<expected_version+1>; mismatches fail before approval.
+    examples:
+      - plan_json:
+          decision: refused
+          objective: Delete one post.
+          principal: account:@example
+          acts:
+            - act_id: act-refused-1
+              kind: delete_post
+              params: { post_id: '1001' }
+              consequence: live_mutation
+              rationale: This refusal example never reaches the provider.
+          gates: { human_approval_required: true, approval_ref: approval:granted }
+        plan_digest: sha256:25cd0a74139936a7cad4124f4ef510f7b16aaaa49abced92f39f4fc5c7cfbfc6
+        max_acts: 50
+        data_source_ref: tenant://twitter/refused-plan
+        expected_version: 0
+        idempotency_key: twitter:sha256:25cd0a74139936a7cad4124f4ef510f7b16aaaa49abced92f39f4fc5c7cfbfc6:v1
     graph:
       name: twitter-execute
       result_from: [apply, apply_noop, persist]

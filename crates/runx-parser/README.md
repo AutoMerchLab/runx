@@ -17,7 +17,7 @@ The implementation covers:
 The crate intentionally stays pure: it parses and validates typed intermediate
 representations, uses `runx_contracts::JsonValue` and the
 `runx_contracts::execution` semantic types at public parser boundaries, reuses
-`runx_core::policy` sandbox normalization, and has no filesystem,
+pure execution-requirement validation, and has no filesystem,
 environment, network, or provider SDK dependencies.
 
 `scripts/generate-rust-parser-fixtures.ts` batches fixture documents through

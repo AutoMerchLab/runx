@@ -134,6 +134,10 @@ impl RuntimeEffect for ProviderPermissionEffect {
         PROVIDER_PERMISSION_EFFECT_FAMILY
     }
 
+    fn execution_boundary(&self) -> runx_contracts::ExecutionBoundaryKind {
+        runx_contracts::ExecutionBoundaryKind::RemoteProvider
+    }
+
     fn matches_target(&self, request: EffectStepRequest<'_>) -> bool {
         native_provider_access(request.target.tool_ref).is_some()
             || provider_permission_policy(request.step.policy.as_ref()).is_some()

@@ -193,6 +193,8 @@ fn fixture_inputs(tool: &FixtureTool) -> BTreeMap<String, ToolInput> {
                     description: input.description.map(str::to_owned),
                     default: None,
                     artifact: None,
+                    packet: None,
+                    schema: None,
                 },
             )
         })

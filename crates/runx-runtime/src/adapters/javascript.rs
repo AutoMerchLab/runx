@@ -177,7 +177,7 @@ fn project_worker_outcome(
                     InvocationStatus::Success,
                     value,
                     None,
-                    javascript_metadata("completed", outcome.isolation, limits, None)?,
+                    javascript_metadata("completed", outcome.execution_boundary, limits, None)?,
                 ),
             )
         }
@@ -191,7 +191,7 @@ fn project_worker_outcome(
                 InvocationStatus::Failure,
                 JsonValue::Null,
                 Some(message),
-                javascript_failure_metadata(&code, limit, outcome.isolation, limits)?,
+                javascript_failure_metadata(&code, limit, outcome.execution_boundary, limits)?,
             ),
         ),
     }
@@ -203,7 +203,6 @@ fn validate_pure_javascript_boundary(request: &SkillInvocation) -> Result<(), Ru
         || !source.args.is_empty()
         || source.cwd.is_some()
         || source.input_mode.is_some()
-        || source.sandbox.is_some()
         || source.server.is_some()
         || source.tool.is_some()
         || source.arguments.is_some()
@@ -213,13 +212,13 @@ fn validate_pure_javascript_boundary(request: &SkillInvocation) -> Result<(), Ru
         || source.task.is_some()
         || source.graph.is_some();
     if source.source_type != runx_parser::SourceKind::JavaScript || forbidden {
-        return Err(RuntimeError::SandboxViolation {
-            message: "javascript sources may declare only module, export, timeout_seconds, environment, outputs, and act metadata; the runtime owns every containment control"
+        return Err(RuntimeError::InvalidProcessInvocation {
+            message: "javascript sources may declare only module, export, timeout_seconds, environment, outputs, and act metadata; the deterministic worker owns its execution boundary"
                 .to_owned(),
         });
     }
     if !request.credential_delivery.secret_env().is_empty() {
-        return Err(RuntimeError::SandboxViolation {
+        return Err(RuntimeError::InvalidProcessInvocation {
             message: "javascript sources cannot receive credentials; route provider access through a typed native capability"
                 .to_owned(),
         });
@@ -229,7 +228,7 @@ fn validate_pure_javascript_boundary(request: &SkillInvocation) -> Result<(), Ru
 
 fn javascript_metadata(
     state: &str,
-    isolation: JsonObject,
+    execution_boundary: JsonObject,
     limits: runx_contracts::javascript_worker::InvocationLimits,
     hit: Option<runx_contracts::javascript_worker::WorkerLimit>,
 ) -> Result<JsonObject, RuntimeError> {
@@ -237,7 +236,7 @@ fn javascript_metadata(
     let execution_limits = serde_json::to_value(execution_limits)
         .and_then(serde_json::from_value)
         .map_err(|source| RuntimeError::json("serializing execution limits", source))?;
-    Ok([
+    let mut metadata: JsonObject = [
         (
             "javascript_runtime".to_owned(),
             JsonValue::String("runx-js-worker".to_owned()),
@@ -247,25 +246,23 @@ fn javascript_metadata(
             JsonValue::String(state.to_owned()),
         ),
         (
-            "javascript_isolation".to_owned(),
-            JsonValue::Object(isolation),
-        ),
-        (
             crate::adapter::EXECUTION_LIMITS_METADATA.to_owned(),
             execution_limits,
         ),
     ]
     .into_iter()
-    .collect())
+    .collect();
+    metadata.extend(execution_boundary);
+    Ok(metadata)
 }
 
 fn javascript_failure_metadata(
     code: &runx_contracts::javascript_worker::WorkerFailureCode,
     limit: Option<runx_contracts::javascript_worker::WorkerLimit>,
-    isolation: JsonObject,
+    execution_boundary: JsonObject,
     limits: runx_contracts::javascript_worker::InvocationLimits,
 ) -> Result<JsonObject, RuntimeError> {
-    let mut metadata = javascript_metadata("failed", isolation, limits, limit)?;
+    let mut metadata = javascript_metadata("failed", execution_boundary, limits, limit)?;
     metadata.insert(
         "javascript_failure_code".to_owned(),
         JsonValue::String(code.as_str().to_owned()),

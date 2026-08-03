@@ -9,8 +9,6 @@ mod a2a_parity;
 mod abnormal_seal;
 mod agent_parity;
 mod approval;
-#[cfg(feature = "catalog")]
-mod cli_tool_contract;
 mod config;
 mod credential_delivery;
 mod credential_delivery_core;
@@ -35,6 +33,8 @@ mod local_credential_provision;
 mod mcp_adapter;
 mod mcp_server;
 mod parity;
+#[cfg(feature = "cli-tool")]
+mod process_invocation_contract;
 mod provider_effect_receipts;
 mod receipt_paths;
 mod receipt_refs;

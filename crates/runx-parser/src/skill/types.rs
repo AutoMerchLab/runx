@@ -6,7 +6,6 @@ use std::collections::BTreeMap;
 use runx_contracts::{
     EnvironmentRequirements, ExecutionSemantics, ExternalAdapterManifest, JsonObject, JsonValue,
 };
-use runx_core::policy::{CwdPolicy, SandboxProfile};
 use serde::{Deserialize, Serialize};
 
 use crate::graph::MintAuthorityDirective;
@@ -132,8 +131,6 @@ pub struct SkillSource {
     /// Values are resolved by the runtime and never stored in the manifest IR.
     #[serde(default, skip_serializing_if = "EnvironmentRequirements::is_empty")]
     pub environment: EnvironmentRequirements,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sandbox: Option<SkillSandbox>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server: Option<SkillMcpServer>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -270,22 +267,6 @@ pub struct SkillMcpServer {
     pub cwd: Option<String>,
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SkillSandbox {
-    pub profile: SandboxProfile,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cwd_policy: Option<CwdPolicy>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub network: Option<bool>,
-    pub writable_paths: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub require_enforcement: Option<bool>,
-    #[serde(skip)]
-    pub approved_escalation: Option<bool>,
-    pub raw: JsonObject,
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CredentialRequirement {
@@ -375,6 +356,11 @@ pub struct SkillRunnerDefinition {
     pub default: bool,
     pub source: SkillSource,
     pub inputs: BTreeMap<String, SkillInput>,
+    /// Complete, parser-validated calls for this runner. These are contract
+    /// examples, not fixtures: inspection and generated operator instructions
+    /// expose them without reparsing package files.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub examples: Vec<JsonObject>,
     pub scopes: Vec<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub credential: Option<String>,

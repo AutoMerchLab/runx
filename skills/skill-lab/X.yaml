@@ -1,5 +1,5 @@
 skill: skill-lab
-version: "0.8.7"
+version: "0.8.9"
 
 catalog:
   kind: graph
@@ -108,6 +108,11 @@ runners:
         type: string
         required: false
         description: Product, repository, and operator constraints.
+    examples:
+      - objective: Decide whether the existing research skill should support bounded local files.
+        repo_root: .
+        target_dir: skills/research
+        project_context: Preserve remote evidence support and reuse native file admission.
     graph:
       name: skill-lab-design
       result_from: [plan]
@@ -174,6 +179,11 @@ runners:
         type: string
         required: false
         description: Product, repository, and operator constraints.
+    examples:
+      - objective: Add bounded local-file evidence to the existing research skill.
+        repo_root: .
+        target_dir: skills/research
+        project_context: Preserve remote evidence support and avoid package-local file readers.
     graph:
       name: skill-lab-build
       result_from: [apply]
@@ -295,6 +305,12 @@ runners:
         type: json
         required: false
         description: Stable runx.review.receipt.v1 failure packet from review-receipt.
+    examples:
+      - objective: Make every public runner callable from inspection without source-diving.
+        repo_root: .
+        target_dir: skills/github-sync
+        project_context: Preserve the existing contract version and provider boundary.
+        harness_output: The agent could not construct the nested resources selector from inspection.
     graph:
       name: skill-lab-improve
       result_from: [apply]
@@ -410,6 +426,11 @@ runners:
         type: string
         required: false
         description: Existing harness evidence to reproduce or strengthen.
+    examples:
+      - objective: Prove that local evidence preserves exact UTF-8 content and rejects missing files.
+        repo_root: .
+        target_dir: skills/research
+        project_context: Exercise the real native file and evidence capabilities.
     graph:
       name: skill-lab-harness
       result_from: [apply]

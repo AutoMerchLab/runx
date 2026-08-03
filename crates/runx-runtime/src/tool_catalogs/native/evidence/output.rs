@@ -30,9 +30,9 @@ struct SourceIndex {
 #[serde(deny_unknown_fields)]
 struct IndexedSource {
     source_digest: String,
-    provider_content_digest: String,
-    final_url: String,
-    status: u64,
+    content_digest: String,
+    source_ref: String,
+    source_kind: String,
     extracted: String,
     provenance: SourceProvenance,
 }
@@ -41,18 +41,24 @@ struct IndexedSource {
 #[serde(deny_unknown_fields)]
 struct SourceEvidence {
     evidence_digest: String,
-    provider_content_digest: String,
-    final_url: String,
+    content_digest: String,
+    source_ref: String,
+    source_kind: String,
     provenance: SourceProvenance,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]
 #[serde(deny_unknown_fields)]
 struct SourceProvenance {
-    fetched_at: String,
-    bytes: JsonValue,
+    observed_at: String,
+    bytes: u64,
     truncated: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    status: Option<u64>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     redirects: Vec<JsonValue>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    path: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, runx_contracts::schema::RunxSchema)]

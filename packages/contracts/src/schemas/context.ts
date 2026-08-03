@@ -8,6 +8,7 @@ import {
   validateContractSchema,
 } from "../internal.js";
 import { artifactEnvelopeSchema } from "./artifact.js";
+import { executionBoundaryObservationSchema } from "./execution-boundary.js";
 import { outputSchema } from "./output.js";
 
 export const agentContextProvenanceSchema = Type.Object(
@@ -80,7 +81,6 @@ export const executionRequirementsSchema = Type.Object(
     environment: Type.Optional(environmentRequirementsSchema),
     credential: Type.Optional(executionCredentialRequirementSchema),
     runtime: Type.Optional(Type.Unknown()),
-    sandbox: Type.Optional(Type.Unknown()),
   },
   { additionalProperties: false },
 );
@@ -96,6 +96,7 @@ export const agentExecutionRequirementsSchema = Type.Object(
       },
       { additionalProperties: false },
     ))),
+    execution_boundary: executionBoundaryObservationSchema,
   },
   { additionalProperties: false },
 );

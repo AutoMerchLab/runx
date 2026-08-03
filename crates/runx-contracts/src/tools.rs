@@ -7,7 +7,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::schema::RunxSchema;
 use crate::{
-    ArtifactContract, IdempotencyPolicy, InputDefinition, JsonObject, JsonValue, RetryPolicy,
+    ArtifactContract, EnvironmentRequirements, IdempotencyPolicy, InputDefinition, JsonObject,
+    JsonValue, RetryPolicy,
 };
 
 pub const TOOL_MANIFEST_SCHEMA: &str = "runx.tool.manifest.v1";
@@ -119,8 +120,8 @@ pub struct ToolSource {
     pub input_mode: Option<ToolCommandInputMode>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub timeout_seconds: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub sandbox: Option<ToolSandbox>,
+    #[serde(default, skip_serializing_if = "EnvironmentRequirements::is_empty")]
+    pub environment: EnvironmentRequirements,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub server: Option<ToolMcpServer>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -153,39 +154,6 @@ pub struct RuntimeCommand {
     pub cwd: Option<String>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub env: BTreeMap<String, String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, RunxSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum ToolSandboxProfile {
-    Readonly,
-    WorkspaceWrite,
-    Network,
-    UnrestrictedLocalDev,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, RunxSchema)]
-#[serde(rename_all = "kebab-case")]
-pub enum ToolSandboxCwdPolicy {
-    SkillDirectory,
-    Workspace,
-    Custom,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, RunxSchema)]
-#[serde(deny_unknown_fields)]
-pub struct ToolSandbox {
-    pub profile: ToolSandboxProfile,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub cwd_policy: Option<ToolSandboxCwdPolicy>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub env_allowlist: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub network: Option<bool>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub writable_paths: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub require_enforcement: Option<bool>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -308,6 +276,7 @@ mod tests {
         ToolCommandInputMode, ToolInput, ToolInspectOrigin, ToolInspectProvenance,
         ToolInspectResult, ToolManifest, ToolManifestSchema, ToolSource, ToolSourceType,
     };
+    use crate::EnvironmentRequirements;
 
     #[test]
     fn tool_manifest_round_trips_snake_case_fields() -> Result<(), serde_json::Error> {
@@ -386,6 +355,8 @@ mod tests {
                     description: None,
                     default: None,
                     artifact: None,
+                    packet: None,
+                    schema: None,
                 },
             )]
             .into_iter()
@@ -409,7 +380,7 @@ mod tests {
             cwd: None,
             timeout_seconds: None,
             input_mode: None,
-            sandbox: None,
+            environment: EnvironmentRequirements::default(),
             server: None,
             tool: None,
             arguments: None,

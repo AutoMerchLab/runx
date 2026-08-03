@@ -2428,6 +2428,7 @@ dependencies = [
 name = "runx-parser"
 version = "0.1.0"
 dependencies = [
+ "jsonschema",
  "regex",
  "runx-contracts",
  "runx-core",

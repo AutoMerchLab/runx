@@ -289,6 +289,108 @@ runners:
 }
 
 #[test]
+fn runner_inputs_expand_one_exact_definition_and_validate_nested_examples() -> Result<(), String> {
+    let raw = parse_runner_manifest_yaml(
+        r#"
+skill: typed-inputs
+input_definitions:
+  selector:
+    type: object
+    required: true
+    description: Bounded issue selector.
+    schema:
+      required: [kind, filters]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [issues] }
+        filters:
+          type: object
+          required: [limit]
+          additionalProperties: false
+          properties:
+            limit: { type: integer, minimum: 1, maximum: 25 }
+runners:
+  inspect:
+    default: true
+    type: agent-task
+    agent: operator
+    task: inspect
+    inputs:
+      resources: { definition: selector }
+    examples:
+      - resources: { kind: issues, filters: { limit: 25 } }
+"#,
+    )
+    .map_err(|error| error.to_string())?;
+    let manifest = runx_parser::validate_runner_manifest(raw).map_err(|error| error.to_string())?;
+    let runner = manifest
+        .runners
+        .get("inspect")
+        .ok_or_else(|| "expanded runner is missing".to_owned())?;
+
+    assert_eq!(
+        runner.inputs["resources"],
+        manifest.input_definitions["selector"]
+    );
+    assert_eq!(runner.examples.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn runner_inputs_reject_definition_overrides_and_invalid_nested_examples() -> Result<(), String> {
+    for (declaration, expected) in [
+        (
+            "{ definition: selector, required: false }",
+            "unknown field 'definition'",
+        ),
+        (
+            "{ definition: selector }",
+            "runners.inspect.examples[0]/resources/filters/limit",
+        ),
+    ] {
+        let example_limit = if declaration.contains("required") {
+            25
+        } else {
+            26
+        };
+        let raw = parse_runner_manifest_yaml(&format!(
+            r#"
+skill: typed-inputs
+input_definitions:
+  selector:
+    type: object
+    required: true
+    schema:
+      required: [filters]
+      properties:
+        filters:
+          type: object
+          required: [limit]
+          properties:
+            limit: {{ type: integer, maximum: 25 }}
+runners:
+  inspect:
+    type: agent-task
+    agent: operator
+    task: inspect
+    inputs:
+      resources: {declaration}
+    examples:
+      - resources: {{ filters: {{ limit: {example_limit} }} }}
+"#
+        ))
+        .map_err(|error| error.to_string())?;
+        let error = runx_parser::validate_runner_manifest(raw)
+            .err()
+            .ok_or_else(|| {
+                "invalid reusable input declaration unexpectedly validated".to_owned()
+            })?;
+        assert!(error.to_string().contains(expected), "{error}");
+    }
+    Ok(())
+}
+
+#[test]
 fn graph_runner_rejects_ambiguous_runner_artifacts() -> Result<(), String> {
     let raw = parse_runner_manifest_yaml(
         r#"

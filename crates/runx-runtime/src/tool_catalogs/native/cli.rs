@@ -11,7 +11,7 @@ use crate::{CapabilityOutput, RuntimeError};
 mod capability;
 
 use crate::process::{ProcessOutcome, ProcessSpec, run_process};
-use crate::services::SandboxServices;
+use crate::process_invocation::process_base_environment;
 pub(super) use capability::CAPABILITIES;
 use capability::CaptureHelpInput;
 
@@ -81,7 +81,7 @@ fn run_help(
         )
         .args(argv)
         .cwd(cwd)
-        .env(SandboxServices.child_base_env(invocation.env)?)
+        .env(process_base_environment(invocation.env)?)
         .timeout(Some(TIMEOUT)),
     )
     .map_err(|error| invalid_input(TOOL, error.to_string()))?;
@@ -197,7 +197,6 @@ mod tests {
         let effects = RuntimeEffectRegistry::default();
         let output = capture_help(&NativeInvocation {
             inputs: &inputs,
-            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,
@@ -231,7 +230,6 @@ mod tests {
         let effects = RuntimeEffectRegistry::default();
         let error = capture_help(&NativeInvocation {
             inputs: &inputs,
-            scopes: &[],
             observed_at: "2026-01-01T00:00:00Z",
             data_source_binding: None,
             env: &env,

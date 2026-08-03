@@ -17,7 +17,10 @@ describe("stripe-spt rail external adapter", () => {
     ).raw.document as {
       readonly runners: Readonly<Record<string, {
         readonly source?: unknown;
-        readonly runx?: { readonly payment_authority?: unknown };
+        readonly scopes?: readonly string[];
+        readonly runx?: {
+          readonly payment_authority?: unknown;
+        };
       }>>;
     };
     const runner = manifest.runners["stripe-spt"];
@@ -31,6 +34,7 @@ describe("stripe-spt rail external adapter", () => {
       rails: ["stripe-spt"],
       receipt_before_success: true,
     });
+    expect(runner?.scopes).toEqual(["net:http"]);
   });
 
   it("validates the stage-local external-adapter manifest", async () => {
@@ -42,11 +46,6 @@ describe("stripe-spt rail external adapter", () => {
       "runx.external_adapter.manifest.v1",
     );
     expect(manifest.transport.args).toEqual(["tools/stripe-spt-fulfill-adapter.mjs"]);
-    expect(manifest.sandbox_intent).toMatchObject({
-      profile: "network",
-      cwd_policy: "skill-directory",
-      network: true,
-    });
   });
 
   it("executes the Stripe SPT executor with kernel-admission-bound scope", () => {

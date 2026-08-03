@@ -17,6 +17,13 @@ pub(super) fn inspect_runner(
             JsonValue::String(runner.source.source_type.as_str().to_owned()),
         ),
         (
+            "input_schema".to_owned(),
+            JsonValue::Object(runx_contracts::input_contract_schema_with_examples(
+                &runner.inputs,
+                &runner.examples,
+            )),
+        ),
+        (
             "inputs".to_owned(),
             JsonValue::Array(
                 runner
@@ -183,6 +190,10 @@ fn inspect_input(name: &str, input: &SkillInput) -> JsonValue {
             JsonValue::String(description.clone()),
         );
     }
+    output.insert(
+        "schema".to_owned(),
+        JsonValue::Object(input.effective_schema()),
+    );
     JsonValue::Object(output)
 }
 

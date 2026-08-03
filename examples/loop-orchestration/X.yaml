@@ -69,10 +69,6 @@ runners:
     args:
       - loop/turn.mjs
     timeout_seconds: 15
-    sandbox:
-      profile: readonly
-      cwd_policy: skill-directory
-      require_enforcement: false
     inputs:
       loop_id:
         type: string

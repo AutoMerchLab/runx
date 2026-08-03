@@ -11,19 +11,61 @@ catalog:
   requires_adapter: true
   approval: none
 
+input_definitions:
+  repository:
+    type: string
+    required: true
+    description: GitHub repository as owner/name.
+    schema:
+      pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$'
+      examples: [runxhq/runx]
+  issue_number:
+    type: string
+    required: true
+    description: Positive GitHub issue number.
+    schema:
+      pattern: '^[1-9][0-9]*$'
+      examples: ['241']
+  issue_snapshot:
+    type: object
+    required: true
+    description: One bounded GitHub issue snapshot from a declared provider or supplied source.
+    schema:
+      required: [repository, number, title, state, body]
+      additionalProperties: false
+      properties:
+        repository: { type: string, pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' }
+        number: { type: string, pattern: '^[1-9][0-9]*$' }
+        title: { type: string, minLength: 1, maxLength: 256, pattern: '^[^\u0000]+$' }
+        state: { type: string, enum: [open, closed] }
+        body: { type: string, maxLength: 20000, pattern: '^[^\u0000]*$' }
+        source_ref: { type: string, minLength: 1, maxLength: 1024 }
+  issue_snapshots:
+    type: array
+    required: true
+    description: One to 100 bounded GitHub issue snapshots from declared providers or supplied sources.
+    schema:
+      minItems: 1
+      maxItems: 100
+      items:
+        type: object
+        required: [repository, number, title, state, body]
+        additionalProperties: false
+        properties:
+          repository: { type: string, pattern: '^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$' }
+          number: { type: string, pattern: '^[1-9][0-9]*$' }
+          title: { type: string, minLength: 1, maxLength: 256, pattern: '^[^\u0000]+$' }
+          state: { type: string, enum: [open, closed] }
+          body: { type: string, maxLength: 20000, pattern: '^[^\u0000]*$' }
+          source_ref: { type: string, minLength: 1, maxLength: 1024 }
+
 runners:
   provider-respond:
     default: true
     type: graph
     inputs:
-      repository:
-        type: string
-        required: true
-        description: GitHub repository as owner/name.
-      issue_number:
-        type: string
-        required: true
-        description: Exact issue number to read.
+      repository: { definition: repository }
+      issue_number: { definition: issue_number }
       objective:
         type: string
         required: false
@@ -32,6 +74,10 @@ runners:
         type: string
         required: false
         description: Repository norms, tone, and release posture.
+    examples:
+      - repository: runxhq/runx
+        issue_number: '241'
+        objective: Draft the next helpful maintainer response.
     graph:
       name: issue-triage-provider-respond
       result_from: [finalize]
@@ -115,18 +161,22 @@ runners:
   discover:
     type: graph
     inputs:
-      issue_snapshots:
-        type: json
-        required: true
-        description: Bounded issue snapshots from a declared provider or supplied source.
+      issue_snapshots: { definition: issue_snapshots }
       query:
         type: string
         required: true
         description: Selection objective for this bounded issue set.
+        schema:
+          minLength: 1
+          maxLength: 2000
       maintainer_context:
         type: string
         required: false
         description: Repository norms and response constraints.
+    examples:
+      - query: Find unanswered issues where a maintainer response would unblock progress.
+        issue_snapshots:
+          - { repository: runxhq/runx, number: '241', title: Sourcey output path is unclear, state: open, body: The docs name two different output directories. }
     graph:
       name: issue-triage-discover
       result_from: [finalize]
@@ -162,7 +212,6 @@ runners:
             outputs:
               issue_candidates: array
               selection_rationale: object
-              operator_notes: object
           inputs:
             maintainer_context: $input.maintainer_context
           context:
@@ -173,7 +222,6 @@ runners:
             issue_index: index.issue_index.data
             issue_candidates: select.issue_candidates
             selection_rationale: select.selection_rationale
-            operator_notes: select.operator_notes
           run:
             type: javascript
             module: issue-triage.mjs
@@ -189,10 +237,7 @@ runners:
   respond:
     type: graph
     inputs:
-      issue_snapshot:
-        type: json
-        required: true
-        description: One structured issue snapshot obtained from a declared provider or supplied source.
+      issue_snapshot: { definition: issue_snapshot }
       objective:
         type: string
         required: false
@@ -201,6 +246,9 @@ runners:
         type: string
         required: false
         description: Repository norms, tone, and release posture.
+    examples:
+      - issue_snapshot: { repository: runxhq/runx, number: '241', title: Sourcey output path is unclear, state: open, body: The docs name two different output directories. }
+        objective: Draft the next helpful maintainer response.
     graph:
       name: issue-triage-respond
       result_from: [finalize]
@@ -265,14 +313,11 @@ runners:
   mcp-read:
     type: graph
     inputs:
-      repository:
-        type: string
-        required: true
-        description: Repository slug to inspect through the deterministic MCP fixture.
-      issue_number:
-        type: string
-        required: true
-        description: Issue number to inspect through the deterministic MCP fixture.
+      repository: { definition: repository }
+      issue_number: { definition: issue_number }
+    examples:
+      - repository: runxhq/runx
+        issue_number: '241'
     graph:
       name: issue-triage-mcp-read
       result_from: [read_issue]

@@ -30,7 +30,7 @@ mod mcp_probe {
     use runx_parser::SkillMcpServer;
     use runx_runtime::adapters::mcp::{McpToolCallRequest, McpTransport, ProcessMcpTransport};
     use runx_runtime::credentials::SecretEnv;
-    use runx_runtime::sandbox::SandboxPlan;
+    use runx_runtime::process_invocation::PreparedProcessInvocation;
     use serde_json::json;
 
     const REUSE_WARMUP_CALL_COUNT: usize = 4;
@@ -170,7 +170,7 @@ mod mcp_probe {
             tool: "echo".to_owned(),
             arguments: inputs,
             timeout: std::time::Duration::from_secs(5),
-            sandbox: SandboxPlan {
+            process: PreparedProcessInvocation {
                 command: "node".to_owned(),
                 args: vec!["fixtures/skills/mcp-echo/stdio-server.mjs".to_owned()],
                 cwd: root,

@@ -15,7 +15,7 @@ use crate::RuntimeError;
 #[cfg(any(feature = "cli-tool", test))]
 pub(crate) const RUNX_HOSTED_WORKSPACE_POLICY_JSON_ENV: &str = "RUNX_HOSTED_WORKSPACE_POLICY_JSON";
 
-pub(crate) const PROCESS_BASELINE_ENV: [&str; 33] = [
+pub(crate) const PROCESS_BASELINE_ENV: [&str; 25] = [
     "PATH",
     "HOME",
     "TMPDIR",
@@ -25,11 +25,8 @@ pub(crate) const PROCESS_BASELINE_ENV: [&str; 33] = [
     "WINDIR",
     "COMSPEC",
     "PATHEXT",
-    "ALL_PROXY",
     "CURL_CA_BUNDLE",
     "GIT_SSL_CAINFO",
-    "HTTP_PROXY",
-    "HTTPS_PROXY",
     "LANG",
     "LANGUAGE",
     "LC_ALL",
@@ -37,17 +34,12 @@ pub(crate) const PROCESS_BASELINE_ENV: [&str; 33] = [
     "LC_MESSAGES",
     "LOGNAME",
     "NODE_EXTRA_CA_CERTS",
-    "NO_PROXY",
     "REQUESTS_CA_BUNDLE",
     "SSL_CERT_DIR",
     "SSL_CERT_FILE",
     "TERM",
     "TZ",
     "USER",
-    "all_proxy",
-    "http_proxy",
-    "https_proxy",
-    "no_proxy",
     "COLORTERM",
 ];
 
@@ -76,16 +68,6 @@ pub(crate) fn resolve_environment(
     requirements: &EnvironmentRequirements,
     environment: &BTreeMap<String, String>,
 ) -> Result<BTreeMap<String, String>, RuntimeError> {
-    if let Some(name) = requirements
-        .names()
-        .find(|name| runx_core::policy::is_reserved_runx_sandbox_env_name(name))
-    {
-        return Err(RuntimeError::SandboxViolation {
-            message: format!(
-                "environment requirements cannot include runtime-reserved variable {name}"
-            ),
-        });
-    }
     let missing = requirements
         .required
         .iter()
@@ -117,14 +99,14 @@ pub(crate) fn enforce_cli_tool_execution_policy(
     };
     let policy =
         serde_json::from_str::<runx_core::policy::LocalExecutionPolicy>(raw).map_err(|source| {
-            RuntimeError::SandboxViolation {
+            RuntimeError::InvalidProcessInvocation {
                 message: format!("hosted workspace policy is invalid: {source}"),
             }
         })?;
     if let Some(message) =
         runx_core::policy::strict_cli_tool_inline_code_denial(command, args, Some(&policy))
     {
-        return Err(RuntimeError::SandboxViolation { message });
+        return Err(RuntimeError::InvalidProcessInvocation { message });
     }
     Ok(())
 }

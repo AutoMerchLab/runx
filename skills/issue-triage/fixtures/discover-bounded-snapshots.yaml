@@ -24,8 +24,6 @@ caller:
       selection_rationale:
         chosen_issue: runxhq/runx#241
         rationale: Higher unblock value than the cosmetic typo.
-      operator_notes:
-        escalation: none
 expect:
   status: sealed
   steps: [digest-snapshots, index, select, finalize]

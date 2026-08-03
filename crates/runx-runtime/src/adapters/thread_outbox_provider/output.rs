@@ -41,6 +41,9 @@ pub(super) fn skill_output_from_outcome(
             contract_json_value(delivery_observations, "serializing delivery observations")?,
         );
     }
+    if let Some(execution_boundary) = &outcome.execution_boundary {
+        metadata.extend(execution_boundary.clone());
+    }
     Ok(InvocationOutput::process_value(
         InvocationStatus::Success,
         value,

@@ -13,7 +13,6 @@ const scafldSource = inputs.scafld_bin
     ? "env:SCAFLD_BIN"
     : "path:scafld";
 const scafld = resolveBinary(scafldCandidate);
-const minimumScafldVersion = String(inputs.scafld_min_version || "2.4.0");
 const cwd = path.resolve(String(
   inputs.fixture
     || inputs.cwd
@@ -136,20 +135,6 @@ for (const key of Object.keys(env)) {
 }
 if (path.isAbsolute(scafld) || scafld.includes(path.sep)) {
   env.PATH = `${path.dirname(scafld)}${path.delimiter}${env.PATH || "/usr/local/bin:/usr/bin:/bin"}`;
-}
-
-try {
-  ensureScafldVersion({
-    scafldBinary: scafld,
-    source: scafldSource,
-    requestedBinary: scafldCandidate,
-    workingDirectory: cwd,
-    processEnv: env,
-    minimum: minimumScafldVersion,
-  });
-} catch (error) {
-  console.error(error.message);
-  process.exit(1);
 }
 
 if (command === "build_to_review") {
@@ -483,62 +468,6 @@ function parseMaxBuilds(value) {
     return parsed;
   }
   return 12;
-}
-
-function ensureScafldVersion({ scafldBinary, source, requestedBinary, workingDirectory, processEnv, minimum }) {
-  const result = spawnSync(scafldBinary, ["--version"], {
-    cwd: workingDirectory,
-    env: processEnv,
-    encoding: "utf8",
-    shell: false,
-  });
-  if (result.error) {
-    throw new Error(formatSpawnError({
-      error: result.error,
-      source,
-      requestedBinary,
-      resolvedBinary: scafldBinary,
-      cwd: workingDirectory,
-      command: "--version",
-      args: ["--version"],
-    }));
-  }
-
-  const exitCode = result.status ?? 1;
-  const rawVersion = `${result.stdout ?? ""}${result.stderr ?? ""}`.trim();
-  if (exitCode !== 0) {
-    throw new Error(`scafld --version failed with exit ${exitCode}: ${rawVersion}`);
-  }
-
-  const required = parseSemver(minimum);
-  if (!required) {
-    throw new Error(`invalid required scafld version: ${minimum}`);
-  }
-
-  const actual = parseSemver(rawVersion);
-  if (!actual || compareSemver(actual, required) < 0) {
-    throw new Error(
-      `scafld ${minimum} or newer is required by this runx runner; ` +
-      `resolved ${scafldBinary} reported ${rawVersion || "no version"}`,
-    );
-  }
-}
-
-function parseSemver(value) {
-  const match = String(value).match(/\bv?(\d+)\.(\d+)\.(\d+)(?:[-+][0-9A-Za-z.-]+)?\b/);
-  if (!match) {
-    return null;
-  }
-  return [Number(match[1]), Number(match[2]), Number(match[3])];
-}
-
-function compareSemver(left, right) {
-  for (let index = 0; index < 3; index += 1) {
-    if (left[index] !== right[index]) {
-      return left[index] > right[index] ? 1 : -1;
-    }
-  }
-  return 0;
 }
 
 function firstNonEmptyString(...values) {

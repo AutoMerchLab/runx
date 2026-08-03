@@ -28,7 +28,7 @@ pub(super) struct WorkerSession {
     stderr: Arc<Mutex<BoundedStderr>>,
     response_reader: Option<JoinHandle<()>>,
     stderr_reader: Option<JoinHandle<()>>,
-    pub(super) isolation: Arc<runx_contracts::JsonObject>,
+    pub(super) execution_boundary: Arc<runx_contracts::JsonObject>,
     terminated: bool,
 }
 
@@ -37,27 +37,28 @@ pub(super) struct WorkerLaunchPlan {
     args: Vec<String>,
     cwd: std::path::PathBuf,
     pub(super) worker_path_override: Option<String>,
-    pub(super) isolation: Arc<runx_contracts::JsonObject>,
+    pub(super) execution_boundary: Arc<runx_contracts::JsonObject>,
 }
 
 impl WorkerLaunchPlan {
     pub(super) fn prepare(worker_path_override: Option<&str>) -> Result<Self, RuntimeError> {
-        crate::process::ensure_host_process_containment()
-            .map_err(|source| RuntimeError::io("installing host process containment", source))?;
+        crate::process::ensure_windows_host_job()
+            .map_err(|source| RuntimeError::io("installing Windows host process job", source))?;
         let worker_path = resolve_worker_path(worker_path_override)?;
-        let sandbox =
-            crate::sandbox::prepare_javascript_worker_sandbox(&worker_path)?.into_process_plan();
-        if !sandbox.env.is_empty() || !sandbox.cleanup_paths.is_empty() {
+        let process =
+            crate::process_invocation::prepare_javascript_worker_invocation(&worker_path)?
+                .into_execution_plan();
+        if !process.env.is_empty() || !process.cleanup_paths.is_empty() {
             return Err(worker_error(
-                "deterministic JavaScript worker sandbox must not carry environment or host cleanup paths",
+                "deterministic JavaScript worker process must not carry environment or host cleanup paths",
             ));
         }
         Ok(Self {
-            command: sandbox.command,
-            args: sandbox.args,
-            cwd: sandbox.cwd,
+            command: process.command,
+            args: process.args,
+            cwd: process.cwd,
             worker_path_override: worker_path_override.map(str::to_owned),
-            isolation: Arc::new(sandbox.metadata),
+            execution_boundary: Arc::new(process.metadata),
         })
     }
 }
@@ -98,7 +99,7 @@ impl WorkerSession {
             stderr: stderr.clone(),
             response_reader: None,
             stderr_reader: None,
-            isolation: plan.isolation.clone(),
+            execution_boundary: plan.execution_boundary.clone(),
             terminated: false,
         };
         session.response_reader = Some(

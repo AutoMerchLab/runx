@@ -10,7 +10,9 @@ use super::owned_process::OwnedProcess;
 #[cfg(unix)]
 use super::resource_limits::{resource_limit_shell, resource_limit_shell_args};
 use super::signals::ProcessSignal;
-use super::{ProcessOutcome, ProcessSpec, ProcessStdin, ProcessSupervisorError};
+use super::{
+    ProcessOutcome, ProcessSpec, ProcessStdin, ProcessSupervisorError, cleanup_paths_quietly,
+};
 
 const DEFAULT_FORCE_KILL_GRACE: Duration = Duration::from_millis(100);
 const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(25);
@@ -243,12 +245,6 @@ fn cleanup_paths(paths: &[PathBuf]) -> Vec<String> {
     errors
 }
 
-fn cleanup_paths_quietly(paths: &[PathBuf]) {
-    for path in paths {
-        let _ = fs::remove_dir_all(path);
-    }
-}
-
 fn duration_ms(started: Instant) -> u64 {
     u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
 }
@@ -431,7 +427,7 @@ mod tests {
             .output()
             .map_err(|error| format!("locating node.exe: {error}"))?;
         if !output.status.success() {
-            return Err("node.exe is required for Windows process containment tests".to_owned());
+            return Err("node.exe is required for Windows process-tree lifecycle tests".to_owned());
         }
         String::from_utf8(output.stdout)
             .map_err(|error| error.to_string())?

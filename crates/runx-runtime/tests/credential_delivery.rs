@@ -10,18 +10,16 @@ use runx_contracts::{
     CredentialDeliveryObservationStatus, Reference, ReferenceType,
 };
 use runx_core::policy::{CredentialBindingDecision, CredentialEnvelope};
-use runx_parser::{SkillSandbox, SkillSource};
+use runx_parser::SkillSource;
 use runx_runtime::adapters::cli_tool::CliToolAdapter;
-use runx_runtime::adapters::mcp::{FixtureMcpTransport, McpAdapter, ProcessMcpTransport};
+use runx_runtime::adapters::mcp::{FixtureMcpTransport, McpAdapter};
 use runx_runtime::{
     CredentialDelivery, CredentialDeliveryError, CredentialDeliveryProfile,
-    InMemoryMaterialResolver, InvocationStatus, ResolvedCredentialMaterial, RuntimeError,
-    SkillAdapter, SkillInvocation,
+    InMemoryMaterialResolver, InvocationStatus, ResolvedCredentialMaterial, SkillAdapter,
+    SkillInvocation,
 };
 
 const FIXTURE_CREATED_AT: &str = "2026-05-18T00:00:00Z";
-const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV: &str = "RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY";
-
 /// A minimal delivered-credential observation for the resolution tests, which
 /// assert on the delivered secret, not on the observation contents.
 fn delivered_observation() -> CredentialDeliveryObservation {
@@ -441,47 +439,6 @@ fn mcp_adapter_delivers_secret_env_and_redacts_tool_result()
     Ok(())
 }
 
-#[test]
-fn mcp_process_transport_rejects_process_env_credential_delivery()
--> Result<(), Box<dyn std::error::Error>> {
-    let mut inputs = runx_contracts::JsonObject::new();
-    inputs.insert(
-        "name".to_owned(),
-        runx_contracts::JsonValue::String("GITHUB_TOKEN".to_owned()),
-    );
-    let output = McpAdapter::new(ProcessMcpTransport::default()).invoke(SkillInvocation {
-        skill_name: "credential.mcp.process".to_owned(),
-        step_id: None,
-        artifacts: None,
-        allowed_tools: None,
-        source: mcp_process_source()?,
-        inputs,
-        resolved_inputs: Default::default(),
-        current_context: Vec::new(),
-        provenance: Vec::new(),
-        skill_directory: repo_root()?,
-        env: process_env(),
-        requirements: Default::default(),
-        credential_delivery: allowed_delivery()?,
-    })?;
-
-    assert_eq!(output.status, InvocationStatus::Failure);
-    assert_eq!(output.value, runx_contracts::JsonValue::Null);
-    assert_eq!(
-        output.failure_message().as_deref(),
-        Some("MCP adapter failed.")
-    );
-    assert!(!output.rendered_value().contains("ghs_secret_token"));
-    assert!(
-        !output
-            .failure_message()
-            .unwrap_or_default()
-            .contains("ghs_secret_token")
-    );
-    assert!(!serde_json::to_string(&output.metadata)?.contains("ghs_secret_token"));
-    Ok(())
-}
-
 fn allowed_delivery() -> Result<CredentialDelivery, CredentialDeliveryError> {
     CredentialDelivery::from_allowed_binding(
         &CredentialBindingDecision::Allow {
@@ -566,7 +523,6 @@ fn cli_source() -> SkillSource {
         cwd: None,
         timeout_seconds: Some(5),
         input_mode: None,
-        sandbox: Some(readonly_sandbox()),
         server: None,
         tool: None,
         arguments: None,
@@ -607,48 +563,14 @@ fn mcp_source() -> SkillSource {
     source
 }
 
-fn mcp_process_source() -> Result<SkillSource, RuntimeError> {
-    let root = repo_root()?;
-    let mut source = cli_source();
-    source.source_type = runx_parser::SourceKind::Mcp;
-    source.command = None;
-    source.args = Vec::new();
-    source.server = Some(runx_parser::SkillMcpServer {
-        command: "node".to_owned(),
-        args: vec!["fixtures/skills/mcp-echo/stdio-server.mjs".to_owned()],
-        cwd: Some(root.to_string_lossy().into_owned()),
-    });
-    source.tool = Some("env".to_owned());
-    Ok(source)
-}
-
-fn readonly_sandbox() -> SkillSandbox {
-    SkillSandbox {
-        profile: runx_core::policy::SandboxProfile::Readonly,
-        cwd_policy: None,
-        network: None,
-        writable_paths: Vec::new(),
-        require_enforcement: None,
-        approved_escalation: None,
-        raw: Default::default(),
-    }
-}
-
 fn process_env() -> BTreeMap<String, String> {
     let mut env = std::env::vars().collect::<BTreeMap<_, _>>();
     env.insert(
-        RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV.to_owned(),
-        "local".to_owned(),
+        "RUNX_CWD".to_owned(),
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .to_string_lossy()
+            .into_owned(),
     );
     env
-}
-
-fn repo_root() -> Result<PathBuf, RuntimeError> {
-    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../..")
-        .canonicalize()
-        .map_err(|error| RuntimeError::Io {
-            context: "repository root is available".to_owned(),
-            source: error,
-        })
 }

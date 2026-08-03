@@ -3124,6 +3124,7 @@ runners:
       steps:
         - id: echo
           tool: test.echo
+          scopes: [test.echo]
           inputs:
             message: $input.message
 "#,
@@ -3157,6 +3158,7 @@ runners:
       steps:
         - id: echo
           tool: test.echo
+          scopes: [test.echo]
           inputs:
             message: $input.thread_title
 "#,
@@ -3199,6 +3201,7 @@ runners:
               fix_bundle: fix_bundle
         - id: echo
           tool: test.echo
+          scopes: [test.echo]
           context:
             message: author.fix_bundle.data.message
 "#,
@@ -3238,6 +3241,7 @@ runners:
               result: object
         - id: echo
           tool: test.echo
+          scopes: [test.echo]
           inputs:
             message: $input.thread_title
 "#,
@@ -3270,6 +3274,7 @@ runners:
       steps:
         - id: echo
           tool: test.optional-json
+          scopes: [test.optional-json]
           inputs:
             message: $input.thread_title
             harness: $input.harness

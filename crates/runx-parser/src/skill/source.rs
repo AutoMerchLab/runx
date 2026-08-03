@@ -13,7 +13,7 @@ use crate::graph::MintScopeSource;
 
 use super::{
     ActDeclaration, FIELDS, InputMode, SkillExternalAdapterManifest, SkillMcpServer, SkillSource,
-    SourceKind, field_value, first_value, validate_environment_requirements, validate_sandbox,
+    SourceKind, validate_environment_requirements,
 };
 
 const SOURCE_FIELDS: &[&str] = &[
@@ -33,7 +33,6 @@ const SOURCE_FIELDS: &[&str] = &[
     "module",
     "outputs",
     "pages",
-    "sandbox",
     "server",
     "task",
     "thread_outbox_provider",
@@ -42,17 +41,14 @@ const SOURCE_FIELDS: &[&str] = &[
     "type",
 ];
 
-pub fn validate_skill_source(
-    source: &JsonObject,
-    runx: Option<&JsonObject>,
-) -> Result<SkillSource, ValidationError> {
-    validate_source(source, runx)
+pub fn validate_skill_source(source: &JsonObject) -> Result<SkillSource, ValidationError> {
+    validate_source(source)
 }
 
 pub(crate) fn validate_inline_graph_source(
     source: &JsonObject,
 ) -> Result<SkillSource, ValidationError> {
-    validate_source_with_context(source, None, SourceValidationContext::InlineGraph)
+    validate_source_with_context(source, SourceValidationContext::InlineGraph)
 }
 
 pub(super) fn validate_source_fields(
@@ -70,11 +66,8 @@ pub(super) fn flattened_source_record(record: &JsonObject) -> JsonObject {
         .collect()
 }
 
-pub(super) fn validate_source(
-    source: &JsonObject,
-    runx: Option<&JsonObject>,
-) -> Result<SkillSource, ValidationError> {
-    validate_source_with_context(source, runx, SourceValidationContext::Skill)
+pub(super) fn validate_source(source: &JsonObject) -> Result<SkillSource, ValidationError> {
+    validate_source_with_context(source, SourceValidationContext::Skill)
 }
 
 #[derive(Clone, Copy)]
@@ -85,7 +78,6 @@ enum SourceValidationContext {
 
 fn validate_source_with_context(
     source: &JsonObject,
-    runx: Option<&JsonObject>,
     context: SourceValidationContext,
 ) -> Result<SkillSource, ValidationError> {
     let source_type = FIELDS.required_string(source.get("type"), "source.type")?;
@@ -110,8 +102,6 @@ fn validate_source_with_context(
     validate_agent_command_boundary(source, &source_type)?;
     let source_kind = parse_source_kind(&source_type, "source.type")?;
     validate_source_timeout(&source_kind, timeout_seconds)?;
-    let sandbox = validate_source_sandbox(source, runx, &source_kind)?;
-
     let external_adapter = validate_external_adapter_manifest(source, source_kind)?;
     let thread_outbox_provider = validate_thread_outbox_provider(source, source_kind)?;
     Ok(SkillSource {
@@ -124,7 +114,6 @@ fn validate_source_with_context(
         timeout_seconds,
         input_mode,
         environment: validate_environment_requirements(source.get("environment"))?,
-        sandbox,
         server: validate_mcp_server(source, &source_type)?,
         tool: validate_mcp_tool(source, &source_type)?,
         arguments: FIELDS.optional_object(source.get("arguments"), "source.arguments")?,
@@ -406,26 +395,6 @@ fn validate_javascript_source(
         ));
     }
     Ok((None, None))
-}
-
-fn validate_source_sandbox(
-    source: &JsonObject,
-    runx: Option<&JsonObject>,
-    source_kind: &SourceKind,
-) -> Result<Option<super::SkillSandbox>, ValidationError> {
-    if *source_kind == SourceKind::JavaScript {
-        if source.contains_key("sandbox") || field_value(runx, "sandbox").is_some() {
-            return Err(FIELDS.validation_error(
-                "javascript sources cannot declare a sandbox; the deterministic module runtime owns containment",
-            ));
-        }
-        return Ok(None);
-    }
-    let sandbox = validate_sandbox(first_value(
-        source.get("sandbox"),
-        field_value(runx, "sandbox"),
-    ))?;
-    Ok(sandbox)
 }
 
 fn validate_javascript_fields(source: &JsonObject) -> Result<(), ValidationError> {

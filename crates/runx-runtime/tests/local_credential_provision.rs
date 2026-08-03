@@ -16,8 +16,6 @@ use runx_runtime::{LocalOrchestrator, RunResult, SkillRunRequest};
 use tempfile::tempdir;
 
 const SECRET: &str = "ghs_local_provision_secret_value";
-const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV: &str = "RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY";
-const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_VALUE: &str = "local";
 
 #[test]
 fn local_credential_for_cli_tool_is_delivered_and_redacted()
@@ -32,7 +30,7 @@ fn local_credential_for_cli_tool_is_delivered_and_redacted()
         run_id: None,
         answers_path: None,
         inputs: BTreeMap::new(),
-        env: local_sandbox_fallback_env(),
+        env: local_env(),
         cwd: temp.path().to_path_buf(),
         managed_agent: Default::default(),
         local_credential: Some(LocalCredentialDescriptor {
@@ -69,7 +67,7 @@ fn declared_credential_without_descriptor_fails_without_leak()
         run_id: None,
         answers_path: None,
         inputs: BTreeMap::new(),
-        env: local_sandbox_fallback_env(),
+        env: local_env(),
         cwd: temp.path().to_path_buf(),
         managed_agent: Default::default(),
         local_credential: None,
@@ -96,7 +94,7 @@ fn graph_projects_credential_away_from_javascript_around_credentialed_tool()
         run_id: None,
         answers_path: None,
         inputs: BTreeMap::new(),
-        env: local_sandbox_fallback_env(),
+        env: local_env(),
         cwd: temp.path().to_path_buf(),
         managed_agent: Default::default(),
         local_credential: Some(LocalCredentialDescriptor {
@@ -172,12 +170,8 @@ fn run_skill(mut request: SkillRunRequest) -> Result<RunResult, Box<dyn std::err
         .map_err(Into::into)
 }
 
-fn local_sandbox_fallback_env() -> BTreeMap<String, String> {
-    [(
-        RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV.to_owned(),
-        RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_VALUE.to_owned(),
-    )]
-    .into()
+fn local_env() -> BTreeMap<String, String> {
+    BTreeMap::new()
 }
 
 /// A cli-tool skill that echoes the delivered `$GITHUB_TOKEN`. The command is a
@@ -209,8 +203,6 @@ runners:
     args:
       - "-c"
       - "printf '%s' \"$GITHUB_TOKEN\""
-    sandbox:
-      profile: readonly
 "#,
     )?;
     Ok(skill_dir)
@@ -263,8 +255,6 @@ runners:
             outputs:
               credential_seen: boolean
               echoed: string
-            sandbox:
-              profile: readonly
         - id: finalize
           context:
             prepared: prepare.prepared

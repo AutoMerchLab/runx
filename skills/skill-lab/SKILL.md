@@ -165,8 +165,59 @@ authoring.
 - `run: approval` is a human gate. Agent provenance is rejected by the runtime;
   use `agent-task` for model judgment and keep its result distinct from human
   authority.
+- Treat the selected runner's typed execution requirements as the complete
+  permission request. Put opaque scope strings, exact non-secret environment
+  names, the named credential requirement, and runtime metadata on their
+  canonical runner or source fields—never under `runx`, in prose, or in a
+  package loader. Runx resolves and records those declarations without
+  inventing a scope vocabulary; the native capability or provider that owns a
+  scope enforces it.
+- Make every public runner contract recursively complete at the authoring
+  boundary. `X.yaml` owns nested properties, closed objects, enums, bounds,
+  and complete parser-validated invocation examples; `runx skill inspect`,
+  MCP, agent tools, and generated exports must project that same declaration.
+  When an identical input declaration is used by multiple runners, define it
+  once with the manifest's exact input-definition reference rather than copy
+  it or invent merge overrides. JavaScript may enforce irreducible
+  relationships between otherwise valid fields, but must not repeat structural
+  validation already owned by the profile.
+- Dogfood the result through the real agent-facing surface, not only the
+  package harness. A cold agent must be able to inspect the selected runner,
+  construct a valid call without reading source or fixtures, understand a
+  path-specific rejection, and continue from the resulting context. Exercise
+  every materially different runner; a default-only export cannot certify a
+  multi-runner skill. For an existing target, use
+  `authoring_context.target_inspection` as the canonical runner-contract and
+  execution-closure evidence. An `invalid` inspection is repair context, not
+  permission to guess: read the declared target files, correct the owning
+  contract, and validate the complete candidate.
+- Design evidence admission around the operator's job, not the first provider
+  implementation. When analysis is useful over local admitted files or
+  artifacts as well as remote sources, support both through their canonical
+  evidence boundaries; do not require HTTPS, Hosted Connect, or another
+  provider merely to analyze evidence already available on the operator's
+  machine. Provider-specific acquisition remains a separate runner or upstream
+  skill when it adds real readback value.
+- Make permission claims executable through the existing package harness.
+  Permission-bearing native and provider paths need a realistic admitted case
+  and, where the harness can exercise that owner, a refusal case with the
+  required scope or grant withheld. The harness must call the same catalog,
+  dispatcher, and capability/provider implementation as a real run; never add
+  a mock permission evaluator, scope vocabulary, or parallel verification
+  report. This proves enforcement owned by Runx capabilities and providers. It
+  cannot prove that trusted host code avoided undeclared filesystem, network,
+  or syscall access, so report that boundary as trusted rather than confined.
 - Search the inspected native-tool and skill catalogs before designing files.
   Prefer an existing core tool or canonical skill over executable package code.
+- Make every public runner input constructible from inspection. Use ordinary
+  `schema` for runner-owned nested values. When an input is exactly one
+  canonical Runx packet, declare `type: json` plus `packet: <packet-id>` and
+  let the runtime resolve the catalog-owned schema into inspection, validation,
+  exports, registry bundles, and harnesses. Never copy that packet schema into
+  the consumer. If the canonical schema is too weak to make the input usable,
+  improve the producing packet contract first; a packet reference is not a
+  substitute for a complete schema. Every public runner still needs at least
+  one realistic, copy-valid example unless its inputs are empty.
 - Express orchestration through `X.yaml`; keep all static agent operating
   knowledge and task contracts in `SKILL.md`. Never put model instructions in
   manifests, fixtures, or duplicated prompt fragments.
@@ -203,6 +254,13 @@ authoring.
   `tools/<namespace>/<name>/manifest.json`, its dotted manifest name must match
   that path, and aggregate package admission must bind every static local
   source dependency before the package can run or publish.
+- Local CLI tools, process MCP servers, and process adapters are trusted host
+  code. Runx controls their exact invocation, delivered environment and
+  credentials, lifecycle, bounded output, and evidence; it does not turn
+  declared scopes into portable filesystem, network, or syscall confinement.
+  Use this lane only when the operation is genuinely irreducible to native
+  capabilities, provider adapters, declarative composition, or deterministic
+  JavaScript. Never author a sandbox declaration, wrapper, or fallback flag.
 - When that computation is JavaScript, use the native `type: javascript`
   source. Prefer one cohesive module named for the skill with focused named
   exports of the form `(inputs, context) => JSON`; split it only when the
@@ -225,15 +283,16 @@ authoring.
   `Runx.parseUrl(value)` helper for absolute URLs and do not assume Web or Node
   globals exist.
 - Classify volume before authoring. Small typed control values belong in normal
-  runner inputs; `runx skill --inputs` is only a contained transport for one
+  runner inputs; `runx skill --inputs` is only a bounded transport for one
   complete control object. Large immutable local content belongs behind
   `artifact.admit`/bounded pages. Durable history belongs behind
   `data.read_events` cursors or a compact projection. A graph must not carry an
   archive, growing event history, or completed-id array simply because one CLI
   call can parse it.
 - Use deterministic `pages` only for irreducible record transforms over one
-  admitted JSON-array artifact. The runtime owns containment, snapshot digest,
-  record boundaries, offsets, retries, and the page loop; the module owns only
+  admitted JSON-array artifact. The runtime owns artifact admission, page
+  framing, snapshot digest, record boundaries, offsets, retries, and the page
+  loop; the module owns only
   decoding and domain selection. Treat `runx_page.artifact_ref` as an opaque,
   runtime-local read capability that belongs in receipt provenance; never place
   it in a plan or idempotency digest. Bind deterministic domain output to
@@ -241,7 +300,7 @@ authoring.
   continuation state proportional to the bounded result. Do not add a package
   file reader, manual byte cursor, hashing loop, high-volume profile, or raised
   worker limit. If safe framing or bounded state is impossible, choose
-  `needs_core` or a genuinely separate sandboxed protocol tool rather than
+  `needs_core` or a genuinely separate protocol tool rather than
   smuggling filesystem authority into JavaScript.
 - Prove a volume path at two materially different scales through the production
   owner. The result must be identical across page sizes, cursors must advance,
@@ -290,6 +349,12 @@ authoring.
   A deliberate rename must migrate or retire the prior identity through the
   registry operator. Never transfer a contributor's community-owned row into
   the first-party namespace unless that ownership transfer is explicit.
+- Treat registry portability as execution truth, not a publish-time smoke test.
+  A local cross-package skill edge must be present in the digest-bound registry
+  package bundle, and the publish harness must execute that exact materialized
+  package. Never copy sibling source beside a harness while omitting it from the
+  published artifact, rewrite the source graph for registry-only execution, or
+  certify a package that needs the original checkout to run.
 - Include a realistic happy path and refusal, stop, or error path.
 - Never treat supplied agent answers as provider-effect proof.
 
@@ -308,6 +373,9 @@ actual proposed result:
 5. Does one clear owner hold each decision, approval, mutation, and readback?
 6. Would this still be the architecture chosen from scratch against the current
    Runx catalog?
+7. Can a cold agent actually invoke every public runner from inspection alone,
+   using local or remote evidence appropriate to the job, without source-diving,
+   guessed JSON, or an unnecessary provider dependency?
 
 If any answer is no, the package is not ready even if its schemas, tests, and
 budgets pass. Fix the capability design or return `no_skill`/`needs_core`;

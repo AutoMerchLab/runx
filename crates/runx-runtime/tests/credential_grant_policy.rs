@@ -96,7 +96,6 @@ fn credential_grant_skill(
             command: Some("true".to_owned()),
             args: None,
             timeout_seconds: None,
-            sandbox: None,
         },
         auth: Some(serde_json::from_value::<JsonValue>(auth)?),
         runtime: None,

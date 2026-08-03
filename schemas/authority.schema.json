@@ -2870,10 +2870,6 @@
                       "type": "string"
                     },
                     {
-                      "const": "sandbox_enforced",
-                      "type": "string"
-                    },
-                    {
                       "const": "effect_proof_present",
                       "type": "string"
                     },

@@ -20,8 +20,6 @@ pub(super) struct CommandInput {
     pub(super) cwd: String,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub(super) env: BTreeMap<String, String>,
-    #[serde(default)]
-    pub(super) network: bool,
     pub(super) timeout_ms: u64,
     pub(super) output_mode: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -41,7 +39,6 @@ impl CapabilityInput for CommandInput {
                 "output_mode".to_owned(),
                 JsonValue::String("digest".to_owned()),
             ),
-            ("network".to_owned(), JsonValue::Bool(false)),
         ])
     }
 }
@@ -60,7 +57,6 @@ pub(super) struct CommandPlan {
     pub(super) schema: String,
     pub(super) command_digest: String,
     pub(super) cwd: String,
-    pub(super) network: bool,
     pub(super) timeout_ms: u64,
     pub(super) output_mode: String,
     pub(super) env_names: Vec<String>,
@@ -81,7 +77,6 @@ pub(super) struct CommandExecution {
     pub(super) decision: String,
     pub(super) command_digest: String,
     pub(super) cwd: String,
-    pub(super) network: bool,
     pub(super) exit_code: Option<i64>,
     pub(super) timed_out: bool,
     pub(super) duration_ms: u64,
@@ -129,10 +124,6 @@ const FIELDS: &[CapabilityField] = &[
         description: "Bounded non-secret environment values for the child process.",
     },
     CapabilityField {
-        name: "network",
-        description: "Enable process network access; requires the exact net:process step scope.",
-    },
-    CapabilityField {
         name: "timeout_ms",
         description: "Execution timeout from 1000 to 3600000 milliseconds.",
     },
@@ -165,11 +156,11 @@ static PLAN: TypedNativeCapability<CommandInput, CommandPlanOutput> = TypedNativ
 );
 
 static EXECUTE: TypedNativeCapability<CommandInput, CommandExecutionOutput> =
-    TypedNativeCapability::new(
+    TypedNativeCapability::new_with_execution_boundary(
         CapabilityDefinition {
             id: "command.execute",
             owner: "runx-runtime/command",
-            summary: "Execute exact argv under the runtime-owned process sandbox and supervision.",
+            summary: "Execute exact argv under runtime-owned process supervision.",
             scopes: &["process.exec"],
             effect: CapabilityEffect::Mutate,
             approval: CapabilityApproval::Policy,
@@ -178,11 +169,12 @@ static EXECUTE: TypedNativeCapability<CommandInput, CommandExecutionOutput> =
                 packet: "runx.command.execution.v1",
             },
             admission: CapabilityAdmission::RuntimeInvariant(
-                "generic commands require one deny-by-default process boundary",
+                "generic commands require exact argv, admitted environment, and supervised host execution",
             ),
             fields: FIELDS,
         },
         super::execute,
+        crate::process_invocation::NATIVE_COMMAND_EXECUTION_BOUNDARY,
     );
 
 pub(in crate::tool_catalogs::native) const CAPABILITIES: &[&dyn NativeCapability] =

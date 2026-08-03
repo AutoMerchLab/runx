@@ -1,5 +1,5 @@
 skill: nitrosend
-version: "0.2.5"
+version: "0.2.6"
 catalog:
   kind: skill
   audience: public
@@ -30,6 +30,8 @@ runners:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - brand_sid: brnd_demo123
     graph:
       name: nitrosend-status
       result_from: [status]
@@ -41,6 +43,120 @@ runners:
             operation: status
             arguments: {}
             brand_sid: "$input.brand_sid"
+  configure-sender:
+    type: graph
+    credential: nitrosend
+    act:
+      purpose: Replace one explicitly selected Nitrosend brand's exact sender defaults.
+    inputs:
+      brand_sid:
+        type: string
+        required: true
+        description: Public Nitrosend brand SID; account-default selection is forbidden.
+      from_name:
+        type: string
+        required: true
+        description: Exact sender display name.
+      from_email:
+        type: string
+        required: true
+        description: Exact sender address on a verified domain.
+      reply_to:
+        type: string
+        required: true
+        description: Exact reply-to address.
+      test_email_recipients:
+        type: array
+        required: true
+        description: Exact saved test-recipient array, empty to clear, maximum five.
+        schema:
+          maxItems: 5
+          uniqueItems: true
+          items: { type: string, format: email }
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry identity for this exact brand and sender configuration.
+    examples:
+      - brand_sid: brnd_demo123
+        from_name: Example Team
+        from_email: hello@example.com
+        reply_to: support@example.com
+        test_email_recipients: [owner@example.com]
+        idempotency_key: sender-brnd_demo123-20260803
+    graph:
+      name: nitrosend-configure-sender
+      result_from: [readback, verify]
+      steps:
+        - id: current
+          skill: graph/provider-operation
+          runner: read
+          inputs:
+            operation: sender_settings
+            arguments: {}
+            brand_sid: "$input.brand_sid"
+        - id: verify-current-brand
+          tool: data.compare
+          inputs:
+            expected: "$input.brand_sid"
+          context:
+            actual: current.provider_evidence.data.result.sender_settings.brand_sid
+        - id: approve
+          when:
+            field: verify-current-brand.comparison.data.equal
+            equals: true
+          run:
+            type: approval
+          inputs:
+            gate_id: nitrosend.configure_sender.approval
+            reason: Replace the selected Nitrosend brand's sender defaults with these exact values.
+          context:
+            current: current.provider_evidence.data
+        - id: apply
+          skill: graph/provider-operation
+          runner: act
+          mutation: true
+          idempotency_key: $input.idempotency_key
+          inputs:
+            operation: configure_sender
+            arguments:
+              from_name: "$input.from_name"
+              from_email: "$input.from_email"
+              reply_to: "$input.reply_to"
+              test_email_recipients: "$input.test_email_recipients"
+            brand_sid: "$input.brand_sid"
+        - id: readback
+          skill: graph/provider-operation
+          runner: read
+          inputs:
+            operation: sender_settings
+            arguments: {}
+            brand_sid: "$input.brand_sid"
+        - id: verify
+          tool: data.compare
+          inputs:
+            expected:
+              brand_sid: "$input.brand_sid"
+              from_name: "$input.from_name"
+              from_email: "$input.from_email"
+              reply_to: "$input.reply_to"
+              test_email_recipients: "$input.test_email_recipients"
+          context:
+            actual: readback.provider_evidence.data.result.sender_settings
+    policy:
+      guards:
+        - step: apply
+          field: approve.approval_decision.data.approved
+          equals: true
+        - step: apply
+          field: verify-current-brand.comparison.data.equal
+          equals: true
+        - step: readback
+          field: apply.provider_evidence.data.decision
+          equals: ok
+        - step: verify
+          field: readback.provider_evidence.data.decision
+          equals: ok
   review-delivery:
     type: graph
     credential: nitrosend
@@ -49,6 +165,7 @@ runners:
         type: string
         required: true
         description: template, flow, or campaign.
+        schema: { enum: [template, flow, campaign] }
       target_id:
         type: number
         required: true
@@ -61,6 +178,10 @@ runners:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - target_type: campaign
+        target_id: 42
+        brand_sid: brnd_demo123
     graph:
       name: nitrosend-review-delivery
       result_from: [review]
@@ -87,6 +208,9 @@ runners:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - import_id: 42
+        brand_sid: brnd_demo123
     graph:
       name: nitrosend-import-status
       result_from: [status]
@@ -109,6 +233,7 @@ runners:
         type: string
         required: true
         description: flow or campaign.
+        schema: { enum: [flow, campaign] }
       target_id:
         type: number
         required: true
@@ -121,6 +246,11 @@ runners:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - target_type: flow
+        target_id: 42
+        revision_id: 3
+        brand_sid: brnd_demo123
     graph:
       name: nitrosend-approve-delivery
       result_from: [apply]
@@ -175,6 +305,7 @@ runners:
         type: string
         required: true
         description: live or schedule.
+        schema: { enum: [live, schedule] }
       scheduled_at:
         type: string
         required: false
@@ -192,6 +323,13 @@ runners:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - campaign_id: 42
+        operation: schedule
+        scheduled_at: '2026-08-04T09:00:00Z'
+        confirm_send_to_all: false
+        idempotency_key: campaign-42-20260804T090000Z
+        brand_sid: brnd_demo123
     graph:
       name: nitrosend-send-campaign
       result_from: [deliver]
@@ -254,6 +392,10 @@ runners:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - flow_id: 42
+        revision_id: 3
+        brand_sid: brnd_demo123
     graph:
       name: nitrosend-activate-flow
       result_from: [activate]
@@ -307,14 +449,21 @@ runners:
         type: string
         required: true
         description: compose_campaign, compose_flow, manage_template, or define_segment.
+        schema: { enum: [compose_campaign, compose_flow, manage_template, define_segment] }
       arguments:
-        type: json
+        type: object
         required: true
         description: Exact arguments produced by the matching planning runner and current Nitrosend schema.
       brand_sid:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - operation: define_segment
+        arguments:
+          name: Active customers
+          filters: { all: [{ field: status, operator: eq, value: active }] }
+        brand_sid: brnd_demo123
     graph:
       name: nitrosend-apply-draft
       result_from: [apply]
@@ -369,6 +518,12 @@ runners:
         type: string
         required: false
         description: Caller surface, usually runx_skill_cli or mcp_direct.
+    examples:
+      - objective: Schedule the August product update for the engaged-customer segment.
+        account_status_json: '{"decision":"ready","sender_ready":true}'
+        audience_brief: Engaged customers segment; do not send to all contacts.
+        operator_context: Prepare only; delivery requires later review and approval.
+        client_surface: runx_skill_cli
   plan-flow:
     type: agent-task
     agent: builder
@@ -399,6 +554,12 @@ runners:
         type: string
         required: false
         description: Caller surface, usually runx_skill_cli or mcp_direct.
+    examples:
+      - objective: Welcome newly subscribed contacts with one email after signup.
+        account_status_json: '{"decision":"ready","sender_ready":true}'
+        flow_brief: Trigger on subscribed contact and send one welcome email immediately.
+        operator_context: Prepare a draft flow only.
+        client_surface: runx_skill_cli
   plan-transactional:
     type: agent-task
     agent: builder
@@ -429,6 +590,12 @@ runners:
         type: string
         required: false
         description: Extra operator guardrails.
+    examples:
+      - objective: Send an order confirmation email for order 1001.
+        recipient: buyer@example.com
+        data: '{"order_number":"1001","total":"49.00"}'
+        account_status_json: '{"decision":"ready","sender_ready":true}'
+        operator_context: One recipient only; prepare the plan without sending.
   send-transactional:
     type: graph
     credential: nitrosend
@@ -439,6 +606,7 @@ runners:
         type: string
         required: true
         description: email or sms.
+        schema: { enum: [email, sms] }
       to:
         type: string
         required: true
@@ -456,7 +624,7 @@ runners:
         required: false
         description: Existing Nitrosend email template ID.
       data:
-        type: json
+        type: object
         required: false
         description: Transactional merge variables.
       dry_run:
@@ -472,6 +640,15 @@ runners:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - channel: email
+        to: buyer@example.com
+        subject: Your order is confirmed
+        body: Thanks—your order 1001 is confirmed.
+        data: { order_number: '1001' }
+        dry_run: true
+        idempotency_key: order-confirmation-1001
+        brand_sid: brnd_demo123
     graph:
       name: nitrosend-send-transactional
       result_from: [send]
@@ -532,6 +709,12 @@ runners:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - objective: Announce the August product update to engaged customers.
+        name: August product update
+        design_mode_override: premium_minimal
+        operator_context: Keep the email concise and use the current brand voice.
+        brand_sid: brnd_demo123
     graph:
       name: nitrosend-compose-email
       result_from: [validate]
@@ -584,13 +767,21 @@ runners:
         required: true
         description: One bounded email objective.
       composition_intent:
-        type: json
+        type: object
         required: true
         description: Authoritative provider evidence from compose_campaign_intent, supplied directly or as graph context.
       operator_context:
         type: string
         required: false
         description: Extra authoring constraints that do not grant persistence or delivery authority.
+    examples:
+      - objective: Announce the August product update to engaged customers.
+        composition_intent:
+          decision: ok
+          result:
+            authoring_contract: { design_mode: premium_minimal }
+            brand_context: { name: Example }
+        operator_context: Produce a candidate only; do not persist or deliver.
   analytics:
     type: graph
     credential: nitrosend
@@ -603,6 +794,7 @@ runners:
         type: string
         required: true
         description: account, campaign, flow, or message.
+        schema: { enum: [account, campaign, flow, message] }
       entity_id:
         type: number
         required: false
@@ -612,10 +804,16 @@ runners:
         required: false
         default: 30d
         description: 7d, 30d, or 90d.
+        schema: { enum: [7d, 30d, 90d] }
       brand_sid:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - objective: Review account delivery performance for the last 30 days.
+        scope: account
+        period: 30d
+        brand_sid: brnd_demo123
     graph:
       name: nitrosend-analytics
       result_from: [insights]
@@ -660,6 +858,12 @@ runners:
         type: string
         required: false
         description: Extra operator guardrails.
+    examples:
+      - objective: Import the supplied event attendees into the webinar list.
+        source_brief: Attendees explicitly opted in during webinar registration.
+        records: '[{"email":"person@example.com","first_name":"Pat"}]'
+        account_status_json: '{"decision":"ready"}'
+        operator_context: Prepare a dry-run import plan first.
   import-contacts:
     type: graph
     credential: nitrosend
@@ -667,9 +871,13 @@ runners:
       purpose: Import one consented inline contact batch after explicit approval.
     inputs:
       records:
-        type: json
+        type: array
         required: true
         description: Up to 100 contact objects.
+        schema:
+          minItems: 1
+          maxItems: 100
+          items: { type: object, minProperties: 1 }
       source_id:
         type: string
         required: true
@@ -679,9 +887,12 @@ runners:
         required: true
         description: How these contacts consented; purchased or scraped lists are forbidden.
       list_ids:
-        type: json
+        type: array
         required: false
         description: Optional Nitrosend list IDs.
+        schema:
+          uniqueItems: true
+          items: { type: integer, minimum: 1 }
       dry_run:
         type: boolean
         required: false
@@ -695,6 +906,14 @@ runners:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - records: [{ email: person@example.com, first_name: Pat }]
+        source_id: webinar-2026-08
+        consent_basis: Explicit webinar registration opt-in.
+        list_ids: [42]
+        dry_run: true
+        idempotency_key: webinar-2026-08-inline-1
+        brand_sid: brnd_demo123
     graph:
       name: nitrosend-import-contacts
       result_from: [import]
@@ -745,13 +964,16 @@ runners:
         required: true
         description: How these contacts consented; purchased or scraped lists are forbidden.
       columns:
-        type: json
+        type: object
         required: false
         description: Optional CSV column mapping.
       list_ids:
-        type: json
+        type: array
         required: false
         description: Optional Nitrosend list IDs.
+        schema:
+          uniqueItems: true
+          items: { type: integer, minimum: 1 }
       dry_run:
         type: boolean
         required: false
@@ -765,6 +987,15 @@ runners:
         type: string
         required: false
         description: Optional public Nitrosend brand SID.
+    examples:
+      - csv_path: /absolute/path/to/webinar-attendees.csv
+        source_id: webinar-2026-08
+        consent_basis: Explicit webinar registration opt-in.
+        columns: { email: email, first_name: first_name }
+        list_ids: [42]
+        dry_run: true
+        idempotency_key: webinar-2026-08-csv-1
+        brand_sid: brnd_demo123
     graph:
       name: nitrosend-import-contacts-csv
       result_from: [import]
@@ -778,8 +1009,6 @@ runners:
         - id: import
           tool: nitrosend.bulk_import
           scopes:
-            - fs:read
-            - net:http
             - nitrosend:write
           mutation: true
           idempotency_key: nitrosend-import-contacts-csv
@@ -824,3 +1053,8 @@ runners:
         type: string
         required: true
         description: JSON filters object from the current nitro://schema resource.
+    examples:
+      - segment_brief: Contacts who opened any campaign in the last 30 days.
+        segment_name: Engaged 30d
+        preview_only: 'true'
+        filter_catalog_json: '{"filters":{"opened_within_days":{"type":"integer"}}}'

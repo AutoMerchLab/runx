@@ -2,6 +2,7 @@ const API_URL = "https://api.nitrosend.com/mcp";
 const API_HOST = "api.nitrosend.com";
 const READ_OPERATIONS = new Map([
   ["status", "nitro_get_status"],
+  ["sender_settings", "nitro_configure_account"],
   ["insights", "nitro_get_insights"],
   ["review_delivery", "nitro_review_delivery"],
   ["import_status", "nitro_query"],
@@ -10,6 +11,7 @@ const READ_OPERATIONS = new Map([
 ]);
 const ACT_OPERATIONS = new Map([
   ["send_transactional", "nitro_send_message"],
+  ["configure_sender", "nitro_configure_account"],
   ["control_delivery", "nitro_control_delivery"],
   ["import_contacts", "nitro_import_contacts"],
   ["compose_campaign", "nitro_compose_campaign"],
@@ -29,13 +31,14 @@ export function prepareOperation(inputs) {
   const operation = text(inputs.operation);
   const rawArguments = inputs.arguments;
   const args = record(rawArguments);
+  const brandSid = text(inputs.brand_sid);
   const operations = mode === "read" ? READ_OPERATIONS : mode === "act" ? ACT_OPERATIONS : null;
   const blockers = operations
     ? [
         ...(rawArguments !== undefined && !isRecord(rawArguments)
           ? ["arguments must be a JSON object"]
           : []),
-        ...validate(mode, operation, args),
+        ...validate(mode, operation, args, brandSid),
       ]
     : ["mode must be read or act"];
   const decision = blockers.some((blocker) => blocker.startsWith("refused:"))
@@ -52,6 +55,7 @@ export function prepareOperation(inputs) {
       mode,
       operation: operation || null,
       tool,
+      brand_sid: brandSid || null,
       requests: decision === "ready"
         ? [{
             id: requestId,
@@ -59,7 +63,7 @@ export function prepareOperation(inputs) {
             url: API_URL,
             headers: {
               accept: "application/json, text/event-stream",
-              ...(text(inputs.brand_sid) ? { "x-brand-sid": text(inputs.brand_sid) } : {}),
+              ...(brandSid ? { "x-brand-sid": brandSid } : {}),
             },
             body: {
               jsonrpc: "2.0",
@@ -97,7 +101,7 @@ export function normalizeOperation(inputs) {
     };
   }
   try {
-    const result = parseToolContent(providerPayload(response));
+    const result = parseToolContent(providerPayload(response), text(plan.operation));
     const safeResult = redact(result);
     const providerError = safeResult?.error === true || safeResult?.isError === true;
     return {
@@ -135,10 +139,40 @@ export function blockedOperation(inputs) {
   };
 }
 
-function validate(mode, operation, args) {
+function validate(mode, operation, args, brandSid) {
   const operations = mode === "read" ? READ_OPERATIONS : ACT_OPERATIONS;
   if (!operations.has(operation)) {
     return [`operation must be one of: ${[...operations.keys()].join(", ")}`];
+  }
+  if (["sender_settings", "configure_sender"].includes(operation) && !brandSid) {
+    return ["refused:sender settings require an explicit brand_sid"];
+  }
+  if (mode === "read" && operation === "sender_settings" && Object.keys(args).length > 0) {
+    return ["sender_settings does not accept provider arguments"];
+  }
+  if (mode === "act" && operation === "configure_sender") {
+    const allowed = new Set([
+      "from_name",
+      "from_email",
+      "reply_to",
+      "test_email_recipients",
+    ]);
+    const unexpected = Object.keys(args).filter((key) => !allowed.has(key));
+    if (unexpected.length > 0) {
+      return [`configure_sender received unsupported fields: ${unexpected.join(", ")}`];
+    }
+    if (
+      !text(args.from_name) ||
+      !email(args.from_email) ||
+      !email(args.reply_to) ||
+      !Array.isArray(args.test_email_recipients) ||
+      args.test_email_recipients.length > 5 ||
+      args.test_email_recipients.some((recipient) => !email(recipient))
+    ) {
+      return [
+        "configure_sender requires from_name, valid from_email/reply_to values, and at most five valid test recipients",
+      ];
+    }
   }
   if (mode === "read" && operation === "insights") {
     const scopes = ["account", "flow", "campaign", "message"];
@@ -221,6 +255,7 @@ function validate(mode, operation, args) {
 }
 
 function providerArguments(operation, args) {
+  if (operation === "sender_settings") return {};
   if (operation === "compose_campaign_intent") {
     return { ...args, composition_mode: "intent", dry_run: true };
   }
@@ -257,7 +292,7 @@ function providerPayload(response) {
   return JSON.parse(payloads.at(-1));
 }
 
-function parseToolContent(payload) {
+function parseToolContent(payload, operation) {
   if (payload.error) {
     const message = text(payload.error.message) || "Nitrosend MCP request failed";
     const detail = text(payload.error.data);
@@ -270,7 +305,23 @@ function parseToolContent(payload) {
   try {
     const parsed = JSON.parse(value);
     if (parsed && typeof parsed === "object" && parsed.meta?.tool && Object.hasOwn(parsed, "result")) {
-      return parsed.result;
+      if (!["sender_settings", "configure_sender"].includes(operation)) return parsed.result;
+      const result = record(parsed.result);
+      const sender = record(result.sender);
+      const currentBrand = record(parsed.meta.current_brand);
+      return {
+        ...result,
+        current_brand: parsed.meta.current_brand ?? null,
+        sender_settings: {
+          brand_sid: text(currentBrand.sid) || null,
+          from_name: text(sender.from_name) || null,
+          from_email: text(sender.from_email) || null,
+          reply_to: text(sender.reply_to) || null,
+          test_email_recipients: Array.isArray(result.test_email_recipients)
+            ? result.test_email_recipients
+            : [],
+        },
+      };
     }
     return parsed;
   } catch {
@@ -342,4 +393,8 @@ function number(value) {
 
 function positiveInteger(value) {
   return value !== "" && value !== null && value !== undefined && Number.isInteger(Number(value)) && Number(value) > 0;
+}
+
+function email(value) {
+  return /^[^@\s]+@[^@\s]+\.[^@\s]+$/u.test(text(value));
 }

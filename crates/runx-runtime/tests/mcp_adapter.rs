@@ -8,19 +8,16 @@ use std::thread;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use runx_contracts::{JsonNumber, JsonObject, JsonValue};
-use runx_parser::{SkillMcpServer, SkillSandbox, SkillSource};
+use runx_parser::{SkillMcpServer, SkillSource};
 #[cfg(windows)]
 use runx_runtime::SecretEnv;
 use runx_runtime::adapters::mcp::{
     McpAdapter, McpListToolsRequest, McpToolCallRequest, McpTransport, McpTransportError,
     ProcessMcpTransport, map_mcp_arguments,
 };
-use runx_runtime::sandbox::SandboxPlan;
+use runx_runtime::process_invocation::PreparedProcessInvocation;
 use runx_runtime::{InvocationStatus, RuntimeError, SkillAdapter, SkillInvocation};
 use serde::Deserialize;
-
-const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV: &str = "RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY";
-const RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_VALUE: &str = "local";
 
 #[test]
 fn mcp_argument_templates_map_structured_and_embedded_values() -> Result<(), RuntimeError> {
@@ -136,7 +133,7 @@ fn mcp_process_transport_lists_fixture_tools_over_stdio() -> Result<(), RuntimeE
         .list_tools(McpListToolsRequest {
             server: fixture_server()?,
             timeout: Duration::from_secs(5),
-            sandbox: fixture_sandbox_plan()?,
+            process: fixture_process_plan()?,
         })
         .map_err(|error| runtime_test_error(error.sanitized_message()))?;
 
@@ -247,7 +244,7 @@ fn mcp_session_isolation_by_environment_scope() -> Result<(), RuntimeError> {
 }
 
 #[test]
-fn mcp_session_isolation_rejects_process_env_secret_delivery() -> Result<(), RuntimeError> {
+fn mcp_credential_delivery_uses_an_isolated_one_shot_session() -> Result<(), RuntimeError> {
     let mut inputs = JsonObject::new();
     inputs.insert("name".to_owned(), JsonValue::String("API_KEY".to_owned()));
     let mut request = fixture_invocation("env", Some(5), inputs)?;
@@ -266,18 +263,13 @@ fn mcp_session_isolation_rejects_process_env_secret_delivery() -> Result<(), Run
 
     let output = McpAdapter::new(transport.clone()).invoke(request)?;
 
-    assert_eq!(output.status, InvocationStatus::Failure);
+    assert_eq!(output.status, InvocationStatus::Success);
     assert_eq!(
-        output.failure_message().as_deref(),
-        Some("MCP adapter failed.")
+        output.value,
+        JsonValue::String("[redacted-credential]".to_owned())
     );
-    assert!(
-        !output
-            .failure_message()
-            .unwrap_or_default()
-            .contains("mcp-secret-value")
-    );
-    assert_eq!(transport.spawned_process_count(), 0);
+    assert!(!metadata_json(&output.metadata)?.contains("mcp-secret-value"));
+    assert_eq!(transport.spawned_process_count(), 1);
     Ok(())
 }
 
@@ -364,7 +356,7 @@ fn assert_windows_mcp_lifecycle_terminates_descendant(
     );
 
     let transport = ProcessMcpTransport::default();
-    let mut plan = fixture_sandbox_plan()?;
+    let mut plan = fixture_process_plan()?;
     let (tool, timeout) = match lifecycle {
         WindowsMcpLifecycle::OneShotClose => {
             arguments.insert(
@@ -394,7 +386,7 @@ fn assert_windows_mcp_lifecycle_terminates_descendant(
         tool: tool.to_owned(),
         arguments,
         timeout,
-        sandbox: plan,
+        process: plan,
         secret_env: SecretEnv::default(),
     });
     match lifecycle {
@@ -422,7 +414,7 @@ fn assert_windows_mcp_lifecycle_terminates_descendant(
         )]
         .into(),
         timeout: Duration::from_secs(5),
-        sandbox: fixture_sandbox_plan()?,
+        process: fixture_process_plan()?,
         secret_env: SecretEnv::default(),
     });
     alive.map_err(|error| runtime_test_error(error.sanitized_message()))?;
@@ -485,16 +477,16 @@ fn lifecycle_pid(path: &Path) -> Result<i32, RuntimeError> {
 fn mcp_adapter_passes_only_declared_environment_to_process_server() -> Result<(), RuntimeError> {
     let adapter = McpAdapter::new(ProcessMcpTransport::default());
 
-    let blocked = adapter.invoke(sandbox_env_invocation("RUNX_SECRET_VALUE")?)?;
+    let blocked = adapter.invoke(declared_env_invocation("RUNX_SECRET_VALUE")?)?;
     assert_eq!(blocked.status, InvocationStatus::Success);
     assert_eq!(blocked.value, JsonValue::String(String::new()));
-    assert_declared_environment_metadata(&blocked.metadata);
+    assert_declared_environment_metadata(&blocked.metadata)?;
     assert!(!metadata_json(&blocked.metadata)?.contains("secret"));
 
-    let allowed = adapter.invoke(sandbox_env_invocation("ALLOWED_VALUE")?)?;
+    let allowed = adapter.invoke(declared_env_invocation("ALLOWED_VALUE")?)?;
     assert_eq!(allowed.status, InvocationStatus::Success);
     assert_eq!(allowed.value, JsonValue::String("allowed".to_owned()));
-    assert_declared_environment_metadata(&allowed.metadata);
+    assert_declared_environment_metadata(&allowed.metadata)?;
     assert!(!metadata_json(&allowed.metadata)?.contains("secret"));
     Ok(())
 }
@@ -522,8 +514,8 @@ fn mcp_adapter_matches_fixture_oracle_status_stdout_and_stderr()
     for case_name in [
         "fixture-success",
         "fixture-failure-sanitized",
-        "sandbox-env-allowed",
-        "sandbox-env-blocked",
+        "declared-env-allowed",
+        "declared-env-blocked",
         "missing-metadata",
     ] {
         let output =
@@ -600,7 +592,6 @@ fn invocation(tool: &str, timeout_seconds: Option<u64>, inputs: JsonObject) -> S
             cwd: None,
             timeout_seconds,
             input_mode: None,
-            sandbox: None,
             server: Some(SkillMcpServer {
                 command: "/bin/echo".to_owned(),
                 args: Vec::new(),
@@ -674,19 +665,10 @@ fn fixture_invocation(
     Ok(request)
 }
 
-fn sandbox_env_invocation(name: &str) -> Result<SkillInvocation, RuntimeError> {
+fn declared_env_invocation(name: &str) -> Result<SkillInvocation, RuntimeError> {
     let mut inputs = JsonObject::new();
     inputs.insert("name".to_owned(), JsonValue::String(name.to_owned()));
     let mut request = fixture_invocation("env", Some(5), inputs)?;
-    request.source.sandbox = Some(SkillSandbox {
-        profile: runx_core::policy::SandboxProfile::Readonly,
-        cwd_policy: Some(runx_core::policy::CwdPolicy::Workspace),
-        network: None,
-        writable_paths: Vec::new(),
-        require_enforcement: None,
-        approved_escalation: None,
-        raw: JsonObject::new(),
-    });
     request.requirements.environment.optional = vec!["ALLOWED_VALUE".to_owned()];
     request
         .env
@@ -694,10 +676,6 @@ fn sandbox_env_invocation(name: &str) -> Result<SkillInvocation, RuntimeError> {
     request
         .env
         .insert("RUNX_SECRET_VALUE".to_owned(), "secret".to_owned());
-    request.env.insert(
-        RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV.to_owned(),
-        RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_VALUE.to_owned(),
-    );
     Ok(request)
 }
 
@@ -712,15 +690,6 @@ fn session_marker_invocation(
     request
         .env
         .insert("RUNX_MCP_SCOPE".to_owned(), scope.to_owned());
-    request.source.sandbox = Some(SkillSandbox {
-        profile: runx_core::policy::SandboxProfile::UnrestrictedLocalDev,
-        cwd_policy: Some(runx_core::policy::CwdPolicy::SkillDirectory),
-        network: None,
-        writable_paths: Vec::new(),
-        require_enforcement: None,
-        approved_escalation: Some(true),
-        raw: JsonObject::new(),
-    });
     request.requirements.environment.required = vec!["RUNX_MCP_SCOPE".to_owned()];
     Ok(request)
 }
@@ -740,9 +709,9 @@ fn fixture_server() -> Result<SkillMcpServer, RuntimeError> {
     })
 }
 
-fn fixture_sandbox_plan() -> Result<SandboxPlan, RuntimeError> {
+fn fixture_process_plan() -> Result<PreparedProcessInvocation, RuntimeError> {
     let server = fixture_server()?;
-    Ok(SandboxPlan {
+    Ok(PreparedProcessInvocation {
         command: server.command,
         args: server.args,
         cwd: repo_root()?,
@@ -752,35 +721,18 @@ fn fixture_sandbox_plan() -> Result<SandboxPlan, RuntimeError> {
     })
 }
 
-fn assert_declared_environment_metadata(metadata: &JsonObject) {
-    let Some(JsonValue::Object(sandbox)) = metadata.get("sandbox") else {
-        assert!(
-            metadata.contains_key("sandbox"),
-            "sandbox metadata is present"
-        );
-        return;
+fn assert_declared_environment_metadata(metadata: &JsonObject) -> Result<(), RuntimeError> {
+    let Some(JsonValue::Object(boundary)) = metadata.get("execution_boundary") else {
+        return Err(runtime_test_error(
+            "execution boundary metadata is not present",
+        ));
     };
-    assert_eq!(
-        sandbox.get("profile"),
-        Some(&JsonValue::String("readonly".to_owned()))
-    );
-    let Some(JsonValue::Object(env)) = sandbox.get("env") else {
-        assert!(
-            sandbox.contains_key("env"),
-            "sandbox env metadata is present"
-        );
-        return;
-    };
-    assert_eq!(
-        env.get("mode"),
-        Some(&JsonValue::String("declared".to_owned()))
-    );
-    assert_eq!(
-        env.get("optional"),
-        Some(&JsonValue::Array(vec![JsonValue::String(
-            "ALLOWED_VALUE".to_owned()
-        )]))
-    );
+    if boundary.get("kind") != Some(&JsonValue::String("trusted_host_process".to_owned())) {
+        return Err(runtime_test_error(
+            "execution boundary metadata is not trusted_host_process",
+        ));
+    }
+    Ok(())
 }
 
 fn repo_root() -> Result<PathBuf, RuntimeError> {
@@ -856,10 +808,6 @@ fn oracle_env() -> Result<BTreeMap<String, String>, RuntimeError> {
         "RUNX_CWD".to_owned(),
         repo_root()?.to_string_lossy().into_owned(),
     );
-    env.insert(
-        RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_ENV.to_owned(),
-        RUNX_SANDBOX_ALLOW_DECLARED_POLICY_ONLY_VALUE.to_owned(),
-    );
     Ok(env)
 }
 
@@ -900,35 +848,11 @@ fn normalized_output_metadata(metadata: &JsonObject) -> Result<Option<JsonValue>
     if metadata.is_empty() {
         return Ok(None);
     }
-    let mut normalized = normalize_metadata_value(
+    let normalized = normalize_metadata_value(
         &JsonValue::Object(metadata.clone()),
         &repo_root()?.to_string_lossy(),
     );
-    normalize_sandbox_host_facts(&mut normalized);
     Ok(Some(normalized))
-}
-
-/// Replace host-dependent sandbox facts with a stable placeholder. Which OS
-/// enforcer ran (seatbelt, bubblewrap, declared-only) is a property of the
-/// host, not of the fixture contract; the declared profile, environment
-/// model, approval, and writable paths remain exact.
-fn normalize_sandbox_host_facts(metadata: &mut JsonValue) {
-    let JsonValue::Object(record) = metadata else {
-        return;
-    };
-    let Some(JsonValue::Object(sandbox)) = record.get_mut("sandbox") else {
-        return;
-    };
-    sandbox.insert("runtime".to_owned(), JsonValue::String("<host>".to_owned()));
-    for key in ["filesystem", "network"] {
-        if let Some(JsonValue::Object(section)) = sandbox.get_mut(key) {
-            section.insert(
-                "enforcement".to_owned(),
-                JsonValue::String("<host>".to_owned()),
-            );
-            section.remove("private_tmp");
-        }
-    }
 }
 
 fn normalize_metadata_value(value: &JsonValue, repo_root: &str) -> JsonValue {

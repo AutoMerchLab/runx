@@ -37,7 +37,7 @@ impl OwnedProcess {
         {
             use process_wrap::std::{CommandWrap, JobObject};
 
-            super::ensure_host_process_containment()?;
+            super::ensure_windows_host_job()?;
             let mut wrapped = CommandWrap::from(command);
             wrapped.wrap(JobObject);
             wrapped.spawn().map(|child| Self { child })
@@ -204,7 +204,7 @@ mod tests {
         if std::env::var_os(FIXTURE_ENV).is_none() {
             return Ok(());
         }
-        super::super::ensure_host_process_containment().map_err(|error| error.to_string())?;
+        super::super::ensure_windows_host_job().map_err(|error| error.to_string())?;
         let node = std::env::var(NODE_ENV).map_err(|error| error.to_string())?;
         let child = Command::new(node)
             .args(["-e", "setInterval(()=>{},1000)"])
@@ -282,7 +282,7 @@ mod tests {
             .output()
             .map_err(|error| format!("locating node.exe: {error}"))?;
         if !output.status.success() {
-            return Err("node.exe is required for Windows process containment tests".to_owned());
+            return Err("node.exe is required for Windows process-tree lifecycle tests".to_owned());
         }
         String::from_utf8(output.stdout)
             .map_err(|error| error.to_string())?

@@ -1,5 +1,5 @@
 skill: review-skill
-version: "0.2.2"
+version: "0.2.3"
 
 catalog:
   kind: graph
@@ -76,7 +76,7 @@ harness:
               - check: supplied harness
                 status: passed
             recommendation_report:
-              recommendation: sandbox
+              recommendation: improve
               rationale: Supplied evidence is useful but lacks independent provider proof.
       expect:
         status: sealed

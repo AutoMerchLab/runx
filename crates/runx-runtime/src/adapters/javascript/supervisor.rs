@@ -40,7 +40,7 @@ pub(super) enum WorkerInvocationResult {
 
 pub(super) struct WorkerInvocationOutcome {
     pub(super) result: WorkerInvocationResult,
-    pub(super) isolation: runx_contracts::JsonObject,
+    pub(super) execution_boundary: runx_contracts::JsonObject,
 }
 
 pub(super) struct JavaScriptWorkerSupervisor {
@@ -86,11 +86,11 @@ impl JavaScriptWorkerSupervisor {
         }));
         let mut lease = self.pool.acquire(worker_path.as_deref())?;
         after_acquire();
-        let (isolation, result) = {
+        let (execution_boundary, result) = {
             let session = lease.session_mut()?;
-            let isolation = session.isolation.clone();
+            let execution_boundary = session.execution_boundary.clone();
             let result = session.invoke(&invocation_id, &request, timeout);
-            (isolation, result)
+            (execution_boundary, result)
         };
         match result {
             Ok(response) => {
@@ -103,7 +103,7 @@ impl JavaScriptWorkerSupervisor {
                 }
                 Ok(WorkerInvocationOutcome {
                     result: response,
-                    isolation: isolation.as_ref().clone(),
+                    execution_boundary: execution_boundary.as_ref().clone(),
                 })
             }
             Err(error) => {

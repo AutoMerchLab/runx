@@ -339,6 +339,29 @@ pub(super) fn execute_graph_skill_run(
                     cause: GraphTerminalCause::Failed(error),
                 });
             }
+            Err(error) if !error.is_fatal_step_fault() => {
+                let step_id = error.graph_step_id().map(str::to_owned).ok_or_else(|| {
+                    RuntimeError::EngineInvariant {
+                        context: "sealing graph step failure",
+                        message: format!("sealable graph error has no authoritative step: {error}"),
+                    }
+                })?;
+                let summary = format!("graph {} failed at {step_id}: {error}", graph.name);
+                return seal_terminal_graph_skill_run(TerminalGraphSkillRun {
+                    request,
+                    workspace,
+                    receipts,
+                    manifest,
+                    graph: graph.clone(),
+                    checkpoint: previous_checkpoint,
+                    run_id: &run_id,
+                    runtime: &runtime,
+                    step_id: &step_id,
+                    reason_code: "graph_step_failed",
+                    summary,
+                    cause: GraphTerminalCause::Failed(error),
+                });
+            }
             Err(error) => return Err(error.into()),
         }
     }
@@ -441,7 +464,6 @@ fn missing_required_graph_input_request(
 
 enum GraphTerminalCause {
     Blocked,
-    #[cfg(feature = "agent")]
     Failed(RuntimeError),
 }
 
@@ -464,6 +486,12 @@ fn seal_terminal_graph_skill_run(
     context: TerminalGraphSkillRun<'_>,
 ) -> Result<JsonValue, SkillRunError> {
     let mut final_host = SkillRunGraphHost::new(ResolutionAnswers::default());
+    let failure_result = match &context.cause {
+        GraphTerminalCause::Failed(error) => {
+            Some(JsonValue::Object(error.public_failure_projection()))
+        }
+        GraphTerminalCause::Blocked => None,
+    };
     let run = match context.cause {
         GraphTerminalCause::Blocked => context.runtime.seal_blocked_graph_checkpoint_with_host(
             context.graph,
@@ -473,7 +501,6 @@ fn seal_terminal_graph_skill_run(
             context.summary,
             &mut final_host,
         )?,
-        #[cfg(feature = "agent")]
         GraphTerminalCause::Failed(error) => {
             context.runtime.seal_failed_graph_checkpoint_with_host(
                 context.graph,
@@ -490,7 +517,7 @@ fn seal_terminal_graph_skill_run(
         }
     };
     write_graph_receipts(context.request, context.workspace, context.receipts, &run)?;
-    let result = graph_run_result(&run)?;
+    let result = failure_result.unwrap_or(graph_run_result(&run)?);
     let public_context = graph_run_context(&run);
     let trace = graph_run_trace(&run);
     let output = graph_run_skill_output(&result, &run)?;
@@ -1049,7 +1076,6 @@ mod tests {
                 timeout_seconds: None,
                 input_mode: None,
                 environment: Default::default(),
-                sandbox: None,
                 server: None,
                 tool: None,
                 arguments: None,
@@ -1247,7 +1273,6 @@ steps:
                 timeout_seconds: Some(5),
                 input_mode: None,
                 environment: Default::default(),
-                sandbox: None,
                 server: None,
                 tool: None,
                 arguments: None,
@@ -1401,7 +1426,6 @@ steps:
                 timeout_seconds: Some(5),
                 input_mode: None,
                 environment: Default::default(),
-                sandbox: None,
                 server: Some(runx_parser::SkillMcpServer {
                     command: std::env::current_exe()?.to_string_lossy().into_owned(),
                     args: Vec::new(),
@@ -1482,7 +1506,6 @@ steps:
                 timeout_seconds: None,
                 input_mode: None,
                 environment: Default::default(),
-                sandbox: None,
                 server: None,
                 tool: None,
                 arguments: None,
@@ -1539,7 +1562,6 @@ steps:
                 timeout_seconds: None,
                 input_mode: None,
                 environment: Default::default(),
-                sandbox: None,
                 server: None,
                 tool: None,
                 arguments: None,

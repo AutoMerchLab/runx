@@ -286,9 +286,9 @@ mod tests {
     use std::sync::Mutex;
 
     use runx_contracts::{
-        EXTERNAL_ADAPTER_PROTOCOL_VERSION, ExternalAdapterResponse, ExternalAdapterSandboxIntent,
-        ExternalAdapterStatus, ExternalAdapterTimeouts, ExternalAdapterTransport,
-        ExternalAdapterTransportKind, JsonNumber,
+        EXTERNAL_ADAPTER_PROTOCOL_VERSION, ExternalAdapterResponse, ExternalAdapterStatus,
+        ExternalAdapterTimeouts, ExternalAdapterTransport, ExternalAdapterTransportKind,
+        JsonNumber,
     };
     use runx_pay::PAYMENT_EFFECT_FAMILY;
 
@@ -442,12 +442,6 @@ mod tests {
                 invocation_ms: 30_000,
             },
             credential_needs: None,
-            sandbox_intent: ExternalAdapterSandboxIntent {
-                profile: "network".into(),
-                network: true,
-                cwd_policy: "workspace".into(),
-                writable_paths: None,
-            },
             metadata: None,
         }
     }

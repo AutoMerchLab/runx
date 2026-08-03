@@ -340,6 +340,9 @@ fn prepare_skill_execution(
 ) -> Result<(SkillRunRequest, WorkspaceEnv, ReceiptServices), SkillRunError> {
     let mut request = request.clone();
     crate::input_contract::apply_defaults(&runner.inputs, &mut request.inputs);
+    request.inputs =
+        crate::input_contract::materialize_present_runner_inputs(&runner.inputs, &request.inputs)
+            .map_err(|error| SkillRunError::Runtime(error.into_runtime_error()))?;
     let raw_workspace =
         WorkspaceEnv::new(request.env.clone(), request.cwd.clone()).map_err(RuntimeError::from)?;
     let receipts = ReceiptServices::from_env_or_local_development(raw_workspace.env())

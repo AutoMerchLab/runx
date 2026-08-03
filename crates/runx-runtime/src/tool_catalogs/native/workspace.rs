@@ -19,9 +19,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn native_filesystem_containment_rejects_absolute_roots()
+    fn native_filesystem_roots_accept_workspace_relative_and_explicit_absolute_paths()
     -> Result<(), Box<dyn std::error::Error>> {
         let workspace = tempfile::tempdir()?;
+        let external = tempfile::tempdir()?;
         let env = std::collections::BTreeMap::from([(
             crate::receipts::paths::RUNX_CWD_ENV.to_owned(),
             workspace.path().to_string_lossy().into_owned(),
@@ -31,10 +32,15 @@ mod tests {
             resolve_repo_root_for("fs.read", ".", &env, workspace.path())?,
             workspace.path().canonicalize()?
         );
-        let error = resolve_repo_root_for("fs.read", "/tmp", &env, workspace.path())
-            .err()
-            .ok_or_else(|| std::io::Error::other("absolute root must be rejected"))?;
-        assert!(error.to_string().contains("relative"));
+        assert_eq!(
+            resolve_repo_root_for(
+                "fs.read",
+                &external.path().to_string_lossy(),
+                &env,
+                workspace.path(),
+            )?,
+            external.path().canonicalize()?
+        );
         Ok(())
     }
 }

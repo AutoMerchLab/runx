@@ -1,5 +1,5 @@
 skill: ghostwrite
-version: "0.3.1"
+version: "0.3.2"
 
 catalog:
   kind: skill
@@ -31,6 +31,7 @@ runners:
       evidence_pack:
         type: json
         required: true
+        packet: runx.research.packet.v1
         description: Validated runx.research.packet.v1 evidence.
       voice_guide:
         type: string
@@ -95,6 +96,8 @@ runners:
             field: prepare.evidence_context.data.decision
             equals: needs_more_evidence
           tool: evidence.verify_artifact
+          scopes:
+            - runx:evidence:read
           inputs:
             artifact_name: content_draft_packet
             candidate:
@@ -168,6 +171,8 @@ runners:
             field: prepare.evidence_context.data.decision
             equals: ready
           tool: evidence.verify_artifact
+          scopes:
+            - runx:evidence:read
           inputs:
             artifact_name: content_draft_packet
             required_paths:

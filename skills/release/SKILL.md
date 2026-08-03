@@ -44,17 +44,19 @@ relative directory (normally `.` when Runx is invoked from the project root).
   "id": "my-project/npm",
   "channel": "npm",
   "commands": {
-    "prepare": { "argv": ["pnpm", "release:check"], "cwd": ".", "network": true, "timeout_ms": 300000 },
-    "publish": { "argv": ["gh", "workflow", "run", "release.yml"], "cwd": ".", "network": true },
-    "verify": { "argv": ["pnpm", "release:check:live"], "cwd": ".", "network": true }
+    "prepare": { "argv": ["pnpm", "release:check"], "cwd": ".", "timeout_ms": 300000 },
+    "publish": { "argv": ["gh", "workflow", "run", "release.yml"], "cwd": "." },
+    "verify": { "argv": ["pnpm", "release:check:live"], "cwd": "." }
   }
 }
 ```
 
 Commands are argv arrays, never shell strings. Paths cannot escape the project.
-Network is denied unless a command explicitly declares `network: true`; that
-declaration is bound into the native command digest and requires the
-`net:process` scope.
+These commands are trusted host processes: Runx fixes and digests their argv,
+working directory, admitted environment, and timeout, but does not claim to
+confine their filesystem, network, or syscalls. Keep profiles project-owned,
+versioned, and narrowly scoped; the publish command still requires the exact
+digest-bound approval before execution.
 Credential-shaped arguments and inline environment values are rejected; commands
 receive credentials only through Runx credential delivery or existing local CLI
 profiles. The release profile is context and topology, not authority.

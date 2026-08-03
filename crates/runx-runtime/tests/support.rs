@@ -119,7 +119,7 @@ pub(crate) fn wait_for_recorded_pid_exit(
 ///
 /// Linux can briefly retain a killed orphan as a zombie when the container's
 /// PID 1 has not reaped it yet. A zombie cannot run or write the sentinel the
-/// containment tests protect, so it is terminal even though `kill(pid, 0)`
+/// process-tree lifecycle tests protect, so it is terminal even though `kill(pid, 0)`
 /// continues to resolve the PID.
 #[cfg(all(unix, feature = "mcp"))]
 pub(crate) fn wait_for_pid_exit(

@@ -11,8 +11,9 @@ Rust owns the trusted local runtime path:
 - `runx-core` owns pure state-machine and policy decisions.
 - `runx-parser` owns pure skill, graph, runner, and tool manifest parsing.
 - `runx-receipts` owns canonical receipt hashing, signatures, and tree proof.
-- `runx-runtime` owns impure local execution, adapters, sandbox planning,
-  harness replay, journals, registry clients, payment gates, MCP, and receipts.
+- `runx-runtime` owns impure local execution, adapters, process invocation and
+  supervision, harness replay, journals, registry clients, payment gates, MCP,
+  and receipts.
 - `runx-cli` is the native command shell over `runx-runtime`.
 
 TypeScript packages are generated contract validators/types, distribution and

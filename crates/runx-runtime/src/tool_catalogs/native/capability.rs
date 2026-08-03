@@ -12,6 +12,7 @@ pub(super) type TypedNativeHandler<I, O> =
 
 pub(super) trait NativeCapability: CapabilityContract {
     fn invoke(&self, invocation: RawNativeInvocation<'_>) -> Result<JsonValue, RuntimeError>;
+    fn execution_boundary(&self) -> runx_contracts::ExecutionBoundaryKind;
 }
 
 pub(super) fn decode_typed_output<O: CapabilityOutput>(
@@ -42,6 +43,7 @@ pub(super) struct RawNativeInvocation<'a> {
 pub(super) struct TypedNativeCapability<I, O> {
     contract: TypedCapability<I>,
     handler: TypedNativeHandler<I, O>,
+    execution_boundary: runx_contracts::ExecutionBoundaryKind,
 }
 
 impl<I, O> TypedNativeCapability<I, O> {
@@ -53,6 +55,20 @@ impl<I, O> TypedNativeCapability<I, O> {
         Self {
             contract: TypedCapability::new(definition),
             handler,
+            execution_boundary: runx_contracts::ExecutionBoundaryKind::NativeCapability,
+        }
+    }
+
+    #[must_use]
+    pub(super) const fn new_with_execution_boundary(
+        definition: crate::CapabilityDefinition,
+        handler: TypedNativeHandler<I, O>,
+        execution_boundary: runx_contracts::ExecutionBoundaryKind,
+    ) -> Self {
+        Self {
+            contract: TypedCapability::new(definition),
+            handler,
+            execution_boundary,
         }
     }
 }
@@ -99,11 +115,19 @@ where
     I: CapabilityInput,
     O: CapabilityOutput,
 {
+    fn execution_boundary(&self) -> runx_contracts::ExecutionBoundaryKind {
+        self.execution_boundary
+    }
+
     fn invoke(&self, invocation: RawNativeInvocation<'_>) -> Result<JsonValue, RuntimeError> {
+        crate::capability::enforce_required_scopes(
+            self.definition().id,
+            self.definition().scopes.iter().copied(),
+            invocation.scopes,
+        )?;
         let inputs = self.contract.decode_inputs(invocation.inputs)?;
         let invocation = NativeInvocation {
             inputs: &inputs,
-            scopes: invocation.scopes,
             data_source_binding: invocation.data_source_binding.as_ref(),
             observed_at: invocation.observed_at,
             env: invocation.env,

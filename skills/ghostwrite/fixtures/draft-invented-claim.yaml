@@ -10,9 +10,9 @@ inputs:
     decision: ready
     research_brief: { objective: Draft a bounded claim., scope: test, summary: One supported claim., open_questions: [] }
     evidence_log:
-      - { claim: One supported claim., source_digest: sha256:1111111111111111111111111111111111111111111111111111111111111111, provider_content_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, confidence: verified, relevance: test }
+      - { claim: One supported claim., source_digest: sha256:1111111111111111111111111111111111111111111111111111111111111111, content_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, confidence: verified, relevance: test }
     source_evidence:
-      - { evidence_digest: sha256:1111111111111111111111111111111111111111111111111111111111111111, provider_content_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, final_url: https://example.com/evidence, provenance: { fetched_at: "2026-07-17T00:00:00Z" } }
+      - { evidence_digest: sha256:1111111111111111111111111111111111111111111111111111111111111111, content_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, source_ref: https://example.com/evidence, source_kind: fetch, provenance: { observed_at: "2026-07-17T00:00:00Z", bytes: 0, truncated: false, status: 200, redirects: [] } }
     decision_support: []
     risks: []
     index_digest: sha256:2222222222222222222222222222222222222222222222222222222222222222

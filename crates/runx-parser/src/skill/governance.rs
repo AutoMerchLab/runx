@@ -115,16 +115,25 @@ pub(super) fn validate_artifact_contract(
 
 pub(crate) fn validate_inputs(
     inputs: JsonObject,
+    field_prefix: &str,
 ) -> Result<BTreeMap<String, SkillInput>, ValidationError> {
     inputs
         .into_iter()
         .map(|(name, value)| {
-            let field = format!("inputs.{name}");
+            let field = format!("{field_prefix}.{name}");
             let input = FIELDS.required_object(Some(&value), &field)?;
             FIELDS.reject_unknown_fields(
                 input,
                 &field,
-                &["type", "required", "description", "default", "artifact"],
+                &[
+                    "type",
+                    "required",
+                    "description",
+                    "default",
+                    "artifact",
+                    "packet",
+                    "schema",
+                ],
             )?;
             let input_type = FIELDS
                 .optional_string(input.get("type"), &format!("{field}.type"))?
@@ -149,18 +158,100 @@ pub(crate) fn validate_inputs(
                 default: input.get("default").cloned(),
                 artifact: FIELDS
                     .optional_bool(input.get("artifact"), &format!("{field}.artifact"))?,
+                packet: FIELDS.optional_non_empty_string(
+                    input.get("packet"),
+                    &format!("{field}.packet"),
+                )?,
+                schema: FIELDS
+                    .optional_object(input.get("schema"), &format!("{field}.schema"))?,
             };
-            if let Some(default) = &validated.default
-                && !validated.accepts_value(default)
-            {
-                return Err(FIELDS.validation_error(format!(
-                    "{field}.default must match declared type {}",
-                    validated.input_type
-                )));
-            }
+            validate_input_schema(&validated, &field)?;
             Ok((name.clone(), validated))
         })
         .collect()
+}
+
+fn validate_input_schema(input: &SkillInput, field: &str) -> Result<(), ValidationError> {
+    if input.packet.is_some() {
+        if input.input_type != "json" {
+            return Err(
+                FIELDS.validation_error(format!("{field}.packet requires {field}.type to be json"))
+            );
+        }
+        if input.schema.is_some() {
+            return Err(FIELDS.validation_error(format!(
+                "{field}.packet and {field}.schema are mutually exclusive; the packet catalog owns the schema"
+            )));
+        }
+        if input.default.is_some() {
+            return Err(FIELDS.validation_error(format!(
+                "{field}.packet cannot declare a default packet value"
+            )));
+        }
+        return Ok(());
+    }
+    let Some(fragment) = &input.schema else {
+        if let Some(default) = &input.default
+            && !input.accepts_value(default)
+        {
+            return Err(FIELDS.validation_error(format!(
+                "{field}.default must match declared type {}",
+                input.input_type
+            )));
+        }
+        return Ok(());
+    };
+    let duplicate = ["type", "description", "default"]
+        .into_iter()
+        .find(|name| fragment.contains_key(*name));
+    if let Some(duplicate) = duplicate {
+        return Err(FIELDS.validation_error(format!(
+            "{field}.schema.{duplicate} duplicates {field}.{duplicate}"
+        )));
+    }
+    if let Some(examples) = fragment.get("examples")
+        && !matches!(examples, JsonValue::Array(_))
+    {
+        return Err(FIELDS.validation_error(format!("{field}.schema.examples must be an array")));
+    }
+    let schema = serde_json::to_value(input.effective_schema()).map_err(|error| {
+        FIELDS.validation_error(format!("{field}.schema could not be serialized: {error}"))
+    })?;
+    jsonschema::draft202012::meta::validate(&schema)
+        .map_err(|error| FIELDS.validation_error(format!("{field}.schema is invalid: {error}")))?;
+    let values = input
+        .default
+        .iter()
+        .map(|value| ("default".to_owned(), value))
+        .chain(
+            input
+                .schema
+                .as_ref()
+                .and_then(|fragment| fragment.get("examples"))
+                .and_then(JsonValue::as_array)
+                .into_iter()
+                .flatten()
+                .enumerate()
+                .map(|(index, value)| (format!("schema.examples[{index}]"), value)),
+        )
+        .collect::<Vec<_>>();
+    if values.is_empty() {
+        return Ok(());
+    }
+    let validator = jsonschema::draft202012::options()
+        .build(&schema)
+        .map_err(|error| FIELDS.validation_error(format!("{field}.schema is invalid: {error}")))?;
+    for (label, value) in values {
+        let instance = serde_json::to_value(value).map_err(|error| {
+            FIELDS.validation_error(format!("{field}.{label} could not be serialized: {error}"))
+        })?;
+        if !validator.is_valid(&instance) {
+            return Err(FIELDS.validation_error(format!(
+                "{field}.{label} must match the declared input schema"
+            )));
+        }
+    }
+    Ok(())
 }
 
 pub(super) fn validate_retry(
@@ -259,9 +350,52 @@ pub(super) fn validate_allowed_tools(
 mod tests {
     use std::collections::BTreeMap;
 
-    use runx_contracts::JsonValue;
+    use runx_contracts::{JsonObject, JsonValue};
 
-    use super::validate_artifact_contract;
+    use super::{validate_artifact_contract, validate_inputs};
+
+    fn packet_input(extra: impl IntoIterator<Item = (&'static str, JsonValue)>) -> JsonObject {
+        let mut input = JsonObject::from([
+            ("type".to_owned(), JsonValue::String("json".to_owned())),
+            ("required".to_owned(), JsonValue::Bool(true)),
+            (
+                "packet".to_owned(),
+                JsonValue::String("runx.test.plan.v1".to_owned()),
+            ),
+        ]);
+        input.extend(
+            extra
+                .into_iter()
+                .map(|(name, value)| (name.to_owned(), value)),
+        );
+        JsonObject::from([("plan".to_owned(), JsonValue::Object(input))])
+    }
+
+    #[test]
+    fn packet_input_reference_is_parser_owned() {
+        let inputs = validate_inputs(packet_input([]), "inputs").expect("packet input");
+        assert_eq!(
+            inputs.get("plan").and_then(|input| input.packet.as_deref()),
+            Some("runx.test.plan.v1")
+        );
+    }
+
+    #[test]
+    fn packet_input_reference_rejects_parallel_contract_ownership() {
+        let inline_schema = packet_input([(
+            "schema",
+            JsonValue::Object(JsonObject::from([(
+                "properties".to_owned(),
+                JsonValue::Object(JsonObject::new()),
+            )])),
+        )]);
+        let default_packet = packet_input([("default", JsonValue::Object(JsonObject::new()))]);
+        let wrong_type = packet_input([("type", JsonValue::String("object".to_owned()))]);
+
+        assert!(validate_inputs(inline_schema, "inputs").is_err());
+        assert!(validate_inputs(default_packet, "inputs").is_err());
+        assert!(validate_inputs(wrong_type, "inputs").is_err());
+    }
 
     #[test]
     fn packet_bindings_must_reference_named_outputs() {

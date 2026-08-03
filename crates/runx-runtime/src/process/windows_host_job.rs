@@ -10,7 +10,7 @@ static HOST_JOB: OnceLock<Result<Job, String>> = OnceLock::new();
 /// Per-execution jobs own normal timeout/cancellation. This outer job is the
 /// crash boundary: Windows closes its handle if Runx is killed or aborts, and
 /// the kernel then terminates every still-nested adapter process.
-pub(crate) fn ensure_host_process_containment() -> io::Result<()> {
+pub(crate) fn ensure_windows_host_job() -> io::Result<()> {
     match HOST_JOB.get_or_init(create) {
         Ok(_) => Ok(()),
         Err(message) => Err(io::Error::other(message.clone())),

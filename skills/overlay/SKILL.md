@@ -22,7 +22,7 @@ and use `review-skill` when the immediate job is assessment rather than binding.
    assertion, including the Git blob SHA that ordinary SHA-256 cannot express.
 2. The builder reads the already bounded upstream manual from prepared context
    and authors one exact `X.yaml`: one agent-task runner, exact inputs and
-   outputs, least scopes and allowed tools, sandbox posture, and at least two
+   outputs, least scopes, declared environment, credentials, allowed tools, and at least two
    mocked harness cases. Empty tool access is valid when the task needs no
    tools; it never means allow-all.
 3. Overlay forwards the unchanged upstream `SKILL.md` and the authored profile
@@ -54,7 +54,8 @@ Read `upstream_skill`, the bounded upstream SKILL.md supplied in prepared
 context. Return `profile_draft` with `decision`, `profile_document`,
 `rationale`, and `blockers`. `profile_document` is the complete exact `X.yaml`
 text. It must define one agent-task runner with exact inputs and outputs, least
-scopes, an explicit `allowed_tools` array, sandbox posture, category, tags, and
+scopes, declared environment and credentials, an explicit `allowed_tools` array,
+category, tags, and
 at least two mocked harness cases. The cases must exercise the useful path and
 a missing-input, refusal, or boundary path. Do not add shell, provider, network,
 or filesystem execution stages. Do not author binding provenance or

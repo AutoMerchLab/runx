@@ -1,7 +1,6 @@
 use std::collections::BTreeSet;
 
 use runx_contracts::{EnvironmentRequirements, JsonValue};
-use runx_core::policy::is_reserved_runx_sandbox_env_name;
 
 use crate::ValidationError;
 
@@ -55,10 +54,14 @@ fn validate_name(name: &str, field: &str) -> Result<(), ValidationError> {
             "{field} entry {name:?} must be a portable environment variable name"
         )));
     }
-    if is_reserved_runx_sandbox_env_name(name) {
+    if is_reserved_runx_environment_name(name) {
         return Err(FIELDS.validation_error(format!(
             "{field} cannot request runtime-reserved environment variable {name}"
         )));
     }
     Ok(())
+}
+
+pub(crate) fn is_reserved_runx_environment_name(name: &str) -> bool {
+    name.starts_with("RUNX_")
 }

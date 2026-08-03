@@ -6,33 +6,42 @@ use super::{is_sha256, object, text};
 #[derive(Clone)]
 pub(super) struct IndexedSource {
     source_digest: String,
-    provider_content_digest: String,
-    final_url: String,
-    status: u64,
+    content_digest: String,
+    source_ref: String,
+    source_kind: &'static str,
     extracted: String,
     provenance: JsonObject,
 }
 
 impl IndexedSource {
-    pub(super) fn from_fetch(
+    pub(super) fn from_packet(
         source: &JsonObject,
+        observed_at: &str,
         max_characters: u64,
     ) -> Result<Self, Vec<String>> {
+        if source.contains_key("contents") {
+            return Self::from_local_file(source, observed_at, max_characters);
+        }
+        Self::from_fetch(source, max_characters)
+    }
+
+    fn from_fetch(source: &JsonObject, max_characters: u64) -> Result<Self, Vec<String>> {
         let extracted = text(source.get("extracted"));
         let final_url = text(source.get("final_url"));
-        let provider_digest = text(source.get("content_digest"));
+        let content_digest = text(source.get("content_digest"));
         let provenance = object(source.get("provenance"));
         let status = coerced_nonnegative_integer(source.get("status"));
-        let bytes = coerced_nonnegative_number(provenance.get("bytes"));
+        let bytes = coerced_nonnegative_integer(provenance.get("bytes"));
         let truncated = provenance.get("truncated").and_then(JsonValue::as_bool);
-        let blockers = source_blockers(SourceFields {
+        let observed_at = text(provenance.get("fetched_at"));
+        let blockers = fetch_blockers(FetchFields {
             source,
             extracted: &extracted,
             final_url: &final_url,
-            provider_digest: &provider_digest,
-            provenance,
+            content_digest: &content_digest,
+            observed_at: &observed_at,
             status,
-            bytes: bytes.as_ref(),
+            bytes,
             truncated,
             max_characters,
         });
@@ -42,11 +51,105 @@ impl IndexedSource {
 
         Ok(Self {
             source_digest: sha256_prefixed(extracted.as_bytes()),
-            provider_content_digest: provider_digest,
-            final_url,
-            status: status.unwrap_or_default(),
+            content_digest,
+            source_ref: final_url,
+            source_kind: "fetch",
             extracted,
-            provenance: normalized_provenance(provenance, bytes, truncated),
+            provenance: JsonObject::from([
+                ("observed_at".to_owned(), JsonValue::String(observed_at)),
+                (
+                    "bytes".to_owned(),
+                    JsonValue::Number(JsonNumber::U64(bytes.unwrap_or_default())),
+                ),
+                (
+                    "truncated".to_owned(),
+                    JsonValue::Bool(truncated.unwrap_or_default()),
+                ),
+                (
+                    "status".to_owned(),
+                    JsonValue::Number(JsonNumber::U64(status.unwrap_or_default())),
+                ),
+                (
+                    "redirects".to_owned(),
+                    JsonValue::Array(
+                        provenance
+                            .get("redirects")
+                            .and_then(JsonValue::as_array)
+                            .cloned()
+                            .unwrap_or_default(),
+                    ),
+                ),
+            ]),
+        })
+    }
+
+    fn from_local_file(
+        source: &JsonObject,
+        observed_at: &str,
+        max_characters: u64,
+    ) -> Result<Self, Vec<String>> {
+        let extracted = source
+            .get("contents")
+            .and_then(JsonValue::as_str)
+            .unwrap_or_default()
+            .to_owned();
+        let path = text(source.get("path"));
+        let content_digest = text(source.get("content_digest"));
+        let bytes = coerced_nonnegative_integer(source.get("bytes"));
+        let truncated = source.get("truncated").and_then(JsonValue::as_bool);
+        let mut blockers = Vec::new();
+        check(!path.is_empty(), "path is missing", &mut blockers);
+        check(
+            is_sha256(&content_digest),
+            "content_digest is not sha256",
+            &mut blockers,
+        );
+        check(
+            !extracted.is_empty(),
+            "contents text is missing",
+            &mut blockers,
+        );
+        check(bytes.is_some(), "bytes is invalid", &mut blockers);
+        check(
+            truncated == Some(false),
+            "local file read is truncated",
+            &mut blockers,
+        );
+        check(
+            !observed_at.trim().is_empty(),
+            "runtime observation time is missing",
+            &mut blockers,
+        );
+        if extracted.encode_utf16().count() as u64 > max_characters {
+            blockers.push(format!("contents text exceeds {max_characters} characters"));
+        }
+        check(
+            sha256_prefixed(extracted.as_bytes()) == content_digest,
+            "content_digest does not match contents",
+            &mut blockers,
+        );
+        if !blockers.is_empty() {
+            return Err(blockers);
+        }
+
+        Ok(Self {
+            source_digest: sha256_prefixed(extracted.as_bytes()),
+            content_digest,
+            source_ref: format!("file:{path}"),
+            source_kind: "local_file",
+            extracted,
+            provenance: JsonObject::from([
+                (
+                    "observed_at".to_owned(),
+                    JsonValue::String(observed_at.to_owned()),
+                ),
+                (
+                    "bytes".to_owned(),
+                    JsonValue::Number(JsonNumber::U64(bytes.unwrap_or_default())),
+                ),
+                ("truncated".to_owned(), JsonValue::Bool(false)),
+                ("path".to_owned(), JsonValue::String(path)),
+            ]),
         })
     }
 
@@ -66,16 +169,16 @@ impl IndexedSource {
         JsonValue::Object(JsonObject::from([
             ("source_digest".to_owned(), self.digest_json()),
             (
-                "provider_content_digest".to_owned(),
-                JsonValue::String(self.provider_content_digest.clone()),
+                "content_digest".to_owned(),
+                JsonValue::String(self.content_digest.clone()),
             ),
             (
-                "final_url".to_owned(),
-                JsonValue::String(self.final_url.clone()),
+                "source_ref".to_owned(),
+                JsonValue::String(self.source_ref.clone()),
             ),
             (
-                "status".to_owned(),
-                JsonValue::Number(JsonNumber::U64(self.status)),
+                "source_kind".to_owned(),
+                JsonValue::String(self.source_kind.to_owned()),
             ),
             (
                 "extracted".to_owned(),
@@ -102,12 +205,16 @@ impl IndexedSource {
         JsonValue::Object(JsonObject::from([
             ("evidence_digest".to_owned(), self.digest_json()),
             (
-                "provider_content_digest".to_owned(),
-                JsonValue::String(self.provider_content_digest.clone()),
+                "content_digest".to_owned(),
+                JsonValue::String(self.content_digest.clone()),
             ),
             (
-                "final_url".to_owned(),
-                JsonValue::String(self.final_url.clone()),
+                "source_ref".to_owned(),
+                JsonValue::String(self.source_ref.clone()),
+            ),
+            (
+                "source_kind".to_owned(),
+                JsonValue::String(self.source_kind.to_owned()),
             ),
             (
                 "provenance".to_owned(),
@@ -117,19 +224,19 @@ impl IndexedSource {
     }
 }
 
-struct SourceFields<'a> {
+struct FetchFields<'a> {
     source: &'a JsonObject,
     extracted: &'a str,
     final_url: &'a str,
-    provider_digest: &'a str,
-    provenance: &'a JsonObject,
+    content_digest: &'a str,
+    observed_at: &'a str,
     status: Option<u64>,
-    bytes: Option<&'a JsonValue>,
+    bytes: Option<u64>,
     truncated: Option<bool>,
     max_characters: u64,
 }
 
-fn source_blockers(fields: SourceFields<'_>) -> Vec<String> {
+fn fetch_blockers(fields: FetchFields<'_>) -> Vec<String> {
     let mut blockers = Vec::new();
     check(
         text(fields.source.get("decision")) == "ready",
@@ -147,7 +254,7 @@ fn source_blockers(fields: SourceFields<'_>) -> Vec<String> {
         &mut blockers,
     );
     check(
-        is_sha256(fields.provider_digest),
+        is_sha256(fields.content_digest),
         "content_digest is not sha256",
         &mut blockers,
     );
@@ -163,7 +270,7 @@ fn source_blockers(fields: SourceFields<'_>) -> Vec<String> {
         ));
     }
     check(
-        !text(fields.provenance.get("fetched_at")).is_empty(),
+        !fields.observed_at.is_empty(),
         "provenance.fetched_at is missing",
         &mut blockers,
     );
@@ -186,45 +293,22 @@ fn check(condition: bool, message: &str, blockers: &mut Vec<String>) {
     }
 }
 
-fn normalized_provenance(
-    provenance: &JsonObject,
-    bytes: Option<JsonValue>,
-    truncated: Option<bool>,
-) -> JsonObject {
-    JsonObject::from([
-        (
-            "fetched_at".to_owned(),
-            JsonValue::String(text(provenance.get("fetched_at"))),
-        ),
-        ("bytes".to_owned(), bytes.unwrap_or(JsonValue::Null)),
-        (
-            "truncated".to_owned(),
-            JsonValue::Bool(truncated.unwrap_or_default()),
-        ),
-        (
-            "redirects".to_owned(),
-            JsonValue::Array(
-                provenance
-                    .get("redirects")
-                    .and_then(JsonValue::as_array)
-                    .cloned()
-                    .unwrap_or_default(),
-            ),
-        ),
-    ])
-}
-
-pub(super) fn unwrap_fetch_packet(value: &JsonValue) -> &JsonObject {
+pub(super) fn unwrap_source_packet(value: &JsonValue) -> &JsonObject {
     let packet = object(Some(value));
     if let Some(data) = packet.get("data").and_then(JsonValue::as_object) {
         return data;
     }
+    for output in ["fetch_result", "file_read"] {
+        if let Some(data) = packet
+            .get(output)
+            .and_then(JsonValue::as_object)
+            .and_then(|result| result.get("data"))
+            .and_then(JsonValue::as_object)
+        {
+            return data;
+        }
+    }
     packet
-        .get("fetch_result")
-        .and_then(JsonValue::as_object)
-        .and_then(|result| result.get("data"))
-        .and_then(JsonValue::as_object)
-        .unwrap_or(packet)
 }
 
 fn coerced_nonnegative_integer(value: Option<&JsonValue>) -> Option<u64> {
@@ -237,21 +321,6 @@ fn coerced_nonnegative_integer(value: Option<&JsonValue>) -> Option<u64> {
             Some(*value as u64)
         }
         Some(JsonValue::String(value)) => value.trim().parse().ok(),
-        _ => None,
-    }
-}
-
-fn coerced_nonnegative_number(value: Option<&JsonValue>) -> Option<JsonValue> {
-    match value {
-        Some(JsonValue::Number(number)) if number.as_f64().is_some_and(|value| value >= 0.0) => {
-            Some(JsonValue::Number(number.clone()))
-        }
-        Some(JsonValue::String(value)) => value
-            .trim()
-            .parse::<f64>()
-            .ok()
-            .filter(|value| value.is_finite() && *value >= 0.0)
-            .map(|value| JsonValue::Number(JsonNumber::F64(value))),
         _ => None,
     }
 }

@@ -164,13 +164,13 @@ The hot-path runtime changes keep ownership narrow:
   not remain as runtime bridges.
 - MCP keeps protocol-specific Content-Length session handling with explicit
   session safety rules. The pool is keyed by server command, args, cwd, and
-  sandboxed environment; plans with cleanup paths remain one-shot. Arbitrary
+  exact delivered environment; plans with cleanup paths remain one-shot. Arbitrary
   CLI/user subprocesses and external adapters are not pooled.
 
 The shared Rust process supervisor is intentionally private to
 `runx-runtime`. It owns only process lifecycle mechanics: environment/cwd
 application, stdin writing, bounded stdout/stderr capture, timeout signaling,
-process-group cleanup, duration, and sandbox cleanup paths. Adapter-specific
+process-group cleanup, duration, and owned temporary-path cleanup. Adapter-specific
 policy, redaction, protocol parsing, and receipt projection stay in their
 adapter modules.
 
@@ -195,7 +195,7 @@ continuation, and Twitter archive selection. Admission, canonicalization, and
 sealing have throughput gates but no invented scaling metric. These gates do
 not claim an end-to-end speedup when wall time
 is dominated by external models, remote APIs, user subprocess work, package
-manager startup, or operating system sandbox setup.
+manager startup, or operating-system process startup.
 
 New production-path workloads compare repeat captures against
 `.scafld/perf/oss-runtime-production-path-baseline.json`, require at least 85%
@@ -264,7 +264,7 @@ changes.
 The hostile-module suite remains a separate release gate. It exercises the
 runtime-owned 4 MiB source/input/output ceilings, 64 MiB aggregate JavaScript
 heap, 4 MiB JavaScript stack, two-second default and 30-second maximum wall
-limit, 4,096-job limit, and each platform's process containment. Linux
+limit, 4,096-job limit, and each platform's process-tree lifecycle controls. Linux
 additionally permits 1 GiB of virtual
 address space so glibc's uncommitted per-thread arenas do not consume the real
 heap budget; Windows retains a 160 MiB working-set ceiling. Virtual address

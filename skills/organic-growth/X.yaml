@@ -288,6 +288,8 @@ runners:
             field: admit.growth_context.data.decision
             equals: needs_more_evidence
           tool: evidence.verify_artifact
+          scopes:
+            - runx:evidence:read
           inputs:
             artifact_name: organic_growth_packet
             candidate: { decision: ready }
@@ -344,6 +346,8 @@ runners:
             field: admit.growth_context.data.decision
             equals: ready
           tool: evidence.verify_artifact
+          scopes:
+            - runx:evidence:read
           inputs:
             artifact_name: organic_growth_packet
             required_paths:

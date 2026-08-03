@@ -40,7 +40,6 @@ fn invocation(skill_directory: PathBuf, outputs: Option<JsonObject>) -> SkillInv
             timeout_seconds: None,
             input_mode: None,
             environment: EnvironmentRequirements::default(),
-            sandbox: None,
             server: None,
             tool: None,
             arguments: None,
@@ -150,7 +149,6 @@ fn agent_context_carries_exact_non_secret_requirements_and_environment_readiness
             "engine".to_owned(),
             JsonValue::String("managed-agent".to_owned()),
         )]))),
-        sandbox: None,
     };
     request.env = BTreeMap::from([
         ("REGION".to_owned(), "ap-southeast-2".to_owned()),

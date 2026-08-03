@@ -203,6 +203,9 @@ fn native_skill_prints_operator_context_and_admits_safe_run_by_default()
     assert!(stderr.contains("Prepared run"));
     assert!(stderr.contains("Steps:"));
     assert!(stderr.contains("Tools:"));
+    assert!(stderr.contains("Boundaries:"));
+    assert!(stderr.contains("trusted_host_process"));
+    assert!(stderr.contains("remote_provider"));
     assert!(stderr.contains("Full context: add --full-operator-context"));
     assert!(!stderr.contains("--- root skill ---"));
     assert!(!stderr.contains("# Operator Context Fixture"));
@@ -231,6 +234,8 @@ fn native_skill_prints_operator_context_and_admits_safe_run_by_default()
     assert!(full_stderr.contains("--- root skill ---"));
     assert!(full_stderr.contains("# Operator Context Fixture"));
     assert!(full_stderr.contains("--- skill node: entry.review ---"));
+    assert!(full_stderr.contains("execution_boundary: remote_provider"));
+    assert!(full_stderr.contains("execution_boundary: trusted_host_process"));
     assert!(full_stderr.contains("context skill: ./context/review-rubric"));
     assert!(full_stderr.contains("production bar from context skill"));
     assert!(full_stderr.contains("tool manifest: example.record at entry.review"));
@@ -838,12 +843,6 @@ runners:
       - "{{started_path}}"
       - "{{sentinel_path}}"
     timeout_seconds: 30
-    sandbox:
-      profile: workspace-write
-      cwd_policy: skill-directory
-      writable_paths:
-        - "{{started_path}}"
-        - "{{sentinel_path}}"
     inputs:
       started_path:
         type: string
@@ -942,8 +941,7 @@ runners:
     )?;
 
     // `wc` blocks on the worker protocol pipe without producing a response.
-    // Its exact absolute path remains inside the deterministic worker sandbox
-    // on both Linux and macOS.
+    // Use an exact absolute binary path on both Linux and macOS.
     let wc = [Path::new("/usr/bin/wc"), Path::new("/bin/wc")]
         .into_iter()
         .find(|candidate| candidate.is_file())

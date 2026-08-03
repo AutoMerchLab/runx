@@ -8,7 +8,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use runx_contracts::{ContextEntry, JsonObject, JsonValue, sha256_prefixed};
+use runx_contracts::{
+    ContextEntry, ExecutionBoundaryKind, ExecutionBoundaryObservation, JsonObject, JsonValue,
+    sha256_prefixed,
+};
 use runx_parser::{ExecutionGraph, GraphRunTarget, GraphStep, SkillRunnerDefinition, SourceKind};
 use serde::{Deserialize, Serialize};
 
@@ -117,6 +120,7 @@ pub struct SkillOperatorContextRunner {
     pub requested_name: Option<String>,
     pub mutating: bool,
     pub scopes: Vec<String>,
+    pub execution_boundary: Option<ExecutionBoundaryObservation>,
     pub declared_source_output: bool,
     pub declared_artifact_output: bool,
     pub raw: JsonValue,
@@ -129,6 +133,7 @@ pub struct SkillOperatorContextStep {
     pub definition: GraphStep,
     pub context_skills: Vec<SkillOperatorContextContextSkill>,
     pub tool_refs: Vec<String>,
+    pub execution_boundary: Option<ExecutionBoundaryObservation>,
     pub child: Option<Box<SkillOperatorContextNode>>,
 }
 
@@ -169,6 +174,7 @@ pub struct SkillOperatorContextTool {
     pub sha256: Option<String>,
     pub content: Option<String>,
     pub declared_artifact_output: bool,
+    pub execution_boundary: ExecutionBoundaryObservation,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -398,11 +404,23 @@ impl ExpansionState {
             )));
         }
         let tool_refs = step_tool_refs(step);
+        let execution_boundary = if let Some(tool) = step.tool.as_deref() {
+            crate::tool_catalogs::native::execution_boundary(tool, &self.options.effects)
+                .map(boundary)
+        } else {
+            match &step.run {
+                Some(GraphRunTarget::Source(source)) => {
+                    execution_boundary_for_source(source.source_type)
+                }
+                Some(GraphRunTarget::Approval) | None => None,
+            }
+        };
         Ok(SkillOperatorContextStep {
             node_path,
             definition: step.clone(),
             context_skills,
             tool_refs,
+            execution_boundary,
             child,
         })
     }
@@ -527,22 +545,30 @@ impl ExpansionState {
                             crate::tool_catalogs::native::artifacts(name, &self.options.effects)
                                 .as_ref(),
                         ),
+                        execution_boundary: boundary(
+                            crate::tool_catalogs::native::execution_boundary(
+                                name,
+                                &self.options.effects,
+                            )
+                            .unwrap_or(ExecutionBoundaryKind::NativeCapability),
+                        ),
                     });
                 }
                 match resolve_referenced_local_tool(skill_dir, name, env)? {
-                    Some((path, content, artifacts)) => {
-                        self.add_bytes(content.len())?;
+                    Some(tool) => {
+                        self.add_bytes(tool.content.len())?;
                         Ok(SkillOperatorContextTool {
                             name: name.clone(),
                             source: "local-manifest".to_owned(),
-                            path: Some(path),
-                            sha256: Some(sha256_prefixed(content.as_bytes())),
-                            content: Some(content),
+                            path: Some(tool.path),
+                            sha256: Some(sha256_prefixed(tool.content.as_bytes())),
+                            content: Some(tool.content),
                             declared_artifact_output:
                                 crate::output_contract::declares_output_contract(
                                     None,
-                                    artifacts.as_ref(),
+                                    tool.artifacts.as_ref(),
                                 ),
+                            execution_boundary: tool.execution_boundary,
                         })
                     }
                     None => Err(blocked(format!(
@@ -609,11 +635,31 @@ fn runner_context(
         requested_name: requested_runner.map(str::to_owned),
         mutating: runner.mutating.unwrap_or(false),
         scopes: runner.scopes.clone(),
+        execution_boundary: execution_boundary_for_source(runner.source.source_type),
         declared_source_output,
         declared_artifact_output,
         raw,
         allowed_tools: runner.allowed_tools.clone().unwrap_or_default(),
     }
+}
+
+fn execution_boundary_for_source(source_type: SourceKind) -> Option<ExecutionBoundaryObservation> {
+    let kind = match source_type {
+        SourceKind::CliTool
+        | SourceKind::Mcp
+        | SourceKind::ExternalAdapter
+        | SourceKind::ThreadOutboxProvider => ExecutionBoundaryKind::TrustedHostProcess,
+        SourceKind::JavaScript => ExecutionBoundaryKind::DeterministicWorker,
+        SourceKind::A2a | SourceKind::Agent | SourceKind::AgentStep => {
+            ExecutionBoundaryKind::RemoteProvider
+        }
+        SourceKind::Graph => return None,
+    };
+    Some(boundary(kind))
+}
+
+const fn boundary(kind: ExecutionBoundaryKind) -> ExecutionBoundaryObservation {
+    ExecutionBoundaryObservation { kind }
 }
 
 fn validate_graph_result_contracts(
@@ -765,11 +811,18 @@ fn step_tool_refs(step: &GraphStep) -> Vec<String> {
     names.into_iter().collect()
 }
 
+struct ResolvedOperatorContextTool {
+    path: PathBuf,
+    content: String,
+    artifacts: Option<runx_parser::SkillArtifactContract>,
+    execution_boundary: ExecutionBoundaryObservation,
+}
+
 fn resolve_referenced_local_tool(
     skill_dir: &Path,
     name: &str,
     env: &BTreeMap<String, String>,
-) -> Result<Option<(PathBuf, String, Option<runx_parser::SkillArtifactContract>)>, SkillRunError> {
+) -> Result<Option<ResolvedOperatorContextTool>, SkillRunError> {
     let options = ToolInspectOptions {
         root: crate::config::resolve_runx_workspace_base(env, skill_dir),
         tool_ref: name.to_owned(),
@@ -787,11 +840,18 @@ fn resolve_referenced_local_tool(
         allow_explicit_manifest_path: true,
     };
     match resolve_local_tool(&options) {
-        Ok(resolution) => Ok(Some((
-            resolution.manifest_path,
-            resolution.manifest_source,
-            resolution.tool.artifacts,
-        ))),
+        Ok(resolution) => {
+            let execution_boundary = execution_boundary_for_source(
+                resolution.tool.source.source_type,
+            )
+            .ok_or_else(|| blocked(format!("local tool '{name}' cannot use a graph source")))?;
+            Ok(Some(ResolvedOperatorContextTool {
+                path: resolution.manifest_path,
+                content: resolution.manifest_source,
+                artifacts: resolution.tool.artifacts,
+                execution_boundary,
+            }))
+        }
         Err(ToolCatalogError::NotFound(_)) => Ok(None),
         Err(ToolCatalogError::InvalidRequest(message))
             if message.contains("must include a namespace") =>
@@ -1230,6 +1290,10 @@ runners:
         assert_eq!(chain.entry.tools[0].name, "example.record");
         assert_eq!(chain.entry.tools[0].source, "local-manifest");
         assert!(chain.entry.tools[0].declared_artifact_output);
+        assert_eq!(
+            chain.entry.tools[0].execution_boundary.kind,
+            ExecutionBoundaryKind::TrustedHostProcess
+        );
         assert!(
             chain.entry.tools[0]
                 .content

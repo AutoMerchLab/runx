@@ -1,6 +1,6 @@
 ---
 name: review-skill
-description: Inspect, safely test, and assess one Runx skill package for capability, trust, and operator readiness. Use when deciding whether to adopt, sandbox, improve, install, or publish a skill; its evidence-only assess runner is available when native test evidence already exists.
+description: Inspect, safely test, and assess one Runx skill package for capability, trust, and operator readiness. Use when deciding whether to adopt, improve, reject, install, or publish a skill; its evidence-only assess runner is available when native test evidence already exists.
 runx:
   category: authoring
 ---
@@ -32,7 +32,7 @@ bounded evidence pack.
    effect, provenance, and recovery posture appropriate to the skill type.
 6. Return `needs_more_evidence` when the evidence cannot support a trust
    decision. Never upgrade a parse result or prose claim into execution proof.
-7. Recommend `adopt`, `adopt_with_caveats`, `sandbox`, `improve`, or `reject`,
+7. Recommend `adopt`, `adopt_with_caveats`, `improve`, or `reject`,
    naming the evidence and blocking gaps behind the decision.
 
 ## Stop conditions
@@ -73,5 +73,5 @@ inspection, harness evidence, provider readback, supplied assertions, and unveri
 Check the happy path, stop or refusal path, authority, artifact or effect, provenance, and
 recovery posture appropriate to the capability. Return needs_more_evidence when the packet
 cannot support a decision. Never infer provider readiness from a parse result, local supplied
-answer, or prose claim. Recommend adopt, adopt_with_caveats, sandbox, improve, or reject with
+answer, or prose claim. Recommend adopt, adopt_with_caveats, improve, or reject with
 concrete blockers.

@@ -6,6 +6,9 @@
   "signal": null,
   "durationMs": 0,
   "metadata": {
+    "execution_boundary": {
+      "kind": "trusted_host_process"
+    },
     "mcp": {
       "tool": "echo",
       "server_command_hash": "545ea538461003efdc8c81c244531b003f6f26cfccf6c0073b3239fdedf49446",

@@ -4,11 +4,14 @@ use runx_contracts::{JsonNumber, JsonObject, JsonValue, sha256_prefixed};
 use runx_receipts::canonical_stable_json;
 
 use super::EvidenceIndexInput;
-use super::source::{IndexedSource, unwrap_fetch_packet};
+use super::source::{IndexedSource, unwrap_source_packet};
 use crate::RuntimeError;
 
-const TOOL: &str = "evidence.index_fetch_sources";
-pub(super) fn build(inputs: &EvidenceIndexInput) -> Result<JsonValue, RuntimeError> {
+const TOOL: &str = "evidence.index_sources";
+pub(super) fn build(
+    inputs: &EvidenceIndexInput,
+    observed_at: &str,
+) -> Result<JsonValue, RuntimeError> {
     let objective = inputs.objective.trim().to_owned();
     let supplied = inputs.source_packets.as_slice();
     let limits = Limits {
@@ -21,6 +24,7 @@ pub(super) fn build(inputs: &EvidenceIndexInput) -> Result<JsonValue, RuntimeErr
         supplied,
         limits.max_sources,
         limits.max_source_characters,
+        observed_at,
         &mut blockers,
     );
     if indexed_characters > limits.max_total_characters {
@@ -88,12 +92,17 @@ fn index_packets(
     supplied: &[JsonValue],
     max_sources: u64,
     max_source_characters: u64,
+    observed_at: &str,
     blockers: &mut Vec<String>,
 ) -> (Vec<IndexedSource>, u64) {
     let mut sources = Vec::new();
     let mut characters = 0_u64;
     for (index, raw) in supplied.iter().take(max_sources as usize).enumerate() {
-        match IndexedSource::from_fetch(unwrap_fetch_packet(raw), max_source_characters) {
+        match IndexedSource::from_packet(
+            unwrap_source_packet(raw),
+            observed_at,
+            max_source_characters,
+        ) {
             Ok(source) => {
                 characters = characters.saturating_add(source.character_count());
                 sources.push(source);
