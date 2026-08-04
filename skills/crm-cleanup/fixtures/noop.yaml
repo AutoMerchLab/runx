@@ -1,8 +1,0 @@
-# No actionable change: no field is asserted, so field_updates and
-# needs_review are both empty and write_proposal is false.
-transcript: "Quick sync, everything is on track, nothing to update right now."
-crm_schema:
-  fields:
-    - "budget"
-    - "status"
-    - "next_step"

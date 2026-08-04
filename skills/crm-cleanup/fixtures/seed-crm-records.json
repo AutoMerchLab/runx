@@ -1,0 +1,20 @@
+{
+  "_comment": "Seed record for the governed CRM store. This is NOT a data source the skill reads from disk: it is appended into the runx data-store with data-store append_event before a dogfood run, so crm-cleanup reads it back through data.read_projection at run time.",
+  "data_source_ref": "local://runx-crm/dogfood",
+  "resource": "crm_records",
+  "aggregate_id": "acct-northwind",
+  "event": {
+    "type": "crm.records.snapshot",
+    "effect_family": "crm",
+    "operation": "snapshot",
+    "payload": {
+      "aggregate_id": "acct-northwind",
+      "fields": {
+        "budget": "$40k",
+        "status": "contacted",
+        "next_step": "wait for procurement"
+      },
+      "source": "crm-export"
+    }
+  }
+}

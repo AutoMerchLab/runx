@@ -1,9 +1,0 @@
-# Natural phrasing, not shaped to any "<field> is <value>" template:
-# money via "got around $75k to spend", status via "moving them to qualified",
-# next step via "I will send over a proposal by Friday".
-transcript: "Great call. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday."
-crm_schema:
-  fields:
-    - "budget"
-    - "status"
-    - "next_step"

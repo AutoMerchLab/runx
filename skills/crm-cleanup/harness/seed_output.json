@@ -1,0 +1,703 @@
+{
+  "closure": {
+    "closed_at": "2026-08-04T07:02:57.747Z",
+    "disposition": "closed",
+    "reason_code": "graph_closed",
+    "summary": "graph crm-cleanup completed"
+  },
+  "execution": {
+    "exit_code": 0,
+    "skill_claim": {
+      "graph": "crm-cleanup",
+      "graph_status": "Succeeded",
+      "step_outputs": {
+        "read_records": {
+          "projection": {
+            "aggregate_id": "acct-northwind",
+            "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+            "event_count": 0,
+            "exists": false,
+            "last_event_ref": null,
+            "operation": "read_projection",
+            "provider": "bundled-local-event-log",
+            "record": {},
+            "resource": "crm_records",
+            "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl",
+            "version": 0
+          },
+          "raw": "{\n  \"projection\": {\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"read_projection\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"version\": 0,\n    \"record\": {},\n    \"event_count\": 0,\n    \"last_event_ref\": null,\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"exists\": false\n  }\n}\n",
+          "skill_claim": {
+            "projection": {
+              "aggregate_id": "acct-northwind",
+              "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+              "event_count": 0,
+              "exists": false,
+              "last_event_ref": null,
+              "operation": "read_projection",
+              "provider": "bundled-local-event-log",
+              "record": {},
+              "resource": "crm_records",
+              "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl",
+              "version": 0
+            }
+          },
+          "status": "success",
+          "stderr": "",
+          "stdout": "{\n  \"projection\": {\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"read_projection\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"version\": 0,\n    \"record\": {},\n    \"event_count\": 0,\n    \"last_event_ref\": null,\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"exists\": false\n  }\n}\n"
+        },
+        "reconcile": {
+          "before": {},
+          "changed": true,
+          "event": {
+            "effect_family": "crm",
+            "operation": "update",
+            "payload": {
+              "aggregate_id": "acct-northwind",
+              "before": {},
+              "changed_fields": [
+                "budget",
+                "status",
+                "next_step"
+              ],
+              "field_updates": {
+                "budget": "$40k",
+                "next_step": "wait for procurement",
+                "status": "contacted"
+              },
+              "fields": {
+                "budget": "$40k",
+                "next_step": "wait for procurement",
+                "status": "contacted"
+              },
+              "source": "crm-cleanup"
+            },
+            "type": "crm.records.updated"
+          },
+          "expected_version": 0,
+          "field_updates": {
+            "budget": "$40k",
+            "next_step": "wait for procurement",
+            "status": "contacted"
+          },
+          "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+          "needs_review": [],
+          "raw": "{\n  \"takeaways\": [\n    \"Identified budget: $40k (no value on record)\",\n    \"Identified status: contacted (no value on record)\",\n    \"Identified next step: wait for procurement (no value on record)\"\n  ],\n  \"field_updates\": {\n    \"budget\": \"$40k\",\n    \"status\": \"contacted\",\n    \"next_step\": \"wait for procurement\"\n  },\n  \"needs_review\": [],\n  \"changed\": true,\n  \"expected_version\": 0,\n  \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n  \"event\": {\n    \"type\": \"crm.records.updated\",\n    \"effect_family\": \"crm\",\n    \"operation\": \"update\",\n    \"payload\": {\n      \"aggregate_id\": \"acct-northwind\",\n      \"fields\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"field_updates\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"before\": {},\n      \"changed_fields\": [\n        \"budget\",\n        \"status\",\n        \"next_step\"\n      ],\n      \"source\": \"crm-cleanup\"\n    }\n  },\n  \"before\": {}\n}\n",
+          "skill_claim": {
+            "before": {},
+            "changed": true,
+            "event": {
+              "effect_family": "crm",
+              "operation": "update",
+              "payload": {
+                "aggregate_id": "acct-northwind",
+                "before": {},
+                "changed_fields": [
+                  "budget",
+                  "status",
+                  "next_step"
+                ],
+                "field_updates": {
+                  "budget": "$40k",
+                  "next_step": "wait for procurement",
+                  "status": "contacted"
+                },
+                "fields": {
+                  "budget": "$40k",
+                  "next_step": "wait for procurement",
+                  "status": "contacted"
+                },
+                "source": "crm-cleanup"
+              },
+              "type": "crm.records.updated"
+            },
+            "expected_version": 0,
+            "field_updates": {
+              "budget": "$40k",
+              "next_step": "wait for procurement",
+              "status": "contacted"
+            },
+            "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+            "needs_review": [],
+            "takeaways": [
+              "Identified budget: $40k (no value on record)",
+              "Identified status: contacted (no value on record)",
+              "Identified next step: wait for procurement (no value on record)"
+            ]
+          },
+          "status": "success",
+          "stderr": "",
+          "stdout": "{\n  \"takeaways\": [\n    \"Identified budget: $40k (no value on record)\",\n    \"Identified status: contacted (no value on record)\",\n    \"Identified next step: wait for procurement (no value on record)\"\n  ],\n  \"field_updates\": {\n    \"budget\": \"$40k\",\n    \"status\": \"contacted\",\n    \"next_step\": \"wait for procurement\"\n  },\n  \"needs_review\": [],\n  \"changed\": true,\n  \"expected_version\": 0,\n  \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n  \"event\": {\n    \"type\": \"crm.records.updated\",\n    \"effect_family\": \"crm\",\n    \"operation\": \"update\",\n    \"payload\": {\n      \"aggregate_id\": \"acct-northwind\",\n      \"fields\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"field_updates\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"before\": {},\n      \"changed_fields\": [\n        \"budget\",\n        \"status\",\n        \"next_step\"\n      ],\n      \"source\": \"crm-cleanup\"\n    }\n  },\n  \"before\": {}\n}\n",
+          "takeaways": [
+            "Identified budget: $40k (no value on record)",
+            "Identified status: contacted (no value on record)",
+            "Identified next step: wait for procurement (no value on record)"
+          ]
+        },
+        "write_updates": {
+          "raw": "{\n  \"write_result\": {\n    \"status\": \"committed\",\n    \"replayed\": false,\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"append_event\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"before_version\": 0,\n    \"after_version\": 1,\n    \"event_ref\": \"crm_records:acct-northwind:1\",\n    \"event_digest\": \"sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9\",\n    \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"before\": {},\n    \"after\": {\n      \"budget\": \"$40k\",\n      \"next_step\": \"wait for procurement\",\n      \"status\": \"contacted\"\n    }\n  }\n}\n",
+          "skill_claim": {
+            "write_result": {
+              "after": {
+                "budget": "$40k",
+                "next_step": "wait for procurement",
+                "status": "contacted"
+              },
+              "after_version": 1,
+              "aggregate_id": "acct-northwind",
+              "before": {},
+              "before_version": 0,
+              "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+              "event_digest": "sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9",
+              "event_ref": "crm_records:acct-northwind:1",
+              "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+              "operation": "append_event",
+              "provider": "bundled-local-event-log",
+              "replayed": false,
+              "resource": "crm_records",
+              "status": "committed",
+              "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl"
+            }
+          },
+          "status": "success",
+          "stderr": "",
+          "stdout": "{\n  \"write_result\": {\n    \"status\": \"committed\",\n    \"replayed\": false,\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"append_event\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"before_version\": 0,\n    \"after_version\": 1,\n    \"event_ref\": \"crm_records:acct-northwind:1\",\n    \"event_digest\": \"sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9\",\n    \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"before\": {},\n    \"after\": {\n      \"budget\": \"$40k\",\n      \"next_step\": \"wait for procurement\",\n      \"status\": \"contacted\"\n    }\n  }\n}\n",
+          "write_result": {
+            "after": {
+              "budget": "$40k",
+              "next_step": "wait for procurement",
+              "status": "contacted"
+            },
+            "after_version": 1,
+            "aggregate_id": "acct-northwind",
+            "before": {},
+            "before_version": 0,
+            "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+            "event_digest": "sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9",
+            "event_ref": "crm_records:acct-northwind:1",
+            "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+            "operation": "append_event",
+            "provider": "bundled-local-event-log",
+            "replayed": false,
+            "resource": "crm_records",
+            "status": "committed",
+            "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl"
+          }
+        }
+      },
+      "steps": [
+        {
+          "receipt_id": "sha256:e61b83f508324fe17ca2235e4ce431d3c099be77fa41836a217fd5e9c3fcef93",
+          "skill": "read_records",
+          "status": "success",
+          "step_id": "read_records"
+        },
+        {
+          "receipt_id": "sha256:63ce3e0d2973aad400644912bec84bd469794ba7b4a8d3362723d00f387ef55e",
+          "skill": "reconcile",
+          "status": "success",
+          "step_id": "reconcile"
+        },
+        {
+          "receipt_id": "sha256:239f12deee0f363f3e3949d5c73cee6ccd557eacd46a957163996da88bfcdca9",
+          "skill": "write_updates",
+          "status": "success",
+          "step_id": "write_updates"
+        }
+      ]
+    },
+    "stderr": "",
+    "stdout": "{\"graph\":\"crm-cleanup\",\"graph_status\":\"Succeeded\",\"step_outputs\":{\"read_records\":{\"projection\":{\"aggregate_id\":\"acct-northwind\",\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"event_count\":0,\"exists\":false,\"last_event_ref\":null,\"operation\":\"read_projection\",\"provider\":\"bundled-local-event-log\",\"record\":{},\"resource\":\"crm_records\",\"store_path\":\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\"version\":0},\"raw\":\"{\\n  \\\"projection\\\": {\\n    \\\"provider\\\": \\\"bundled-local-event-log\\\",\\n    \\\"operation\\\": \\\"read_projection\\\",\\n    \\\"data_source_ref\\\": \\\"local://runx-crm/dogfood-2026-08-04\\\",\\n    \\\"resource\\\": \\\"crm_records\\\",\\n    \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n    \\\"version\\\": 0,\\n    \\\"record\\\": {},\\n    \\\"event_count\\\": 0,\\n    \\\"last_event_ref\\\": null,\\n    \\\"store_path\\\": \\\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\\\",\\n    \\\"exists\\\": false\\n  }\\n}\\n\",\"skill_claim\":{\"projection\":{\"aggregate_id\":\"acct-northwind\",\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"event_count\":0,\"exists\":false,\"last_event_ref\":null,\"operation\":\"read_projection\",\"provider\":\"bundled-local-event-log\",\"record\":{},\"resource\":\"crm_records\",\"store_path\":\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\"version\":0}},\"status\":\"success\",\"stderr\":\"\",\"stdout\":\"{\\n  \\\"projection\\\": {\\n    \\\"provider\\\": \\\"bundled-local-event-log\\\",\\n    \\\"operation\\\": \\\"read_projection\\\",\\n    \\\"data_source_ref\\\": \\\"local://runx-crm/dogfood-2026-08-04\\\",\\n    \\\"resource\\\": \\\"crm_records\\\",\\n    \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n    \\\"version\\\": 0,\\n    \\\"record\\\": {},\\n    \\\"event_count\\\": 0,\\n    \\\"last_event_ref\\\": null,\\n    \\\"store_path\\\": \\\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\\\",\\n    \\\"exists\\\": false\\n  }\\n}\\n\"},\"reconcile\":{\"before\":{},\"changed\":true,\"event\":{\"effect_family\":\"crm\",\"operation\":\"update\",\"payload\":{\"aggregate_id\":\"acct-northwind\",\"before\":{},\"changed_fields\":[\"budget\",\"status\",\"next_step\"],\"field_updates\":{\"budget\":\"$40k\",\"next_step\":\"wait for procurement\",\"status\":\"contacted\"},\"fields\":{\"budget\":\"$40k\",\"next_step\":\"wait for procurement\",\"status\":\"contacted\"},\"source\":\"crm-cleanup\"},\"type\":\"crm.records.updated\"},\"expected_version\":0,\"field_updates\":{\"budget\":\"$40k\",\"next_step\":\"wait for procurement\",\"status\":\"contacted\"},\"idempotency_key\":\"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\"needs_review\":[],\"raw\":\"{\\n  \\\"takeaways\\\": [\\n    \\\"Identified budget: $40k (no value on record)\\\",\\n    \\\"Identified status: contacted (no value on record)\\\",\\n    \\\"Identified next step: wait for procurement (no value on record)\\\"\\n  ],\\n  \\\"field_updates\\\": {\\n    \\\"budget\\\": \\\"$40k\\\",\\n    \\\"status\\\": \\\"contacted\\\",\\n    \\\"next_step\\\": \\\"wait for procurement\\\"\\n  },\\n  \\\"needs_review\\\": [],\\n  \\\"changed\\\": true,\\n  \\\"expected_version\\\": 0,\\n  \\\"idempotency_key\\\": \\\"crm-cleanup:acct-northwind:v0:8791151fae4c928b\\\",\\n  \\\"event\\\": {\\n    \\\"type\\\": \\\"crm.records.updated\\\",\\n    \\\"effect_family\\\": \\\"crm\\\",\\n    \\\"operation\\\": \\\"update\\\",\\n    \\\"payload\\\": {\\n      \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n      \\\"fields\\\": {\\n        \\\"budget\\\": \\\"$40k\\\",\\n        \\\"status\\\": \\\"contacted\\\",\\n        \\\"next_step\\\": \\\"wait for procurement\\\"\\n      },\\n      \\\"field_updates\\\": {\\n        \\\"budget\\\": \\\"$40k\\\",\\n        \\\"status\\\": \\\"contacted\\\",\\n        \\\"next_step\\\": \\\"wait for procurement\\\"\\n      },\\n      \\\"before\\\": {},\\n      \\\"changed_fields\\\": [\\n        \\\"budget\\\",\\n        \\\"status\\\",\\n        \\\"next_step\\\"\\n      ],\\n      \\\"source\\\": \\\"crm-cleanup\\\"\\n    }\\n  },\\n  \\\"before\\\": {}\\n}\\n\",\"skill_claim\":{\"before\":{},\"changed\":true,\"event\":{\"effect_family\":\"crm\",\"operation\":\"update\",\"payload\":{\"aggregate_id\":\"acct-northwind\",\"before\":{},\"changed_fields\":[\"budget\",\"status\",\"next_step\"],\"field_updates\":{\"budget\":\"$40k\",\"next_step\":\"wait for procurement\",\"status\":\"contacted\"},\"fields\":{\"budget\":\"$40k\",\"next_step\":\"wait for procurement\",\"status\":\"contacted\"},\"source\":\"crm-cleanup\"},\"type\":\"crm.records.updated\"},\"expected_version\":0,\"field_updates\":{\"budget\":\"$40k\",\"next_step\":\"wait for procurement\",\"status\":\"contacted\"},\"idempotency_key\":\"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\"needs_review\":[],\"takeaways\":[\"Identified budget: $40k (no value on record)\",\"Identified status: contacted (no value on record)\",\"Identified next step: wait for procurement (no value on record)\"]},\"status\":\"success\",\"stderr\":\"\",\"stdout\":\"{\\n  \\\"takeaways\\\": [\\n    \\\"Identified budget: $40k (no value on record)\\\",\\n    \\\"Identified status: contacted (no value on record)\\\",\\n    \\\"Identified next step: wait for procurement (no value on record)\\\"\\n  ],\\n  \\\"field_updates\\\": {\\n    \\\"budget\\\": \\\"$40k\\\",\\n    \\\"status\\\": \\\"contacted\\\",\\n    \\\"next_step\\\": \\\"wait for procurement\\\"\\n  },\\n  \\\"needs_review\\\": [],\\n  \\\"changed\\\": true,\\n  \\\"expected_version\\\": 0,\\n  \\\"idempotency_key\\\": \\\"crm-cleanup:acct-northwind:v0:8791151fae4c928b\\\",\\n  \\\"event\\\": {\\n    \\\"type\\\": \\\"crm.records.updated\\\",\\n    \\\"effect_family\\\": \\\"crm\\\",\\n    \\\"operation\\\": \\\"update\\\",\\n    \\\"payload\\\": {\\n      \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n      \\\"fields\\\": {\\n        \\\"budget\\\": \\\"$40k\\\",\\n        \\\"status\\\": \\\"contacted\\\",\\n        \\\"next_step\\\": \\\"wait for procurement\\\"\\n      },\\n      \\\"field_updates\\\": {\\n        \\\"budget\\\": \\\"$40k\\\",\\n        \\\"status\\\": \\\"contacted\\\",\\n        \\\"next_step\\\": \\\"wait for procurement\\\"\\n      },\\n      \\\"before\\\": {},\\n      \\\"changed_fields\\\": [\\n        \\\"budget\\\",\\n        \\\"status\\\",\\n        \\\"next_step\\\"\\n      ],\\n      \\\"source\\\": \\\"crm-cleanup\\\"\\n    }\\n  },\\n  \\\"before\\\": {}\\n}\\n\",\"takeaways\":[\"Identified budget: $40k (no value on record)\",\"Identified status: contacted (no value on record)\",\"Identified next step: wait for procurement (no value on record)\"]},\"write_updates\":{\"raw\":\"{\\n  \\\"write_result\\\": {\\n    \\\"status\\\": \\\"committed\\\",\\n    \\\"replayed\\\": false,\\n    \\\"provider\\\": \\\"bundled-local-event-log\\\",\\n    \\\"operation\\\": \\\"append_event\\\",\\n    \\\"data_source_ref\\\": \\\"local://runx-crm/dogfood-2026-08-04\\\",\\n    \\\"resource\\\": \\\"crm_records\\\",\\n    \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n    \\\"before_version\\\": 0,\\n    \\\"after_version\\\": 1,\\n    \\\"event_ref\\\": \\\"crm_records:acct-northwind:1\\\",\\n    \\\"event_digest\\\": \\\"sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9\\\",\\n    \\\"idempotency_key\\\": \\\"crm-cleanup:acct-northwind:v0:8791151fae4c928b\\\",\\n    \\\"store_path\\\": \\\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\\\",\\n    \\\"before\\\": {},\\n    \\\"after\\\": {\\n      \\\"budget\\\": \\\"$40k\\\",\\n      \\\"next_step\\\": \\\"wait for procurement\\\",\\n      \\\"status\\\": \\\"contacted\\\"\\n    }\\n  }\\n}\\n\",\"skill_claim\":{\"write_result\":{\"after\":{\"budget\":\"$40k\",\"next_step\":\"wait for procurement\",\"status\":\"contacted\"},\"after_version\":1,\"aggregate_id\":\"acct-northwind\",\"before\":{},\"before_version\":0,\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"event_digest\":\"sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9\",\"event_ref\":\"crm_records:acct-northwind:1\",\"idempotency_key\":\"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\"operation\":\"append_event\",\"provider\":\"bundled-local-event-log\",\"replayed\":false,\"resource\":\"crm_records\",\"status\":\"committed\",\"store_path\":\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\"}},\"status\":\"success\",\"stderr\":\"\",\"stdout\":\"{\\n  \\\"write_result\\\": {\\n    \\\"status\\\": \\\"committed\\\",\\n    \\\"replayed\\\": false,\\n    \\\"provider\\\": \\\"bundled-local-event-log\\\",\\n    \\\"operation\\\": \\\"append_event\\\",\\n    \\\"data_source_ref\\\": \\\"local://runx-crm/dogfood-2026-08-04\\\",\\n    \\\"resource\\\": \\\"crm_records\\\",\\n    \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n    \\\"before_version\\\": 0,\\n    \\\"after_version\\\": 1,\\n    \\\"event_ref\\\": \\\"crm_records:acct-northwind:1\\\",\\n    \\\"event_digest\\\": \\\"sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9\\\",\\n    \\\"idempotency_key\\\": \\\"crm-cleanup:acct-northwind:v0:8791151fae4c928b\\\",\\n    \\\"store_path\\\": \\\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\\\",\\n    \\\"before\\\": {},\\n    \\\"after\\\": {\\n      \\\"budget\\\": \\\"$40k\\\",\\n      \\\"next_step\\\": \\\"wait for procurement\\\",\\n      \\\"status\\\": \\\"contacted\\\"\\n    }\\n  }\\n}\\n\",\"write_result\":{\"after\":{\"budget\":\"$40k\",\"next_step\":\"wait for procurement\",\"status\":\"contacted\"},\"after_version\":1,\"aggregate_id\":\"acct-northwind\",\"before\":{},\"before_version\":0,\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"event_digest\":\"sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9\",\"event_ref\":\"crm_records:acct-northwind:1\",\"idempotency_key\":\"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\"operation\":\"append_event\",\"provider\":\"bundled-local-event-log\",\"replayed\":false,\"resource\":\"crm_records\",\"status\":\"committed\",\"store_path\":\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\"}}},\"steps\":[{\"receipt_id\":\"sha256:e61b83f508324fe17ca2235e4ce431d3c099be77fa41836a217fd5e9c3fcef93\",\"skill\":\"read_records\",\"status\":\"success\",\"step_id\":\"read_records\"},{\"receipt_id\":\"sha256:63ce3e0d2973aad400644912bec84bd469794ba7b4a8d3362723d00f387ef55e\",\"skill\":\"reconcile\",\"status\":\"success\",\"step_id\":\"reconcile\"},{\"receipt_id\":\"sha256:239f12deee0f363f3e3949d5c73cee6ccd557eacd46a957163996da88bfcdca9\",\"skill\":\"write_updates\",\"status\":\"success\",\"step_id\":\"write_updates\"}]}",
+    "structured_output": {
+      "graph": "crm-cleanup",
+      "graph_status": "Succeeded",
+      "step_outputs": {
+        "read_records": {
+          "projection": {
+            "aggregate_id": "acct-northwind",
+            "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+            "event_count": 0,
+            "exists": false,
+            "last_event_ref": null,
+            "operation": "read_projection",
+            "provider": "bundled-local-event-log",
+            "record": {},
+            "resource": "crm_records",
+            "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl",
+            "version": 0
+          },
+          "raw": "{\n  \"projection\": {\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"read_projection\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"version\": 0,\n    \"record\": {},\n    \"event_count\": 0,\n    \"last_event_ref\": null,\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"exists\": false\n  }\n}\n",
+          "skill_claim": {
+            "projection": {
+              "aggregate_id": "acct-northwind",
+              "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+              "event_count": 0,
+              "exists": false,
+              "last_event_ref": null,
+              "operation": "read_projection",
+              "provider": "bundled-local-event-log",
+              "record": {},
+              "resource": "crm_records",
+              "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl",
+              "version": 0
+            }
+          },
+          "status": "success",
+          "stderr": "",
+          "stdout": "{\n  \"projection\": {\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"read_projection\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"version\": 0,\n    \"record\": {},\n    \"event_count\": 0,\n    \"last_event_ref\": null,\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"exists\": false\n  }\n}\n"
+        },
+        "reconcile": {
+          "before": {},
+          "changed": true,
+          "event": {
+            "effect_family": "crm",
+            "operation": "update",
+            "payload": {
+              "aggregate_id": "acct-northwind",
+              "before": {},
+              "changed_fields": [
+                "budget",
+                "status",
+                "next_step"
+              ],
+              "field_updates": {
+                "budget": "$40k",
+                "next_step": "wait for procurement",
+                "status": "contacted"
+              },
+              "fields": {
+                "budget": "$40k",
+                "next_step": "wait for procurement",
+                "status": "contacted"
+              },
+              "source": "crm-cleanup"
+            },
+            "type": "crm.records.updated"
+          },
+          "expected_version": 0,
+          "field_updates": {
+            "budget": "$40k",
+            "next_step": "wait for procurement",
+            "status": "contacted"
+          },
+          "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+          "needs_review": [],
+          "raw": "{\n  \"takeaways\": [\n    \"Identified budget: $40k (no value on record)\",\n    \"Identified status: contacted (no value on record)\",\n    \"Identified next step: wait for procurement (no value on record)\"\n  ],\n  \"field_updates\": {\n    \"budget\": \"$40k\",\n    \"status\": \"contacted\",\n    \"next_step\": \"wait for procurement\"\n  },\n  \"needs_review\": [],\n  \"changed\": true,\n  \"expected_version\": 0,\n  \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n  \"event\": {\n    \"type\": \"crm.records.updated\",\n    \"effect_family\": \"crm\",\n    \"operation\": \"update\",\n    \"payload\": {\n      \"aggregate_id\": \"acct-northwind\",\n      \"fields\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"field_updates\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"before\": {},\n      \"changed_fields\": [\n        \"budget\",\n        \"status\",\n        \"next_step\"\n      ],\n      \"source\": \"crm-cleanup\"\n    }\n  },\n  \"before\": {}\n}\n",
+          "skill_claim": {
+            "before": {},
+            "changed": true,
+            "event": {
+              "effect_family": "crm",
+              "operation": "update",
+              "payload": {
+                "aggregate_id": "acct-northwind",
+                "before": {},
+                "changed_fields": [
+                  "budget",
+                  "status",
+                  "next_step"
+                ],
+                "field_updates": {
+                  "budget": "$40k",
+                  "next_step": "wait for procurement",
+                  "status": "contacted"
+                },
+                "fields": {
+                  "budget": "$40k",
+                  "next_step": "wait for procurement",
+                  "status": "contacted"
+                },
+                "source": "crm-cleanup"
+              },
+              "type": "crm.records.updated"
+            },
+            "expected_version": 0,
+            "field_updates": {
+              "budget": "$40k",
+              "next_step": "wait for procurement",
+              "status": "contacted"
+            },
+            "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+            "needs_review": [],
+            "takeaways": [
+              "Identified budget: $40k (no value on record)",
+              "Identified status: contacted (no value on record)",
+              "Identified next step: wait for procurement (no value on record)"
+            ]
+          },
+          "status": "success",
+          "stderr": "",
+          "stdout": "{\n  \"takeaways\": [\n    \"Identified budget: $40k (no value on record)\",\n    \"Identified status: contacted (no value on record)\",\n    \"Identified next step: wait for procurement (no value on record)\"\n  ],\n  \"field_updates\": {\n    \"budget\": \"$40k\",\n    \"status\": \"contacted\",\n    \"next_step\": \"wait for procurement\"\n  },\n  \"needs_review\": [],\n  \"changed\": true,\n  \"expected_version\": 0,\n  \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n  \"event\": {\n    \"type\": \"crm.records.updated\",\n    \"effect_family\": \"crm\",\n    \"operation\": \"update\",\n    \"payload\": {\n      \"aggregate_id\": \"acct-northwind\",\n      \"fields\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"field_updates\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"before\": {},\n      \"changed_fields\": [\n        \"budget\",\n        \"status\",\n        \"next_step\"\n      ],\n      \"source\": \"crm-cleanup\"\n    }\n  },\n  \"before\": {}\n}\n",
+          "takeaways": [
+            "Identified budget: $40k (no value on record)",
+            "Identified status: contacted (no value on record)",
+            "Identified next step: wait for procurement (no value on record)"
+          ]
+        },
+        "write_updates": {
+          "raw": "{\n  \"write_result\": {\n    \"status\": \"committed\",\n    \"replayed\": false,\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"append_event\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"before_version\": 0,\n    \"after_version\": 1,\n    \"event_ref\": \"crm_records:acct-northwind:1\",\n    \"event_digest\": \"sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9\",\n    \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"before\": {},\n    \"after\": {\n      \"budget\": \"$40k\",\n      \"next_step\": \"wait for procurement\",\n      \"status\": \"contacted\"\n    }\n  }\n}\n",
+          "skill_claim": {
+            "write_result": {
+              "after": {
+                "budget": "$40k",
+                "next_step": "wait for procurement",
+                "status": "contacted"
+              },
+              "after_version": 1,
+              "aggregate_id": "acct-northwind",
+              "before": {},
+              "before_version": 0,
+              "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+              "event_digest": "sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9",
+              "event_ref": "crm_records:acct-northwind:1",
+              "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+              "operation": "append_event",
+              "provider": "bundled-local-event-log",
+              "replayed": false,
+              "resource": "crm_records",
+              "status": "committed",
+              "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl"
+            }
+          },
+          "status": "success",
+          "stderr": "",
+          "stdout": "{\n  \"write_result\": {\n    \"status\": \"committed\",\n    \"replayed\": false,\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"append_event\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"before_version\": 0,\n    \"after_version\": 1,\n    \"event_ref\": \"crm_records:acct-northwind:1\",\n    \"event_digest\": \"sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9\",\n    \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"before\": {},\n    \"after\": {\n      \"budget\": \"$40k\",\n      \"next_step\": \"wait for procurement\",\n      \"status\": \"contacted\"\n    }\n  }\n}\n",
+          "write_result": {
+            "after": {
+              "budget": "$40k",
+              "next_step": "wait for procurement",
+              "status": "contacted"
+            },
+            "after_version": 1,
+            "aggregate_id": "acct-northwind",
+            "before": {},
+            "before_version": 0,
+            "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+            "event_digest": "sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9",
+            "event_ref": "crm_records:acct-northwind:1",
+            "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+            "operation": "append_event",
+            "provider": "bundled-local-event-log",
+            "replayed": false,
+            "resource": "crm_records",
+            "status": "committed",
+            "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl"
+          }
+        }
+      },
+      "steps": [
+        {
+          "receipt_id": "sha256:e61b83f508324fe17ca2235e4ce431d3c099be77fa41836a217fd5e9c3fcef93",
+          "skill": "read_records",
+          "status": "success",
+          "step_id": "read_records"
+        },
+        {
+          "receipt_id": "sha256:63ce3e0d2973aad400644912bec84bd469794ba7b4a8d3362723d00f387ef55e",
+          "skill": "reconcile",
+          "status": "success",
+          "step_id": "reconcile"
+        },
+        {
+          "receipt_id": "sha256:239f12deee0f363f3e3949d5c73cee6ccd557eacd46a957163996da88bfcdca9",
+          "skill": "write_updates",
+          "status": "success",
+          "step_id": "write_updates"
+        }
+      ]
+    }
+  },
+  "payload": {
+    "graph": "crm-cleanup",
+    "graph_status": "Succeeded",
+    "step_outputs": {
+      "read_records": {
+        "projection": {
+          "aggregate_id": "acct-northwind",
+          "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+          "event_count": 0,
+          "exists": false,
+          "last_event_ref": null,
+          "operation": "read_projection",
+          "provider": "bundled-local-event-log",
+          "record": {},
+          "resource": "crm_records",
+          "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl",
+          "version": 0
+        },
+        "raw": "{\n  \"projection\": {\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"read_projection\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"version\": 0,\n    \"record\": {},\n    \"event_count\": 0,\n    \"last_event_ref\": null,\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"exists\": false\n  }\n}\n",
+        "skill_claim": {
+          "projection": {
+            "aggregate_id": "acct-northwind",
+            "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+            "event_count": 0,
+            "exists": false,
+            "last_event_ref": null,
+            "operation": "read_projection",
+            "provider": "bundled-local-event-log",
+            "record": {},
+            "resource": "crm_records",
+            "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl",
+            "version": 0
+          }
+        },
+        "status": "success",
+        "stderr": "",
+        "stdout": "{\n  \"projection\": {\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"read_projection\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"version\": 0,\n    \"record\": {},\n    \"event_count\": 0,\n    \"last_event_ref\": null,\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"exists\": false\n  }\n}\n"
+      },
+      "reconcile": {
+        "before": {},
+        "changed": true,
+        "event": {
+          "effect_family": "crm",
+          "operation": "update",
+          "payload": {
+            "aggregate_id": "acct-northwind",
+            "before": {},
+            "changed_fields": [
+              "budget",
+              "status",
+              "next_step"
+            ],
+            "field_updates": {
+              "budget": "$40k",
+              "next_step": "wait for procurement",
+              "status": "contacted"
+            },
+            "fields": {
+              "budget": "$40k",
+              "next_step": "wait for procurement",
+              "status": "contacted"
+            },
+            "source": "crm-cleanup"
+          },
+          "type": "crm.records.updated"
+        },
+        "expected_version": 0,
+        "field_updates": {
+          "budget": "$40k",
+          "next_step": "wait for procurement",
+          "status": "contacted"
+        },
+        "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+        "needs_review": [],
+        "raw": "{\n  \"takeaways\": [\n    \"Identified budget: $40k (no value on record)\",\n    \"Identified status: contacted (no value on record)\",\n    \"Identified next step: wait for procurement (no value on record)\"\n  ],\n  \"field_updates\": {\n    \"budget\": \"$40k\",\n    \"status\": \"contacted\",\n    \"next_step\": \"wait for procurement\"\n  },\n  \"needs_review\": [],\n  \"changed\": true,\n  \"expected_version\": 0,\n  \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n  \"event\": {\n    \"type\": \"crm.records.updated\",\n    \"effect_family\": \"crm\",\n    \"operation\": \"update\",\n    \"payload\": {\n      \"aggregate_id\": \"acct-northwind\",\n      \"fields\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"field_updates\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"before\": {},\n      \"changed_fields\": [\n        \"budget\",\n        \"status\",\n        \"next_step\"\n      ],\n      \"source\": \"crm-cleanup\"\n    }\n  },\n  \"before\": {}\n}\n",
+        "skill_claim": {
+          "before": {},
+          "changed": true,
+          "event": {
+            "effect_family": "crm",
+            "operation": "update",
+            "payload": {
+              "aggregate_id": "acct-northwind",
+              "before": {},
+              "changed_fields": [
+                "budget",
+                "status",
+                "next_step"
+              ],
+              "field_updates": {
+                "budget": "$40k",
+                "next_step": "wait for procurement",
+                "status": "contacted"
+              },
+              "fields": {
+                "budget": "$40k",
+                "next_step": "wait for procurement",
+                "status": "contacted"
+              },
+              "source": "crm-cleanup"
+            },
+            "type": "crm.records.updated"
+          },
+          "expected_version": 0,
+          "field_updates": {
+            "budget": "$40k",
+            "next_step": "wait for procurement",
+            "status": "contacted"
+          },
+          "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+          "needs_review": [],
+          "takeaways": [
+            "Identified budget: $40k (no value on record)",
+            "Identified status: contacted (no value on record)",
+            "Identified next step: wait for procurement (no value on record)"
+          ]
+        },
+        "status": "success",
+        "stderr": "",
+        "stdout": "{\n  \"takeaways\": [\n    \"Identified budget: $40k (no value on record)\",\n    \"Identified status: contacted (no value on record)\",\n    \"Identified next step: wait for procurement (no value on record)\"\n  ],\n  \"field_updates\": {\n    \"budget\": \"$40k\",\n    \"status\": \"contacted\",\n    \"next_step\": \"wait for procurement\"\n  },\n  \"needs_review\": [],\n  \"changed\": true,\n  \"expected_version\": 0,\n  \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n  \"event\": {\n    \"type\": \"crm.records.updated\",\n    \"effect_family\": \"crm\",\n    \"operation\": \"update\",\n    \"payload\": {\n      \"aggregate_id\": \"acct-northwind\",\n      \"fields\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"field_updates\": {\n        \"budget\": \"$40k\",\n        \"status\": \"contacted\",\n        \"next_step\": \"wait for procurement\"\n      },\n      \"before\": {},\n      \"changed_fields\": [\n        \"budget\",\n        \"status\",\n        \"next_step\"\n      ],\n      \"source\": \"crm-cleanup\"\n    }\n  },\n  \"before\": {}\n}\n",
+        "takeaways": [
+          "Identified budget: $40k (no value on record)",
+          "Identified status: contacted (no value on record)",
+          "Identified next step: wait for procurement (no value on record)"
+        ]
+      },
+      "write_updates": {
+        "raw": "{\n  \"write_result\": {\n    \"status\": \"committed\",\n    \"replayed\": false,\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"append_event\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"before_version\": 0,\n    \"after_version\": 1,\n    \"event_ref\": \"crm_records:acct-northwind:1\",\n    \"event_digest\": \"sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9\",\n    \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"before\": {},\n    \"after\": {\n      \"budget\": \"$40k\",\n      \"next_step\": \"wait for procurement\",\n      \"status\": \"contacted\"\n    }\n  }\n}\n",
+        "skill_claim": {
+          "write_result": {
+            "after": {
+              "budget": "$40k",
+              "next_step": "wait for procurement",
+              "status": "contacted"
+            },
+            "after_version": 1,
+            "aggregate_id": "acct-northwind",
+            "before": {},
+            "before_version": 0,
+            "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+            "event_digest": "sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9",
+            "event_ref": "crm_records:acct-northwind:1",
+            "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+            "operation": "append_event",
+            "provider": "bundled-local-event-log",
+            "replayed": false,
+            "resource": "crm_records",
+            "status": "committed",
+            "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl"
+          }
+        },
+        "status": "success",
+        "stderr": "",
+        "stdout": "{\n  \"write_result\": {\n    \"status\": \"committed\",\n    \"replayed\": false,\n    \"provider\": \"bundled-local-event-log\",\n    \"operation\": \"append_event\",\n    \"data_source_ref\": \"local://runx-crm/dogfood-2026-08-04\",\n    \"resource\": \"crm_records\",\n    \"aggregate_id\": \"acct-northwind\",\n    \"before_version\": 0,\n    \"after_version\": 1,\n    \"event_ref\": \"crm_records:acct-northwind:1\",\n    \"event_digest\": \"sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9\",\n    \"idempotency_key\": \"crm-cleanup:acct-northwind:v0:8791151fae4c928b\",\n    \"store_path\": \"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\n    \"before\": {},\n    \"after\": {\n      \"budget\": \"$40k\",\n      \"next_step\": \"wait for procurement\",\n      \"status\": \"contacted\"\n    }\n  }\n}\n",
+        "write_result": {
+          "after": {
+            "budget": "$40k",
+            "next_step": "wait for procurement",
+            "status": "contacted"
+          },
+          "after_version": 1,
+          "aggregate_id": "acct-northwind",
+          "before": {},
+          "before_version": 0,
+          "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
+          "event_digest": "sha256:a2cdf17c95c900865c29f4714bb98317e7448829afc60711ab14d071049053a9",
+          "event_ref": "crm_records:acct-northwind:1",
+          "idempotency_key": "crm-cleanup:acct-northwind:v0:8791151fae4c928b",
+          "operation": "append_event",
+          "provider": "bundled-local-event-log",
+          "replayed": false,
+          "resource": "crm_records",
+          "status": "committed",
+          "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl"
+        }
+      }
+    },
+    "steps": [
+      {
+        "receipt_id": "sha256:e61b83f508324fe17ca2235e4ce431d3c099be77fa41836a217fd5e9c3fcef93",
+        "skill": "read_records",
+        "status": "success",
+        "step_id": "read_records"
+      },
+      {
+        "receipt_id": "sha256:63ce3e0d2973aad400644912bec84bd469794ba7b4a8d3362723d00f387ef55e",
+        "skill": "reconcile",
+        "status": "success",
+        "step_id": "reconcile"
+      },
+      {
+        "receipt_id": "sha256:239f12deee0f363f3e3949d5c73cee6ccd557eacd46a957163996da88bfcdca9",
+        "skill": "write_updates",
+        "status": "success",
+        "step_id": "write_updates"
+      }
+    ]
+  },
+  "receipt": {
+    "acts": [],
+    "authority": {
+      "actor_ref": {
+        "type": "principal",
+        "uri": "runx:principal:local_runtime"
+      },
+      "attenuation": {
+        "parent_authority_ref": null,
+        "subset_proof": null
+      },
+      "authority_proof_refs": [],
+      "enforcement": {
+        "profile_hash": "sha256:635fdb0a7eef93911e3c6bd0b25b5e635edba32e0259133042b3a5f1fb19394e",
+        "redaction_refs": [],
+        "setup_refs": [],
+        "teardown_refs": []
+      },
+      "grant_refs": [],
+      "scope_refs": [],
+      "terms": []
+    },
+    "canonicalization": "runx.receipt.c14n.v1",
+    "created_at": "2026-08-04T07:02:57.747Z",
+    "decisions": [],
+    "digest": "sha256:d84f64e3f471208dea9a9c4c366d5fadb903a2373ba2e0e1d1e60d329cf7778c",
+    "id": "sha256:7dfc54523a4eac223ddd4863b7e63db697964f6aa462c1b58daad1b5e64b68f3",
+    "idempotency": {
+      "content_hash": "sha256:crm-cleanup-graph-content",
+      "intent_key": "sha256:crm-cleanup-graph-intent",
+      "trigger_fingerprint": "sha256:crm-cleanup-graph-trigger"
+    },
+    "issuer": {
+      "kid": "key1",
+      "public_key_sha256": "sha256:625772519d340670204205d92600ff803eed53849a0c9c7ce623c0a3ac4dcf96",
+      "type": "ci"
+    },
+    "lineage": {
+      "children": [
+        {
+          "locator": "sha256:d723a611c213977a0701254135824bc476160039e6ed3ceae409e1b58711ce1e",
+          "type": "receipt",
+          "uri": "runx:receipt:sha256:e61b83f508324fe17ca2235e4ce431d3c099be77fa41836a217fd5e9c3fcef93"
+        },
+        {
+          "locator": "sha256:51da79d6d88ce1ea73781449271f9a7e7968c8c5549a4243b7765bbfcf5a20f1",
+          "type": "receipt",
+          "uri": "runx:receipt:sha256:63ce3e0d2973aad400644912bec84bd469794ba7b4a8d3362723d00f387ef55e"
+        },
+        {
+          "locator": "sha256:098f4d263cd872ad1d87f9aeed177c839d123b017926b66bb73f21ed8bef4bc6",
+          "type": "receipt",
+          "uri": "runx:receipt:sha256:239f12deee0f363f3e3949d5c73cee6ccd557eacd46a957163996da88bfcdca9"
+        }
+      ],
+      "sync": []
+    },
+    "schema": "runx.receipt.v1",
+    "seal": {
+      "closed_at": "2026-08-04T07:02:57.747Z",
+      "criteria": [],
+      "disposition": "closed",
+      "last_observed_at": "2026-08-04T07:02:57.747Z",
+      "reason_code": "graph_closed",
+      "summary": "graph crm-cleanup completed"
+    },
+    "signals": [],
+    "signature": {
+      "alg": "Ed25519",
+      "value": "base64:BKhYPyVD7pbqwhK2nEhx5LFrs5e6YsLU7WXEgW8QSKo1XjAdBNdVz9ysYEwj42yRZeI5tHmcnvnLQupncSOsBQ"
+    },
+    "subject": {
+      "commitments": [],
+      "kind": "graph",
+      "ref": {
+        "type": "harness",
+        "uri": "hrn_crm-cleanup_graph"
+      }
+    }
+  },
+  "receipt_id": "sha256:7dfc54523a4eac223ddd4863b7e63db697964f6aa462c1b58daad1b5e64b68f3",
+  "registry_provenance": {
+    "digest": "sha256:de501bea4ff0e0725f9df35a9888029e03720eac5e13895fda1eb4c16f8afd68",
+    "profile_digest": "sha256:c7d09048ac7f0e34a2054e0964a92278ae0a361aa55157aaf15f5a7b337b0262",
+    "registry_key_id": "runx-registry-ed25519-v1",
+    "registry_source": "remote https://api.runx.ai",
+    "registry_source_fingerprint": "ba1ac16b631195fd",
+    "skill_id": "automerchlab/crm-cleanup",
+    "trust_state": "trusted",
+    "trust_tier": "community",
+    "version": "2.1.1"
+  },
+  "run_id": "run_default_548760148358",
+  "schema": "runx.skill_run.v1",
+  "skill_name": "crm-cleanup",
+  "status": "sealed"
+}

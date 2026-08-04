@@ -1,86 +1,171 @@
 skill: crm-cleanup
-version: "1.0.2"
+version: "2.1.1"
+
+policy:
+  allow:
+    - provider: data-source
+      method: READ
+      scope: runx:data:read
+    - provider: data-source
+      method: APPEND
+      scope: runx:data:append
+  deny:
+    - raw_sql_from_model
+    - secret_material
+
+emits:
+  - name: data_operation_result
+    packet: runx.data.operation_result.v1
 
 catalog:
-  kind: skill
+  kind: graph
   audience: public
   visibility: public
   role: canonical
 
 harness:
   cases:
-    - name: templated
+    - name: reconciled_write_sealed
       runner: default
       inputs:
-        transcript: "The client said the budget is $50k. The status is qualified. The next step is follow up call."
-        crm_schema: "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
+        source_handle:
+          data_source_ref: "local://runx-crm/harness"
+          resource: "crm_records"
+          aggregate_id: "acct-northwind"
+          store_id: "crm-cleanup-harness-reconciled"
+        transcript: "Great call with Northwind. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday."
+        crm_schema: '{"fields": ["budget", "status", "next_step"]}'
       expect:
         status: sealed
         receipt:
           schema: runx.receipt.v1
           state: sealed
           disposition: closed
-    - name: natural
+        step_outputs:
+          reconcile:
+            subset:
+              changed: true
+              field_updates:
+                budget: "$75k"
+                status: qualified
+          write_updates:
+            subset:
+              write_result:
+                status: committed
+                operation: append_event
+                before_version: 0
+                after_version: 1
+                replayed: false
+
+    - name: noop_no_write
       runner: default
       inputs:
-        transcript: "Great call. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday."
-        crm_schema: "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
-      expect:
-        status: sealed
-        receipt:
-          schema: runx.receipt.v1
-          state: sealed
-          disposition: closed
-    - name: needs_review
-      runner: default
-      inputs:
-        transcript: "We talked budget but they were cagey about the exact number. We should update their status after legal reviews the contract."
-        crm_schema: "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
-      expect:
-        status: sealed
-        receipt:
-          schema: runx.receipt.v1
-          state: sealed
-          disposition: closed
-    - name: noop
-      runner: default
-      inputs:
+        source_handle:
+          data_source_ref: "local://runx-crm/harness"
+          resource: "crm_records"
+          aggregate_id: "acct-northwind"
+          store_id: "crm-cleanup-harness-noop"
         transcript: "Quick sync, everything is on track, nothing to update right now."
-        crm_schema: "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
+        crm_schema: '{"fields": ["budget", "status", "next_step"]}'
       expect:
         status: sealed
         receipt:
           schema: runx.receipt.v1
           state: sealed
           disposition: closed
-    - name: invalid_schema
+        step_outputs:
+          reconcile:
+            subset:
+              changed: false
+              field_updates: {}
+
+    - name: invalid_schema_refused
       runner: default
       inputs:
+        source_handle:
+          data_source_ref: "local://runx-crm/harness"
+          resource: "crm_records"
+          aggregate_id: "acct-northwind"
+          store_id: "crm-cleanup-harness-invalid"
         transcript: "Client wants to move forward."
         crm_schema: "{}"
       expect:
         status: failure
-        receipt:
-          schema: runx.receipt.v1
-          state: sealed
-          disposition: failed
 
 runners:
   default:
     default: true
-    type: cli-tool
-    command: node
-    args:
-      - run.mjs
+    type: graph
     inputs:
+      source_handle:
+        type: json
+        required: true
+        description: "Governed CRM source handle: data_source_ref, resource, aggregate_id, and an optional fixture store_id."
       transcript:
         type: string
         required: true
+        description: "Raw call or meeting transcript to reconcile against the current CRM records."
       crm_schema:
         type: string
         required: true
-    outputs:
-      takeaways: array
-      field_updates: object
-      needs_review: array
-      write_proposal: boolean
+        description: "JSON object with a fields array naming the CRM fields that may be written."
+    graph:
+      name: crm-cleanup
+      result_from:
+        - reconcile
+        - write_updates
+      steps:
+        - id: read_records
+          label: read the account's current CRM records and stream version
+          inputs:
+            source_handle: "$input.source_handle"
+          run:
+            type: cli-tool
+            command: node
+            args:
+              - steps/read_records.mjs
+            outputs:
+              projection: object
+
+        - id: reconcile
+          label: reconcile the transcript against the records read from the store
+          inputs:
+            transcript: "$input.transcript"
+            crm_schema: "$input.crm_schema"
+            source_handle: "$input.source_handle"
+          context:
+            projection: read_records.projection
+          run:
+            type: cli-tool
+            command: node
+            args:
+              - steps/reconcile.mjs
+            outputs:
+              takeaways: array
+              field_updates: object
+              needs_review: array
+              changed: boolean
+              expected_version: number
+              idempotency_key: string
+              event: object
+              before: object
+
+        - id: write_updates
+          label: execute the decided field updates as a compare-and-set append
+          when:
+            field: reconcile.changed
+            equals: true
+          inputs:
+            source_handle: "$input.source_handle"
+          context:
+            expected_version: reconcile.expected_version
+            idempotency_key: reconcile.idempotency_key
+            event: reconcile.event
+            before: reconcile.before
+          run:
+            type: cli-tool
+            command: node
+            args:
+              - steps/append_event.mjs
+            outputs:
+              write_result: object
