@@ -63,6 +63,10 @@ and `outbox_unchanged=true`.
 version and the same source revision `a12043512818cb4d6e27636f964cbaab92eecab9`; `evidence.json` and this report sit
 in that commit's child so the evidence can name the source revision it came from.
 
+## Harness environment
+
+The harness numbers in this report are a **local WSL run executed before publish**; no hosted harness run is claimed or attached. The published digest is what a hosted run would evaluate.
+
 ## Acceptance mapping
 
 - **runx CLI floor** — every publish, install, harness, dogfood and verify command ran with `runx-cli 0.8.2`, above the 0.6.14 floor.

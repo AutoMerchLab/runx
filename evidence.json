@@ -71,7 +71,7 @@
         "replayed": false,
         "send_plan_status": "authorized",
         "status": "delivered",
-        "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_83/.postmortem-outbox/91a6c9c24b08c137.jsonl",
+        "store_path": "./.postmortem-outbox/91a6c9c24b08c137.jsonl",
         "transport": "bundled append-only outbox log (not a hosted provider)"
       },
       "readback": {
@@ -86,7 +86,7 @@
         "outbox_version_after": 1,
         "outbox_version_before": 0,
         "provider": "bundled-local-outbox",
-        "read_from": "/mnt/c/Users/TEST/Desktop/frantic/bounty_83/.postmortem-outbox/91a6c9c24b08c137.jsonl",
+        "read_from": "./.postmortem-outbox/91a6c9c24b08c137.jsonl",
         "timeline_entries_stored": 1,
         "verified_independently": "re-read from the outbox file and re-digested; not copied from the deliver step output"
       },
@@ -202,8 +202,8 @@
     },
     {
       "type": "hosted_harness_status",
-      "value": "published package is live at the registry and installs cleanly; the hosted registry harness runs the same three cases from the published digest 2c38cb8403134a4c71e4f647e411c2146dfc97232b517a35d66cdd217083392f",
-      "detail": "The published package digest is the one the hosted harness evaluates; local run above is labelled local."
+      "value": "not run by us: the harness result reported here is the LOCAL WSL run (3/3, 0 assertion errors) executed before publish. The published package digest 2c38cb8403134a4c71e4f647e411c2146dfc97232b517a35d66cdd217083392f is what the registry's hosted harness evaluates from the same three cases in the published X.yaml.",
+      "detail": "Environment labelling per the local/hosted distinction: no hosted harness receipt is claimed because we did not run one; only the local run is evidenced."
     },
     {
       "type": "dogfood_command",
