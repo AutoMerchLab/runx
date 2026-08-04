@@ -318,7 +318,6 @@ test("admits only non-persisting campaign composition reads", () => {
   assert.deepEqual(intent.requests[0].body.params.arguments, {
     composition_mode: "intent",
     goal: "Write a product update",
-    dry_run: true,
   });
 
   const validate = prepareOperation({
@@ -329,6 +328,7 @@ test("admits only non-persisting campaign composition reads", () => {
       contract_id: "ecc_fixture",
       subject: "A careful update",
       body: "We changed one detail because customers showed us where it hurt.",
+      idempotency_key: "ecr_fixture",
     },
   }).operation_plan;
   assert.equal(validate.decision, "ready");
@@ -339,13 +339,13 @@ test("admits only non-persisting campaign composition reads", () => {
     subject: "A careful update",
     body: "We changed one detail because customers showed us where it hurt.",
     validate_only: true,
-    dry_run: true,
   });
 });
 
 test("refuses persistence and delivery fields on campaign composition reads", () => {
   const cases = [
     ["compose_campaign_intent", { composition_mode: "draft", goal: "No" }],
+    ["compose_campaign_intent", { composition_mode: "intent", goal: "No", idempotency_key: "ecr_forbidden" }],
     ["compose_campaign_intent", { composition_mode: "intent", audience: { audience_type: "all_contacts" } }],
     ["validate_campaign_composition", { composition_mode: "validate", contract_id: "ecc_fixture", body: "Hi", scheduled_at: "2026-08-01T00:00:00Z" }],
     ["validate_campaign_composition", { composition_mode: "draft", contract_id: "ecc_fixture", body: "Hi" }],

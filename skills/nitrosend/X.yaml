@@ -867,7 +867,7 @@ runners:
             composition_intent: intent.provider_evidence.data
         - id: validate
           when:
-            field: author.campaign_candidate.data.decision
+            field: author.campaign_candidate.decision
             equals: ready
           skill: graph/provider-operation
           runner: read
@@ -875,7 +875,7 @@ runners:
             operation: validate_campaign_composition
             brand_sid: "$input.brand_sid"
           context:
-            arguments: author.campaign_candidate.data.arguments
+            arguments: author.campaign_candidate.arguments
 
   compose-email-candidate:
     type: agent-task

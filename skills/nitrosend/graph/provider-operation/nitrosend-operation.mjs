@@ -198,8 +198,9 @@ function validate(mode, operation, args, brandSid) {
       return [`${operation} requires arguments.composition_mode=${expectedMode}`];
     }
     const forbidden = [
-      "audience", "scheduled_at", "confirm", "idempotency_key", "campaign_id", "mode",
+      "audience", "scheduled_at", "confirm", "campaign_id", "mode",
       "approval", "activate", "activation", "send", "operation",
+      ...(operation === "compose_campaign_intent" ? ["idempotency_key"] : []),
     ].filter((key) => Object.hasOwn(args, key));
     if (forbidden.length > 0) {
       return [`refused:${operation} cannot receive stateful fields: ${forbidden.join(", ")}`];
@@ -257,10 +258,11 @@ function validate(mode, operation, args, brandSid) {
 function providerArguments(operation, args) {
   if (operation === "sender_settings") return {};
   if (operation === "compose_campaign_intent") {
-    return { ...args, composition_mode: "intent", dry_run: true };
+    return { ...args, composition_mode: "intent" };
   }
   if (operation === "validate_campaign_composition") {
-    return { ...args, composition_mode: "validate", validate_only: true, dry_run: true };
+    const { idempotency_key: _idempotencyKey, ...validationArgs } = args;
+    return { ...validationArgs, composition_mode: "validate", validate_only: true };
   }
   if (operation === "import_status") {
     return { entity: "imports", filters: { id: Number(args.import_id) }, page: 1, per: 1 };
