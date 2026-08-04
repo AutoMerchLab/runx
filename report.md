@@ -1,57 +1,51 @@
 # CRM Cleanup Skill - Delivery Report
 
 ## Overview
-This report documents the published `crm-cleanup` runx skill and a real, verifiable
-post-publish dogfood run. This revision answers the prior review directly:
-- extraction now handles **natural phrasings**, not only the literal "field is value" template
-  (field-type inference over money / status / next-step / generic + synonym vocab);
-- lines that reference a field with an actionable cue but carry no extractable value are
-  emitted under **`needs_review`** `{field, line, reason}` instead of being silently dropped;
-- **typed outputs** (`takeaways`, `field_updates`, `needs_review`, `write_proposal`) are now
-  declared in `X.yaml`;
-- the description is scoped to what actually ships (deterministic heuristics, not "dynamic NLP").
+`crm-cleanup` (automerchlab/crm-cleanup@2.1.1) turns a call transcript into CRM field updates that are actually
+executed. It is a three-step graph:
 
-## Package
-- **Skill**: `crm-cleanup` | **Owner**: `automerchlab` | **Version**: `sha-44376c7817e7`
-- **Registry ref**: `automerchlab/crm-cleanup@sha-44376c7817e7`
-- **public_url**: https://runx.ai/x/automerchlab/crm-cleanup@sha-44376c7817e7
-- **pr_url**: https://github.com/runxhq/runx/pull/264
-- **source_url**: https://github.com/automerchlab/runx/tree/3266c6b6c8d830e5f05447d93e9a1e3011ccb056
-- **raw X.yaml**: https://raw.githubusercontent.com/automerchlab/runx/3266c6b6c8d830e5f05447d93e9a1e3011ccb056/skills/crm-cleanup/X.yaml
-- **raw SKILL.md**: https://raw.githubusercontent.com/automerchlab/runx/3266c6b6c8d830e5f05447d93e9a1e3011ccb056/skills/crm-cleanup/SKILL.md
+1. **read** - `steps/read_records.mjs` replays the account's append-only event log and
+   returns the projected record and stream version;
+2. **reconcile** - `steps/reconcile.mjs` extracts what the transcript asserts and keeps
+   only the fields whose value differs from the record that was just read;
+3. **write** - `steps/append_event.mjs` executes the decision under compare-and-set on
+   the version from step 1 and seals `before_version -> after_version`, `event_ref` and a
+   sha256 `event_digest`.
 
-## runx CLI
-- `runx --version` -> **runx-cli 0.6.16** (>= 0.6.14 floor). Used for install, dogfood, and verify.
+The write step is guarded on the reconcile decision, so a no-op run executes nothing.
 
-## Install (clean)
-- `runx add automerchlab/crm-cleanup@sha-44376c7817e7 --registry https://api.runx.ai` -> source=remote, status=installed.
+## What the prior review asked for, and where it is
+| Prior finding | Where it is answered |
+| --- | --- |
+| "reads no real source" | The dogfood reads stream `acct-northwind` at version 1 and gets back `budget=$40k, next_step=wait for procurement, status=contacted` - records written by an *earlier run of the same published package*, not a bundled fixture. See `evidence_json.observations[source_read]`. |
+| "drives no consumed effect ... inert proposal object" | The decision is executed: `crm_records:acct-northwind:2`, version 1 -> 2, digest `sha256:1e09e709a51c36cf5f03f5662070ac5f1de665dd2391023f21445172e3be87dd`. See `observations[executed_write_result]`. |
+| "local events.log labelled as a governed data-store append" | No such claim is made anywhere. `observations[transport_disclosure]` states plainly that this is a bounded bundled event log, why the native `data.*` tools cannot be used from a registry-installed package, and exactly which guarantees the transport does implement. |
+| "add assertions proving the no-op path performs no write" | The `noop_no_write` harness case asserts `changed: false` and `field_updates: {}`; the second dogfood run's receipt contains **no `write_updates` step output at all** and leaves the stream at version 2. |
+| "harness_cases do not match the X.yaml case names" | `evidence_json.dogfood.harness_cases` lists exactly `reconciled_write_sealed (sealed), noop_no_write (sealed), invalid_schema_refused (failed)`, the same names as `X.yaml harness.cases`. |
+| "base64 node -e eval blob hiding the work" | Every step runs a checked-in script under `skills/crm-cleanup/steps/`; there is no inline code (runx itself rejects inline `-e` sources under strict workspace policy). |
 
-## Harness
-- Local harness: `runx harness ./skills/crm-cleanup` -> **5/5 PASSED, 0 assertion errors** (WSL Linux).
-- Cases: templated (sealed), natural (sealed), needs_review (sealed), noop (sealed), invalid_schema (failed).
-  - **templated** - literal "field is value" phrasing (backward compatible).
-  - **natural** - phrasing NOT shaped to the regex (`got around $75k`, `moving them to qualified`, `send over a proposal`).
-  - **needs_review** - fields referenced with a cue but no extractable value -> reported in `needs_review`, not dropped.
-  - **noop** - no actionable change -> empty field_updates, write_proposal false.
-  - **invalid_schema** - refuses on an empty/malformed schema.
+## Dogfood, in order
+1. **seed** - `Onboarding note. Their budget is $40k. The status is contacted. The next step is wait for procurement.` on an empty stream -> version 0 -> 1.
+2. **reconcile** (the delivered receipt) - `Great call with Northwind. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.` -> read version 1 record `budget=$40k, next_step=wait for procurement, status=contacted`,
+   decide `budget=$75k, next_step=send over a proposal by Friday, status=qualified`, commit version 1 -> 2 as `crm_records:acct-northwind:2`.
+3. **no-op** - `Quick sync, everything is on track, nothing to update right now.` -> `changed=false`, no write step, stream stays at version 2.
 
-## Dogfood (post-publish, real, natural transcript)
-- Command: `runx skill automerchlab/crm-cleanup@sha-44376c7817e7 --registry https://api.runx.ai --json -i transcript='Great call. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.' -i crm_schema='{"fields": ["budget", "status", "next_step"]}' -R ./receipts`
-- Output: takeaways Identified budget: $75k; Identified status: qualified; Identified next step: send over a proposal by Friday; field_updates {budget=$75k, next_step=send over a proposal by Friday, status=qualified}; needs_review []; write_proposal true.
-- Receipt: `runx:receipt:sha256:0ea8bb73fca87c1963a160120fe64dbb753a12809fce3d1db13d6a27f7ab4e36`
-- `runx verify --receipt dogfood_receipt.json --json` -> **valid: true, signature_mode: production, signature: valid**.
+`runx verify` on the delivered receipt: **valid=true, signature_mode=production**.
 
-## Provenance (single source revision)
-- Registry provenance (from the dogfood receipt): registry_source=remote https://api.runx.ai, skill_id=automerchlab/crm-cleanup, version=sha-44376c7817e7, trust_state=trusted, trust_tier=community - the dogfood run
-  resolved the published package from the remote registry at the exact published version.
-- source_url, raw X.yaml, raw SKILL.md and verification.json all resolve at one source revision:
-  commit `3266c6b6c8d830e5f05447d93e9a1e3011ccb056` on the `automerchlab/runx` `crm-cleanup` branch.
-- The skill files at `3266c6b6c8d830e5f05447d93e9a1e3011ccb056` are byte-identical to the published package `automerchlab/crm-cleanup@sha-44376c7817e7` (matching digest).
-- This report and evidence.json are committed as the direct child of `3266c6b6c8d830e5f05447d93e9a1e3011ccb056` and describe that same
-  revision; the recorded receipt_ref is the post-publish dogfood run of the published package, not a
-  harness fixture seal.
+## Maintainer-facing limits
+- Extraction is deterministic pattern reading of English business transcripts: no coreference,
+  no multi-account transcripts, no currency conversion. A field it cannot read is reported in
+  `needs_review`, never invented.
+- The bundled transport is local and single-writer. Its CAS guard protects against a stale
+  decision overwriting a newer record, but it is not a distributed store.
+- The record projection is last-write-wins per field; it does not model field-level history.
 
-## What to inspect first
-1. `runx verify --receipt dogfood_receipt.json --json` (valid=true, production).
-2. `evidence.json` dogfood.output (real takeaways + field_updates + gated write_proposal).
-3. Raw X.yaml / SKILL.md / verification.json at source revision `3266c6b6c8d830e5f05447d93e9a1e3011ccb056`.
+## Delivery references (single source revision)
+- **package**: `automerchlab/crm-cleanup@2.1.1` - https://runx.ai/x/automerchlab/crm-cleanup@2.1.1
+- **PR**: https://github.com/runxhq/runx/pull/264
+- **source_url**: https://github.com/automerchlab/runx/tree/a2b63d5bea99a390a08c4bfc4dd247c4517712fe
+- **raw X.yaml**: https://raw.githubusercontent.com/automerchlab/runx/a2b63d5bea99a390a08c4bfc4dd247c4517712fe/skills/crm-cleanup/X.yaml
+- **raw SKILL.md**: https://raw.githubusercontent.com/automerchlab/runx/a2b63d5bea99a390a08c4bfc4dd247c4517712fe/skills/crm-cleanup/SKILL.md
+- **verification.json**: https://raw.githubusercontent.com/automerchlab/runx/a2b63d5bea99a390a08c4bfc4dd247c4517712fe/verification.json
+- **receipt_ref**: `runx:receipt:sha256:0a52c88b81a452c32e3d6ef9ad2d72da9eabd4afdafdd82f498fed7180f3c7b1`
+- **runx version**: runx-cli 0.8.2
