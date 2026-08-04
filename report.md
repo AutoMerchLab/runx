@@ -63,6 +63,21 @@ and `outbox_unchanged=true`.
 version and the same source revision `a12043512818cb4d6e27636f964cbaab92eecab9`; `evidence.json` and this report sit
 in that commit's child so the evidence can name the source revision it came from.
 
+## Acceptance mapping
+
+- **runx CLI floor** — every publish, install, harness, dogfood and verify command ran with `runx-cli 0.8.2`, above the 0.6.14 floor.
+- **Exact package name** — published as `automerchlab/postmortem-maker@2.0.1` under owner `automerchlab`; read back from the registry with digest `2c38cb8403134a4c71e4f647e411c2146dfc97232b517a35d66cdd217083392f`.
+- **Public PR with the package files** — https://github.com/runxhq/runx/pull/320 contains `skills/postmortem-maker/X.yaml`, `SKILL.md`, all five `steps/*.mjs`, `harness/harness_out.json` and the sealed harness receipts; `x_yaml` and `skill_md` are raw URLs at the PR head commit `a12043512818cb4d6e27636f964cbaab92eecab9`.
+- **One revision, one version** — registry package, PR head, `source_url`, `x_yaml`, `skill_md`, `verification_json`, `receipt_ref`, `evidence_json` and this report all describe `automerchlab/postmortem-maker@2.0.1` at `a12043512818cb4d6e27636f964cbaab92eecab9`.
+- **Clean install + green harness** — `runx add automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai` succeeds; the local WSL harness passed 3/3 cases with 0 assertion errors before publish.
+- **Real source read in the dogfood** — the sealed run fetched `https://api.github.com/repos/nltk/nltk/issues/3733` over HTTPS at run time (runtime-web-fetch, 2 events, source_digest `sha256:d0ed54d0a816c02d42a4f23670f670971eaf93a97dfed0a9bb61148051994f1e`), not a hand-pasted fixture.
+- **Executed publication, not a proposal** — the same run appended the postmortem to the outbox under compare-and-set: `delivered`, message `ef49e3e7306b44dd7f8ac8f3`, outbox 0 → 1.
+- **Independent readback** — a separate step re-opened the outbox, re-digested the stored message and matched the authorized digest (`digest_match=True`); a later run over the same incident returned `replayed=True` with the outbox unchanged.
+- **Refusal path proven empty** — the `conflicting-evidence-withheld` harness case asserts `send_plan_created=false`, `provider_act_performed=false`, `delivery_exists=false`, `outbox_unchanged=true`; a live run against a thread that never settles its cause delivered nothing.
+- **Sealed, production-signed receipt** — `runx:receipt:sha256:5429edb88481e299e8a75e94316eae3e84f7e48f0fac95bb67a2189bd4a6e89c` verifies `valid=True`, `signature_mode=production`.
+- **Cited claims** — every timeline entry carries the event id, author, URL and quoted line; the confirmed root cause cites https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175.
+- **No secrets** — no tokens or credentials appear in any artifact; the GitHub read is unauthenticated.
+
 ## Install, run, verify
 
 ```bash
