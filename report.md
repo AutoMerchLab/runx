@@ -1,80 +1,72 @@
-# Postmortem Maker Skill - Delivery Report (bounty #83)
+# postmortem-maker 2.0.1 — Frantic #83 delivery report
 
-## Overview
-`postmortem-maker` turns incident fragments into a traceable postmortem **without
-pretending unknowns are facts**. It reads incident timeline events, alerts, deploy
-events, chat notes, and a postmortem policy; separates known facts from hypotheses;
-and emits a postmortem packet with action items and a **gated** publish proposal.
-It never posts or assigns work directly.
+**Package**: `automerchlab/postmortem-maker@2.0.1` · **Owner**: `automerchlab` · **Registry digest**: `2c38cb8403134a4c71e4f647e411c2146dfc97232b517a35d66cdd217083392f`
+**Public URL**: https://runx.ai/x/automerchlab/postmortem-maker@2.0.1
+**PR**: https://github.com/runxhq/runx/pull/320
+**Source revision (X)**: https://github.com/automerchlab/runx/tree/a12043512818cb4d6e27636f964cbaab92eecab9
+**Receipt**: `runx:receipt:sha256:5429edb88481e299e8a75e94316eae3e84f7e48f0fac95bb67a2189bd4a6e89c` · **runx verify**: valid=True, signature_mode=production, kid=key1
+**runx CLI**: runx-cli 0.8.2
 
-- Facts vs hypotheses: a declarative chat note ("the v1.9.3 deploy introduced ...")
-  can confirm a cause; a hedged note ("might be...", "I suspect...") is a hypothesis
-  and never confirms anything on its own.
-- Every timeline entry and root-cause claim cites its input evidence
-  (`incident_timeline[i]`, `alerts[i]`, `deploy_events[i]`, `chat_notes[i]`).
-- Conflicting or insufficient evidence yields `unknowns` and **no** publish proposal;
-  an empty incident (no timeline/alerts/deploys) is refused outright.
-- `publish_proposal` is a gated object (`requires_approval: true`) consumed by
-  send-as or the doc-publisher executor.
+## What changed against the previous delivery
 
-## Package
-- **Skill**: `postmortem-maker` | **Owner**: `automerchlab` | **Version**: `1.0.0`
-- **Registry ref**: `automerchlab/postmortem-maker@1.0.0` (runx registry read automerchlab/postmortem-maker@1.0.0 --json resolves metadata + digests)
-- **public_url**: https://runx.ai/x/automerchlab/postmortem-maker@1.0.0
-- **pr_url**: https://github.com/runxhq/runx/pull/320
-- **source_url**: https://github.com/automerchlab/runx/tree/b0ad3f4545a528a083317b92524eabf7fbdf9830
-- **raw X.yaml**: https://raw.githubusercontent.com/automerchlab/runx/b0ad3f4545a528a083317b92524eabf7fbdf9830/skills/postmortem-maker/X.yaml
-- **raw SKILL.md**: https://raw.githubusercontent.com/automerchlab/runx/b0ad3f4545a528a083317b92524eabf7fbdf9830/skills/postmortem-maker/SKILL.md
-- **verification_json**: https://raw.githubusercontent.com/automerchlab/runx/b0ad3f4545a528a083317b92524eabf7fbdf9830/verification.json
+The previous revision constructed send-as shaped objects locally and reported the
+result as sent. This revision does not report a send — it performs one, and then
+proves it from the other side:
 
-## runx CLI
-- `runx --version` -> **runx-cli 0.6.16** (>= 0.6.14 floor). Used for publish, install, dogfood, and verify.
+1. `read_incident` fetches the incident thread over HTTPS at run time.
+2. `read_outbox` reads the publication stream and its version.
+3. `compose` reconstructs the timeline (every entry citing the event id, author,
+   URL and quoted line), confirms a root cause only when exactly one candidate is
+   named in an unhedged statement, and authorizes or withholds publication.
+4. `deliver` runs **only** when publication is authorized: it appends the
+   postmortem to the outbox under compare-and-set, assigns a provider message id
+   and makes it durable.
+5. `verify` re-opens the outbox itself, re-digests the **stored** message and
+   matches it against the digest the send plan authorized — or, on the withheld
+   path, asserts that no send plan, no provider act and no delivery exist and the
+   outbox version has not moved.
 
-## Publish & install
-- Publish: `runx login --provider github --for publish`, then
-  `runx registry publish ./skills/postmortem-maker/SKILL.md --registry https://api.runx.ai --version 1.0.0`.
-- Clean install: `runx add automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai` -> source=remote, status=installed
-  (installed payload includes run.mjs, X.yaml, SKILL.md; digest sha256:4059df32bd27f27b37e6c3c6afbe6743a1049d8fd4d52daf0f572357b95a9fc2).
+## What the transport is
 
-## Harness
-- Local harness: `runx harness ./skills/postmortem-maker` -> **3/3 cases, 0 assertion errors** (WSL Linux local).
-- Cases: consistent-incident-sealed (sealed), conflicting-evidence-uncertain (sealed), missing-inputs-refused (refused).
-  - **consistent-incident-sealed** — one deploy 5 min before the alert + a declarative confirming note +
-    quantified impact -> postmortem complete, action_items, gated publish_proposal.
-  - **conflicting-evidence-uncertain** — two deploys in-window + two hedged notes blaming different
-    services -> root_cause unknown, 4 unknowns (each candidate/hypothesis), **publish_proposal null**;
-    seals deterministically.
-  - **missing-inputs-refused** — no timeline/alerts/deploys -> refused ("any postmortem would be invented").
-- Harness evidence is committed in the PR: `skills/postmortem-maker/harness/harness_out.json`
-  and the sealed harness receipts under `skills/postmortem-maker/harness/receipts/`.
+An append-only outbox log **bundled with the package** — not a hosted provider
+and not the runx data-store. Canonical `runx/send-as` describes itself as a
+planning and authority layer that "never delivers" and refers delivery to a
+provider adapter; and the runtime's native `data.*` tools are not in the
+execution closure of a registry-installed package. So the package ships its own
+adapter, with compare-and-set, idempotency and independent readback. Nothing in
+this packet claims a hosted provider delivered anything.
 
-## Dogfood (post-publish, real, against the PUBLISHED package)
-- Command: `runx skill automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai --json --input-json incident_timeline='[{"at": "2026-07-14T08:50:00Z", "event": "Webhook delivery failures climbed to 35%", "impact": "312 merchant webhook endpoints missed order notifications for 22 minutes"}, {"at": "2026-07-14T09:12:00Z", "event": "Dispatcher rolled back to v1.9.2, failure rate recovered"}]' --input-json alerts='[{"at": "2026-07-14T08:52:00Z", "name": "WebhookDeliveryFailureRateHigh", "severity": "critical"}]' --input-json deploy_events='[{"at": "2026-07-14T08:41:00Z", "service": "webhook-dispatcher", "version": "v1.9.3"}]' --input-json chat_notes='[{"at": "2026-07-14T08:58:00Z", "author": "oncall", "text": "The v1.9.3 webhook-dispatcher deploy introduced a malformed signature header, receivers reject the payload; rolling back."}, {"at": "2026-07-14T09:13:00Z", "author": "oncall", "text": "Rollback done, deliveries recovering."}]' --input-json postmortem_policy='{"require_confirmed_root_cause": true, "max_correlation_window_min": 30, "publish_target": "incident-review", "visibility": "internal"}' -R ./receipts`
-- The receipt's registry provenance proves the published package was run:
-  registry_source=remote https://api.runx.ai, skill_id=automerchlab/postmortem-maker, version=1.0.0, trust_state=trusted, trust_tier=community.
-- Output: root_cause **confirmed** (webhook-dispatcher@v1.9.3 deploy 11 min before the first alert,
-  corroborated by the declarative oncall note), impact **known** (312 merchant endpoints, 22 minutes),
-  postmortem status **complete**, 0 unknowns, 2 action items (each naming a target lane),
-  and a **gated** publish proposal (requires_approval=true).
-- Receipt: `runx:receipt:sha256:de99603f53042768c4250bc38a89f2eeee31e7f7754c6bca07f782c588d40f0a`
-- `runx verify --receipt dogfood_receipt.json --json` -> **valid: true, signature_mode: production, signature: valid**.
+## Dogfood — the published package against a live incident thread
 
-## Provenance (single source revision)
-- source_url, raw X.yaml, raw SKILL.md and verification.json all resolve at one source revision:
-  commit `b0ad3f4545a528a083317b92524eabf7fbdf9830` on the `automerchlab/runx` `postmortem-maker` branch (the PR's head lineage).
-- The committed skill files are the files that were published as `automerchlab/postmortem-maker@1.0.0` and the dogfood ran that
-  published package from the remote registry — not a local path (receipt registry_provenance above).
-- This report and evidence.json are committed as the direct child of `b0ad3f4545a528a083317b92524eabf7fbdf9830` and describe that same
-  revision; the recorded receipt_ref is the post-publish dogfood run, not a harness fixture seal.
+| run | command | result |
+|-----|---------|--------|
+| 1 (publish) | `runx skill automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai --json --input-json incident_source='{"kind":"github_issue","ref":"https://api.github.com/repos/nltk/nltk/issues/3733"}' --input-json publish_target='{"data_source_ref":"local://runx-postmortems/dogfood-2026-08-04","channel":"incident-review","aggregate_id":"nltk-3733","principal":"incident-review-bot","audience":"incident-review"}' -R ./receipts2` | root cause **confirmed**, 1 timeline entry cited, delivery **delivered** `ef49e3e7306b44dd7f8ac8f3`, outbox 0 → 1, readback digest_match **True** |
+| 2 (replay) | same incident, `-R ./receipts2_replay` | **replayed=True**, same message id `ef49e3e7306b44dd7f8ac8f3`, outbox stays at version 1 |
+| 3 (withheld) | `https://api.github.com/repos/Goz3rr/vscode-glualint/issues/24` | refused, nothing delivered; outbox still holds exactly 1 message |
 
-## How a new user installs, runs, verifies (no private context)
-1. `runx add automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai`
-2. `runx skill automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai --json --input-json incident_timeline='[{"at": "2026-07-14T08:50:00Z", "event": "Webhook delivery failures climbed to 35%", "impact": "312 merchant webhook endpoints missed order notifications for 22 minutes"}, {"at": "2026-07-14T09:12:00Z", "event": "Dispatcher rolled back to v1.9.2, failure rate recovered"}]' --input-json alerts='[{"at": "2026-07-14T08:52:00Z", "name": "WebhookDeliveryFailureRateHigh", "severity": "critical"}]' --input-json deploy_events='[{"at": "2026-07-14T08:41:00Z", "service": "webhook-dispatcher", "version": "v1.9.3"}]' --input-json chat_notes='[{"at": "2026-07-14T08:58:00Z", "author": "oncall", "text": "The v1.9.3 webhook-dispatcher deploy introduced a malformed signature header, receivers reject the payload; rolling back."}, {"at": "2026-07-14T09:13:00Z", "author": "oncall", "text": "Rollback done, deliveries recovering."}]' --input-json postmortem_policy='{"require_confirmed_root_cause": true, "max_correlation_window_min": 30, "publish_target": "incident-review", "visibility": "internal"}' -R ./receipts`
-3. `runx verify --receipt dogfood_receipt.json --json (or the new receipt file your own run writes under ./receipts)` -> valid=true, signature_mode=production.
+Source read: `https://api.github.com/repos/nltk/nltk/issues/3733` — runtime-web-fetch, 2 events, source_digest `sha256:d0ed54d0a816c02d42a4f23670f670971eaf93a97dfed0a9bb61148051994f1e`.
+Root cause: #3722 is named as the cause in an unhedged statement in the incident thread
+Citations: https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175
 
-## What to inspect first
-1. `runx verify --receipt dogfood_receipt.json --json` (valid=true, production).
-2. `evidence.json` dogfood.output (postmortem with per-row evidence citations, unknowns, lane-named
-   action_items, gated publish_proposal).
-3. Raw X.yaml / SKILL.md / verification.json at source revision `b0ad3f4545a528a083317b92524eabf7fbdf9830`.
-4. The conflicting-evidence-uncertain harness case: unknowns populated, proposal null.
+## Harness (WSL local, before publish)
+
+consistent-incident-published (sealed), conflicting-evidence-withheld (sealed), empty-thread-refused (refused) — passed 3/3 cases with 0 assertion errors. Receipts are
+in the PR under `skills/postmortem-maker/harness/receipts/`. The
+`conflicting-evidence-withheld` case is what proves the refusal path: it asserts
+`send_plan_created=false`, `provider_act_performed=false`, `delivery_exists=false`
+and `outbox_unchanged=true`.
+
+## Provenance
+
+`automerchlab/postmortem-maker@2.0.1`, the PR head commit, `source_url`, `x_yaml`, `skill_md`,
+`verification_json`, `receipt_ref` and this report all describe the same package
+version and the same source revision `a12043512818cb4d6e27636f964cbaab92eecab9`; `evidence.json` and this report sit
+in that commit's child so the evidence can name the source revision it came from.
+
+## Install, run, verify
+
+```bash
+runx add automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai
+runx skill automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai --json --input-json incident_source='{"kind":"github_issue","ref":"https://api.github.com/repos/nltk/nltk/issues/3733"}' --input-json publish_target='{"data_source_ref":"local://runx-postmortems/dogfood-2026-08-04","channel":"incident-review","aggregate_id":"nltk-3733","principal":"incident-review-bot","audience":"incident-review"}' -R ./receipts2
+runx verify --receipt "$(ls -t ./receipts2/sha256*.json | head -1)" --json
+```

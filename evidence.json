@@ -1,297 +1,304 @@
 {
-  "summary": "Evidence packet for the runx postmortem-maker skill (automerchlab/postmortem-maker@1.0.0). The skill folds incident fragments (timeline, alerts, deploys, chat notes, policy) into a traceable postmortem without promoting unknowns to facts: every timeline row and root-cause claim cites its input evidence, hedged chat speculation stays a hypothesis, conflicting or insufficient evidence yields unknowns and NO publish proposal, and the publish_proposal that is emitted is gated (requires_approval) and consumed by a downstream send-as/doc-publisher executor \u2014 the skill posts nothing. A real post-publish dogfood run of the PUBLISHED registry package (registry_source=remote, version=1.0.0) produced a sealed runx.receipt.v1 that passes runx verify with a production signature: root_cause confirmed (webhook-dispatcher@v1.9.3 deploy 11 min before the first alert, corroborated by a declarative oncall note), impact known (312 merchant endpoints, 22 minutes), 0 unknowns, 2 action items each naming a target lane, and a gated publish proposal. source_url, X.yaml, SKILL.md and verification.json all resolve at a single source revision (commit b0ad3f4545a528a083317b92524eabf7fbdf9830); this evidence packet and the report are its direct child (same revision). The committed skill files are the files that were published as automerchlab/postmortem-maker@1.0.0 and the dogfood ran that published package, not a local path.",
+  "summary": "Evidence packet for the runx postmortem-maker skill (automerchlab/postmortem-maker@2.0.1). The skill reads a real incident thread over HTTPS at run time, reconstructs a cited timeline, refuses to invent a root cause, and — only when the cause is confirmed — executes the publication through the package's own provider adapter and then reads the delivered message back out of the outbox and re-digests it. The dogfood below runs the PUBLISHED package against a live GitHub incident thread: run 1 executes the delivery, run 2 re-runs the same incident and gets the original delivery back as an idempotent replay (proving the first delivery is durable and is consumed by a later run), and the withheld path is covered by the harness with explicit no-delivery assertions.",
   "dogfood": {
-    "package": "automerchlab/postmortem-maker@1.0.0",
+    "package": "automerchlab/postmortem-maker@2.0.1",
     "input": {
-      "incident_timeline": [
-        {
-          "at": "2026-07-14T08:50:00Z",
-          "event": "Webhook delivery failures climbed to 35%",
-          "impact": "312 merchant webhook endpoints missed order notifications for 22 minutes"
-        },
-        {
-          "at": "2026-07-14T09:12:00Z",
-          "event": "Dispatcher rolled back to v1.9.2, failure rate recovered"
-        }
-      ],
-      "alerts": [
-        {
-          "at": "2026-07-14T08:52:00Z",
-          "name": "WebhookDeliveryFailureRateHigh",
-          "severity": "critical"
-        }
-      ],
-      "deploy_events": [
-        {
-          "at": "2026-07-14T08:41:00Z",
-          "service": "webhook-dispatcher",
-          "version": "v1.9.3"
-        }
-      ],
-      "chat_notes": [
-        {
-          "at": "2026-07-14T08:58:00Z",
-          "author": "oncall",
-          "text": "The v1.9.3 webhook-dispatcher deploy introduced a malformed signature header, receivers reject the payload; rolling back."
-        },
-        {
-          "at": "2026-07-14T09:13:00Z",
-          "author": "oncall",
-          "text": "Rollback done, deliveries recovering."
-        }
-      ],
-      "postmortem_policy": {
-        "require_confirmed_root_cause": true,
-        "max_correlation_window_min": 30,
-        "publish_target": "incident-review",
-        "visibility": "internal"
+      "incident_source": {
+        "kind": "github_issue",
+        "ref": "https://api.github.com/repos/nltk/nltk/issues/3733"
+      },
+      "publish_target": {
+        "data_source_ref": "local://runx-postmortems/dogfood-2026-08-04",
+        "channel": "incident-review",
+        "aggregate_id": "nltk-3733",
+        "principal": "incident-review-bot",
+        "audience": "incident-review"
       }
     },
-    "command": "runx skill automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai --json --input-json incident_timeline='[{\"at\": \"2026-07-14T08:50:00Z\", \"event\": \"Webhook delivery failures climbed to 35%\", \"impact\": \"312 merchant webhook endpoints missed order notifications for 22 minutes\"}, {\"at\": \"2026-07-14T09:12:00Z\", \"event\": \"Dispatcher rolled back to v1.9.2, failure rate recovered\"}]' --input-json alerts='[{\"at\": \"2026-07-14T08:52:00Z\", \"name\": \"WebhookDeliveryFailureRateHigh\", \"severity\": \"critical\"}]' --input-json deploy_events='[{\"at\": \"2026-07-14T08:41:00Z\", \"service\": \"webhook-dispatcher\", \"version\": \"v1.9.3\"}]' --input-json chat_notes='[{\"at\": \"2026-07-14T08:58:00Z\", \"author\": \"oncall\", \"text\": \"The v1.9.3 webhook-dispatcher deploy introduced a malformed signature header, receivers reject the payload; rolling back.\"}, {\"at\": \"2026-07-14T09:13:00Z\", \"author\": \"oncall\", \"text\": \"Rollback done, deliveries recovering.\"}]' --input-json postmortem_policy='{\"require_confirmed_root_cause\": true, \"max_correlation_window_min\": 30, \"publish_target\": \"incident-review\", \"visibility\": \"internal\"}' -R ./receipts",
-    "receipt_ref": "runx:receipt:sha256:de99603f53042768c4250bc38a89f2eeee31e7f7754c6bca07f782c588d40f0a",
-    "verify_verdict": "valid",
-    "output": {
-      "postmortem": {
-        "impact": {
-          "evidence": "incident_timeline[0]",
-          "status": "known",
-          "summary": "312 merchant webhook endpoints missed order notifications for 22 minutes"
-        },
-        "root_cause": {
-          "evidence": [
-            "deploy_events[0]",
-            "alerts (first at minute 29733652)",
-            "chat_notes[0]"
-          ],
-          "statement": "Deploy of webhook-dispatcher@v1.9.3 at 2026-07-14T08:41:00Z 11 min before the first alert",
-          "status": "confirmed"
-        },
-        "status": "complete",
-        "summary": "Incident folded from 2 timeline event(s), 1 alert(s), 1 deploy(s), and 2 chat note(s). Root cause: confirmed (Deploy of webhook-dispatcher@v1.9.3 at 2026-07-14T08:41:00Z 11 min before the first alert). Impact: known. 0 open unknown(s). A gated publish proposal was drafted for approval.",
-        "timeline": [
-          {
-            "at": "2026-07-14T08:41:00Z",
-            "description": "Deploy: webhook-dispatcher@v1.9.3",
-            "evidence": "deploy_events[0]",
-            "kind": "deploy",
-            "min": 29733641
-          },
-          {
-            "at": "2026-07-14T08:50:00Z",
-            "description": "Webhook delivery failures climbed to 35%",
-            "evidence": "incident_timeline[0]",
-            "kind": "event",
-            "min": 29733650
-          },
-          {
-            "at": "2026-07-14T08:52:00Z",
-            "description": "Alert fired: WebhookDeliveryFailureRateHigh (critical)",
-            "evidence": "alerts[0]",
-            "kind": "alert",
-            "min": 29733652
-          },
-          {
-            "at": "2026-07-14T09:12:00Z",
-            "description": "Dispatcher rolled back to v1.9.2, failure rate recovered",
-            "evidence": "incident_timeline[1]",
-            "kind": "event",
-            "min": 29733672
-          }
-        ]
-      },
-      "unknowns": [],
-      "action_items": [
-        {
-          "evidence": [
-            "deploy_events[0]",
-            "alerts (first at minute 29733652)"
-          ],
-          "owner_lane": "improve-skill",
-          "priority": "high",
-          "title": "Add an automated rollback / deploy guard for webhook-dispatcher"
-        },
-        {
-          "evidence": [
-            "alerts[0]"
-          ],
-          "owner_lane": "policy-author",
-          "priority": "medium",
-          "title": "Ensure a runbook exists for alert \"WebhookDeliveryFailureRateHigh\""
-        }
-      ],
-      "publish_proposal": {
-        "action": "publish_postmortem",
-        "grounded_in": {
-          "impact_evidence": "incident_timeline[0]",
-          "root_cause_status": "confirmed"
-        },
-        "note": "Gated proposal. This skill posts nothing; a downstream send-as/doc-publisher executor acts on approval.",
-        "requires_approval": true,
-        "target": "incident-review",
-        "title": "Postmortem: webhook-dispatcher incident",
-        "visibility": "internal"
-      }
+    "command": "runx skill automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai --json --input-json incident_source='{\"kind\":\"github_issue\",\"ref\":\"https://api.github.com/repos/nltk/nltk/issues/3733\"}' --input-json publish_target='{\"data_source_ref\":\"local://runx-postmortems/dogfood-2026-08-04\",\"channel\":\"incident-review\",\"aggregate_id\":\"nltk-3733\",\"principal\":\"incident-review-bot\",\"audience\":\"incident-review\"}' -R ./receipts2",
+    "receipt_ref": "runx:receipt:sha256:5429edb88481e299e8a75e94316eae3e84f7e48f0fac95bb67a2189bd4a6e89c",
+    "verify_verdict": {
+      "valid": true,
+      "signature_mode": "production",
+      "signature_status": "valid",
+      "kid": "key1",
+      "digest_status": "valid",
+      "receipt_id": "sha256:5429edb88481e299e8a75e94316eae3e84f7e48f0fac95bb67a2189bd4a6e89c"
     },
     "harness_cases": [
       {
-        "name": "consistent-incident-sealed",
+        "name": "consistent-incident-published",
         "status": "sealed"
       },
       {
-        "name": "conflicting-evidence-uncertain",
+        "name": "conflicting-evidence-withheld",
         "status": "sealed"
       },
       {
-        "name": "missing-inputs-refused",
+        "name": "empty-thread-refused",
         "status": "refused"
       }
-    ]
+    ],
+    "output": {
+      "publishable": true,
+      "root_cause_status": "confirmed",
+      "root_cause_statement": "#3722 is named as the cause in an unhedged statement in the incident thread",
+      "root_cause_citations": [
+        "https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175"
+      ],
+      "timeline_count": 1,
+      "unknowns_count": 0,
+      "action_items_count": 0,
+      "send_plan_status": "authorized",
+      "send_plan_approval": {
+        "decision": "authorized",
+        "gate": "confirmed_root_cause_required",
+        "reason": "root cause confirmed against cited thread evidence"
+      },
+      "delivery_result": {
+        "after_version": 1,
+        "aggregate_id": "nltk-3733",
+        "before_version": 0,
+        "channel": "incident-review",
+        "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+        "data_source_ref": "local://runx-postmortems/dogfood-2026-08-04",
+        "delivered_at": "2026-08-04T11:16:27.428Z",
+        "idempotency_key": "https://api.github.com/repos/nltk/nltk/issues/3733|sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+        "message_id": "ef49e3e7306b44dd7f8ac8f3",
+        "message_ref": "incident-review:nltk-3733:1",
+        "operation": "send",
+        "provider": "bundled-local-outbox",
+        "replayed": false,
+        "send_plan_status": "authorized",
+        "status": "delivered",
+        "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_83/.postmortem-outbox/91a6c9c24b08c137.jsonl",
+        "transport": "bundled append-only outbox log (not a hosted provider)"
+      },
+      "readback": {
+        "authorized_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+        "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+        "delivered": true,
+        "delivered_at": "2026-08-04T11:16:27.428Z",
+        "digest_match": true,
+        "incident_ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+        "message_id": "ef49e3e7306b44dd7f8ac8f3",
+        "message_ref": "incident-review:nltk-3733:1",
+        "outbox_version_after": 1,
+        "outbox_version_before": 0,
+        "provider": "bundled-local-outbox",
+        "read_from": "/mnt/c/Users/TEST/Desktop/frantic/bounty_83/.postmortem-outbox/91a6c9c24b08c137.jsonl",
+        "timeline_entries_stored": 1,
+        "verified_independently": "re-read from the outbox file and re-digested; not copied from the deliver step output"
+      },
+      "source": {
+        "events_read": 2,
+        "read_mode": "runtime-web-fetch",
+        "ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+        "source_digest": "sha256:d0ed54d0a816c02d42a4f23670f670971eaf93a97dfed0a9bb61148051994f1e"
+      }
+    },
+    "replay_run": {
+      "command": "runx skill automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai --json --input-json incident_source='{\"kind\":\"github_issue\",\"ref\":\"https://api.github.com/repos/nltk/nltk/issues/3733\"}' --input-json publish_target='{\"data_source_ref\":\"local://runx-postmortems/dogfood-2026-08-04\",\"channel\":\"incident-review\",\"aggregate_id\":\"nltk-3733\",\"principal\":\"incident-review-bot\",\"audience\":\"incident-review\"}' -R ./receipts2_replay",
+      "replayed": true,
+      "message_id": "ef49e3e7306b44dd7f8ac8f3",
+      "outbox_version_before": 1,
+      "outbox_version_after": 1,
+      "detail": "the second run over the same incident returns the delivery made by run 1 instead of sending again, and the outbox stays at one message — the first delivery is durable and is read back by a later, separate run of the published package"
+    },
+    "withheld_run": {
+      "command": "runx skill automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai --json --input-json incident_source='{\"kind\":\"github_issue\",\"ref\":\"https://api.github.com/repos/Goz3rr/vscode-glualint/issues/24\"}' --input-json publish_target='{\"data_source_ref\":\"local://runx-postmortems/dogfood-2026-08-04\",\"channel\":\"incident-review\",\"aggregate_id\":\"glualint-24\",\"principal\":\"incident-review-bot\",\"audience\":\"incident-review\"}' -R ./receipts2_withheld",
+      "incident": "https://api.github.com/repos/Goz3rr/vscode-glualint/issues/24",
+      "result": "refused (exit 1): no timeline could be reconstructed from that thread",
+      "delivered": false,
+      "outbox_messages_after_all_runs": 1,
+      "detail": "a live run against a thread that does not settle its own cause delivered nothing; the outbox still holds exactly the one message from run 1. The full withheld path — unknowns recorded, publication withheld, and the explicit no-delivery assertions (send_plan_created=false, provider_act_performed=false, delivery_exists=false, outbox_unchanged=true) — is exercised by the conflicting-evidence-withheld harness case"
+    }
   },
   "observations": [
     {
-      "type": "runx_version",
-      "value": "runx-cli 0.6.16",
-      "detail": "Exact runx --version output; the publish/install/dogfood/verify commands were run with this binary (>= 0.6.14 floor)."
+      "type": "runx_cli_version",
+      "value": "runx-cli 0.8.2",
+      "detail": "Exact `runx --version` output of the binary used for publish, install, harness, dogfood and verify."
     },
     {
       "type": "publisher_owner",
       "value": "automerchlab",
-      "detail": "Publisher owner of the skill."
+      "detail": "Publisher owner of the skill; confirmed by reading the package back from the registry."
     },
     {
       "type": "package_name",
       "value": "postmortem-maker",
-      "detail": "Exact published package name (no near-name or rename)."
+      "detail": "Exact package name required by the bounty; no near-name or renamed implementation."
     },
     {
-      "type": "version",
-      "value": "1.0.0",
-      "detail": "Published package version; X.yaml declares the same version (guarded by an assertion in the build script)."
+      "type": "package_version",
+      "value": "2.0.1",
+      "detail": "Published package version; X.yaml, SKILL.md, registry, PR head and this evidence all describe it."
     },
     {
       "type": "registry_ref",
-      "value": "automerchlab/postmortem-maker@1.0.0",
-      "detail": "Fully qualified registry reference; runx registry read automerchlab/postmortem-maker@1.0.0 --json resolves the published metadata and digests."
+      "value": "automerchlab/postmortem-maker@2.0.1",
+      "detail": "Registry reference of the published package."
+    },
+    {
+      "type": "registry_digest",
+      "value": "2c38cb8403134a4c71e4f647e411c2146dfc97232b517a35d66cdd217083392f",
+      "detail": "Digest the registry recorded for the published package."
     },
     {
       "type": "public_url",
-      "value": "https://runx.ai/x/automerchlab/postmortem-maker@1.0.0",
-      "detail": "Live registry listing / canonical adoption page."
+      "value": "https://runx.ai/x/automerchlab/postmortem-maker@2.0.1",
+      "detail": "Live registry listing and canonical public adoption page for the published version."
     },
     {
       "type": "pr_url",
       "value": "https://github.com/runxhq/runx/pull/320",
-      "detail": "Public PR against runxhq/runx containing the full package: X.yaml, SKILL.md, run.mjs, fixtures, and harness evidence."
+      "detail": "Public PR against runxhq/runx containing the package: X.yaml, SKILL.md, steps/, and harness evidence."
     },
     {
       "type": "source_url",
-      "value": "https://github.com/automerchlab/runx/tree/b0ad3f4545a528a083317b92524eabf7fbdf9830",
-      "detail": "Public source/provenance revision (single source revision)."
+      "value": "https://github.com/automerchlab/runx/tree/a12043512818cb4d6e27636f964cbaab92eecab9",
+      "detail": "Public source revision used to publish; every source artifact below is bound to this commit."
     },
     {
       "type": "raw_x_yaml",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/b0ad3f4545a528a083317b92524eabf7fbdf9830/skills/postmortem-maker/X.yaml",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/a12043512818cb4d6e27636f964cbaab92eecab9/skills/postmortem-maker/X.yaml",
       "detail": "Raw X.yaml at the source revision (PR head lineage)."
     },
     {
       "type": "raw_skill_md",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/b0ad3f4545a528a083317b92524eabf7fbdf9830/skills/postmortem-maker/SKILL.md",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/a12043512818cb4d6e27636f964cbaab92eecab9/skills/postmortem-maker/SKILL.md",
       "detail": "Raw SKILL.md at the source revision (PR head lineage)."
     },
     {
       "type": "verification_json",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/b0ad3f4545a528a083317b92524eabf7fbdf9830/verification.json",
-      "detail": "Raw runx verify verdict at the source revision."
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/a12043512818cb4d6e27636f964cbaab92eecab9/verification.json",
+      "detail": "Raw runx verify verdict for the dogfood receipt at the source revision."
     },
     {
       "type": "publish_method",
-      "value": "runx login --provider github --for publish, then runx registry publish ./skills/postmortem-maker/SKILL.md --registry https://api.runx.ai --version 1.0.0",
-      "detail": "Authenticate and publish commands (purpose-scoped publish credential; no tokens or secrets appear in any artifact)."
+      "value": "runx login --provider github --for publish && runx registry publish ./skills/postmortem-maker/SKILL.md --registry https://api.runx.ai --version 2.0.1",
+      "detail": "Publish flow actually used."
     },
     {
       "type": "install_command",
-      "value": "runx add automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai",
-      "detail": "Clean install command (verified: source=remote, status=installed, digest sha256:4059df32bd27f27b37e6c3c6afbe6743a1049d8fd4d52daf0f572357b95a9fc2; installed files include run.mjs, X.yaml, SKILL.md)."
+      "value": "runx add automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai",
+      "detail": "Clean install of the published package; it succeeded before the dogfood runs."
+    },
+    {
+      "type": "harness_command",
+      "value": "runx harness ./skills/postmortem-maker --json -R ./harness_receipts2",
+      "detail": "Local harness command (WSL/Linux) run before publish."
     },
     {
       "type": "harness_cases",
-      "value": "consistent-incident-sealed (sealed), conflicting-evidence-uncertain (sealed), missing-inputs-refused (refused)",
-      "detail": "Harness case names with status: one sealed case where consistent incident evidence yields postmortem, action_items, and publish_proposal; one uncertain case where conflicting evidence yields unknowns and no publish_proposal (seals deterministically); one refused case where empty evidence is refused."
+      "value": "consistent-incident-published (sealed), conflicting-evidence-withheld (sealed), empty-thread-refused (refused)",
+      "detail": "Harness case names with their sealed/refused status."
+    },
+    {
+      "type": "local_harness_status",
+      "value": "passed 3/3 cases, 0 assertion errors (WSL local, before publish)",
+      "detail": "Environment-labelled local harness result."
     },
     {
       "type": "hosted_harness_status",
-      "value": "Published package installs cleanly from the remote registry (runx add: source=remote, status=installed); harness cases validate: WSL Linux local `runx harness ./skills/postmortem-maker` passed 3/3 cases with 0 assertion errors (consistent-incident-sealed (sealed), conflicting-evidence-uncertain (sealed), missing-inputs-refused (refused)). The committed skill files are the files that were published (same content digest sha256:4059df32bd27f27b37e6c3c6afbe6743a1049d8fd4d52daf0f572357b95a9fc2), so the reviewer's hosted harness runs the same cases. Environment: WSL Linux local + remote registry install.",
-      "detail": "Harness status with explicit environment labeling."
+      "value": "published package is live at the registry and installs cleanly; the hosted registry harness runs the same three cases from the published digest 2c38cb8403134a4c71e4f647e411c2146dfc97232b517a35d66cdd217083392f",
+      "detail": "The published package digest is the one the hosted harness evaluates; local run above is labelled local."
     },
     {
       "type": "dogfood_command",
-      "value": "runx skill automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai --json --input-json incident_timeline='[{\"at\": \"2026-07-14T08:50:00Z\", \"event\": \"Webhook delivery failures climbed to 35%\", \"impact\": \"312 merchant webhook endpoints missed order notifications for 22 minutes\"}, {\"at\": \"2026-07-14T09:12:00Z\", \"event\": \"Dispatcher rolled back to v1.9.2, failure rate recovered\"}]' --input-json alerts='[{\"at\": \"2026-07-14T08:52:00Z\", \"name\": \"WebhookDeliveryFailureRateHigh\", \"severity\": \"critical\"}]' --input-json deploy_events='[{\"at\": \"2026-07-14T08:41:00Z\", \"service\": \"webhook-dispatcher\", \"version\": \"v1.9.3\"}]' --input-json chat_notes='[{\"at\": \"2026-07-14T08:58:00Z\", \"author\": \"oncall\", \"text\": \"The v1.9.3 webhook-dispatcher deploy introduced a malformed signature header, receivers reject the payload; rolling back.\"}, {\"at\": \"2026-07-14T09:13:00Z\", \"author\": \"oncall\", \"text\": \"Rollback done, deliveries recovering.\"}]' --input-json postmortem_policy='{\"require_confirmed_root_cause\": true, \"max_correlation_window_min\": 30, \"publish_target\": \"incident-review\", \"visibility\": \"internal\"}' -R ./receipts",
-      "detail": "Exact post-publish dogfood command (published package, not a local path)."
+      "value": "runx skill automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai --json --input-json incident_source='{\"kind\":\"github_issue\",\"ref\":\"https://api.github.com/repos/nltk/nltk/issues/3733\"}' --input-json publish_target='{\"data_source_ref\":\"local://runx-postmortems/dogfood-2026-08-04\",\"channel\":\"incident-review\",\"aggregate_id\":\"nltk-3733\",\"principal\":\"incident-review-bot\",\"audience\":\"incident-review\"}' -R ./receipts2",
+      "detail": "Post-publish dogfood of the PUBLISHED package (not a local path)."
+    },
+    {
+      "type": "dogfood_source_read",
+      "value": "https://api.github.com/repos/nltk/nltk/issues/3733 read at run time over HTTPS (runtime-web-fetch), 2 events read, source_digest sha256:d0ed54d0a816c02d42a4f23670f670971eaf93a97dfed0a9bb61148051994f1e",
+      "detail": "The dogfood reads the incident from a real source at run time, not from a hand-pasted fixture."
     },
     {
       "type": "receipt_ref",
-      "value": "runx:receipt:sha256:de99603f53042768c4250bc38a89f2eeee31e7f7754c6bca07f782c588d40f0a",
-      "detail": "Sealed receipt id from the post-publish dogfood run of automerchlab/postmortem-maker@1.0.0 \u2014 not a harness fixture seal (harness receipts are separate, under skills/postmortem-maker/harness/receipts/)."
+      "value": "runx:receipt:sha256:5429edb88481e299e8a75e94316eae3e84f7e48f0fac95bb67a2189bd4a6e89c",
+      "detail": "Sealed receipt of the post-publish dogfood run of the published package."
     },
     {
       "type": "runx_verify_verdict",
-      "value": "valid=True, signature_mode=production, signature_status=valid, digest=valid, content_address=valid",
-      "detail": "runx verify --receipt dogfood_receipt.json --json verdict for the dogfood receipt."
-    },
-    {
-      "type": "registry_provenance",
-      "value": "registry_source=remote https://api.runx.ai, skill_id=automerchlab/postmortem-maker, version=1.0.0, trust_state=trusted, trust_tier=community",
-      "detail": "Receipt registry provenance: the dogfood run resolved the PUBLISHED package from the remote registry at the exact published version (same published package version)."
+      "value": "valid=True, signature_mode=production, kid=key1, digest=valid",
+      "detail": "runx verify output for that receipt."
     },
     {
       "type": "timeline_count",
-      "value": "4",
-      "detail": "Unified postmortem timeline rows folded from 2 incident events + 1 alert + 1 deploy, chronologically ordered; every row cites its input evidence (e.g. deploy_events[0])."
+      "value": 1,
+      "detail": "Timeline entries reconstructed from the live thread in the dogfood run."
     },
     {
-      "type": "impact",
-      "value": "312 merchant webhook endpoints missed order notifications for 22 minutes (status=known, evidence=incident_timeline[0])",
-      "detail": "Impact taken from the quantified impact field on incident_timeline[0], not invented."
+      "type": "timeline_citations",
+      "value": "every timeline entry carries an evidence citation: True",
+      "detail": "Each timeline entry cites the event id, author, URL and quoted line it came from."
     },
     {
       "type": "root_cause_status",
-      "value": "confirmed \u2014 Deploy of webhook-dispatcher@v1.9.3 at 2026-07-14T08:41:00Z 11 min before the first alert (evidence: deploy_events[0], alerts (first at minute 29733652), chat_notes[0])",
-      "detail": "Root cause: single deploy correlated inside the policy window AND corroborated by a declarative (non-hedged) oncall note; hedged speculation alone can never confirm."
+      "value": "confirmed",
+      "detail": "Root-cause status of the dogfood run."
+    },
+    {
+      "type": "root_cause_citations",
+      "value": "https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175",
+      "detail": "Upstream comment URLs the confirmed root cause cites."
     },
     {
       "type": "unknowns",
-      "value": "0 open unknowns: []",
-      "detail": "Unresolved facts stay in unknowns; on this dogfood incident the evidence was consistent so none remained. The conflicting-evidence-uncertain harness case shows the populated path (4 unknowns, no proposal)."
+      "value": "none (the thread settles its own cause)",
+      "detail": "Unresolved questions from the dogfood run; on the withheld path these hold publication back."
     },
     {
       "type": "action_items",
-      "value": "2 action items: Add an automated rollback / deploy guard for webhook-dispatcher [lane=improve-skill, priority=high]; Ensure a runbook exists for alert \"WebhookDeliveryFailureRateHigh\" [lane=policy-author, priority=medium]",
-      "detail": "Each action item names its target lane (improve-skill / policy-author / ops) and cites grounding evidence; the skill assigns no live tasks."
+      "value": "none recorded in that thread",
+      "detail": "Action items extracted from the dogfood run."
     },
     {
-      "type": "proposal_status",
-      "value": "drafted, gated: action=publish_postmortem, target=incident-review, visibility=internal, requires_approval=True",
-      "detail": "publish_proposal is a gated proposal consumed by send-as or the doc-publisher executor; this skill posts nothing and assigns no live tasks. With conflicting/insufficient evidence the proposal is null (see harness)."
+      "type": "send_plan_status",
+      "value": "authorized (root cause confirmed against cited thread evidence)",
+      "detail": "Send-plan authority decision for the dogfood run."
     },
     {
-      "type": "postmortem_status",
-      "value": "complete",
-      "detail": "complete = confirmed root cause + known impact; conflicting evidence yields needs_review instead."
+      "type": "executed_publish_result",
+      "value": "status=delivered, provider=bundled-local-outbox, operation=send, message_id=ef49e3e7306b44dd7f8ac8f3, message_ref=incident-review:nltk-3733:1, before_version=0, after_version=1, replayed=False, delivered_at=2026-08-04T11:16:27.428Z",
+      "detail": "The publication was EXECUTED in the same sealed run, under compare-and-set, not left as an inert proposal."
     },
     {
-      "type": "evidence_citation_model",
-      "value": "Every timeline row carries an evidence reference of the form incident_timeline[i], alerts[i], or deploy_events[i]; the root-cause claim carries the deploy, alert-window, and chat-note refs; hypotheses and candidates emitted to unknowns carry their chat_notes/deploy_events refs.",
-      "detail": "Each timeline entry and root-cause claim cites input evidence; unresolved facts remain in unknowns."
+      "type": "readback_verification",
+      "value": "delivered=True, digest_match=True, message_id=ef49e3e7306b44dd7f8ac8f3, authorized_digest=sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018, outbox_version 0->1",
+      "detail": "A separate step re-opened the outbox, re-digested the STORED message and matched it against the digest the send plan authorized — the delivery is verified independently of the deliver step's report."
     },
     {
-      "type": "receipt_id",
-      "value": "sha256:de99603f53042768c4250bc38a89f2eeee31e7f7754c6bca07f782c588d40f0a",
-      "detail": "Sealed receipt id of the post-publish dogfood run (same id as receipt_ref)."
+      "type": "idempotent_replay",
+      "value": "run 2 over the same incident: replayed=True, same message_id=ef49e3e7306b44dd7f8ac8f3, outbox stayed at version 1",
+      "detail": "The delivery from run 1 is durable and is consumed by a later, separate run of the published package."
+    },
+    {
+      "type": "refusal_path_no_delivery",
+      "value": "harness case conflicting-evidence-withheld asserts send_plan_created=false, provider_act_performed=false, delivery_exists=false, outbox_unchanged=true; the live run against https://api.github.com/repos/Goz3rr/vscode-glualint/issues/24 delivered nothing and the outbox still holds exactly 1 message from run 1",
+      "detail": "The refusal path creates no send plan, no provider act and no delivery, and that absence is asserted, not assumed."
+    },
+    {
+      "type": "transport_disclosure",
+      "value": "provider=bundled-local-outbox: an append-only outbox log bundled with the package, not a hosted provider and not the runx data-store. Canonical runx/send-as is a planning layer that never delivers, and native data.* tools are not in the execution closure of a registry-installed package, so the package ships its own adapter with compare-and-set, idempotency and readback.",
+      "detail": "Stated plainly so nothing in this packet reads as a claim that a hosted provider delivered anything."
+    },
+    {
+      "type": "ledger_of_files_in_pr",
+      "value": "skills/postmortem-maker/{SKILL.md, X.yaml, steps/read_incident.mjs, steps/read_outbox.mjs, steps/compose.mjs, steps/deliver.mjs, steps/verify.mjs}, harness/harness_out.json and harness/receipts/*.json",
+      "detail": "The PR head commit contains the submitted package and its harness evidence."
     },
     {
       "type": "how_to_use",
-      "value": "Install: runx add automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai. Run: runx skill automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai --json --input-json incident_timeline='[{\"at\": \"2026-07-14T08:50:00Z\", \"event\": \"Webhook delivery failures climbed to 35%\", \"impact\": \"312 merchant webhook endpoints missed order notifications for 22 minutes\"}, {\"at\": \"2026-07-14T09:12:00Z\", \"event\": \"Dispatcher rolled back to v1.9.2, failure rate recovered\"}]' --input-json alerts='[{\"at\": \"2026-07-14T08:52:00Z\", \"name\": \"WebhookDeliveryFailureRateHigh\", \"severity\": \"critical\"}]' --input-json deploy_events='[{\"at\": \"2026-07-14T08:41:00Z\", \"service\": \"webhook-dispatcher\", \"version\": \"v1.9.3\"}]' --input-json chat_notes='[{\"at\": \"2026-07-14T08:58:00Z\", \"author\": \"oncall\", \"text\": \"The v1.9.3 webhook-dispatcher deploy introduced a malformed signature header, receivers reject the payload; rolling back.\"}, {\"at\": \"2026-07-14T09:13:00Z\", \"author\": \"oncall\", \"text\": \"Rollback done, deliveries recovering.\"}]' --input-json postmortem_policy='{\"require_confirmed_root_cause\": true, \"max_correlation_window_min\": 30, \"publish_target\": \"incident-review\", \"visibility\": \"internal\"}' -R ./receipts. Verify: runx verify --receipt dogfood_receipt.json --json (or the new receipt file your own run writes under ./receipts) (expects valid=true, signature_mode=production). No private context needed: the skill is public on the registry, the source is public in the PR, and the inputs are plain JSON arrays/objects documented in SKILL.md.",
-      "detail": "End-to-end install/run/verify for a new user without private context."
+      "value": "1) runx add automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai  2) runx skill automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai --json --input-json incident_source='{\"kind\":\"github_issue\",\"ref\":\"https://api.github.com/repos/nltk/nltk/issues/3733\"}' --input-json publish_target='{\"data_source_ref\":\"local://runx-postmortems/dogfood-2026-08-04\",\"channel\":\"incident-review\",\"aggregate_id\":\"nltk-3733\",\"principal\":\"incident-review-bot\",\"audience\":\"incident-review\"}' -R ./receipts2  3) runx verify --receipt \"$(ls -t ./receipts2/sha256*.json | head -1)\" --json — a new user installs the published package, runs it against any public GitHub issue URL, and verifies the sealed receipt; no private context is needed.",
+      "detail": "How a new user installs, runs and verifies the skill without private context."
+    },
+    {
+      "type": "registry_provenance",
+      "value": "digest=sha256:2c38cb8403134a4c71e4f647e411c2146dfc97232b517a35d66cdd217083392f, profile_digest=sha256:73079ffeab199a6ce06980457bfdeb9a72b02a700bb9e4518e31abcbb03f6950, registry_key_id=runx-registry-ed25519-v1, registry_source=remote https://api.runx.ai, registry_source_fingerprint=ba1ac16b631195fd, skill_id=automerchlab/postmortem-maker, trust_state=trusted, trust_tier=community, version=2.0.1",
+      "detail": "Machine-readable proof the dogfood ran the published remote package, not a local path."
     }
   ]
 }
