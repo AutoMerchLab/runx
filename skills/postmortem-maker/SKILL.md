@@ -1,166 +1,153 @@
 ---
 name: postmortem-maker
-description: Turns incident fragments (timeline events, alerts, deploy events, chat notes, policy) into a traceable postmortem packet that separates known facts from hypotheses, keeps unresolved questions in unknowns, and emits a gated publish proposal without posting or assigning anything.
+description: >-
+  Reads a real incident thread at run time (a live web-fetch of a GitHub issue
+  and its comments), reconstructs a cited timeline and a root cause it refuses
+  to invent, and — only when the cause is confirmed — executes the publication
+  through a bundled sealed outbox transport under compare-and-set, then reads
+  the delivered message back and re-digests it. Conflicting or hedged evidence
+  yields unknowns and publishes nothing, and the run proves the absence.
+runx.category: ops
 ---
 
-# Postmortem Maker
+# postmortem-maker
 
-The `postmortem-maker` skill folds raw incident fragments — timeline events,
-alerts, deploy events, chat notes, and a postmortem policy — into a single
-traceable postmortem packet. Its core rule: **it never pretends unknowns are
-facts.** Every timeline entry and every root-cause claim cites the exact input
-item it came from, hedged speculation stays a hypothesis, and anything the
-evidence cannot settle is emitted under `unknowns` instead of being written into
-the narrative.
+Turn an incident thread into a postmortem that cites its own evidence, and
+publish it only when the thread actually settles the cause.
 
-It is read-only with respect to the world: it posts nothing, assigns no work,
-and its `publish_proposal` is a gated object (`requires_approval: true`)
-consumed by a downstream send-as or doc-publisher executor.
+The whole loop — read a real source, reconstruct, decide, deliver, read the
+delivery back — happens in one sealed run, so the receipt shows what was read,
+what was concluded, and what was (or was not) delivered.
 
-## How folding works
+## What it does
 
-Processing is deterministic (time correlation plus hedge-cue classification
-over regex, not an LLM), so runs are reproducible and seal identically in the
-harness:
+1. **Read** the incident from a real source at run time. `incident_source:
+   {kind: "github_issue", ref: "https://api.github.com/repos/nltk/nltk/issues/3733"}`
+   fetches the issue and its
+   comments over HTTPS; every event keeps its upstream id, author, timestamp,
+   and URL so later claims can cite it. `{kind: "inline", thread: {...}}` replays
+   a bundled thread instead, which is what the harness cases use so they stay
+   deterministic and egress-free.
+2. **Reconstruct** the timeline. Each entry is a statement someone actually made
+   — impact, cause claim, mitigation, or a timed note — carrying the event id,
+   author, URL, and the quoted line it came from. Markdown headings and stray
+   fragments are read for signal but never quoted as timeline entries.
+3. **Decide the root cause without inventing one.** A cause is `confirmed` only
+   when exactly one candidate is named in an unhedged causal statement.
+   Restatements of the same cause across comments are merged by token overlap;
+   competing candidates, or a thread where every cause statement is hedged
+   ("might be", "I suspect", "not sure"), leave the cause `unconfirmed`, list
+   the open questions in `unknowns[]`, and add the action item that has to close
+   before anyone publishes.
+4. **Deliver, when authorized.** The send plan binds principal, provider,
+   channel, audience, content digest, consent basis, and the approval gate. When
+   the gate opens, the provider adapter executes the send: the postmortem is
+   appended to the outbox stream under compare-and-set, gets a provider message
+   id, and is durable on disk. When the gate stays shut, this step never runs.
+5. **Read the delivery back.** The last step never trusts the delivery report.
+   It re-opens the outbox itself, finds the message, re-digests the *stored*
+   bytes, and compares against the digest the plan authorized. On the withheld
+   path it asserts the opposite: no send plan authorized, no provider act, no
+   delivery for this incident, and an outbox version unchanged from what was
+   read before the run decided.
 
-- **Unified timeline.** Timeline events, alerts, and deploys are merged and
-  chronologically sorted; every row carries an `evidence` citation such as
-  `deploy_events[0]` or `alerts[1]`. Undated fragments keep their input order at
-  the end rather than being given an invented position.
-- **Impact.** Taken from an explicit `impact` field on a timeline event, or from
-  an impact-bearing phrase (error rate, latency, affected users, downtime) in an
-  event or alert. When nothing quantifies impact, `impact.status` is `unknown`
-  and a corresponding question is added to `unknowns`.
-- **Facts vs hypotheses.** A chat note asserting a cause declaratively
-  ("the v2.4.1 deploy introduced a null pointer") is a confirming fact. A note
-  with hedge cues ("might be…", "I suspect…", "not sure", a question mark) is a
-  hypothesis and can never confirm a root cause by itself.
-- **Root cause.** Deploys landing within `max_correlation_window_min` (default
-  30) before the first alert are candidates. One candidate plus a declarative
-  confirming note → `confirmed`. One candidate with no competing speculation →
-  `probable`, with a confirmation question in `unknowns`. Multiple candidates or
-  notes blaming different services → `unknown`, and each candidate/hypothesis
-  becomes an `unknowns` entry to rule in or out. No candidate at all → `unknown`.
-- **Action items.** Each action item names a target lane (`improve-skill`,
-  `policy-author`, `ops`) and cites its grounding evidence. The skill only
-  proposes; a downstream driver issues any actual work.
-- **Publish gate.** A `publish_proposal` is drafted only when the policy's bar is
-  met (by default a `confirmed` root cause AND known impact). Otherwise
-  `publish_proposal` is `null` — insufficient or conflicting evidence never
-  produces a publish proposal.
+## What the transport is, stated plainly
+
+This package ships its own provider adapter: an **append-only outbox log bundled
+with the skill**. It is not a hosted provider and not the runx data-store.
+
+Two facts make that the honest choice rather than a shortcut. The canonical
+`runx/send-as` skill describes itself as a planning and authority layer that
+"never delivers", and refers actual delivery to a provider adapter. And the
+runtime's native `data.*` tools are not in the execution closure of a package
+installed from the registry, so a published skill cannot call them.
+
+So the send plan here is send-as **shaped** — same authority model: who speaks,
+to whom, through which channel, over which content digest, under which consent
+basis and approval gate — and the delivery is performed by this package's own
+adapter, which really does what it claims:
+
+- **compare-and-set** — the append is refused unless the outbox is still at the
+  version read before the decision, so a concurrent publisher cannot be clobbered.
+- **idempotency** — republishing the same postmortem returns the original
+  delivery instead of sending twice; the same key with different content is refused.
+- **durability and readback** — the message is on disk after the run, which is
+  what lets the verify step, and any later run, read it back independently.
+
+Nothing in the output claims a hosted provider delivered anything.
 
 ## Inputs
 
-- `incident_timeline` (array, required): Incident events, each ideally
-  `{ at, event, impact? }`. `at` accepts ISO 8601 or `HH:MM`.
-- `alerts` (array, required): Fired alerts, each ideally `{ at, name, severity }`.
-- `deploy_events` (array, required): Deploys, each ideally
-  `{ at, service, version }`.
-- `chat_notes` (array, optional): Responder notes, each `{ at, author, text }`
-  or a plain string.
-- `postmortem_policy` (object, optional): Governs the packet:
-  `require_confirmed_root_cause` (default `true`),
-  `max_correlation_window_min` (default `30`),
-  `publish_target` (default `"incident-review"`),
-  `visibility` (default `"internal"`).
-
-An incident where `incident_timeline`, `alerts`, and `deploy_events` are all
-empty is refused: there is no evidence to fold, and any postmortem would be
-invented.
+| input | type | required | notes |
+|-------|------|----------|-------|
+| `incident_source` | json | yes | `{kind: "github_issue", ref}` for a live HTTPS read, or `{kind: "inline", thread}` for a replayed thread. |
+| `publish_target` | json | yes | `{data_source_ref, channel, aggregate_id}` plus optional `principal`, `audience`, `classification`, `visibility`. |
+| `postmortem_policy` | json | no | `require_confirmed_root_cause` (default `true`) withholds publication until one cause is confirmed. |
 
 ## Outputs
 
-- `postmortem` (object): `{ summary, timeline, impact, root_cause, status }`.
-  - `timeline`: merged chronological rows, each
-    `{ at, kind: event|alert|deploy, description, evidence }`.
-  - `impact`: `{ summary, status: known|unknown, evidence? }`.
-  - `root_cause`: `{ statement, status: confirmed|probable|unknown, evidence[] }`.
-  - `status`: `complete` (confirmed cause + known impact), `draft`, or
-    `needs_review` (cause unknown).
-- `unknowns` (array): Open questions the evidence cannot settle, each
-  `{ question, reason, evidence? }`. Unresolved facts live here, never in the
-  narrative.
-- `action_items` (array): `{ title, owner_lane, priority, evidence[] }` — every
-  item names its target lane and cites grounding evidence.
-- `publish_proposal` (object or null): When the policy bar is met,
-  `{ action, target, visibility, title, requires_approval: true, note, grounded_in }`.
-  Always gated; this skill posts nothing and assigns no live tasks.
+- `postmortem` — `title`, `source{ref, read_mode, events_read, source_digest}`,
+  `timeline[]` (each with `statement`, `kind`, `confidence`, and
+  an `evidence{event_id, author, at, url, quote}` citation), `root_cause{status,
+  statement, citations[], corroborated_by_mitigation}`, `mitigation`,
+  `unknowns[]`, `action_items[]`, `status`.
+- `publishable`, `root_cause_status`, `timeline_count`, `content_digest`,
+  `idempotency_key`, `expected_version`.
+- `send_plan` — the send-as shaped authority record, `status` `authorized` or
+  `withheld` with the reason.
+- `delivery_result` — on the published path: `status: delivered`, `provider`,
+  `operation: send`, `message_id`, `message_ref`, `content_digest`,
+  `before_version` → `after_version`, `delivered_at`, `replayed`.
+- `readback` — on the published path `delivered: true` with `digest_match: true`
+  and the stored `message_id`; on the withheld path `delivered: false` with
+  `send_plan_created: false`, `provider_act_performed: false`,
+  `delivery_exists: false`, and `outbox_unchanged: true`.
 
-## Example — consistent evidence (sealed)
+## Harness
 
-**Input (abridged):** one critical alert at 10:03, a `checkout-api@v2.4.1`
-deploy at 09:58, a timeline event with quantified impact, and a declarative
-chat note: "The 09:58 checkout-api v2.4.1 deploy introduced a null pointer…".
-
-**Output (abridged):**
-```json
-{
-  "postmortem": {
-    "root_cause": {
-      "statement": "Deploy of checkout-api@v2.4.1 at 09:58 5 min before the first alert",
-      "status": "confirmed",
-      "evidence": ["deploy_events[0]", "alerts (first at minute 603)", "chat_notes[0]"]
-    },
-    "impact": { "summary": "~1200 users saw failed checkouts over 18 minutes", "status": "known", "evidence": "incident_timeline[0]" },
-    "status": "complete"
-  },
-  "unknowns": [],
-  "action_items": [
-    { "title": "Add an automated rollback / deploy guard for checkout-api", "owner_lane": "improve-skill", "priority": "high", "evidence": ["deploy_events[0]", "alerts (first at minute 603)"] }
-  ],
-  "publish_proposal": { "action": "publish_postmortem", "requires_approval": true, "target": "incident-review", "visibility": "internal" }
-}
-```
-
-## Example — conflicting evidence (uncertain, no proposal)
-
-**Input (abridged):** two deploys (`api-gateway@v1.2.0`, `search@v3.1.0`) both
-inside the correlation window, and two hedged notes blaming different services
-("Might be the api-gateway deploy?", "I suspect the search change, not sure").
-
-**Output (abridged):**
-```json
-{
-  "postmortem": { "root_cause": { "statement": "Undetermined: conflicting candidates", "status": "unknown", "evidence": [] }, "status": "needs_review" },
-  "unknowns": [
-    { "question": "Rule in/out candidate: Deploy of api-gateway@v1.2.0 at 13:50 16 min before the first alert", "reason": "Multiple deploys correlate with the alert window" },
-    { "question": "Rule in/out candidate: Deploy of search@v3.1.0 at 13:55 11 min before the first alert", "reason": "Multiple deploys correlate with the alert window" },
-    { "question": "Hypothesis to verify: Might be the api-gateway v1.2.0 deploy?", "reason": "Hedged speculation in chat, not corroborated" },
-    { "question": "Hypothesis to verify: I suspect the search v3.1.0 change instead, not sure.", "reason": "Hedged speculation in chat, not corroborated" }
-  ],
-  "publish_proposal": null
-}
-```
+- `consistent-incident-published` — one change is named in an unhedged causal
+  statement and the rollback corroborates it: the postmortem is authorized, the
+  adapter executes the send (`before_version` 0 → `after_version` 1), and the
+  readback re-digests the stored message (`digest_match: true`).
+- `conflicting-evidence-withheld` — two changes compete and every statement is
+  hedged: `unknowns[]` records the open questions, nothing is delivered, and the
+  readback asserts the absence (`delivery_exists: false`, `outbox_unchanged: true`).
+- `empty-thread-refused` — a thread with nothing readable in it: the run refuses
+  rather than emitting an empty postmortem.
 
 ## Install, run, verify
 
 ```bash
 # Install from the registry
-runx add automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai
+runx add automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai
 
-# Run against a real incident (inputs as JSON)
-runx skill automerchlab/postmortem-maker@1.0.0 --registry https://api.runx.ai --json \
-  --input-json incident_timeline='[{"at":"10:02","event":"Checkout error rate spiked to 40%","impact":"~1200 users saw failed checkouts over 18 minutes"}]' \
-  --input-json alerts='[{"at":"10:03","name":"CheckoutErrorRateHigh","severity":"critical"}]' \
-  --input-json deploy_events='[{"at":"09:58","service":"checkout-api","version":"v2.4.1"}]' \
-  --input-json chat_notes='[{"at":"10:10","author":"oncall","text":"The 09:58 checkout-api v2.4.1 deploy introduced a null pointer in the payment path; rolling back now."}]' \
-  --input-json postmortem_policy='{"require_confirmed_root_cause":true,"max_correlation_window_min":30}' \
+# Run over a real incident thread (fetched over HTTPS at run time)
+runx skill automerchlab/postmortem-maker@2.0.1 --registry https://api.runx.ai --json \
+  --input-json incident_source='{"kind":"github_issue","ref":"https://api.github.com/repos/nltk/nltk/issues/3733"}' \
+  --input-json publish_target='{"data_source_ref":"local://runx-postmortems/dogfood","channel":"incident-review","aggregate_id":"nltk-3733","principal":"incident-review-bot","audience":"incident-review"}' \
   -R ./receipts
 
-# Verify the sealed receipt
-runx verify --receipt ./receipts/sha256-<id>.json --json
+# Verify the sealed receipt (production signature). The receipt store also holds
+# an index.json, which is not a receipt — pick the newest sealed receipt file:
+runx verify --receipt "$(ls -t ./receipts/*.json | grep -v index.json | head -1)" --json
 # expects valid=true, signature_mode=production
 ```
 
+Run the same command twice: the second run returns the original delivery with
+`replayed: true` and leaves the outbox version where it was — the message from
+the first run is still there, and the second run reads it back.
+
 ## Limitations
 
-- Correlation is temporal, not causal proof: a deploy inside the window plus a
-  declarative note yields `confirmed`; without the note the best verdict is
-  `probable`. By design the skill under-claims rather than over-claims.
-- Hedge/cause detection is a fixed English cue vocabulary; a note phrased
-  outside it is treated as ordinary chatter (never silently promoted to a fact).
-- Undated fragments cannot participate in correlation; they stay on the
-  timeline tail and the root cause falls back to `unknown` when timing is
-  missing.
-- The skill never posts, assigns, or publishes anything. `publish_proposal` is a
-  proposal only, and it is `null` whenever the evidence bar is not met.
+- Analysis is deterministic text analysis over the thread, not an LLM: a cause
+  stated only in an image, a linked dashboard, or a private channel is not
+  visible to it, and the run will say the cause is unconfirmed rather than guess.
+- Cause candidates are merged by significant-token overlap. Two genuinely
+  different causes that share a word can merge; two phrasings of one cause that
+  share none can stay split and hold publication back. It fails toward
+  `unconfirmed`, which withholds publication rather than publishing a guess.
+- The outbox transport is bundled and local, as described above. Point
+  `publish_target.data_source_ref` at the review surface you actually want in
+  your own deployment, or wrap this skill with a provider adapter of your own.
+- The GitHub read is unauthenticated, so it is subject to public rate limits and
+  cannot read private incident threads.

@@ -1,0 +1,442 @@
+{
+  "closure": {
+    "closed_at": "2026-08-04T11:16:28.658Z",
+    "disposition": "closed",
+    "reason_code": "graph_closed",
+    "summary": "graph postmortem-maker completed"
+  },
+  "context": {
+    "step_outputs": {
+      "compose": {
+        "action_items": [],
+        "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+        "expected_version": 1,
+        "fetched_at": "2026-08-04T11:16:29.145Z",
+        "idempotency_key": "https://api.github.com/repos/nltk/nltk/issues/3733|sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+        "message": {
+          "body": {
+            "action_items": [],
+            "incident_ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+            "mitigation": null,
+            "root_cause": {
+              "citations": [
+                {
+                  "at": "2026-08-04T06:37:09Z",
+                  "author": "ekaf",
+                  "event_id": "5175474175",
+                  "quote": "This was caused by #3722, but #3732 can fix it.",
+                  "url": "https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175"
+                }
+              ],
+              "component": null,
+              "corroborated_by_mitigation": null,
+              "statement": "#3722 is named as the cause in an unhedged statement in the incident thread",
+              "status": "confirmed",
+              "version": null
+            },
+            "source": {
+              "events_read": 2,
+              "read_mode": "runtime-web-fetch",
+              "ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+              "source_digest": "sha256:d0ed54d0a816c02d42a4f23670f670971eaf93a97dfed0a9bb61148051994f1e"
+            },
+            "status": "publishable",
+            "timeline": [
+              {
+                "at": "2026-08-04T06:37:09Z",
+                "confidence": "stated",
+                "evidence": {
+                  "at": "2026-08-04T06:37:09Z",
+                  "author": "ekaf",
+                  "event_id": "5175474175",
+                  "quote": "This was caused by #3722, but #3732 can fix it.",
+                  "url": "https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175"
+                },
+                "kind": "cause_claim",
+                "statement": "This was caused by #3722, but #3732 can fix it."
+              }
+            ],
+            "title": "Import-time guard blocks `import regex` for standard venv-inside-project layout (false positive, outside documented pathsec scope)",
+            "unknowns": []
+          },
+          "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+          "incident_ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+          "kind": "postmortem",
+          "title": "Import-time guard blocks `import regex` for standard venv-inside-project layout (false positive, outside documented pathsec scope)"
+        },
+        "postmortem": {
+          "action_items": [],
+          "incident_ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+          "mitigation": null,
+          "root_cause": {
+            "citations": [
+              {
+                "at": "2026-08-04T06:37:09Z",
+                "author": "ekaf",
+                "event_id": "5175474175",
+                "quote": "This was caused by #3722, but #3732 can fix it.",
+                "url": "https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175"
+              }
+            ],
+            "component": null,
+            "corroborated_by_mitigation": null,
+            "statement": "#3722 is named as the cause in an unhedged statement in the incident thread",
+            "status": "confirmed",
+            "version": null
+          },
+          "source": {
+            "events_read": 2,
+            "read_mode": "runtime-web-fetch",
+            "ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+            "source_digest": "sha256:d0ed54d0a816c02d42a4f23670f670971eaf93a97dfed0a9bb61148051994f1e"
+          },
+          "status": "publishable",
+          "timeline": [
+            {
+              "at": "2026-08-04T06:37:09Z",
+              "confidence": "stated",
+              "evidence": {
+                "at": "2026-08-04T06:37:09Z",
+                "author": "ekaf",
+                "event_id": "5175474175",
+                "quote": "This was caused by #3722, but #3732 can fix it.",
+                "url": "https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175"
+              },
+              "kind": "cause_claim",
+              "statement": "This was caused by #3722, but #3732 can fix it."
+            }
+          ],
+          "title": "Import-time guard blocks `import regex` for standard venv-inside-project layout (false positive, outside documented pathsec scope)",
+          "unknowns": []
+        },
+        "publishable": true,
+        "root_cause_status": "confirmed",
+        "send_plan": {
+          "approval": {
+            "decision": "authorized",
+            "gate": "confirmed_root_cause_required",
+            "reason": "root cause confirmed against cited thread evidence"
+          },
+          "audience": "incident-review",
+          "channel": "incident-review",
+          "classification": "internal",
+          "consent_basis": "internal incident review distribution",
+          "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+          "preflight": {
+            "action_items": 0,
+            "every_timeline_entry_cited": true,
+            "root_cause_status": "confirmed",
+            "timeline_entries": 1,
+            "unknowns": 0
+          },
+          "principal": "incident-review-bot",
+          "provider": "bundled-local-outbox",
+          "schema": "send-as.plan.v1",
+          "status": "authorized",
+          "visibility": "internal"
+        },
+        "timeline_count": 1,
+        "unknowns": []
+      },
+      "deliver": {
+        "delivery_result": {
+          "after_version": 1,
+          "aggregate_id": "nltk-3733",
+          "before_version": 0,
+          "channel": "incident-review",
+          "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+          "data_source_ref": "local://runx-postmortems/dogfood-2026-08-04",
+          "delivered_at": "2026-08-04T11:16:27.428Z",
+          "idempotency_key": "https://api.github.com/repos/nltk/nltk/issues/3733|sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+          "message_id": "ef49e3e7306b44dd7f8ac8f3",
+          "message_ref": "incident-review:nltk-3733:1",
+          "operation": "send",
+          "provider": "bundled-local-outbox",
+          "replayed": true,
+          "send_plan_status": "authorized",
+          "status": "delivered",
+          "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_83/.postmortem-outbox/91a6c9c24b08c137.jsonl",
+          "transport": "bundled append-only outbox log (not a hosted provider)"
+        }
+      },
+      "read_incident": {
+        "incident": {
+          "events": [
+            {
+              "at": "2026-08-03T19:53:06Z",
+              "author": "shah9661",
+              "id": "5053670502",
+              "seq": 0,
+              "text": "## Environment\n\n- OS: Windows\n- Python: 3.11.3\n- nltk: 3.10.1\n- regex: 2026.7.19\n\n## Steps to reproduce\n\n```powershell\ncd C:\\development\\ml-pipeline\npython -m venv venv\nvenv\\Scripts\\Activate.ps1\npip install nltk\npython -c \"import nltk\"\n```\n\nNote: venv is created **inside** the project root — this is the standard `python -m venv venv` convention recommended everywhere (official Python docs, most tutorials, etc.).\n\n## Expected behavior\n\n`import nltk` should succeed cleanly, since `regex` is properly installed via pip into the venv's `site-packages`.\n\n## Actual behavior\n\nTraceback (most recent call last):\nFile \"<string>\", line 1, in <module>\nFile \"C:\\development\\ml-pipeline\\venv\\Lib\\site-packages\\nltk_init_.py\", line 142, in <module>\nfrom nltk.text import *\nFile \"C:\\development\\ml-pipeline\\venv\\Lib\\site-packages\\nltk\\text.py\", line 24, in <module>\nimport regex\nFile \"C:\\development\\ml-pipeline\\venv\\Lib\\site-packages\\nltk\\inisec.py\", line 128, in find_spec\nraise ImportError(\nImportError: Blocked import of regex from current working directory for security reasons. Use '-P' or set PYTHONSAFEPATH to prevent Python from searching the current working directory.\n\n\nAlso tried `python -P src\\data_preprocessing.py` — same error, since this appears to be nltk's own meta-path finder (`inisec.py`), not CPython's own `-P`/`PYTHONSAFEPATH` mechanism.\n\n## Evidence this is a false positive\n\n```powershell\n> pip show regex\nLocation: C:\\development\\ml-pipeline\\venv\\Lib\\site-packages\n```\n\nNo stray `regex.py` exists directly in the CWD root — confirmed via `dir -Recurse regex*`, which only shows the package correctly inside `venv\\Lib\\site-packages\\regex`.\n\n## Root cause hypothesis\n\nThe venv (`C:\\development\\ml-pipeline\\venv\\...`) is nested inside the project's CWD (`C:\\development\\ml-pipeline`). The import guard in `nltk/inisec.py` appears to do a naive path-containment check (module resolves to *some path under CWD* → treat as \"imported from CWD\"), which incorrectly flags legitimate venv `site-packages` installs as suspicious, since they technically sit under the CWD tree.\n\nThis breaks the single most common venv layout in the Python ecosystem.\n\n## Additional note on documentation scope\n\n`SECURITY.md` / the `nltk.pathsec` documentation only describes protections for **NLTK's own resource loading** (`nltk.data.load()`, corpus/model downloads, zip extraction, pickle loading) — it says nothing about gating plain `import <package>` statements for third-party pip packages. This behavior appears to go beyond the documented scope of `pathsec`, either as an undocumented feature or a bug where import-time guarding and resource-loading guarding have become conflated.\n\n## Suggested fix\n\n- Exclude `site-packages` (and more generally, installed-package) directories from the CWD-containment check used by the import guard, since venv-inside-project is standard practice.\n- Alternatively, scope the guard to only flag files placed **directly** in the CWD root (loose `.py` files shadowing stdlib/third-party names), not nested venv installs.\n\nHappy to provide more logs/repro details if needed.",
+              "url": "https://github.com/nltk/nltk/issues/3733"
+            },
+            {
+              "at": "2026-08-04T06:37:09Z",
+              "author": "ekaf",
+              "id": "5175474175",
+              "seq": 1,
+              "text": "This was caused by #3722,  but #3732 can fix it.",
+              "url": "https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175"
+            }
+          ],
+          "events_read": 2,
+          "fetched_at": "2026-08-04T11:16:29.145Z",
+          "kind": "github_issue",
+          "read_mode": "runtime-web-fetch",
+          "ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+          "source_digest": "sha256:d0ed54d0a816c02d42a4f23670f670971eaf93a97dfed0a9bb61148051994f1e",
+          "title": "Import-time guard blocks `import regex` for standard venv-inside-project layout (false positive, outside documented pathsec scope)"
+        }
+      },
+      "read_outbox": {
+        "outbox": {
+          "aggregate_id": "nltk-3733",
+          "channel": "incident-review",
+          "data_source_ref": "local://runx-postmortems/dogfood-2026-08-04",
+          "message_refs": [
+            "incident-review:nltk-3733:1"
+          ],
+          "provider": "bundled-local-outbox",
+          "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_83/.postmortem-outbox/91a6c9c24b08c137.jsonl",
+          "version": 1
+        }
+      },
+      "verify": {
+        "readback": {
+          "authorized_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+          "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+          "delivered": true,
+          "delivered_at": "2026-08-04T11:16:27.428Z",
+          "digest_match": true,
+          "incident_ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+          "message_id": "ef49e3e7306b44dd7f8ac8f3",
+          "message_ref": "incident-review:nltk-3733:1",
+          "outbox_version_after": 1,
+          "outbox_version_before": 1,
+          "provider": "bundled-local-outbox",
+          "read_from": "/mnt/c/Users/TEST/Desktop/frantic/bounty_83/.postmortem-outbox/91a6c9c24b08c137.jsonl",
+          "timeline_entries_stored": 1,
+          "verified_independently": "re-read from the outbox file and re-digested; not copied from the deliver step output"
+        }
+      }
+    }
+  },
+  "receipt_id": "sha256:4f80f4e297ff5f2f839b348cd414b0eb77e8e7116f952a88351fede157e07120",
+  "registry_provenance": {
+    "digest": "sha256:2c38cb8403134a4c71e4f647e411c2146dfc97232b517a35d66cdd217083392f",
+    "profile_digest": "sha256:73079ffeab199a6ce06980457bfdeb9a72b02a700bb9e4518e31abcbb03f6950",
+    "registry_key_id": "runx-registry-ed25519-v1",
+    "registry_source": "remote https://api.runx.ai",
+    "registry_source_fingerprint": "ba1ac16b631195fd",
+    "skill_id": "automerchlab/postmortem-maker",
+    "trust_state": "trusted",
+    "trust_tier": "community",
+    "version": "2.0.1"
+  },
+  "result": {
+    "action_items": [],
+    "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+    "delivery_result": {
+      "after_version": 1,
+      "aggregate_id": "nltk-3733",
+      "before_version": 0,
+      "channel": "incident-review",
+      "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+      "data_source_ref": "local://runx-postmortems/dogfood-2026-08-04",
+      "delivered_at": "2026-08-04T11:16:27.428Z",
+      "idempotency_key": "https://api.github.com/repos/nltk/nltk/issues/3733|sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+      "message_id": "ef49e3e7306b44dd7f8ac8f3",
+      "message_ref": "incident-review:nltk-3733:1",
+      "operation": "send",
+      "provider": "bundled-local-outbox",
+      "replayed": true,
+      "send_plan_status": "authorized",
+      "status": "delivered",
+      "store_path": "/mnt/c/Users/TEST/Desktop/frantic/bounty_83/.postmortem-outbox/91a6c9c24b08c137.jsonl",
+      "transport": "bundled append-only outbox log (not a hosted provider)"
+    },
+    "expected_version": 1,
+    "fetched_at": "2026-08-04T11:16:29.145Z",
+    "idempotency_key": "https://api.github.com/repos/nltk/nltk/issues/3733|sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+    "message": {
+      "body": {
+        "action_items": [],
+        "incident_ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+        "mitigation": null,
+        "root_cause": {
+          "citations": [
+            {
+              "at": "2026-08-04T06:37:09Z",
+              "author": "ekaf",
+              "event_id": "5175474175",
+              "quote": "This was caused by #3722, but #3732 can fix it.",
+              "url": "https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175"
+            }
+          ],
+          "component": null,
+          "corroborated_by_mitigation": null,
+          "statement": "#3722 is named as the cause in an unhedged statement in the incident thread",
+          "status": "confirmed",
+          "version": null
+        },
+        "source": {
+          "events_read": 2,
+          "read_mode": "runtime-web-fetch",
+          "ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+          "source_digest": "sha256:d0ed54d0a816c02d42a4f23670f670971eaf93a97dfed0a9bb61148051994f1e"
+        },
+        "status": "publishable",
+        "timeline": [
+          {
+            "at": "2026-08-04T06:37:09Z",
+            "confidence": "stated",
+            "evidence": {
+              "at": "2026-08-04T06:37:09Z",
+              "author": "ekaf",
+              "event_id": "5175474175",
+              "quote": "This was caused by #3722, but #3732 can fix it.",
+              "url": "https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175"
+            },
+            "kind": "cause_claim",
+            "statement": "This was caused by #3722, but #3732 can fix it."
+          }
+        ],
+        "title": "Import-time guard blocks `import regex` for standard venv-inside-project layout (false positive, outside documented pathsec scope)",
+        "unknowns": []
+      },
+      "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+      "incident_ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+      "kind": "postmortem",
+      "title": "Import-time guard blocks `import regex` for standard venv-inside-project layout (false positive, outside documented pathsec scope)"
+    },
+    "postmortem": {
+      "action_items": [],
+      "incident_ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+      "mitigation": null,
+      "root_cause": {
+        "citations": [
+          {
+            "at": "2026-08-04T06:37:09Z",
+            "author": "ekaf",
+            "event_id": "5175474175",
+            "quote": "This was caused by #3722, but #3732 can fix it.",
+            "url": "https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175"
+          }
+        ],
+        "component": null,
+        "corroborated_by_mitigation": null,
+        "statement": "#3722 is named as the cause in an unhedged statement in the incident thread",
+        "status": "confirmed",
+        "version": null
+      },
+      "source": {
+        "events_read": 2,
+        "read_mode": "runtime-web-fetch",
+        "ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+        "source_digest": "sha256:d0ed54d0a816c02d42a4f23670f670971eaf93a97dfed0a9bb61148051994f1e"
+      },
+      "status": "publishable",
+      "timeline": [
+        {
+          "at": "2026-08-04T06:37:09Z",
+          "confidence": "stated",
+          "evidence": {
+            "at": "2026-08-04T06:37:09Z",
+            "author": "ekaf",
+            "event_id": "5175474175",
+            "quote": "This was caused by #3722, but #3732 can fix it.",
+            "url": "https://github.com/nltk/nltk/issues/3733#issuecomment-5175474175"
+          },
+          "kind": "cause_claim",
+          "statement": "This was caused by #3722, but #3732 can fix it."
+        }
+      ],
+      "title": "Import-time guard blocks `import regex` for standard venv-inside-project layout (false positive, outside documented pathsec scope)",
+      "unknowns": []
+    },
+    "publishable": true,
+    "readback": {
+      "authorized_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+      "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+      "delivered": true,
+      "delivered_at": "2026-08-04T11:16:27.428Z",
+      "digest_match": true,
+      "incident_ref": "https://api.github.com/repos/nltk/nltk/issues/3733",
+      "message_id": "ef49e3e7306b44dd7f8ac8f3",
+      "message_ref": "incident-review:nltk-3733:1",
+      "outbox_version_after": 1,
+      "outbox_version_before": 1,
+      "provider": "bundled-local-outbox",
+      "read_from": "/mnt/c/Users/TEST/Desktop/frantic/bounty_83/.postmortem-outbox/91a6c9c24b08c137.jsonl",
+      "timeline_entries_stored": 1,
+      "verified_independently": "re-read from the outbox file and re-digested; not copied from the deliver step output"
+    },
+    "root_cause_status": "confirmed",
+    "send_plan": {
+      "approval": {
+        "decision": "authorized",
+        "gate": "confirmed_root_cause_required",
+        "reason": "root cause confirmed against cited thread evidence"
+      },
+      "audience": "incident-review",
+      "channel": "incident-review",
+      "classification": "internal",
+      "consent_basis": "internal incident review distribution",
+      "content_digest": "sha256:877b201085e2faf92311c908ff28e770a914e142a9782366a0e7cbc0bebaf018",
+      "preflight": {
+        "action_items": 0,
+        "every_timeline_entry_cited": true,
+        "root_cause_status": "confirmed",
+        "timeline_entries": 1,
+        "unknowns": 0
+      },
+      "principal": "incident-review-bot",
+      "provider": "bundled-local-outbox",
+      "schema": "send-as.plan.v1",
+      "status": "authorized",
+      "visibility": "internal"
+    },
+    "timeline_count": 1,
+    "unknowns": []
+  },
+  "run_id": "run_default_a5fa58ee59964821",
+  "schema": "runx.skill_run.v1",
+  "skill_name": "postmortem-maker",
+  "status": "sealed",
+  "trace": {
+    "graph": "postmortem-maker",
+    "status": "succeeded",
+    "steps": [
+      {
+        "receipt_id": "sha256:8855e24bcf895eae49b5cee24c6bf37cfd158851aa5022b2e904930971846cca",
+        "skill": "read_incident",
+        "status": "success",
+        "step_id": "read_incident"
+      },
+      {
+        "receipt_id": "sha256:87434d53dfaa0c514d8d87fcfaf62182d21045560de781d70157b78edfcf9f6e",
+        "skill": "read_outbox",
+        "status": "success",
+        "step_id": "read_outbox"
+      },
+      {
+        "receipt_id": "sha256:1251add4422f5b52f9283bb4de020f4368d6305d56ae57cd7cebee63d0de1eee",
+        "skill": "compose",
+        "status": "success",
+        "step_id": "compose"
+      },
+      {
+        "receipt_id": "sha256:5226b5a4b5ca1ff221a5829c1c738674175ac813e9a710d8cd36dc9f49a3bc70",
+        "skill": "deliver",
+        "status": "success",
+        "step_id": "deliver"
+      },
+      {
+        "receipt_id": "sha256:adcba1e4dee2a56a45818f727eb6072ce3ddb7117f3d6fe60efd903759ed8464",
+        "skill": "verify",
+        "status": "success",
+        "step_id": "verify"
+      }
+    ]
+  }
+}

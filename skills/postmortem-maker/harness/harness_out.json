@@ -4,14 +4,13 @@
   "assertion_error_count": 0,
   "assertion_errors": [],
   "case_names": [
-    "consistent-incident-sealed",
-    "conflicting-evidence-uncertain",
-    "missing-inputs-refused"
+    "consistent-incident-published",
+    "conflicting-evidence-withheld",
+    "empty-thread-refused"
   ],
   "receipt_ids": [
-    "sha256:5a18a922f99c26743f38bbbbb6800b4c12c77d7f2b1ae10fef7873c2c0ed5165",
-    "sha256:87c1ca59166d7c7b49fdd719c546e92a42f6c076730329bfecb5156ff216a1fe",
-    "sha256:e084f061b8b08be4eb76c835e9f22491c9954789bfb5510bf2a3310f8c32f0c3"
+    "sha256:1ae9586ddad2d879862b72cd7d3375f829c7a530008134ea0288fbba68c5fb27",
+    "sha256:228a0fe17a95dd0e237adbbc2da63e0e5f0c009b4620adc1022d5628dc7e1206"
   ],
-  "graph_case_count": 0
+  "graph_case_count": 3
 }
