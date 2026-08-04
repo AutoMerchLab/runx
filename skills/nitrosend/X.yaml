@@ -443,13 +443,13 @@ runners:
     type: graph
     credential: nitrosend
     act:
-      purpose: Apply one reviewed Nitrosend campaign, flow, template, or segment draft request.
+      purpose: Apply one reviewed Nitrosend campaign, flow, template, segment, or remote image ingest request.
     inputs:
       operation:
         type: string
         required: true
-        description: compose_campaign, compose_flow, manage_template, or define_segment.
-        schema: { enum: [compose_campaign, compose_flow, manage_template, define_segment] }
+        description: compose_campaign, compose_flow, manage_template, define_segment, or ingest_image.
+        schema: { enum: [compose_campaign, compose_flow, manage_template, define_segment, ingest_image] }
       arguments:
         type: object
         required: true
@@ -475,7 +475,7 @@ runners:
             type: approval
           inputs:
             gate_id: nitrosend.apply_draft.approval
-            reason: Apply this reviewed draft to the live Nitrosend account. This does not deliver to recipients or activate a flow.
+            reason: Apply this reviewed draft or image ingest to the live Nitrosend account. This does not deliver to recipients or activate a flow.
         - id: apply
           skill: graph/provider-operation
           runner: act

@@ -18,6 +18,7 @@ const ACT_OPERATIONS = new Map([
   ["compose_flow", "nitro_compose_flow"],
   ["manage_template", "nitro_manage_template"],
   ["define_segment", "nitro_define_segment"],
+  ["ingest_image", "nitro_ingest"],
 ]);
 const DELIVERY_OPERATIONS = new Set([
   "approve", "reject", "live", "schedule", "pause", "resume", "cancel",
@@ -252,6 +253,16 @@ function validate(mode, operation, args, brandSid) {
       return ["refused:a real contact import requires arguments.idempotency_key"];
     }
   }
+  if (mode === "act" && operation === "ingest_image") {
+    const allowed = new Set(["image_url", "description", "filename"]);
+    const unexpected = Object.keys(args).filter((key) => !allowed.has(key));
+    if (unexpected.length > 0) {
+      return [`ingest_image received unsupported fields: ${unexpected.join(", ")}`];
+    }
+    if (!/^https?:\/\/[^\s]+$/iu.test(text(args.image_url)) || !text(args.description)) {
+      return ["ingest_image requires one public http/https image_url and an honest description"];
+    }
+  }
   return [];
 }
 
@@ -266,6 +277,14 @@ function providerArguments(operation, args) {
   }
   if (operation === "import_status") {
     return { entity: "imports", filters: { id: Number(args.import_id) }, page: 1, per: 1 };
+  }
+  if (operation === "ingest_image") {
+    return {
+      kind: "image",
+      image_url: args.image_url,
+      description: args.description,
+      ...(text(args.filename) ? { filename: args.filename } : {}),
+    };
   }
   if (operation !== "import_contacts") return args;
   const { source_id: sourceId, consent_basis: _consentBasis, ...providerArgs } = args;
@@ -311,10 +330,14 @@ function parseToolContent(payload, operation) {
     return { message: value };
   }
   if (isRecord(parsed) && parsed.meta?.tool && Object.hasOwn(parsed, "result")) {
-    if (!["sender_settings", "configure_sender"].includes(operation)) {
-      return providerResult(parsed.result);
-    }
     const result = record(parsed.result);
+    if (operation === "ingest_image") {
+      const { signed_id: _signedId, direct_upload: _directUpload, ...publicResult } = result;
+      return publicResult;
+    }
+    if (!["sender_settings", "configure_sender"].includes(operation)) {
+      return result;
+    }
     const sender = record(result.sender);
     const currentBrand = record(parsed.meta.current_brand);
     return {

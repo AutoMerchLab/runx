@@ -32,7 +32,8 @@ work. Those are product-operator concerns owned by the Nitrosend repository.
   agent author its exact next call, and return authoritative MCP validation.
   It never persists a draft or gains delivery authority.
 - `apply-draft`: apply exact reviewed arguments for a campaign, flow, template,
-  or segment draft. It never sends or activates.
+  segment, or remote image ingest. Image ingest validates the remote bytes and
+  returns a durable Nitro-hosted brand-library URL. It never sends or activates.
 - `approve-delivery`: approve a reviewed campaign or an exact flow revision
   without delivering.
 - `send-campaign`: send or schedule an already-approved campaign after a fresh
@@ -68,7 +69,10 @@ into another repo-local skill.
    authoritative; repair in another bounded turn when requested. For other
    planning, use the matching planning runner.
 4. Apply only validated arguments through `apply-draft`; that separate runner
-   retains the approval gate and is the first persistence boundary.
+   retains the approval gate and is the first persistence boundary. For a new
+   vendor-site or free-stock image, use `operation=ingest_image` with its exact
+   public URL and an honest description, then reissue the composition intent so
+   the returned Nitro-hosted URL becomes a frozen image binding.
 5. Run `review-delivery` before approval. For flows, carry the exact current
    `revision_id` unchanged through review, approval, and activation. Use
    `approve-delivery` separately so retries never combine approval-state

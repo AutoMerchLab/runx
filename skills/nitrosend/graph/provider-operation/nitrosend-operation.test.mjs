@@ -237,6 +237,65 @@ test("maps consented inline imports without forwarding audit-only fields", () =>
   assert.equal(args.records[0].source, "product-signup");
 });
 
+test("maps one reviewed remote image ingest and strips storage capability material", () => {
+  const requested = {
+    image_url: "https://vendor.example/hero.png",
+    description: "Product documentation preview on a blue background",
+    filename: "hero.png",
+  };
+  const plan = prepareOperation({
+    mode: "act",
+    operation: "ingest_image",
+    arguments: requested,
+    brand_sid: "br_sourcey",
+  }).operation_plan;
+
+  assert.equal(plan.decision, "ready");
+  assert.equal(plan.tool, "nitro_ingest");
+  assert.deepEqual(plan.requests[0].body.params.arguments, {
+    kind: "image",
+    ...requested,
+  });
+
+  const normalized = normalizeOperation({
+    operation_plan: plan,
+    http_execution: {
+      responses: [{
+        id: "nitrosend-ingest_image",
+        status: 200,
+        ok: true,
+        body_digest: "sha256:image",
+        json: mcpPayload({
+          image_url: "https://api.nitrosend.com/cdn/images/safe/large/hero.png",
+          media_url: "https://api.nitrosend.com/cdn/images/safe/large/hero.png",
+          description: requested.description,
+          signed_id: "opaque-storage-capability",
+        }),
+      }],
+    },
+  }).provider_evidence;
+
+  assert.equal(normalized.decision, "ok");
+  assert.equal(normalized.result.image_url, "https://api.nitrosend.com/cdn/images/safe/large/hero.png");
+  assert.equal(normalized.result.signed_id, undefined);
+});
+
+test("rejects incomplete or widened remote image ingest arguments before HTTP", () => {
+  for (const arguments_ of [
+    { image_url: "https://vendor.example/hero.png" },
+    { image_url: "file:///tmp/hero.png", description: "Local file" },
+    { image_url: "https://vendor.example/hero.png", description: "Hero", image_data: "bytes" },
+  ]) {
+    const plan = prepareOperation({
+      mode: "act",
+      operation: "ingest_image",
+      arguments: arguments_,
+    }).operation_plan;
+    assert.equal(plan.decision, "needs_input");
+    assert.deepEqual(plan.requests, []);
+  }
+});
+
 test("normalizes provider readback and redacts provider-returned secrets", () => {
   const returnedSecret = ["nskey", "live", "secret"].join("_");
   const plan = prepareOperation({ mode: "read", operation: "status", arguments: {} }).operation_plan;
