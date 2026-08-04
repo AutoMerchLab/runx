@@ -1,7 +1,7 @@
 # CRM Cleanup Skill - Delivery Report
 
 ## Overview
-`crm-cleanup` (automerchlab/crm-cleanup@2.1.1) turns a call transcript into CRM field updates that are actually
+`crm-cleanup` (automerchlab/crm-cleanup@2.1.2) turns a call transcript into CRM field updates that are actually
 executed. It is a three-step graph:
 
 1. **read** - `steps/read_records.mjs` replays the account's append-only event log and
@@ -41,11 +41,11 @@ The write step is guarded on the reconcile decision, so a no-op run executes not
 - The record projection is last-write-wins per field; it does not model field-level history.
 
 ## Delivery references (single source revision)
-- **package**: `automerchlab/crm-cleanup@2.1.1` - https://runx.ai/x/automerchlab/crm-cleanup@2.1.1
+- **package**: `automerchlab/crm-cleanup@2.1.2` - https://runx.ai/x/automerchlab/crm-cleanup@2.1.2
 - **PR**: https://github.com/runxhq/runx/pull/264
-- **source_url**: https://github.com/automerchlab/runx/tree/a2b63d5bea99a390a08c4bfc4dd247c4517712fe
-- **raw X.yaml**: https://raw.githubusercontent.com/automerchlab/runx/a2b63d5bea99a390a08c4bfc4dd247c4517712fe/skills/crm-cleanup/X.yaml
-- **raw SKILL.md**: https://raw.githubusercontent.com/automerchlab/runx/a2b63d5bea99a390a08c4bfc4dd247c4517712fe/skills/crm-cleanup/SKILL.md
-- **verification.json**: https://raw.githubusercontent.com/automerchlab/runx/a2b63d5bea99a390a08c4bfc4dd247c4517712fe/verification.json
-- **receipt_ref**: `runx:receipt:sha256:0a52c88b81a452c32e3d6ef9ad2d72da9eabd4afdafdd82f498fed7180f3c7b1`
+- **source_url**: https://github.com/automerchlab/runx/tree/ed7d71d9c8168e0e85412cce04754947174dd492
+- **raw X.yaml**: https://raw.githubusercontent.com/automerchlab/runx/ed7d71d9c8168e0e85412cce04754947174dd492/skills/crm-cleanup/X.yaml
+- **raw SKILL.md**: https://raw.githubusercontent.com/automerchlab/runx/ed7d71d9c8168e0e85412cce04754947174dd492/skills/crm-cleanup/SKILL.md
+- **verification.json**: https://raw.githubusercontent.com/automerchlab/runx/ed7d71d9c8168e0e85412cce04754947174dd492/verification.json
+- **receipt_ref**: `runx:receipt:sha256:8f5a6c21275c90ae0b337a845cc7b1c6c6d52f5bd9dae548fd950a092429d3d6`
 - **runx version**: runx-cli 0.8.2

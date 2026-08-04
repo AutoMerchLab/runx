@@ -1,7 +1,7 @@
 {
-  "summary": "Evidence packet for the runx crm-cleanup skill (automerchlab/crm-cleanup@2.1.1). The skill is a three-step graph: read the account's current CRM records and stream version from an append-only event log, reconcile a call transcript against those records, then execute only the fields that actually changed as a compare-and-set append that seals a before/after write result. A real post-publish dogfood run of the PUBLISHED package (registry_source=remote https://api.runx.ai) read back records written by an earlier run (budget=$40k, next_step=wait for procurement, status=contacted at version 1), decided 3 field update(s) (budget=$75k, next_step=send over a proposal by Friday, status=qualified), and committed them at version 1 -> 2 with event_ref crm_records:acct-northwind:2. A second run on the same stream with a nothing-to-update transcript produced changed=false and did not execute the write step at all - its receipt carries no write_updates step output. The receipt passes runx verify with a production signature. Transport disclosure: steps 1 and 3 are a bounded append-only event log bundled with the skill, NOT the runx data-store; the native data.* tools are unreachable from a registry-installed package (see transport_disclosure). source_url, X.yaml, SKILL.md and verification.json all resolve at a single source revision (commit a2b63d5bea99a390a08c4bfc4dd247c4517712fe); this evidence packet and the report are its direct child and describe that same revision.",
+  "summary": "Evidence packet for the runx crm-cleanup skill (automerchlab/crm-cleanup@2.1.2). The skill is a three-step graph: read the account's current CRM records and stream version from an append-only event log, reconcile a call transcript against those records, then execute only the fields that actually changed as a compare-and-set append that seals a before/after write result. A real post-publish dogfood run of the PUBLISHED package (registry_source=remote https://api.runx.ai) read back records written by an earlier run (budget=$40k, next_step=wait for procurement, status=contacted at version 1), decided 3 field update(s) (budget=$75k, next_step=send over a proposal by Friday, status=qualified), and committed them at version 1 -> 2 with event_ref crm_records:acct-northwind:2. A second run on the same stream with a nothing-to-update transcript produced changed=false and did not execute the write step at all - its receipt carries no write_updates step output. The receipt passes runx verify with a production signature. Transport disclosure: steps 1 and 3 are a bounded append-only event log bundled with the skill, NOT the runx data-store; the native data.* tools are unreachable from a registry-installed package (see transport_disclosure). source_url, X.yaml, SKILL.md and verification.json all resolve at a single source revision (commit ed7d71d9c8168e0e85412cce04754947174dd492); this evidence packet and the report are its direct child and describe that same revision.",
   "dogfood": {
-    "package": "automerchlab/crm-cleanup@2.1.1",
+    "package": "automerchlab/crm-cleanup@2.1.2",
     "input": {
       "source_handle": {
         "data_source_ref": "local://runx-crm/dogfood-2026-08-04",
@@ -11,8 +11,8 @@
       "transcript": "Great call with Northwind. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.",
       "crm_schema": "{\"fields\": [\"budget\", \"status\", \"next_step\"]}"
     },
-    "command": "runx skill automerchlab/crm-cleanup@2.1.1 --registry https://api.runx.ai --json --input-json source_handle='{\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"resource\":\"crm_records\",\"aggregate_id\":\"acct-northwind\"}' -i transcript='Great call with Northwind. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.' -i crm_schema='{\"fields\": [\"budget\", \"status\", \"next_step\"]}' -R ./receipts",
-    "receipt_ref": "runx:receipt:sha256:0a52c88b81a452c32e3d6ef9ad2d72da9eabd4afdafdd82f498fed7180f3c7b1",
+    "command": "runx skill automerchlab/crm-cleanup@2.1.2 --registry https://api.runx.ai --json --input-json source_handle='{\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"resource\":\"crm_records\",\"aggregate_id\":\"acct-northwind\"}' -i transcript='Great call with Northwind. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.' -i crm_schema='{\"fields\": [\"budget\", \"status\", \"next_step\"]}' -R ./receipts",
+    "receipt_ref": "runx:receipt:sha256:8f5a6c21275c90ae0b337a845cc7b1c6c6d52f5bd9dae548fd950a092429d3d6",
     "verify_verdict": "valid",
     "harness_cases": [
       {
@@ -104,17 +104,17 @@
     },
     {
       "type": "version",
-      "value": "2.1.1",
+      "value": "2.1.2",
       "detail": "Published package version."
     },
     {
       "type": "registry_ref",
-      "value": "automerchlab/crm-cleanup@2.1.1",
+      "value": "automerchlab/crm-cleanup@2.1.2",
       "detail": "Fully qualified registry reference."
     },
     {
       "type": "public_url",
-      "value": "https://runx.ai/x/automerchlab/crm-cleanup@2.1.1",
+      "value": "https://runx.ai/x/automerchlab/crm-cleanup@2.1.2",
       "detail": "Live registry listing / canonical public adoption page."
     },
     {
@@ -124,32 +124,32 @@
     },
     {
       "type": "source_url",
-      "value": "https://github.com/automerchlab/runx/tree/a2b63d5bea99a390a08c4bfc4dd247c4517712fe",
+      "value": "https://github.com/automerchlab/runx/tree/ed7d71d9c8168e0e85412cce04754947174dd492",
       "detail": "Public source/provenance revision (single source revision)."
     },
     {
       "type": "raw_x_yaml",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/a2b63d5bea99a390a08c4bfc4dd247c4517712fe/skills/crm-cleanup/X.yaml",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/ed7d71d9c8168e0e85412cce04754947174dd492/skills/crm-cleanup/X.yaml",
       "detail": "Raw X.yaml at the source revision."
     },
     {
       "type": "raw_skill_md",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/a2b63d5bea99a390a08c4bfc4dd247c4517712fe/skills/crm-cleanup/SKILL.md",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/ed7d71d9c8168e0e85412cce04754947174dd492/skills/crm-cleanup/SKILL.md",
       "detail": "Raw SKILL.md at the source revision."
     },
     {
       "type": "verification_json",
-      "value": "https://raw.githubusercontent.com/automerchlab/runx/a2b63d5bea99a390a08c4bfc4dd247c4517712fe/verification.json",
+      "value": "https://raw.githubusercontent.com/automerchlab/runx/ed7d71d9c8168e0e85412cce04754947174dd492/verification.json",
       "detail": "Raw runx verify verdict at the source revision."
     },
     {
       "type": "publish_method",
-      "value": "runx login --provider github --for publish (as automerchlab), then runx registry publish ./skills/crm-cleanup/SKILL.md --registry https://api.runx.ai --version 2.1.1",
+      "value": "runx login --provider github --for publish (as automerchlab), then runx registry publish ./skills/crm-cleanup/SKILL.md --registry https://api.runx.ai --version 2.1.2",
       "detail": "Authenticate and publish commands. The logged-in publish identity, not a --owner flag, determines the registry owner."
     },
     {
       "type": "install_command",
-      "value": "runx add automerchlab/crm-cleanup@2.1.1 --registry https://api.runx.ai",
+      "value": "runx add automerchlab/crm-cleanup@2.1.2 --registry https://api.runx.ai",
       "detail": "Clean install command, run before the dogfood."
     },
     {
@@ -179,17 +179,17 @@
     },
     {
       "type": "hosted_harness_status",
-      "value": "`runx harness ./skills/crm-cleanup` passed 3/3 with 0 assertion errors (reconciled_write_sealed (sealed), noop_no_write (sealed), invalid_schema_refused (failed)) on WSL Linux local, with step-output assertions (reconciled_write_sealed: changed=true, budget=$75k, status=qualified, write status=committed, before_version=0, after_version=1, replayed=false; noop_no_write: changed=false, field_updates={}). The published package is byte-identical to these files (content digest sha256:de501bea4ff0e0725f9df35a9888029e03720eac5e13895fda1eb4c16f8afd68), and the published package was then installed from the remote registry and run three times end to end. Environment: WSL Linux local harness + remote registry install and dogfood.",
+      "value": "`runx harness ./skills/crm-cleanup` passed 3/3 with 0 assertion errors (reconciled_write_sealed (sealed), noop_no_write (sealed), invalid_schema_refused (failed)) on WSL Linux local, with step-output assertions (reconciled_write_sealed: changed=true, budget=$75k, status=qualified, write status=committed, before_version=0, after_version=1, replayed=false; noop_no_write: changed=false, field_updates={}). The published package is byte-identical to these files (content digest sha256:df6a57c883b4ed05f857bacf85ea0d221807196d927291ac68161d784a125fb9), and the published package was then installed from the remote registry and run three times end to end. Environment: WSL Linux local harness + remote registry install and dogfood.",
       "detail": "Harness status with explicit environment labeling."
     },
     {
       "type": "dogfood_command",
-      "value": "runx skill automerchlab/crm-cleanup@2.1.1 --registry https://api.runx.ai --json --input-json source_handle='{\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"resource\":\"crm_records\",\"aggregate_id\":\"acct-northwind\"}' -i transcript='Great call with Northwind. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.' -i crm_schema='{\"fields\": [\"budget\", \"status\", \"next_step\"]}' -R ./receipts",
+      "value": "runx skill automerchlab/crm-cleanup@2.1.2 --registry https://api.runx.ai --json --input-json source_handle='{\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"resource\":\"crm_records\",\"aggregate_id\":\"acct-northwind\"}' -i transcript='Great call with Northwind. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.' -i crm_schema='{\"fields\": [\"budget\", \"status\", \"next_step\"]}' -R ./receipts",
       "detail": "Exact post-publish dogfood command."
     },
     {
       "type": "receipt_ref",
-      "value": "runx:receipt:sha256:0a52c88b81a452c32e3d6ef9ad2d72da9eabd4afdafdd82f498fed7180f3c7b1",
+      "value": "runx:receipt:sha256:8f5a6c21275c90ae0b337a845cc7b1c6c6d52f5bd9dae548fd950a092429d3d6",
       "detail": "Sealed receipt id from the post-publish dogfood run of the published package (not a harness fixture seal)."
     },
     {
@@ -199,7 +199,7 @@
     },
     {
       "type": "registry_provenance",
-      "value": "registry_source=remote https://api.runx.ai, skill_id=automerchlab/crm-cleanup, version=2.1.1, trust_state=trusted, trust_tier=community",
+      "value": "registry_source=remote https://api.runx.ai, skill_id=automerchlab/crm-cleanup, version=2.1.2, trust_state=trusted, trust_tier=community",
       "detail": "The dogfood run resolved the published package from the remote registry at the exact published version, so the receipt proves the PUBLISHED artifact works, not a local copy."
     },
     {
@@ -224,7 +224,7 @@
     },
     {
       "type": "how_to_use",
-      "value": "Install: runx add automerchlab/crm-cleanup@2.1.1 --registry https://api.runx.ai. Seed a stream: run the skill once with an onboarding transcript such as 'Onboarding note. Their budget is $40k. The status is contacted. The next step is wait for procurement.'. Reconcile a later call: runx skill automerchlab/crm-cleanup@2.1.1 --registry https://api.runx.ai --json --input-json source_handle='{\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"resource\":\"crm_records\",\"aggregate_id\":\"acct-northwind\"}' -i transcript='Great call with Northwind. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.' -i crm_schema='{\"fields\": [\"budget\", \"status\", \"next_step\"]}' -R ./receipts. Verify: runx verify --receipt dogfood_receipt.json --json (expects valid=true, signature_mode=production). Re-running the same reconcile verbatim is refused by the idempotency guard rather than double-writing.",
+      "value": "Install: runx add automerchlab/crm-cleanup@2.1.2 --registry https://api.runx.ai. Seed a stream: run the skill once with an onboarding transcript such as 'Onboarding note. Their budget is $40k. The status is contacted. The next step is wait for procurement.'. Reconcile a later call: runx skill automerchlab/crm-cleanup@2.1.2 --registry https://api.runx.ai --json --input-json source_handle='{\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"resource\":\"crm_records\",\"aggregate_id\":\"acct-northwind\"}' -i transcript='Great call with Northwind. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.' -i crm_schema='{\"fields\": [\"budget\", \"status\", \"next_step\"]}' -R ./receipts. Verify: runx verify --receipt dogfood_receipt.json --json (expects valid=true, signature_mode=production). Re-running the same reconcile verbatim is refused by the idempotency guard rather than double-writing.",
       "detail": "End-to-end install/run/verify for a new user without private context."
     }
   ]
