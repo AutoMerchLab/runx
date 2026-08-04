@@ -1,6 +1,6 @@
 {
   "closure": {
-    "closed_at": "2026-08-04T07:03:00.453Z",
+    "closed_at": "2026-08-04T07:08:12.779Z",
     "disposition": "closed",
     "reason_code": "graph_closed",
     "summary": "graph crm-cleanup completed"
@@ -116,13 +116,13 @@
       },
       "steps": [
         {
-          "receipt_id": "sha256:c217379d27e361e15f6f69df27c1b596c442505229c8029a81e8023705f6b08c",
+          "receipt_id": "sha256:dc7fb5b404dac433ca4af16134d63a74e3482bf36a73910155d5b565a513f0e9",
           "skill": "read_records",
           "status": "success",
           "step_id": "read_records"
         },
         {
-          "receipt_id": "sha256:8c39d14769563e8c4b5ee1ea54ba286b2e8fa7303d81231718a1ea006043f4fa",
+          "receipt_id": "sha256:0ea43775d84ddcd6aecba6a3248fd1a37a8ce209ce4026beba0f5365c2febf8f",
           "skill": "reconcile",
           "status": "success",
           "step_id": "reconcile"
@@ -130,7 +130,7 @@
       ]
     },
     "stderr": "",
-    "stdout": "{\"graph\":\"crm-cleanup\",\"graph_status\":\"Succeeded\",\"step_outputs\":{\"read_records\":{\"projection\":{\"aggregate_id\":\"acct-northwind\",\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"event_count\":2,\"exists\":true,\"last_event_ref\":\"crm_records:acct-northwind:2\",\"operation\":\"read_projection\",\"provider\":\"bundled-local-event-log\",\"record\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"resource\":\"crm_records\",\"store_path\":\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\"version\":2},\"raw\":\"{\\n  \\\"projection\\\": {\\n    \\\"provider\\\": \\\"bundled-local-event-log\\\",\\n    \\\"operation\\\": \\\"read_projection\\\",\\n    \\\"data_source_ref\\\": \\\"local://runx-crm/dogfood-2026-08-04\\\",\\n    \\\"resource\\\": \\\"crm_records\\\",\\n    \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n    \\\"version\\\": 2,\\n    \\\"record\\\": {\\n      \\\"budget\\\": \\\"$75k\\\",\\n      \\\"next_step\\\": \\\"send over a proposal by Friday\\\",\\n      \\\"status\\\": \\\"qualified\\\"\\n    },\\n    \\\"event_count\\\": 2,\\n    \\\"last_event_ref\\\": \\\"crm_records:acct-northwind:2\\\",\\n    \\\"store_path\\\": \\\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\\\",\\n    \\\"exists\\\": true\\n  }\\n}\\n\",\"skill_claim\":{\"projection\":{\"aggregate_id\":\"acct-northwind\",\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"event_count\":2,\"exists\":true,\"last_event_ref\":\"crm_records:acct-northwind:2\",\"operation\":\"read_projection\",\"provider\":\"bundled-local-event-log\",\"record\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"resource\":\"crm_records\",\"store_path\":\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\"version\":2}},\"status\":\"success\",\"stderr\":\"\",\"stdout\":\"{\\n  \\\"projection\\\": {\\n    \\\"provider\\\": \\\"bundled-local-event-log\\\",\\n    \\\"operation\\\": \\\"read_projection\\\",\\n    \\\"data_source_ref\\\": \\\"local://runx-crm/dogfood-2026-08-04\\\",\\n    \\\"resource\\\": \\\"crm_records\\\",\\n    \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n    \\\"version\\\": 2,\\n    \\\"record\\\": {\\n      \\\"budget\\\": \\\"$75k\\\",\\n      \\\"next_step\\\": \\\"send over a proposal by Friday\\\",\\n      \\\"status\\\": \\\"qualified\\\"\\n    },\\n    \\\"event_count\\\": 2,\\n    \\\"last_event_ref\\\": \\\"crm_records:acct-northwind:2\\\",\\n    \\\"store_path\\\": \\\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\\\",\\n    \\\"exists\\\": true\\n  }\\n}\\n\"},\"reconcile\":{\"before\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"changed\":false,\"event\":{\"effect_family\":\"crm\",\"operation\":\"noop\",\"payload\":{\"aggregate_id\":\"acct-northwind\",\"fields\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"reason\":\"no transcript assertion differed from the records read from the store\",\"source\":\"crm-cleanup\"},\"type\":\"crm.records.unchanged\"},\"expected_version\":2,\"field_updates\":{},\"idempotency_key\":\"crm-cleanup:acct-northwind:v2:888a3b7ba3a8e90e\",\"needs_review\":[],\"raw\":\"{\\n  \\\"takeaways\\\": [],\\n  \\\"field_updates\\\": {},\\n  \\\"needs_review\\\": [],\\n  \\\"changed\\\": false,\\n  \\\"expected_version\\\": 2,\\n  \\\"idempotency_key\\\": \\\"crm-cleanup:acct-northwind:v2:888a3b7ba3a8e90e\\\",\\n  \\\"event\\\": {\\n    \\\"type\\\": \\\"crm.records.unchanged\\\",\\n    \\\"effect_family\\\": \\\"crm\\\",\\n    \\\"operation\\\": \\\"noop\\\",\\n    \\\"payload\\\": {\\n      \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n      \\\"fields\\\": {\\n        \\\"budget\\\": \\\"$75k\\\",\\n        \\\"status\\\": \\\"qualified\\\",\\n        \\\"next_step\\\": \\\"send over a proposal by Friday\\\"\\n      },\\n      \\\"reason\\\": \\\"no transcript assertion differed from the records read from the store\\\",\\n      \\\"source\\\": \\\"crm-cleanup\\\"\\n    }\\n  },\\n  \\\"before\\\": {\\n    \\\"budget\\\": \\\"$75k\\\",\\n    \\\"status\\\": \\\"qualified\\\",\\n    \\\"next_step\\\": \\\"send over a proposal by Friday\\\"\\n  }\\n}\\n\",\"skill_claim\":{\"before\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"changed\":false,\"event\":{\"effect_family\":\"crm\",\"operation\":\"noop\",\"payload\":{\"aggregate_id\":\"acct-northwind\",\"fields\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"reason\":\"no transcript assertion differed from the records read from the store\",\"source\":\"crm-cleanup\"},\"type\":\"crm.records.unchanged\"},\"expected_version\":2,\"field_updates\":{},\"idempotency_key\":\"crm-cleanup:acct-northwind:v2:888a3b7ba3a8e90e\",\"needs_review\":[],\"takeaways\":[]},\"status\":\"success\",\"stderr\":\"\",\"stdout\":\"{\\n  \\\"takeaways\\\": [],\\n  \\\"field_updates\\\": {},\\n  \\\"needs_review\\\": [],\\n  \\\"changed\\\": false,\\n  \\\"expected_version\\\": 2,\\n  \\\"idempotency_key\\\": \\\"crm-cleanup:acct-northwind:v2:888a3b7ba3a8e90e\\\",\\n  \\\"event\\\": {\\n    \\\"type\\\": \\\"crm.records.unchanged\\\",\\n    \\\"effect_family\\\": \\\"crm\\\",\\n    \\\"operation\\\": \\\"noop\\\",\\n    \\\"payload\\\": {\\n      \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n      \\\"fields\\\": {\\n        \\\"budget\\\": \\\"$75k\\\",\\n        \\\"status\\\": \\\"qualified\\\",\\n        \\\"next_step\\\": \\\"send over a proposal by Friday\\\"\\n      },\\n      \\\"reason\\\": \\\"no transcript assertion differed from the records read from the store\\\",\\n      \\\"source\\\": \\\"crm-cleanup\\\"\\n    }\\n  },\\n  \\\"before\\\": {\\n    \\\"budget\\\": \\\"$75k\\\",\\n    \\\"status\\\": \\\"qualified\\\",\\n    \\\"next_step\\\": \\\"send over a proposal by Friday\\\"\\n  }\\n}\\n\",\"takeaways\":[]}},\"steps\":[{\"receipt_id\":\"sha256:c217379d27e361e15f6f69df27c1b596c442505229c8029a81e8023705f6b08c\",\"skill\":\"read_records\",\"status\":\"success\",\"step_id\":\"read_records\"},{\"receipt_id\":\"sha256:8c39d14769563e8c4b5ee1ea54ba286b2e8fa7303d81231718a1ea006043f4fa\",\"skill\":\"reconcile\",\"status\":\"success\",\"step_id\":\"reconcile\"}]}",
+    "stdout": "{\"graph\":\"crm-cleanup\",\"graph_status\":\"Succeeded\",\"step_outputs\":{\"read_records\":{\"projection\":{\"aggregate_id\":\"acct-northwind\",\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"event_count\":2,\"exists\":true,\"last_event_ref\":\"crm_records:acct-northwind:2\",\"operation\":\"read_projection\",\"provider\":\"bundled-local-event-log\",\"record\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"resource\":\"crm_records\",\"store_path\":\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\"version\":2},\"raw\":\"{\\n  \\\"projection\\\": {\\n    \\\"provider\\\": \\\"bundled-local-event-log\\\",\\n    \\\"operation\\\": \\\"read_projection\\\",\\n    \\\"data_source_ref\\\": \\\"local://runx-crm/dogfood-2026-08-04\\\",\\n    \\\"resource\\\": \\\"crm_records\\\",\\n    \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n    \\\"version\\\": 2,\\n    \\\"record\\\": {\\n      \\\"budget\\\": \\\"$75k\\\",\\n      \\\"next_step\\\": \\\"send over a proposal by Friday\\\",\\n      \\\"status\\\": \\\"qualified\\\"\\n    },\\n    \\\"event_count\\\": 2,\\n    \\\"last_event_ref\\\": \\\"crm_records:acct-northwind:2\\\",\\n    \\\"store_path\\\": \\\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\\\",\\n    \\\"exists\\\": true\\n  }\\n}\\n\",\"skill_claim\":{\"projection\":{\"aggregate_id\":\"acct-northwind\",\"data_source_ref\":\"local://runx-crm/dogfood-2026-08-04\",\"event_count\":2,\"exists\":true,\"last_event_ref\":\"crm_records:acct-northwind:2\",\"operation\":\"read_projection\",\"provider\":\"bundled-local-event-log\",\"record\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"resource\":\"crm_records\",\"store_path\":\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\",\"version\":2}},\"status\":\"success\",\"stderr\":\"\",\"stdout\":\"{\\n  \\\"projection\\\": {\\n    \\\"provider\\\": \\\"bundled-local-event-log\\\",\\n    \\\"operation\\\": \\\"read_projection\\\",\\n    \\\"data_source_ref\\\": \\\"local://runx-crm/dogfood-2026-08-04\\\",\\n    \\\"resource\\\": \\\"crm_records\\\",\\n    \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n    \\\"version\\\": 2,\\n    \\\"record\\\": {\\n      \\\"budget\\\": \\\"$75k\\\",\\n      \\\"next_step\\\": \\\"send over a proposal by Friday\\\",\\n      \\\"status\\\": \\\"qualified\\\"\\n    },\\n    \\\"event_count\\\": 2,\\n    \\\"last_event_ref\\\": \\\"crm_records:acct-northwind:2\\\",\\n    \\\"store_path\\\": \\\"/mnt/c/Users/TEST/Desktop/frantic/bounty_79/.crm-store/69299b977020624d.jsonl\\\",\\n    \\\"exists\\\": true\\n  }\\n}\\n\"},\"reconcile\":{\"before\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"changed\":false,\"event\":{\"effect_family\":\"crm\",\"operation\":\"noop\",\"payload\":{\"aggregate_id\":\"acct-northwind\",\"fields\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"reason\":\"no transcript assertion differed from the records read from the store\",\"source\":\"crm-cleanup\"},\"type\":\"crm.records.unchanged\"},\"expected_version\":2,\"field_updates\":{},\"idempotency_key\":\"crm-cleanup:acct-northwind:v2:888a3b7ba3a8e90e\",\"needs_review\":[],\"raw\":\"{\\n  \\\"takeaways\\\": [],\\n  \\\"field_updates\\\": {},\\n  \\\"needs_review\\\": [],\\n  \\\"changed\\\": false,\\n  \\\"expected_version\\\": 2,\\n  \\\"idempotency_key\\\": \\\"crm-cleanup:acct-northwind:v2:888a3b7ba3a8e90e\\\",\\n  \\\"event\\\": {\\n    \\\"type\\\": \\\"crm.records.unchanged\\\",\\n    \\\"effect_family\\\": \\\"crm\\\",\\n    \\\"operation\\\": \\\"noop\\\",\\n    \\\"payload\\\": {\\n      \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n      \\\"fields\\\": {\\n        \\\"budget\\\": \\\"$75k\\\",\\n        \\\"status\\\": \\\"qualified\\\",\\n        \\\"next_step\\\": \\\"send over a proposal by Friday\\\"\\n      },\\n      \\\"reason\\\": \\\"no transcript assertion differed from the records read from the store\\\",\\n      \\\"source\\\": \\\"crm-cleanup\\\"\\n    }\\n  },\\n  \\\"before\\\": {\\n    \\\"budget\\\": \\\"$75k\\\",\\n    \\\"status\\\": \\\"qualified\\\",\\n    \\\"next_step\\\": \\\"send over a proposal by Friday\\\"\\n  }\\n}\\n\",\"skill_claim\":{\"before\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"changed\":false,\"event\":{\"effect_family\":\"crm\",\"operation\":\"noop\",\"payload\":{\"aggregate_id\":\"acct-northwind\",\"fields\":{\"budget\":\"$75k\",\"next_step\":\"send over a proposal by Friday\",\"status\":\"qualified\"},\"reason\":\"no transcript assertion differed from the records read from the store\",\"source\":\"crm-cleanup\"},\"type\":\"crm.records.unchanged\"},\"expected_version\":2,\"field_updates\":{},\"idempotency_key\":\"crm-cleanup:acct-northwind:v2:888a3b7ba3a8e90e\",\"needs_review\":[],\"takeaways\":[]},\"status\":\"success\",\"stderr\":\"\",\"stdout\":\"{\\n  \\\"takeaways\\\": [],\\n  \\\"field_updates\\\": {},\\n  \\\"needs_review\\\": [],\\n  \\\"changed\\\": false,\\n  \\\"expected_version\\\": 2,\\n  \\\"idempotency_key\\\": \\\"crm-cleanup:acct-northwind:v2:888a3b7ba3a8e90e\\\",\\n  \\\"event\\\": {\\n    \\\"type\\\": \\\"crm.records.unchanged\\\",\\n    \\\"effect_family\\\": \\\"crm\\\",\\n    \\\"operation\\\": \\\"noop\\\",\\n    \\\"payload\\\": {\\n      \\\"aggregate_id\\\": \\\"acct-northwind\\\",\\n      \\\"fields\\\": {\\n        \\\"budget\\\": \\\"$75k\\\",\\n        \\\"status\\\": \\\"qualified\\\",\\n        \\\"next_step\\\": \\\"send over a proposal by Friday\\\"\\n      },\\n      \\\"reason\\\": \\\"no transcript assertion differed from the records read from the store\\\",\\n      \\\"source\\\": \\\"crm-cleanup\\\"\\n    }\\n  },\\n  \\\"before\\\": {\\n    \\\"budget\\\": \\\"$75k\\\",\\n    \\\"status\\\": \\\"qualified\\\",\\n    \\\"next_step\\\": \\\"send over a proposal by Friday\\\"\\n  }\\n}\\n\",\"takeaways\":[]}},\"steps\":[{\"receipt_id\":\"sha256:dc7fb5b404dac433ca4af16134d63a74e3482bf36a73910155d5b565a513f0e9\",\"skill\":\"read_records\",\"status\":\"success\",\"step_id\":\"read_records\"},{\"receipt_id\":\"sha256:0ea43775d84ddcd6aecba6a3248fd1a37a8ce209ce4026beba0f5365c2febf8f\",\"skill\":\"reconcile\",\"status\":\"success\",\"step_id\":\"reconcile\"}]}",
     "structured_output": {
       "graph": "crm-cleanup",
       "graph_status": "Succeeded",
@@ -240,13 +240,13 @@
       },
       "steps": [
         {
-          "receipt_id": "sha256:c217379d27e361e15f6f69df27c1b596c442505229c8029a81e8023705f6b08c",
+          "receipt_id": "sha256:dc7fb5b404dac433ca4af16134d63a74e3482bf36a73910155d5b565a513f0e9",
           "skill": "read_records",
           "status": "success",
           "step_id": "read_records"
         },
         {
-          "receipt_id": "sha256:8c39d14769563e8c4b5ee1ea54ba286b2e8fa7303d81231718a1ea006043f4fa",
+          "receipt_id": "sha256:0ea43775d84ddcd6aecba6a3248fd1a37a8ce209ce4026beba0f5365c2febf8f",
           "skill": "reconcile",
           "status": "success",
           "step_id": "reconcile"
@@ -363,13 +363,13 @@
     },
     "steps": [
       {
-        "receipt_id": "sha256:c217379d27e361e15f6f69df27c1b596c442505229c8029a81e8023705f6b08c",
+        "receipt_id": "sha256:dc7fb5b404dac433ca4af16134d63a74e3482bf36a73910155d5b565a513f0e9",
         "skill": "read_records",
         "status": "success",
         "step_id": "read_records"
       },
       {
-        "receipt_id": "sha256:8c39d14769563e8c4b5ee1ea54ba286b2e8fa7303d81231718a1ea006043f4fa",
+        "receipt_id": "sha256:0ea43775d84ddcd6aecba6a3248fd1a37a8ce209ce4026beba0f5365c2febf8f",
         "skill": "reconcile",
         "status": "success",
         "step_id": "reconcile"
@@ -399,10 +399,10 @@
       "terms": []
     },
     "canonicalization": "runx.receipt.c14n.v1",
-    "created_at": "2026-08-04T07:03:00.453Z",
+    "created_at": "2026-08-04T07:08:12.779Z",
     "decisions": [],
-    "digest": "sha256:87f607ae7c446d785028ecae7b8a357c7eec683ec2d71952b94e177014a8ee0c",
-    "id": "sha256:8ef3dd8b958188b8dc75840f78e735aff664d3e06f71ad436b65ca2ad58f321d",
+    "digest": "sha256:653cd0eff0d9d28e34c463198bc3fbf82d538bc08872771f7d9bfb5b9646539e",
+    "id": "sha256:84044bc10b06710d8e45cd12639d3d68d97fe1f13e53841c34bd1e6c84480ed7",
     "idempotency": {
       "content_hash": "sha256:crm-cleanup-graph-content",
       "intent_key": "sha256:crm-cleanup-graph-intent",
@@ -416,31 +416,31 @@
     "lineage": {
       "children": [
         {
-          "locator": "sha256:ad75ad4a855f3597aa13482a6dce8262a4fd52b9ef679870305623ad8f6ecc64",
+          "locator": "sha256:35620777983fec8f92f064d73fce80f35c822168a391b59ef6cebff1ee0a3e60",
           "type": "receipt",
-          "uri": "runx:receipt:sha256:c217379d27e361e15f6f69df27c1b596c442505229c8029a81e8023705f6b08c"
+          "uri": "runx:receipt:sha256:dc7fb5b404dac433ca4af16134d63a74e3482bf36a73910155d5b565a513f0e9"
         },
         {
-          "locator": "sha256:e154d4e31474d6e63d914651812a51178a520dd9f634a5c1a76730cae36ec195",
+          "locator": "sha256:73f8d5b2a1f70de13fd53c0763806c8e8eac3c4d86812f28ffca5c308eed9eea",
           "type": "receipt",
-          "uri": "runx:receipt:sha256:8c39d14769563e8c4b5ee1ea54ba286b2e8fa7303d81231718a1ea006043f4fa"
+          "uri": "runx:receipt:sha256:0ea43775d84ddcd6aecba6a3248fd1a37a8ce209ce4026beba0f5365c2febf8f"
         }
       ],
       "sync": []
     },
     "schema": "runx.receipt.v1",
     "seal": {
-      "closed_at": "2026-08-04T07:03:00.453Z",
+      "closed_at": "2026-08-04T07:08:12.779Z",
       "criteria": [],
       "disposition": "closed",
-      "last_observed_at": "2026-08-04T07:03:00.453Z",
+      "last_observed_at": "2026-08-04T07:08:12.779Z",
       "reason_code": "graph_closed",
       "summary": "graph crm-cleanup completed"
     },
     "signals": [],
     "signature": {
       "alg": "Ed25519",
-      "value": "base64:XLRQJ5SUJVsJaa-JWGT3uj2LNwj9YDSxO1XtS2LZ91mgRaVAIGrBW4NY_cn1QG3dWbC0ZFxZeQbylmNhNH49Dw"
+      "value": "base64:QtbXgozwwJEaQYAjxufPV4dFd-GohUVgfPzqVNgdaKfZHpNjYMqmfxdcE46ZLoXYNs_zFmWcooWoVuydFr5jDA"
     },
     "subject": {
       "commitments": [],
@@ -451,17 +451,17 @@
       }
     }
   },
-  "receipt_id": "sha256:8ef3dd8b958188b8dc75840f78e735aff664d3e06f71ad436b65ca2ad58f321d",
+  "receipt_id": "sha256:84044bc10b06710d8e45cd12639d3d68d97fe1f13e53841c34bd1e6c84480ed7",
   "registry_provenance": {
-    "digest": "sha256:de501bea4ff0e0725f9df35a9888029e03720eac5e13895fda1eb4c16f8afd68",
-    "profile_digest": "sha256:c7d09048ac7f0e34a2054e0964a92278ae0a361aa55157aaf15f5a7b337b0262",
+    "digest": "sha256:df6a57c883b4ed05f857bacf85ea0d221807196d927291ac68161d784a125fb9",
+    "profile_digest": "sha256:d81bde466331ed7943a54d44057c063fe2b1f5d40807a1f0a1b4eec84f862b0e",
     "registry_key_id": "runx-registry-ed25519-v1",
     "registry_source": "remote https://api.runx.ai",
     "registry_source_fingerprint": "ba1ac16b631195fd",
     "skill_id": "automerchlab/crm-cleanup",
     "trust_state": "trusted",
     "trust_tier": "community",
-    "version": "2.1.1"
+    "version": "2.1.2"
   },
   "run_id": "run_default_917bc10533fc",
   "schema": "runx.skill_run.v1",

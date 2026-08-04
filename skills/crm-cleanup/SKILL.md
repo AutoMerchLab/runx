@@ -40,7 +40,7 @@ was not found in configured tool catalogs
 
 `runx/data-store` is also not resolvable from the hosted registry, so declaring
 it through `context_skills` does not help either. A skill that must run from
-`runx skill <owner>/crm-cleanup@<version>` therefore cannot call them, and this
+`runx skill automerchlab/crm-cleanup@2.1.2` therefore cannot call them, and this
 package carries its own transport instead — with the same guarantees written
 out explicitly:
 
@@ -119,22 +119,22 @@ never a source the skill reads at run time.
 ## Install, run, verify
 
 ```bash
-runx add automerchlab/crm-cleanup@<version> --registry https://api.runx.ai
+runx add automerchlab/crm-cleanup@2.1.2 --registry https://api.runx.ai
 
 # 1. establish the account's current records (first append on an empty stream)
-runx skill automerchlab/crm-cleanup@<version> --registry https://api.runx.ai --json \
+runx skill automerchlab/crm-cleanup@2.1.2 --registry https://api.runx.ai --json \
   --input-json source_handle='{"data_source_ref":"local://runx-crm/dogfood","resource":"crm_records","aggregate_id":"acct-northwind"}' \
   -i transcript='Onboarding note. Their budget is $40k. The status is contacted. The next step is wait for procurement.' \
   -i crm_schema='{"fields":["budget","status","next_step"]}'
 
 # 2. reconcile a later call against those records and execute the updates
-runx skill automerchlab/crm-cleanup@<version> --registry https://api.runx.ai --json \
+runx skill automerchlab/crm-cleanup@2.1.2 --registry https://api.runx.ai --json \
   --input-json source_handle='{"data_source_ref":"local://runx-crm/dogfood","resource":"crm_records","aggregate_id":"acct-northwind"}' \
   -i transcript='Great call. They have got around $75k to spend this quarter, so I am moving them to qualified. I will send over a proposal by Friday.' \
   -i crm_schema='{"fields":["budget","status","next_step"]}' \
   -R ./receipts
 
-runx verify --receipt ./receipts/<receipt>.json --json
+runx verify --receipt "$(ls ./receipts/sha256:*.json | head -1)" --json
 ```
 
 Run 2 reports `before` from run 1's record, writes only the fields that changed,
