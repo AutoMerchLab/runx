@@ -16,6 +16,12 @@ pub use provider_effect::{
     ProviderEffectReadback, ProviderEffectReadbackEvidence, ProviderEffectResolved,
     ProviderEffectUnknown,
 };
+#[cfg(feature = "catalog")]
+pub use provider_permission::{
+    LocalProviderTransportReadiness, PROVIDER_PERMISSION_TRANSPORT_ENV,
+    ProviderTransportPreference, preflight_local_provider_transport,
+    resolve_provider_transport_preference,
+};
 pub use provider_permission::{
     PROVIDER_MUTATE_TOOL, PROVIDER_PERMISSION_EFFECT_FAMILY, PROVIDER_PERMISSION_GRANT_ID_ENV,
     PROVIDER_PERMISSION_GRANTED_SCOPES_ENV, PROVIDER_PERMISSION_PRINCIPAL_REF_ENV,

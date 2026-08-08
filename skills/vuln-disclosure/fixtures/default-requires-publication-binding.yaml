@@ -1,0 +1,12 @@
+name: vuln-disclosure-default-requires-publication-binding
+kind: skill
+target: ..
+inputs:
+  channel: github_security_advisory
+  target: { locator: github:runxhq/example:security-advisories }
+expect:
+  status: failure
+metadata:
+  public_skill: vuln-disclosure
+  source_case: direct-default-preflight
+  source: skills-fixture

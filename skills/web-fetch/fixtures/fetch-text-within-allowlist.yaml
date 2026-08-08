@@ -2,6 +2,18 @@ name: fetch-text-within-allowlist
 kind: skill
 target: ..
 runner: web-fetch
+operator_journeys:
+  - mode: standalone
+    request: Fetch RFC 9110 from the allowlisted host and return bounded text with provenance.
+    expected_outcome: Return one digest-bound source artifact with exact URL, content metadata, and bounded extracted text.
+  - mode: composed
+    request: Acquire the allowlisted RFC source for the downstream extraction job.
+    expected_outcome: Reuse the supplied allowlist and target URL, fetch once, and return a source packet downstream steps can consume without refetching.
+    prior_evidence:
+      - The target URL, allowlist, extraction mode, and byte ceiling supplied in the fixture.
+    must_not_repeat:
+      - Do not rediscover the target host or broaden the allowlist.
+      - Do not fetch the same source again downstream when the digest-bound artifact is present.
 inputs:
   url: https://www.rfc-editor.org/rfc/rfc9110.html
   allowlist:

@@ -82,12 +82,12 @@ fn explicit_provider_scope_transport_preserves_opaque_values()
 
     assert_eq!(sources.explicit_scopes, Some(scopes));
     assert!(sources.explicit_principal);
-    assert!(sources.hosted_grants.is_none());
+    assert!(sources.hosted_grants.get().is_none());
     Ok(())
 }
 
 #[test]
-fn incomplete_explicit_provider_evidence_never_reports_locally_ready()
+fn incomplete_explicit_provider_evidence_does_not_eagerly_contact_hosted_control_plane()
 -> Result<(), Box<dyn std::error::Error>> {
     let scopes = vec!["future.scope,with delimiter".to_owned()];
     let encoded_scopes = runx_runtime::encode_provider_scopes_env(&scopes)?;
@@ -106,6 +106,6 @@ fn incomplete_explicit_provider_evidence_never_reports_locally_ready()
 
     assert_eq!(sources.explicit_scopes, Some(scopes));
     assert!(!sources.explicit_principal);
-    assert!(sources.hosted_grants.is_some());
+    assert!(sources.hosted_grants.get().is_none());
     Ok(())
 }

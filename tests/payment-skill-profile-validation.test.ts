@@ -102,20 +102,30 @@ const canonicalPaymentStageRefs: Readonly<Record<string, readonly string[]>> = {
   charge: ["charge-price", "charge-challenge", "charge-verify"],
   spend: ["pay-quote", "pay-reserve", "pay-fulfill-rail"],
 };
-const canonicalPaymentNativeTools: Readonly<Record<string, string>> = {
-  refund: "payment.refund_plan",
+const canonicalPaymentPlanningRunners: Readonly<Record<string, Readonly<Record<string, readonly string[]>>>> = {
+  charge: {
+    mock: ["charge-price", "charge-challenge", "charge-verify"],
+    mpp: ["charge-price", "charge-challenge", "charge-verify"],
+    stripe: ["charge-price", "charge-challenge", "charge-verify"],
+  },
+  spend: {
+    plan: ["pay-quote"],
+    mock: ["pay-quote", "pay-reserve", "pay-fulfill-rail"],
+    mpp: ["pay-quote", "pay-reserve", "pay-fulfill-rail"],
+    "stripe-spt": ["pay-quote", "pay-reserve", "pay-fulfill-rail"],
+  },
 };
-const canonicalPaymentDelegateRefs: Readonly<Record<string, string>> = {
-  "mock-charge": "../charge",
-  "mock-pay": "../spend",
-  "mock-refund": "../refund",
-  "mpp-charge": "../charge",
-  "mpp-pay": "../spend",
-  "mpp-refund": "../refund",
-  "stripe-charge": "../charge",
-  "stripe-pay": "../spend",
-  "stripe-refund": "../refund",
-  "x402-pay": "../spend",
+const canonicalPaymentDelegateRunners: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  "mock-charge": { mock: "../charge" },
+  "mock-pay": { mock: "../spend" },
+  "mock-refund": { mock: "../refund" },
+  "mpp-charge": { mpp: "../charge" },
+  "mpp-pay": { mpp: "../spend" },
+  "mpp-refund": { mpp: "../refund" },
+  "stripe-charge": { stripe: "../charge" },
+  "stripe-pay": { "stripe-spt": "../spend" },
+  "stripe-refund": { stripe: "../refund" },
+  "x402-pay": { x402: "../spend" },
 };
 
 describe("payment skill execution profiles", () => {
@@ -135,21 +145,21 @@ describe("payment skill execution profiles", () => {
     expect(entries.has("crypto-pay"), "crypto-pay stays a reserved placeholder, not an exposed skill").toBe(false);
   });
 
-  it("keeps canonical payment roots as owner-local stage graphs", async () => {
+  it("keeps reusable payment planning phases on owner-local stage graphs", async () => {
     for (const [skillName, expectedStages] of Object.entries(canonicalPaymentStageRefs)) {
       const manifest = parseRunnerManifest(await readFile(path.resolve("skills", skillName, "X.yaml"), "utf8"));
-      const graphRunners = Object.values(manifest.runners).filter((runner) => runner.source.graph);
+      const planningRunners = canonicalPaymentPlanningRunners[skillName] ?? {};
 
-      expect(graphRunners.length, `${skillName} graph runners`).toBeGreaterThan(0);
-      for (const runner of graphRunners) {
-        const steps = runner.source.graph?.steps ?? [];
+      expect(Object.keys(planningRunners), `${skillName} planning runners`).not.toHaveLength(0);
+      for (const [runnerName, runnerStages] of Object.entries(planningRunners)) {
+        const runner = manifest.runners[runnerName];
+        expect(runner, `${skillName}.${runnerName}`).toBeDefined();
+        expect(runner?.default, `${skillName}.${runnerName} is an explicit phase`).toBe(false);
+        const steps = runner?.source.graph?.steps ?? [];
         const graphRefs = steps.flatMap((step) => (step.skill?.startsWith("graph/") ? [step.skill] : []));
-        const runnerStages = skillName === "spend" && runner.name === "plan"
-          ? ["pay-quote"]
-          : expectedStages;
         const expectedRefs = runnerStages.map((stage) => `graph/${stage}`);
 
-        expect(graphRefs, `${skillName}.${runner.name} canonical graph skill refs`).toEqual(expectedRefs);
+        expect(graphRefs, `${skillName}.${runnerName} canonical graph skill refs`).toEqual(expectedRefs);
       }
       for (const stage of expectedStages) {
         expect(existsSync(path.resolve("skills", skillName, "graph", stage, "X.yaml")), `${skillName}/${stage}`).toBe(true);
@@ -158,27 +168,62 @@ describe("payment skill execution profiles", () => {
     }
   });
 
-  it("keeps single-stage canonical payment roots on their native tool", async () => {
-    for (const [skillName, expectedTool] of Object.entries(canonicalPaymentNativeTools)) {
+  it("keeps refund planning reusable while the default performs the refund", async () => {
+    const manifest = parseRunnerManifest(await readFile(path.resolve("skills", "refund", "X.yaml"), "utf8"));
+
+    for (const runnerName of ["mock", "mpp", "stripe"]) {
+      const runner = manifest.runners[runnerName];
+      expect(runner, `refund.${runnerName}`).toBeDefined();
+      expect(runner?.default, `refund.${runnerName} is an explicit phase`).toBe(false);
+      const steps = runner?.source.graph?.steps ?? [];
+      expect(steps, `refund.${runnerName} native plan`).toHaveLength(1);
+      expect(steps[0]?.tool, `refund.${runnerName} native tool`).toBe("payment.refund_plan");
+    }
+  });
+
+  it("keeps branded phase runners and internal rails as canonical delegates", async () => {
+    for (const [skillName, expectedRunners] of Object.entries(canonicalPaymentDelegateRunners)) {
       const manifest = parseRunnerManifest(await readFile(path.resolve("skills", skillName, "X.yaml"), "utf8"));
-      for (const runner of Object.values(manifest.runners)) {
-        const steps = runner.source.graph?.steps ?? [];
-        expect(steps, `${skillName}.${runner.name} native plan`).toHaveLength(1);
-        expect(steps[0]?.tool, `${skillName}.${runner.name} native tool`).toBe(expectedTool);
+
+      for (const [runnerName, canonicalRef] of Object.entries(expectedRunners)) {
+        const runner = manifest.runners[runnerName];
+        expect(runner, `${skillName}.${runnerName}`).toBeDefined();
+        const steps = runner?.source.graph?.steps ?? [];
+        expect(steps, `${skillName}.${runnerName} graph steps`).toHaveLength(1);
+        expect(steps[0]?.skill, `${skillName}.${runnerName} canonical skill ref`).toBe(canonicalRef);
       }
     }
   });
 
-  it("keeps branded and runtime payment wrappers as single canonical skill delegates", async () => {
-    for (const [skillName, canonicalRef] of Object.entries(canonicalPaymentDelegateRefs)) {
+  it("makes public payment operation defaults execute and read back without a mock path", async () => {
+    const directProviderDefaults: Readonly<Record<string, string>> = {
+      charge: "charge",
+      refund: "refund",
+      "x402-pay": "pay",
+    };
+    for (const [skillName, runnerName] of Object.entries(directProviderDefaults)) {
       const manifest = parseRunnerManifest(await readFile(path.resolve("skills", skillName, "X.yaml"), "utf8"));
+      const runner = manifest.runners[runnerName];
+      const steps = runner?.source.graph?.steps ?? [];
+      const tools = steps.flatMap((step) => step.tool ? [step.tool] : []);
 
-      for (const runner of Object.values(manifest.runners)) {
-        const steps = runner.source.graph?.steps ?? [];
-        expect(steps, `${skillName}.${runner.name} graph steps`).toHaveLength(1);
-        expect(steps[0]?.skill, `${skillName}.${runner.name} canonical skill ref`).toBe(canonicalRef);
-      }
+      expect(runner?.default, `${skillName}.${runnerName} default`).toBe(true);
+      expect(tools, `${skillName}.${runnerName} performs provider mutation`).toContain("provider.mutate");
+      expect(tools, `${skillName}.${runnerName} performs provider readback`).toContain("provider.read");
+      expect(steps.some((step) => step.runner === "mock"), `${skillName}.${runnerName} mock route`).toBe(false);
     }
+
+    const spend = parseRunnerManifest(await readFile(path.resolve("skills", "spend", "X.yaml"), "utf8"));
+    const spendSteps = spend.runners.spend?.source.graph?.steps ?? [];
+    expect(spend.runners.spend?.default, "spend.spend default").toBe(true);
+    expect(spendSteps.flatMap((step) => step.runner ? [step.runner] : []), "spend real routes")
+      .toEqual(["mpp", "stripe-spt"]);
+
+    const settle = parseRunnerManifest(await readFile(path.resolve("skills", "settle-invoice", "X.yaml"), "utf8"));
+    const settleSteps = settle.runners["settle-invoice"]?.source.graph?.steps ?? [];
+    expect(settle.runners["settle-invoice"]?.default, "settle-invoice default").toBe(true);
+    expect(settleSteps.some((step) => step.tool === "payment.invoice_plan"), "settle-invoice prepares typed invoice plan").toBe(true);
+    expect(settleSteps.some((step) => step.skill === "../spend" && step.runner === "spend"), "settle-invoice executes canonical spend").toBe(true);
   });
 
   it("parse payment profiles and ingest packaged skills without raw payment credential fields", async () => {

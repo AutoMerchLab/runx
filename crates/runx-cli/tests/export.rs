@@ -27,7 +27,7 @@ fn exports_public_skills_to_claude_global_with_absolute_delegation()
     assert_eq!(report.exported.len(), 1);
     assert_eq!(report.exported[0].skill, "visible");
     let shim = fixture.read_home_file(".claude/skills/visible/SKILL.md")?;
-    assert!(shim.contains("allowed-tools: Bash(/opt/runx/bin/runx skill *)"));
+    assert!(shim.contains("allowed-tools: Bash(/opt/runx/bin/runx *)"));
     assert!(shim.contains("/opt/runx/bin/runx skill"));
     assert!(
         shim.contains(
@@ -130,11 +130,11 @@ fn codex_global_writes_shim_and_idempotent_permission_block()
     assert!(shim.contains("--objective \"<objective>\""));
     assert!(shim.contains("local-development receipt identity"));
     assert!(shim.contains("complete signer tuple"));
-    assert!(shim.contains("If runx returns `status` `needs_agent`"));
-    assert!(shim.contains("request.invocation.envelope"));
+    assert!(shim.contains("If runx returns `needs_agent` or `needs_approval`"));
+    assert!(shim.contains("artifact_ref.path"));
     assert!(shim.contains("allowed_tools"));
     assert!(shim.contains("\"answers\""));
-    assert!(shim.contains("resume \"<run_id>\" \"<answers.json>\""));
+    assert!(shim.contains("resume \"<run_id>\" - --json"));
     assert!(shim.contains("runx-export:codex"));
     let rules = fixture.read_home_file(".codex/rules/default.rules")?;
     assert!(rules.contains("# existing approval"));
@@ -260,7 +260,7 @@ fn codex_global_initializes_missing_codex_home() -> Result<(), Box<dyn std::erro
 fn exports_default_runner_inputs_when_skill_frontmatter_has_none()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = ExportFixture::new("runx-export-runner-inputs")?;
-    fixture.write_skill_with_runner_inputs("send-as")?;
+    fixture.write_skill_with_runner_inputs("work-plan")?;
 
     run_export_command(
         &ExportPlan {
@@ -273,7 +273,7 @@ fn exports_default_runner_inputs_when_skill_frontmatter_has_none()
         &fixture.env,
     )?;
 
-    let shim = fixture.read_home_file(".codex/skills/send-as/SKILL.md")?;
+    let shim = fixture.read_home_file(".codex/skills/work-plan/SKILL.md")?;
     assert!(shim.contains("--objective \"<objective>\""));
     assert!(shim.contains("--principal \"<principal>\""));
     assert!(shim.contains("\"objective\": {"));
@@ -317,7 +317,7 @@ fn exports_multi_runner_skill_without_default_with_explicit_selection()
 #[test]
 fn explicit_ref_exports_official_source_skill() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = ExportFixture::new("runx-export-official-ref")?;
-    let official_root = fixture.write_official_skill_with_runner_inputs("send-as")?;
+    let official_root = fixture.write_official_skill_with_runner_inputs("work-plan")?;
     let mut env = fixture.env.clone();
     env.insert(
         "RUNX_OFFICIAL_SKILLS_SOURCE_DIR".to_owned(),
@@ -327,7 +327,7 @@ fn explicit_ref_exports_official_source_skill() -> Result<(), Box<dyn std::error
     let report = run_export_command(
         &ExportPlan {
             target: Target::Codex,
-            refs: vec!["send-as".to_owned()],
+            refs: vec!["work-plan".to_owned()],
             project: false,
             json: false,
         },
@@ -336,10 +336,10 @@ fn explicit_ref_exports_official_source_skill() -> Result<(), Box<dyn std::error
     )?;
 
     assert_eq!(report.exported.len(), 1);
-    assert_eq!(report.exported[0].skill, "send-as");
-    let shim = fixture.read_home_file(".codex/skills/send-as/SKILL.md")?;
+    assert_eq!(report.exported[0].skill, "work-plan");
+    let shim = fixture.read_home_file(".codex/skills/work-plan/SKILL.md")?;
     assert!(shim.contains("skill "));
-    assert!(shim.contains("/official-skills/send-as"));
+    assert!(shim.contains("/official-skills/work-plan"));
     assert!(shim.contains("--objective \"<objective>\""));
     Ok(())
 }

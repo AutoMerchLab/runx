@@ -4,9 +4,9 @@
 #[cfg(test)]
 use super::contract_json_value;
 use super::{
-    GRAPH_SKILL_STATE_SCHEMA, SkillExecutionContext, SkillRunError, SkillSourceAdapter,
-    build_domain_act_frame, generated_run_id, identifier_segment, invalid, needs_agent_output,
-    sealed_output,
+    GRAPH_SKILL_STATE_SCHEMA, SkillExecutionContext, SkillOutputDiagnostics, SkillRunError,
+    SkillSourceAdapter, build_domain_act_frame, generated_run_id, identifier_segment, invalid,
+    needs_agent_output, sealed_output,
 };
 
 use std::collections::BTreeMap;
@@ -142,6 +142,8 @@ pub(super) fn execute_graph_skill_run(
         .unwrap_or_else(|| request_graph_inputs.clone());
     if let Some(missing_request) = missing_required_graph_input_request(runner, &graph_inputs) {
         return Ok(JsonValue::Object(needs_agent_output(
+            manifest,
+            &runner.name,
             &run_id,
             "graph.required-inputs",
             missing_request,
@@ -206,11 +208,14 @@ pub(super) fn execute_graph_skill_run(
                     let output = graph_run_skill_output(&result, &run)?;
                     return Ok(JsonValue::Object(sealed_output(
                         manifest,
+                        &runner.name,
                         &run_id,
                         &output,
                         &result,
-                        Some(public_context),
-                        Some(trace),
+                        SkillOutputDiagnostics {
+                            context: Some(public_context),
+                            trace: Some(trace),
+                        },
                         receipt,
                     )));
                 }
@@ -263,6 +268,8 @@ pub(super) fn execute_graph_skill_run(
                     request_id,
                 })?;
                 return Ok(JsonValue::Object(needs_agent_output(
+                    manifest,
+                    &runner.name,
                     &run_id,
                     request_id,
                     request_value.clone(),
@@ -274,6 +281,7 @@ pub(super) fn execute_graph_skill_run(
                     workspace,
                     receipts,
                     manifest,
+                    runner_name: &runner.name,
                     graph: graph.clone(),
                     checkpoint: previous_checkpoint,
                     run_id: &run_id,
@@ -294,6 +302,7 @@ pub(super) fn execute_graph_skill_run(
                     workspace,
                     receipts,
                     manifest,
+                    runner_name: &runner.name,
                     graph: graph.clone(),
                     checkpoint: previous_checkpoint,
                     run_id: &run_id,
@@ -329,6 +338,7 @@ pub(super) fn execute_graph_skill_run(
                     workspace,
                     receipts,
                     manifest,
+                    runner_name: &runner.name,
                     graph: graph.clone(),
                     checkpoint: previous_checkpoint,
                     run_id: &run_id,
@@ -340,7 +350,7 @@ pub(super) fn execute_graph_skill_run(
                 });
             }
             Err(error) if !error.is_fatal_step_fault() => {
-                let step_id = error.graph_step_id().map(str::to_owned).ok_or_else(|| {
+                let step_id = terminal_error_step_id(&graph, &error).ok_or_else(|| {
                     RuntimeError::EngineInvariant {
                         context: "sealing graph step failure",
                         message: format!("sealable graph error has no authoritative step: {error}"),
@@ -352,6 +362,7 @@ pub(super) fn execute_graph_skill_run(
                     workspace,
                     receipts,
                     manifest,
+                    runner_name: &runner.name,
                     graph: graph.clone(),
                     checkpoint: previous_checkpoint,
                     run_id: &run_id,
@@ -365,6 +376,19 @@ pub(super) fn execute_graph_skill_run(
             Err(error) => return Err(error.into()),
         }
     }
+}
+
+fn terminal_error_step_id(graph: &ExecutionGraph, error: &RuntimeError) -> Option<String> {
+    error.graph_step_id().map(str::to_owned).or_else(|| {
+        let RuntimeError::SkillFailed { skill_name, .. } = error else {
+            return None;
+        };
+        graph
+            .steps
+            .iter()
+            .any(|step| step.id == *skill_name)
+            .then(|| skill_name.clone())
+    })
 }
 
 struct PausedGraphCheckpoint<'a> {
@@ -472,6 +496,7 @@ struct TerminalGraphSkillRun<'a> {
     workspace: &'a WorkspaceEnv,
     receipts: &'a ReceiptServices,
     manifest: &'a SkillRunnerManifest,
+    runner_name: &'a str,
     graph: ExecutionGraph,
     checkpoint: GraphCheckpoint,
     run_id: &'a str,
@@ -523,11 +548,14 @@ fn seal_terminal_graph_skill_run(
     let output = graph_run_skill_output(&result, &run)?;
     Ok(JsonValue::Object(sealed_output(
         context.manifest,
+        context.runner_name,
         context.run_id,
         &output,
         &result,
-        Some(public_context),
-        Some(trace),
+        SkillOutputDiagnostics {
+            context: Some(public_context),
+            trace: Some(trace),
+        },
         &run.receipt,
     )))
 }
@@ -667,6 +695,33 @@ impl Host for SkillRunGraphHost {
     ) -> Result<Option<ResolutionResponse>, RuntimeError> {
         let request_id = resolution_request_id(&request).to_owned();
         if let Some(answer) = self.answers.get(&request_id) {
+            if self.answers.has_request_digest_bindings() {
+                let supplied = self.answers.request_digest(&request_id).ok_or_else(|| {
+                    RuntimeError::SkillFailed {
+                        skill_name: "graph-resolution".to_owned(),
+                        message: format!(
+                            "request_digests did not include pending request {request_id}"
+                        ),
+                    }
+                })?;
+                let request_value = serde_json::to_value(&request)
+                    .and_then(serde_json::from_value::<JsonValue>)
+                    .map_err(|source| {
+                        RuntimeError::json("normalizing graph request for digest binding", source)
+                    })?;
+                let bytes = serde_json::to_vec(&request_value).map_err(|source| {
+                    RuntimeError::json("serializing graph request for digest binding", source)
+                })?;
+                let current = runx_contracts::sha256_prefixed(&bytes);
+                if supplied != current {
+                    return Err(RuntimeError::SkillFailed {
+                        skill_name: "graph-resolution".to_owned(),
+                        message: format!(
+                            "request digest mismatch for {request_id}: supplied {supplied}, current {current}"
+                        ),
+                    });
+                }
+            }
             return Ok(Some(ResolutionResponse {
                 actor: if self.answers.is_human_approval(&request_id) {
                     ResolutionResponseActor::Human
@@ -961,6 +1016,29 @@ mod tests {
     use crate::adapter::SkillAdapter;
     #[cfg(feature = "mcp")]
     use crate::adapters::mcp::{McpAdapter, McpToolCallRequest, McpTransport, McpTransportError};
+
+    #[test]
+    fn terminal_skill_failure_uses_only_an_exact_graph_step_identity()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let graph = runx_parser::validate_graph(runx_parser::parse_graph_yaml(
+            "name: authoring\nsteps:\n  - id: apply\n    skill: ./apply\n",
+        )?)?;
+        let owned = RuntimeError::SkillFailed {
+            skill_name: "apply".to_owned(),
+            message: "candidate harness failed".to_owned(),
+        };
+        let nested = RuntimeError::SkillFailed {
+            skill_name: "runx.skill.apply".to_owned(),
+            message: "candidate harness failed".to_owned(),
+        };
+
+        assert_eq!(
+            terminal_error_step_id(&graph, &owned).as_deref(),
+            Some("apply")
+        );
+        assert_eq!(terminal_error_step_id(&graph, &nested), None);
+        Ok(())
+    }
 
     #[test]
     fn mint_authority_seals_a_subset_proven_child() -> Result<(), SkillRunError> {

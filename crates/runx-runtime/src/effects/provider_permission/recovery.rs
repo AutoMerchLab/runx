@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use runx_contracts::sha256_prefixed;
+use runx_contracts::{JsonObject, sha256_prefixed};
 use serde::{Deserialize, Serialize};
 
 use super::{PROVIDER_PERMISSION_EFFECT_FAMILY, ProviderPermissionAdmission};
@@ -16,20 +16,31 @@ use crate::receipts::store::{LocalReceiptStore, ReceiptStoreError};
 
 const PROVIDER_EFFECT_STATE_SCHEMA: &str = "runx.provider_effect_state.v1";
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub(super) struct ProviderRecoveryContext {
     store_root: PathBuf,
     state_key: String,
     previous_attempt: Option<u32>,
+    cached_readback: Option<JsonObject>,
+    approval_key: Option<String>,
 }
 
 impl ProviderRecoveryContext {
     pub(super) fn previous_attempt(&self) -> Option<u32> {
         self.previous_attempt
     }
+
+    #[cfg(any(feature = "catalog", test))]
+    pub(super) fn cached_readback(&self) -> Option<&JsonObject> {
+        self.cached_readback.as_ref()
+    }
+
+    pub(super) fn approval_key(&self) -> Option<&str> {
+        self.approval_key.as_deref()
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProviderEffectStateDocument {
     schema: String,
@@ -45,7 +56,7 @@ impl Default for ProviderEffectStateDocument {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct ProviderEffectStateEntry {
     plan_digest: String,
@@ -55,6 +66,10 @@ struct ProviderEffectStateEntry {
     target: String,
     attempt: u32,
     phase: ProviderEffectRecoveryPhase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    readback: Option<JsonObject>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    approval_key: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -91,21 +106,25 @@ pub(super) fn provider_recovery_context(
     }
     let store_root = provider_effect_store_root(request.env, request.graph_dir);
     let state_key = provider_effect_state_key(request);
-    let previous_attempt = read_state(&store_root)?
+    let previous_entry = read_state(&store_root)?
         .and_then(|state| state.entries.get(&state_key).cloned())
         .map(|entry| {
             validate_entry_for_plan(&entry, resolved)?;
-            Ok(entry.attempt)
+            Ok(entry)
         })
         .transpose()?;
     Ok(Some(ProviderRecoveryContext {
         store_root,
         state_key,
-        previous_attempt,
+        previous_attempt: previous_entry.as_ref().map(|entry| entry.attempt),
+        cached_readback: previous_entry
+            .as_ref()
+            .and_then(|entry| entry.readback.clone()),
+        approval_key: previous_entry.and_then(|entry| entry.approval_key),
     }))
 }
 
-#[cfg(feature = "catalog")]
+#[cfg(any(feature = "catalog", test))]
 pub(super) fn persist_provider_attempt(
     admission: &ProviderPermissionAdmission,
     attempt: &ProviderEffectAttempt,
@@ -123,6 +142,33 @@ pub(super) fn persist_provider_unknown(
         unknown.attempt(),
         ProviderEffectRecoveryPhase::Unknown,
     )
+}
+
+#[cfg(any(feature = "catalog", test))]
+pub(super) fn persist_provider_readback(
+    admission: &ProviderPermissionAdmission,
+    attempt: &ProviderEffectAttempt,
+    readback: &JsonObject,
+) -> Result<(), RuntimeEffectError> {
+    let recovery = admission
+        .recovery
+        .as_ref()
+        .ok_or_else(|| state_error("provider mutation recovery context is missing"))?;
+    LocalReceiptStore::new(&recovery.store_root)
+        .update_provider_effect_state::<ProviderEffectStateDocument, _>(|state| {
+            validate_document_store(state)?;
+            let entry = state.entries.get_mut(&recovery.state_key).ok_or_else(|| {
+                ReceiptStoreError::MalformedEffectState {
+                    path: recovery.store_root.join("provider-effects.json"),
+                    message: "provider mutation attempt disappeared before readback persistence"
+                        .to_owned(),
+                }
+            })?;
+            validate_entry_for_attempt_store(entry, attempt, &recovery.store_root)?;
+            entry.readback = Some(readback.clone());
+            Ok(())
+        })
+        .map_err(receipt_state_error)
 }
 
 pub(super) fn persist_provider_finality(
@@ -170,7 +216,7 @@ pub(super) fn persist_provider_finality(
         .map_err(receipt_state_error)
 }
 
-#[cfg(feature = "catalog")]
+#[cfg(any(feature = "catalog", test))]
 fn persist_attempt_phase(
     admission: &ProviderPermissionAdmission,
     attempt: &ProviderEffectAttempt,
@@ -193,13 +239,27 @@ fn persist_attempt_phase(
                         .to_owned(),
                 });
             }
+            if let Some(current) = state.entries.get(&recovery.state_key)
+                && current.approval_key.is_some()
+                && current.approval_key != entry.approval_key
+            {
+                return Err(ReceiptStoreError::MalformedEffectState {
+                    path: recovery.store_root.join("provider-effects.json"),
+                    message: "pending provider mutation approval changed during recovery"
+                        .to_owned(),
+                });
+            }
+            let mut entry = entry;
+            if let Some(current) = state.entries.get(&recovery.state_key) {
+                entry.readback.clone_from(&current.readback);
+            }
             state.entries.insert(recovery.state_key.clone(), entry);
             Ok(())
         })
         .map_err(receipt_state_error)
 }
 
-#[cfg(feature = "catalog")]
+#[cfg(any(feature = "catalog", test))]
 fn entry_from_attempt(
     attempt: &ProviderEffectAttempt,
     phase: ProviderEffectRecoveryPhase,
@@ -213,6 +273,8 @@ fn entry_from_attempt(
         target: intent.target().to_owned(),
         attempt: attempt.attempt(),
         phase,
+        readback: None,
+        approval_key: attempt.approval_key().map(str::to_owned),
     }
 }
 

@@ -83,7 +83,7 @@ impl ReceiptServices {
             .write_receipts_with_policy(receipts, self.signature_config.signature_policy())
     }
 
-    #[cfg(feature = "cli-tool")]
+    #[cfg(any(feature = "cli-tool", test))]
     pub(crate) fn list_local_receipts(
         &self,
         receipt_dir: &Path,

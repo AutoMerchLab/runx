@@ -1,13 +1,13 @@
 ---
 name: settle-invoice
-description: Validate one invoice against a real payment authority and prepare an executable canonical spend handoff without moving money.
+description: Validate one invoice against real payment authority and settle it through the canonical spend lane with approval and provider readback.
 runx:
   category: payments
 ---
 
 # Settle Invoice
 
-Prepare one invoice for the canonical `spend` lane. The native
+Settle one invoice through the canonical `spend` lane. The native
 `payment.invoice_plan` tool validates the invoice, payee identity, selected
 rail, profile, idempotency seed, and complete parent payment AuthorityTerm.
 
@@ -17,9 +17,16 @@ keeps invoice validation separate from money movement: a ready result is a
 reviewable `spend` handoff, not a paid invoice. Use `spend` directly when the
 payment signal is already structured and validated.
 
-This skill plans only. It never approves a spend, contacts a provider, moves
-money, or claims settlement. A ready plan has `provider_effect.status:
-not_started` and `money_moved: false`.
+The default accepts only a real configured `mpp` or `stripe-spt` rail, validates
+the invoice, then invokes `spend` for reservation, approval, provider finality,
+and readback. The explicit `plan` runner retains the non-executing handoff and
+test-only mock coverage.
+
+## Composes
+
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
+- `spend#spend`
 
 ## Contract
 

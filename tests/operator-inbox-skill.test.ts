@@ -4,7 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 
-import { describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
   finalize,
@@ -14,6 +14,22 @@ import {
 
 const SKILL_PATH = path.resolve("skills/operator-inbox");
 const QUERY_DIGEST = `sha256:${"0".repeat(64)}`;
+const runtimeGlobal = globalThis as typeof globalThis & {
+  Runx?: { readonly parseUrl: (value: string) => URL };
+};
+const previousRunx = runtimeGlobal.Runx;
+
+beforeAll(() => {
+  runtimeGlobal.Runx = Object.freeze({ parseUrl: (value: string) => new URL(value) });
+});
+
+afterAll(() => {
+  if (previousRunx === undefined) {
+    delete runtimeGlobal.Runx;
+  } else {
+    runtimeGlobal.Runx = previousRunx;
+  }
+});
 
 describe("operator-inbox skill", () => {
   it("preserves a disposition for old history and reopens only for newer external work", () => {

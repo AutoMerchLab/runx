@@ -86,7 +86,7 @@ static PROVIDER_READ: TypedCapability<ProviderReadInput> = TypedCapability::new(
     CapabilityDefinition {
         id: PROVIDER_READ_TOOL,
         owner: "runx-runtime/provider-permission",
-        summary: "Execute one bounded read through a configured Runx Connect grant and return provider readback evidence.",
+        summary: "Execute one bounded read through a compatible local driver or Runx Connect grant and return provider readback evidence.",
         scopes: &[],
         effect: CapabilityEffect::Read,
         approval: CapabilityApproval::None,
@@ -95,7 +95,7 @@ static PROVIDER_READ: TypedCapability<ProviderReadInput> = TypedCapability::new(
             packet: "runx.provider.operation.v1",
         },
         admission: CapabilityAdmission::RuntimeInvariant(
-            "hosted provider reads require grant-bound credentials and identity-bound readback",
+            "provider reads require transport-bound authority and identity-bound readback",
         ),
         fields: READ_FIELDS,
     },
@@ -105,7 +105,7 @@ static PROVIDER_MUTATE: TypedCapability<ProviderMutateInput> = TypedCapability::
     CapabilityDefinition {
         id: PROVIDER_MUTATE_TOOL,
         owner: "runx-runtime/provider-permission",
-        summary: "Execute one bounded mutation through a configured Runx Connect grant and return provider readback evidence.",
+        summary: "Execute one bounded mutation through a compatible local driver or Runx Connect grant and return provider readback evidence.",
         scopes: &[],
         effect: CapabilityEffect::Mutate,
         approval: CapabilityApproval::Effect,
@@ -114,7 +114,7 @@ static PROVIDER_MUTATE: TypedCapability<ProviderMutateInput> = TypedCapability::
             packet: "runx.provider.operation.v1",
         },
         admission: CapabilityAdmission::RuntimeInvariant(
-            "hosted provider mutations require exact approval, idempotency, and independent readback",
+            "provider mutations require exact approval, idempotency, and independent readback",
         ),
         fields: MUTATE_FIELDS,
     },

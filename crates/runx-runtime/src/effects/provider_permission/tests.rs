@@ -8,7 +8,7 @@ use runx_parser::GraphStep;
 
 #[cfg(feature = "catalog")]
 use super::execution::*;
-#[cfg(feature = "catalog")]
+#[cfg(any(feature = "catalog", test))]
 use super::identity::*;
 #[cfg(feature = "catalog")]
 use super::readback::*;
@@ -16,9 +16,12 @@ use super::*;
 use crate::effects::ResolvedEffectTarget;
 #[cfg(feature = "catalog")]
 use crate::{
-    HostedProviderGrant, ProviderAcknowledgementEvidence, ProviderApprovalEvidence,
-    ProviderEffectAttempt, ProviderEffectAuthority, ProviderEffectClass, ProviderEffectFinality,
-    ProviderEffectIntent, ProviderEffectIntentInput, ProviderEffectReadbackEvidence,
+    HostedProviderGrant, ProviderAcknowledgementEvidence, ProviderEffectFinality,
+    ProviderEffectReadbackEvidence,
+};
+use crate::{
+    ProviderApprovalEvidence, ProviderEffectAttempt, ProviderEffectAuthority, ProviderEffectClass,
+    ProviderEffectIntent, ProviderEffectIntentInput,
 };
 
 mod admission;
@@ -142,7 +145,6 @@ fn assert_policy_error(error: RuntimeEffectError, needle: &str) {
     );
 }
 
-#[cfg(feature = "catalog")]
 fn test_provider_resolved(grant_id: &str, access: ProviderNativeAccess) -> ProviderEffectResolved {
     let class = match access {
         ProviderNativeAccess::Read => ProviderEffectClass::Read,
@@ -167,7 +169,6 @@ fn test_provider_resolved(grant_id: &str, access: ProviderNativeAccess) -> Provi
     .expect("resolved provider effect")
 }
 
-#[cfg(feature = "catalog")]
 fn test_provider_attempt(grant_id: &str, access: ProviderNativeAccess) -> ProviderEffectAttempt {
     let resolved = test_provider_resolved(grant_id, access);
     let approval = (access == ProviderNativeAccess::Mutate).then(|| ProviderApprovalEvidence {
@@ -203,6 +204,91 @@ fn test_provider_finality(grant_id: &str, access: ProviderNativeAccess) -> Provi
         })
         .expect("provider readback")
         .finalize()
+}
+
+#[test]
+fn local_github_mutation_recovery_preserves_stable_idempotency_and_readback() {
+    let workspace = tempfile::tempdir().expect("workspace");
+    let mut env = BTreeMap::from([
+        (
+            crate::RUNX_RECEIPT_DIR_ENV.to_owned(),
+            workspace
+                .path()
+                .join("receipts")
+                .to_string_lossy()
+                .into_owned(),
+        ),
+        (
+            crate::execution::runner::RUNX_RUN_ID_ENV.to_owned(),
+            "local-github-recovery".to_owned(),
+        ),
+    ]);
+    env.insert(
+        crate::RUNX_CWD_ENV.to_owned(),
+        workspace.path().to_string_lossy().into_owned(),
+    );
+    let step = native_step(PROVIDER_MUTATE_TOOL, &["messages.search"], "write");
+    let inputs = provider_inputs("messages.search");
+    let request = effect_request(&step, &inputs, &env);
+    let first_attempt = test_provider_attempt("grant_local", ProviderNativeAccess::Mutate);
+    let resolved = first_attempt.resolved().clone();
+    let first_recovery = super::recovery::provider_recovery_context(&request, Some(&resolved))
+        .expect("initial recovery context")
+        .expect("mutation recovery");
+    let mut admission = ProviderPermissionAdmission {
+        grant_id: "grant_local".to_owned(),
+        required_scopes: vec!["messages.search".to_owned()],
+        granted_scopes: vec!["messages.search".to_owned()],
+        #[cfg(feature = "catalog")]
+        transport: ProviderTransportSelection::Hosted,
+        provider_effect: Some(resolved.clone()),
+        attempt: Some(first_attempt.clone()),
+        recovery: Some(first_recovery),
+    };
+    super::recovery::persist_provider_attempt(&admission, &first_attempt)
+        .expect("persist first attempt");
+    let readback = JsonObject::from([
+        (
+            "schema".to_owned(),
+            JsonValue::String("runx.provider.operation.v1".to_owned()),
+        ),
+        (
+            "transport".to_owned(),
+            JsonValue::String("local_github".to_owned()),
+        ),
+        (
+            "readback_ref".to_owned(),
+            JsonValue::String("runx:github-readback:sha256:test".to_owned()),
+        ),
+    ]);
+    super::recovery::persist_provider_readback(&admission, &first_attempt, &readback)
+        .expect("persist verified readback");
+
+    let recovered = super::recovery::provider_recovery_context(&request, Some(&resolved))
+        .expect("recovered context")
+        .expect("mutation recovery");
+    assert_eq!(recovered.previous_attempt(), Some(1));
+    assert_eq!(recovered.cached_readback(), Some(&readback));
+    assert_eq!(recovered.approval_key(), Some("sha256:approval"));
+    let approval = ProviderApprovalEvidence {
+        actor: "human".to_owned(),
+        approval_key: recovered.approval_key().expect("approval").to_owned(),
+        plan_digest: resolved.plan_digest().to_owned(),
+    };
+    let retry = resolved
+        .begin_retry(approval, recovered.previous_attempt().expect("attempt"))
+        .expect("retry attempt");
+    assert_eq!(retry.idempotency_key(), first_attempt.idempotency_key());
+    admission.attempt = Some(retry.clone());
+    admission.recovery = Some(recovered);
+    super::recovery::persist_provider_attempt(&admission, &retry)
+        .expect("persist retry without losing readback");
+    let recovered_again =
+        super::recovery::provider_recovery_context(&request, Some(retry.resolved()))
+            .expect("second recovered context")
+            .expect("mutation recovery");
+    assert_eq!(recovered_again.previous_attempt(), Some(2));
+    assert_eq!(recovered_again.cached_readback(), Some(&readback));
 }
 
 #[cfg(feature = "catalog")]

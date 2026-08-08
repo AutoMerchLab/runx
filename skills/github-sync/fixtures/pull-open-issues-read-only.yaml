@@ -2,6 +2,17 @@ name: github-sync-plans-bounded-pull
 kind: skill
 target: ..
 runner: github-sync
+operator_journeys:
+  - mode: standalone
+    request: List the open triage issues in runxhq/runx using the GitHub account already authenticated on this machine.
+    expected_outcome: Preflight the local gh identity once, read the bounded issue list without approval, and return compact typed provider evidence.
+env:
+  PATH: fixtures/bin:/usr/bin:/bin
+  RUNX_GITHUB_SYNC_GH_LOG: /tmp/runx-github-sync-read-gh.log
+  RUNX_PROVIDER_PERMISSION_GRANT_ID: ""
+  RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: ""
+  RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF: ""
+  RUNX_PROVIDER_PERMISSION_TRANSPORT: local:github
 inputs:
   repo: runxhq/runx
   direction: pull
@@ -13,11 +24,14 @@ expect:
   status: sealed
   output:
     subset:
-      sync_plan:
-        decision: ready
-        scope_used: repo.read
-        resources_touched: []
-        provider_status: not_called
-        gates: { approval_required: false, approval_ref: "" }
+      provider_operation:
+        data:
+          status: success
+          provider: github
+          operation: issues.read
+          target: runxhq/runx
+          transport: local_github
+          result:
+            repository: runxhq/runx
   receipt: { schema: runx.receipt.v1 }
-metadata: { public_skill: github-sync, source_case: bounded-pull-plan, source: skills-fixture }
+metadata: { public_skill: github-sync, source_case: bounded-pull-local-gh, source: operator-journey }

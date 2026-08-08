@@ -15,11 +15,12 @@ mod types;
 
 pub use catalog::{
     CatalogApproval, CatalogAudience, CatalogCompletion, CatalogExecution, CatalogKind,
-    CatalogMetadata, CatalogRole, CatalogVisibility,
+    CatalogMetadata, CatalogRole, CatalogSemanticCode, CatalogSemanticDiagnostic,
+    CatalogSemanticReport, CatalogVisibility, analyze_catalog_semantics,
 };
 pub use fixtures::{
-    HarnessCallerFixture, HarnessExpectation, ReceiptExpectation, RunnerHarnessCase,
-    RunnerHarnessManifest,
+    HarnessCallerFixture, HarnessExpectation, OperatorJourneyClaim, OperatorJourneyMode,
+    ReceiptExpectation, RunnerHarnessCase, RunnerHarnessManifest,
 };
 pub use governance::validate_skill_artifact_contract;
 pub use markdown::parse_skill_markdown;

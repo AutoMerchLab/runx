@@ -65,7 +65,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         name: "history",
         top_level_usage: &[],
         usage: &[
-            "runx history [query] [--detail] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--limit n] [--receipt-dir dir] [--json]",
+            "runx history [query] [--detail] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--limit n] [--include-harness] [--receipt-dir dir] [--json]",
         ],
         notes: &[],
         options: &[
@@ -77,6 +77,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
             "--since iso",
             "--until iso",
             "--limit n",
+            "--include-harness  Include harness and trial receipts",
             "--receipt-dir dir",
             "-j, --json",
         ],
@@ -85,7 +86,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         name: "resume",
         top_level_usage: &[],
         usage: &[
-            "runx resume <run-id> <answers.json> [-R dir] [--package-digest sha256] [--execution-closure-digest sha256] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]",
+            "runx resume <run-id> <answers.json|-> [-R dir] [--package-digest sha256] [--execution-closure-digest sha256] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [--diagnostics] [-j|--json]",
         ],
         notes: &[
             "Put agent/task responses under {\"answers\": {...}}.",
@@ -100,6 +101,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
             "--package-digest sha256   Reassert the checkpointed package binding",
             "--execution-closure-digest sha256",
             "                          Reassert the checkpointed execution closure",
+            "--diagnostics  Include execution trace and intermediate context",
             "-j, --json",
         ],
     },
@@ -130,9 +132,10 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
     },
     CommandSpec {
         name: "connect",
-        top_level_usage: &["runx connect list|start|status|revoke ... [-j|--json]"],
+        top_level_usage: &["runx connect list|bind|start|status|revoke ... [-j|--json]"],
         usage: &[
             "runx connect list [-j|--json]",
+            "runx connect bind <provider> <auto|local|hosted|hosted:grant-id> [-j|--json]",
             "runx connect start <provider> --scope <capability> [--scope <capability>...] [--scope-family family] [--authority-kind kind] [--target-repo repo] [--target-locator locator] [--binding id] [-j|--json]",
             "runx connect status <session-id> [-j|--json]",
             "runx connect revoke <grant-id> [-j|--json]",
@@ -291,7 +294,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
         name: "skill",
         top_level_usage: &[],
         usage: &[
-            "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--full-operator-context] [--registry url|path] [--digest sha256] [--package-digest sha256 --execution-closure-digest sha256] [--flag value] [-R dir]",
+            "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--diagnostics] [--managed-agent [--managed-agent-rounds n]] [--full-operator-context] [--registry url|path] [--digest sha256] [--package-digest sha256 --execution-closure-digest sha256] [--flag value] [-R dir]",
             "runx skill inspect <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-j] [--registry url|path] [--digest sha256]",
         ],
         notes: &[],
@@ -308,6 +311,7 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
             "-R, --receipts dir       Write receipts under dir",
             "--receipt-dir dir        Alias for --receipts",
             "-j, --json               Print machine-readable output",
+            "--diagnostics            Include execution trace and intermediate context",
             "--registry url|path",
             "--digest sha256",
             "--package-digest sha256 Bind execution to the complete validated skill package; requires closure digest",

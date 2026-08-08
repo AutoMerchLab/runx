@@ -169,6 +169,8 @@ pub enum SkillCredentialError {
     MissingHostedHandles,
     #[error("credential binding target must not be empty")]
     EmptyBindingTarget,
+    #[error("invalid project provider transport binding: {0}")]
+    InvalidProviderTransportBinding(String),
     #[error("credential bindings file {path} is invalid: {message}")]
     InvalidBindings { path: PathBuf, message: String },
     #[error("invalid skill credential declaration: {0}")]

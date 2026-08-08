@@ -17,10 +17,11 @@ pub(super) fn resolved_provider_effect(
     plan: &ProviderPermissionPlan,
     access: ProviderNativeAccess,
     principal_ref: &str,
+    resolved_target: Option<&str>,
 ) -> Result<ProviderEffectResolved, RuntimeEffectError> {
     let provider = required_provider_input(request.inputs, "expected_provider")?;
     let operation = required_provider_input(request.inputs, "operation")?;
-    let target = required_provider_input(request.inputs, "target")?;
+    let target = resolved_target.unwrap_or(required_provider_input(request.inputs, "target")?);
     let payload = request
         .inputs
         .get("input")
@@ -91,9 +92,18 @@ pub(super) fn resolve_provider_approval(
     };
     let approval = match (resolved.intent().class(), requirement) {
         (ProviderEffectClass::Read, EffectApprovalRequirement::Forbidden) => None,
-        (ProviderEffectClass::Mutation, EffectApprovalRequirement::Required) => {
-            Some(request_exact_provider_approval(step, &resolved, host)?)
-        }
+        (ProviderEffectClass::Mutation, EffectApprovalRequirement::Required) => Some(match context
+            .recovery
+            .as_ref()
+            .and_then(super::recovery::ProviderRecoveryContext::approval_key)
+        {
+            Some(approval_key) => ProviderApprovalEvidence {
+                actor: "human".to_owned(),
+                approval_key: approval_key.to_owned(),
+                plan_digest: resolved.plan_digest().to_owned(),
+            },
+            None => request_exact_provider_approval(step, &resolved, host)?,
+        }),
         (class, requirement) => {
             return Err(RuntimeEffectError::InvalidMetadata {
                 family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
@@ -137,7 +147,7 @@ fn request_exact_provider_approval(
         gate_type: Some("provider_effect".to_owned()),
         summary: Some(resolved.approval_summary()),
     };
-    let resolution = crate::request_approval(host, gate_id, gate).map_err(|error| {
+    let resolution = crate::request_approval(host, gate_id.clone(), gate).map_err(|error| {
         RuntimeEffectError::Failed {
             family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
             operation: "resolve provider approval",
@@ -174,8 +184,8 @@ fn request_exact_provider_approval(
         ApprovalResolution::Pending { .. } => Err(RuntimeEffectError::ApprovalPending {
             family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
             message: format!(
-                "exact provider effect approval for step '{}' is pending",
-                step.id
+                "exact provider effect approval {gate_id:?} for step '{}' is pending",
+                step.id,
             ),
         }),
     }

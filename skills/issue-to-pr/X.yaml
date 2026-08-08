@@ -1,5 +1,5 @@
 skill: issue-to-pr
-version: "0.2.5"
+version: "0.3.0"
 
 catalog:
   kind: graph
@@ -10,591 +10,309 @@ catalog:
   completion: provider_readback
   requires_adapter: true
   approval: required
+
 harness:
   files:
-    - fixtures/issue-to-pr-harness-scafld.mjs
-  cases:
-    - name: issue-to-pr-dispatches-first-step
-      inputs:
-        task_id: issue-to-pr-smoke
-        thread_title: Fixture smoke test
-        thread_body: Minimal thread body for the harness.
-        thread_locator: local://fixtures/issue-to-pr-smoke
-        size: small
-        risk: low
-        scafld_bin: ../../fixtures/issue-to-pr-harness-scafld.mjs
-      expect:
-        status: needs_agent
+    - fixtures/bin/gh
+  cases: []
 
-    - name: issue-to-pr-reaches-fix-boundary
-      inputs:
-        task_id: issue-to-pr-reach-fix
-        thread_title: Fix-boundary harness reach
-        thread_body: Canned markdown spec lets the graph progress to the fix authoring boundary.
-        thread_locator: local://fixtures/issue-to-pr-reach-fix
-        size: small
-        risk: low
-        scafld_bin: ../../fixtures/issue-to-pr-harness-scafld.mjs
-      caller:
-        answers:
-          agent_task.issue-to-pr-author-spec.output:
-            spec_contents: |
-              ---
-              spec_version: '2.0'
-              task_id: issue-to-pr-reach-fix
-              created: '2026-05-04T00:00:00Z'
-              updated: '2026-05-04T00:00:00Z'
-              status: draft
-              harden_status: not_run
-              size: small
-              risk_level: low
-              ---
-
-              # Harness Task
-
-              ## Current State
-
-              Status: draft
-              Current phase: none
-              Next: none
-              Reason: none
-              Blockers: none
-              Allowed follow-up command: none
-              Latest runner update: none
-              Review gate: not_started
-
-              ## Summary
-
-              Update the fixture README with one bounded line.
-
-              ## Context
-
-              CWD: `.`
-
-              Packages:
-              - fixture
-
-              Files impacted:
-              - `README.md`
-
-              Invariants:
-              - bounded_scope
-
-              Related docs:
-              - none
-
-              ## Objectives
-
-              - Replace the fixture README text with approved guidance.
-
-              ## Scope
-
-              - `README.md`
-
-              ## Dependencies
-
-              - None.
-
-              ## Assumptions
-
-              - None.
-
-              ## Touchpoints
-
-              - README fixture content.
-
-              ## Risks
-
-              - None.
-
-              ## Acceptance
-
-              Profile: standard
-
-              Definition of done:
-              - [ ] `dod1` README.md contains fixture guidance.
-
-              Validation:
-              - [ ] `v1` test - README contains fixture guidance.
-                - Command: `grep -q '^fixture guidance$' README.md`
-                - Expected kind: `exit_code_zero`
-                - Timeout seconds: none
-                - Result: none
-                - Status: pending
-                - Evidence: none
-                - Source event: none
-                - Last attempt: none
-                - Checked at: none
-
-              ## Phase 1: Update fixture README
-
-              Goal: Write the bounded README change and validate it.
-
-              Status: pending
-              Dependencies: none
-
-              Changes:
-              - `README.md` (all, exclusive) - Replace the contents with fixture guidance.
-
-              Acceptance:
-              - [ ] `ac1_1` test - README contains fixture guidance.
-                - Command: `grep -q '^fixture guidance$' README.md`
-                - Expected kind: `exit_code_zero`
-                - Timeout seconds: none
-                - Result: none
-                - Status: pending
-                - Evidence: none
-                - Source event: none
-                - Last attempt: none
-                - Checked at: none
-
-              ## Rollback
-
-              Strategy: per_phase
-
-              Commands:
-              - `git checkout HEAD -- README.md`
-
-              ## Review
-
-              Status: not_started
-              Verdict: none
-
-              Findings:
-              - none
-
-              Passes:
-              - none
-
-              ## Self Eval
-
-              Status: not_started
-
-              Notes:
-              none
-
-              Improvements:
-              - none
-
-              ## Deviations
-
-              - none
-
-              ## Metadata
-
-              Tags:
-              - fixture
-
-              ## Origin
-
-              Source:
-              - harness
-
-              Repo:
-              - none
-
-              Git:
-              - none
-
-              Sync:
-              - none
-
-              Supersession:
-              - none
-
-              ## Harden Rounds
-
-              - none
-
-              ## Planning Log
-
-              - none
-            context_files:
-              - README.md
-      expect:
-        status: needs_agent
+input_definitions:
+  repository:
+    type: string
+    required: true
+    description: Explicit owner/name or '.' to resolve the current checkout remote before transport selection.
+    schema:
+      pattern: '^(?:\.|[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)$'
+  issue_number:
+    type: string
+    required: true
+    description: Positive GitHub issue number.
+    schema: { pattern: '^[1-9][0-9]*$' }
+  objective:
+    type: string
+    required: false
+    description: Bounded desired outcome; the issue remains the source evidence.
+  issue_evidence:
+    type: json
+    packet: runx.issue_to_pr.issue_evidence.v1
+    required: true
+    description: Prior typed issue evidence; supplying it skips provider discovery and read.
+  host_result:
+    type: json
+    packet: runx.issue_to_pr.host_result.v1
+    required: true
+    description: Tested host change plus exactly one scafld finalize result.
 
 runners:
   issue-to-pr:
     default: true
     type: graph
     inputs:
-      task_id:
-        type: string
-        required: false
-        default: "issue-to-pr-fixture"
-        description: "scafld task id for the governed issue-to-PR lane."
-      thread_title:
-        type: string
-        required: false
-        default: "Fixture thread-driven change"
-        description: "Canonical thread title passed to the lane."
-      thread_body:
-        type: string
-        required: false
-        description: "Subject body or request text describing the change request."
-      thread_locator:
-        type: string
-        required: false
-        description: "Canonical locator for the bounded thread."
-      thread:
-        type: json
-        required: false
-        description: "Portable thread for the current thread."
-      outbox_entry:
-        type: json
-        packet: runx.outbox.entry.v1
-        required: false
-        description: "Current outbox entry when the lane is refreshing an adapter-owned target."
-      harness:
-        type: json
-        packet: runx.receipt.v1
-        required: false
-        description: "Optional runx.receipt.v1 packet for the governed run boundary."
-      signal:
-        type: json
-        packet: runx.signal.v1
-        required: false
-        description: "Optional runx.signal.v1 packet with source references, authenticity, fingerprint, and evidence references."
-      decision:
-        type: json
-        packet: runx.decision.v1
-        required: false
-        description: "Optional runx.decision.v1 packet with the accountable lane selection rationale."
-      target_repo:
-        type: string
-        required: false
-        description: "Intended repository slug for repo-local dispatchers."
-      operational_policy:
-        type: json
-        packet: runx.operational_policy.v1
-        required: false
-        description: "Optional runx.operational_policy.v1 packet for source, target, runner, and source-thread admission."
-      source_id:
-        type: string
-        required: false
-        description: "Operational policy source id for request-time admission."
-      runner_id:
-        type: string
-        required: false
-        description: "Operational policy runner id for request-time admission."
-      branch:
-        type: string
-        required: false
-        description: "Explicit head branch for live provider publication; callers must ensure the workspace is on this branch before mutation."
-      repo_snapshot:
-        type: json
-        required: false
-        description: "Compact structured snapshot of the target repo gathered from a real workspace."
-      repo_snapshot_path:
-        type: string
-        required: false
-        description: "Optional path to a fuller repo snapshot artifact that can be read when the inline snapshot is insufficient."
-      repo_context:
-        type: string
-        required: false
-        description: "Operator-authored textual repo context, such as architecture notes or likely validation hooks."
-      size:
-        type: string
-        required: false
-        default: "small"
-        description: "Size passed to scafld plan."
-      risk:
-        type: string
-        required: false
-        default: "low"
-        description: "Risk passed to scafld plan."
-      base:
-        type: string
-        required: false
-        default: "main"
-        description: "Base ref used by the PR packaging boundary."
-      fixture:
-        type: string
-        required: false
-        description: "Workspace root containing the target .scafld directory."
-      workspace_path:
-        type: string
-        required: false
-        description: "Workspace root forwarded to provider-push tools that need local git state for branch and PR publication."
-      scafld_bin:
-        type: string
-        required: false
-        description: "Explicit scafld executable path."
-      provider:
-        type: string
-        required: false
-        description: "Optional scafld review provider, such as command, claude, or codex."
-      provider_command:
-        type: string
-        required: false
-        description: "Optional scafld review provider command override."
-      provider_binary:
-        type: string
-        required: false
-        description: "Optional scafld review provider binary override."
-      model:
-        type: string
-        required: false
-        description: "Optional model forwarded to scafld review."
-    examples:
-      - task_id: issue-to-pr-example
-        thread_title: Fix the bounded runtime regression
-        thread_body: Reproduce the regression, preserve the public contract, and add focused coverage.
-        thread_locator: github://runxhq/runx/issues/42
-        target_repo: runxhq/runx
-        size: small
-        risk: low
-        base: main
+      repository: { definition: repository }
+      issue_number: { definition: issue_number }
+      objective: { definition: objective }
     graph:
       name: issue-to-pr
-      result_from: [push-feed-entry]
-      notes:
-        status: governed
-        rationale: >
-          This graph keeps cognition and mutation separate while treating
-          scafld 2.4 as the workflow kernel. Agent phases complete the
-          CLI-created markdown draft and author the bounded fix bundle.
-          Deterministic fs.write phases perform mutations. Native scafld plan,
-          validate, approve, build, review,
-          complete, status, and handoff surfaces stay visible instead of being
-          re-created by translation projection steps. The public story is the
-          source-thread lifecycle: signal, decision, spec, build, review,
-          draft PR, human merge gate, and final provider outcome when observed.
+      result_from: [host]
       steps:
-        - id: scafld-plan
-          label: open task lane
-          skill: graph/scafld
-          scopes:
-            - scafld:spec:write
-          mutation: true
+        - id: read-issue
+          tool: provider.read
+          scopes: [repo.read]
+          policy:
+            provider_permission:
+              verb: read
           inputs:
-            command: plan
-        - id: read-planned-spec
-          label: read scafld-owned draft
-          tool: fs.read
-          scopes:
-            - fs.read
+            expected_provider: github
+            operation: issue.read
+            target: $input.repository
+            result_fields: [repository, number, title, state, body, url, labels, assignees]
+            input:
+              issue_number: $input.issue_number
+
+        - id: bind-issue-evidence
+          inputs:
+            requested_repository: $input.repository
+            requested_issue_number: $input.issue_number
           context:
-            path: scafld-plan.result.data.path
-        - id: author-spec
-          label: complete scafld spec
+            provider_operation: read-issue.provider_operation.data
           run:
-            type: agent-task
-            agent: builder
-            task: issue-to-pr-author-spec
+            type: javascript
+            module: issue-to-pr.mjs
+            export: normalizeIssueEvidence
             outputs:
-              spec_contents: string
-              context_files: array
-          allowed_tools:
-            - fs.read
-            - git.status
-          context:
-            spec_path: scafld-plan.result.data.path
-            scafld_plan: scafld-plan.result.data
-            planned_spec_contents: read-planned-spec.file_read.data.contents
-        - id: write-spec
-          label: write markdown spec
-          tool: fs.write
-          scopes:
-            - fs.write
-          mutation: true
-          context:
-            path: scafld-plan.result.data.path
-            contents: author-spec.spec_contents
-        - id: read-draft-spec
-          label: read draft spec
-          tool: fs.read
-          scopes:
-            - fs.read
-          context:
-            path: scafld-plan.result.data.path
-        - id: scafld-validate
-          label: validate spec
-          skill: graph/scafld
-          scopes:
-            - scafld:spec:validate
-          inputs:
-            command: validate
-        - id: scafld-approve
-          label: approve spec
-          skill: graph/scafld
-          scopes:
-            - scafld:spec:approve
-          mutation: true
-          inputs:
-            command: approve
-        - id: read-approved-spec
-          label: read approved spec
-          tool: fs.read
-          scopes:
-            - fs.read
-          context:
-            path: scafld-approve.result.data.path
-        - id: read-declared-files
-          label: read bounded authoring context
-          tool: fs.read_bundle
-          scopes:
-            - fs.read
-          inputs:
-            on_missing: report
-          context:
-            paths: author-spec.context_files
-        - id: author-fix
-          label: author bounded fix
-          run:
-            type: agent-task
-            agent: builder
-            task: issue-to-pr-apply-fix
-            outputs:
-              fix_bundle: object
-          allowed_tools:
-            - fs.read
-            - git.status
-          context:
-            spec_path: scafld-approve.result.data.path
-            spec_file: read-approved-spec.file_read.data
-            spec_contents: read-approved-spec.file_read.data.contents
-            declared_file_context: read-declared-files.file_read_bundle.data
+              issue_evidence: object
           artifacts:
-            named_emits:
-              fix_bundle: fix_bundle
-            packets:
-              fix_bundle: runx.issue.fix_bundle.v1
-        - id: write-fix
-          label: write fix
-          tool: fs.apply_bundle
-          scopes:
-            - fs.write
+            named_emits: { issue_evidence: issue_evidence }
+            packets: { issue_evidence: runx.issue_to_pr.issue_evidence.v1 }
+
+        - id: host
+          skill: .
+          runner: host
+          inputs:
+            objective: $input.objective
+          context:
+            issue_evidence: bind-issue-evidence.issue_evidence.data
+
+  from-evidence:
+    type: graph
+    inputs:
+      issue_evidence: { definition: issue_evidence }
+      objective: { definition: objective }
+    graph:
+      name: issue-to-pr-from-evidence
+      result_from: [host]
+      steps:
+        - id: host
+          skill: .
+          runner: host
+          inputs:
+            objective: $input.objective
+            issue_evidence: $input.issue_evidence
+
+  host:
+    type: graph
+    inputs:
+      issue_evidence: { definition: issue_evidence }
+      objective: { definition: objective }
+    graph:
+      name: issue-to-pr-host
+      result_from: [publish, finalize-hold, finalize-blocked]
+      steps:
+        - id: host-work
+          inputs:
+            objective: $input.objective
+            issue_evidence: $input.issue_evidence
+          run:
+            type: agent-task
+            agent: builder
+            task: issue-to-pr-host-work
+            outputs:
+              host_result: object
+          artifacts:
+            named_emits: { host_result: host_result }
+            packets: { host_result: runx.issue_to_pr.host_result.v1 }
+
+        - id: admit-host-result
+          inputs:
+            issue_evidence: $input.issue_evidence
+          context:
+            host_result: host-work.host_result.data
+          run:
+            type: javascript
+            module: issue-to-pr.mjs
+            export: admitHostResult
+            outputs:
+              host_admission: object
+
+        - id: publish
+          when:
+            field: admit-host-result.host_admission.path
+            equals: publish
+          skill: .
+          runner: publish
+          context:
+            host_result: host-work.host_result.data
+
+        - id: finalize-hold
+          when:
+            field: admit-host-result.host_admission.path
+            equals: hold
+          context:
+            host_result: host-work.host_result.data
+            host_admission: admit-host-result.host_admission
+          run:
+            type: javascript
+            module: issue-to-pr.mjs
+            export: finalizeIssueToPr
+            outputs:
+              issue_to_pr_result: object
+          artifacts:
+            named_emits: { issue_to_pr_result: issue_to_pr_result }
+            packets: { issue_to_pr_result: runx.issue_to_pr.result.v1 }
+
+        - id: finalize-blocked
+          when:
+            field: admit-host-result.host_admission.path
+            equals: blocked
+          context:
+            host_result: host-work.host_result.data
+            host_admission: admit-host-result.host_admission
+          run:
+            type: javascript
+            module: issue-to-pr.mjs
+            export: finalizeIssueToPr
+            outputs:
+              issue_to_pr_result: object
+          artifacts:
+            named_emits: { issue_to_pr_result: issue_to_pr_result }
+            packets: { issue_to_pr_result: runx.issue_to_pr.result.v1 }
+
+  resume:
+    type: graph
+    inputs:
+      issue_evidence: { definition: issue_evidence }
+      host_result: { definition: host_result }
+    graph:
+      name: issue-to-pr-resume
+      result_from: [publish, finalize-hold, finalize-blocked]
+      steps:
+        - id: admit-host-result
+          inputs:
+            host_result: $input.host_result
+            issue_evidence: $input.issue_evidence
+          run:
+            type: javascript
+            module: issue-to-pr.mjs
+            export: admitHostResult
+            outputs:
+              host_admission: object
+
+        - id: publish
+          when:
+            field: admit-host-result.host_admission.path
+            equals: publish
+          skill: .
+          runner: publish
+          inputs:
+            host_result: $input.host_result
+
+        - id: finalize-hold
+          when:
+            field: admit-host-result.host_admission.path
+            equals: hold
+          inputs:
+            host_result: $input.host_result
+          context:
+            host_admission: admit-host-result.host_admission
+          run:
+            type: javascript
+            module: issue-to-pr.mjs
+            export: finalizeIssueToPr
+            outputs:
+              issue_to_pr_result: object
+          artifacts:
+            named_emits: { issue_to_pr_result: issue_to_pr_result }
+            packets: { issue_to_pr_result: runx.issue_to_pr.result.v1 }
+
+        - id: finalize-blocked
+          when:
+            field: admit-host-result.host_admission.path
+            equals: blocked
+          inputs:
+            host_result: $input.host_result
+          context:
+            host_admission: admit-host-result.host_admission
+          run:
+            type: javascript
+            module: issue-to-pr.mjs
+            export: finalizeIssueToPr
+            outputs:
+              issue_to_pr_result: object
+          artifacts:
+            named_emits: { issue_to_pr_result: issue_to_pr_result }
+            packets: { issue_to_pr_result: runx.issue_to_pr.result.v1 }
+
+  publish:
+    type: graph
+    inputs:
+      host_result: { definition: host_result }
+    graph:
+      name: issue-to-pr-publish
+      result_from: [finalize]
+      steps:
+        - id: publish-pr
+          tool: provider.mutate
           mutation: true
+          idempotency_key: $input.host_result.publication.idempotency_key
+          scopes: [pr.write]
+          policy:
+            provider_permission:
+              verb: write
+          inputs:
+            expected_provider: github
+            operation: pullrequest.open
+            target: $input.host_result.repository
+            idempotency_key: $input.host_result.publication.idempotency_key
+            result_fields: [repository, number, title, state, body, url, head, base, draft]
+            input:
+              title: $input.host_result.publication.title
+              body: $input.host_result.publication.body
+              head: $input.host_result.publication.head
+              base: $input.host_result.publication.base
+              draft: $input.host_result.publication.draft
+            expected_result:
+              repository: $input.host_result.repository
+              title: $input.host_result.publication.title
+              head: $input.host_result.publication.head
+              base: $input.host_result.publication.base
+
+        - id: readback-pr
+          tool: provider.read
+          scopes: [pr.read]
+          policy:
+            provider_permission:
+              verb: read
+          inputs:
+            expected_provider: github
+            operation: pullrequest.read
+            target: $input.host_result.repository
+            result_fields: [repository, number, title, state, body, url, head, base, draft]
           context:
-            writes: author-fix.fix_bundle.data.files
-        - id: scafld-build
-          label: build to review
-          skill: graph/scafld
-          scopes:
-            - scafld:build
-          mutation: true
+            input: publish-pr.provider_operation.data.result
+            expected_result: publish-pr.provider_operation.data.result
+
+        - id: finalize
           inputs:
-            command: build_to_review
-        - id: scafld-status
-          label: inspect review state
-          skill: graph/scafld
-          scopes:
-            - scafld:status:read
-          inputs:
-            command: status
-        - id: read-current-branch
-          label: read current branch
-          tool: git.current_branch
-          scopes:
-            - git.read
-        - id: scafld-review
-          label: run scafld review
-          skill: graph/scafld
-          scopes:
-            - scafld:review:write
-          mutation: true
-          inputs:
-            command: review
-        - id: scafld-complete
-          label: complete task
-          skill: graph/scafld
-          scopes:
-            - scafld:archive:write
-          mutation: true
-          inputs:
-            command: complete
-        - id: scafld-final-status
-          label: inspect completed state
-          skill: graph/scafld
-          scopes:
-            - scafld:status:read
-          inputs:
-            command: status
-        - id: scafld-handoff
-          label: render handoff
-          skill: graph/scafld
-          scopes:
-            - scafld:handoff:read
-          inputs:
-            command: handoff
-        - id: capture-harness-context
-          label: capture harness context
-          tool: control.capture_harness_context
-          scopes:
-            - runx:control:read
-          inputs:
-            harness: $input.harness
-            signal: $input.signal
-            decision: $input.decision
-        - id: package-pull-request
-          label: package reviewer PR story
-          tool: outbox.build_pull_request
-          scopes:
-            - runx:repo:package
+            host_result: $input.host_result
           context:
-            harness_context: capture-harness-context.harness_context.data
-            handoff_markdown: scafld-handoff.result.data.markdown
-            build_result: scafld-build.result.data
-            review_result: scafld-review.result.data
-            completion_result: scafld-complete.result.data
-            status_snapshot: scafld-final-status.result.data
-            current_branch: read-current-branch.git_branch.data
-            fix_bundle: author-fix.fix_bundle.data
-          inputs:
-            thread_body: $input.thread_body
-            repo_context: $input.repo_context
-            repo_snapshot: $input.repo_snapshot
-            operational_policy: $input.operational_policy
-            source_id: $input.source_id
-            target_repo: $input.target_repo
-            runner_id: $input.runner_id
-            source_thread_locator: $input.thread_locator
-            policy_action: issue-to-pr
-        - id: push-pull-request
-          label: push the PR outbox entry through thread
-          skill: ./push-outbox
-          scopes:
-            - thread:push
-          context:
-            outbox_entry: package-pull-request.outbox_entry.data
-            draft_pull_request: package-pull-request.draft_pull_request.data
-          inputs:
-            thread: $input.thread
-            fixture: $input.fixture
-            workspace_path: $input.workspace_path
-            next_status: draft
-        - id: package-feed-entry
-          label: package feed entry
-          tool: outbox.build_feed_entry
-          scopes:
-            - runx:repo:package
-          context:
-            thread: push-pull-request.thread
-            harness_context: capture-harness-context.harness_context.data
-            build_result: scafld-build.result.data
-            review_result: scafld-review.result.data
-            completion_result: scafld-complete.result.data
-            status_snapshot: scafld-final-status.result.data
-            draft_pull_request: package-pull-request.draft_pull_request.data
-            pull_request_outbox_entry: push-pull-request.outbox_entry
-            push_result: push-pull-request.push
-        - id: push-feed-entry
-          label: update source thread feed
-          skill: ./push-outbox
-          scopes:
-            - thread:push
-          context:
-            thread: push-pull-request.thread
-            outbox_entry: package-feed-entry.outbox_entry.data
-            draft_pull_request: package-pull-request.draft_pull_request.data
-          inputs:
-            fixture: $input.fixture
-            workspace_path: $input.workspace_path
-            next_status: published
-      policy:
-        guards:
-          - step: write-fix
-            field: author-fix.fix_bundle.data.files
-            not_equals: []
+            publication_result: publish-pr.provider_operation.data
+            readback_result: readback-pr.provider_operation.data
+          run:
+            type: javascript
+            module: issue-to-pr.mjs
+            export: finalizeIssueToPr
+            outputs:
+              issue_to_pr_result: object
+          artifacts:
+            named_emits: { issue_to_pr_result: issue_to_pr_result }
+            packets: { issue_to_pr_result: runx.issue_to_pr.result.v1 }

@@ -50,6 +50,30 @@ fn architecture_fixture() -> Value {
     json!({
         "schema": "runx.skill.architecture_decision.v1",
         "disposition": "build",
+        "identity": {
+            "current_name": null,
+            "proposed_name": "demo",
+            "action": "create",
+            "visibility": "public",
+            "rationale": "Demo is the natural operation name for the fixture."
+        },
+        "direct_use": {
+            "trigger_requests": ["Make a bounded demo decision."],
+            "non_trigger_requests": ["Publish this decision."],
+            "default_outcome": "Return one bounded decision.",
+            "routine_host_work": ["Inspect the supplied objective."],
+            "runx_boundary": "Bind the result and evidence in a receipt.",
+            "terminal_result": "A reviewable demo decision.",
+            "blocker_behavior": "Block once with the missing evidence named.",
+            "native_escape": "Return the gathered evidence for ordinary host continuation."
+        },
+        "chain_use": {
+            "accepted_inputs": ["A supplied objective or prior evidence packet."],
+            "result": "A reusable demo decision.",
+            "reused_evidence": ["Prior objective evidence."],
+            "reused_effects": [],
+            "must_not_repeat": ["Do not rediscover supplied objective evidence."]
+        },
         "objective": "Create a bounded decision skill.",
         "operator_value": "Turn supplied evidence into one reviewable decision.",
         "knowledge_contract": {
@@ -85,11 +109,23 @@ fn architecture_fixture() -> Value {
         },
         "preservation_obligations": ["Keep the manual substantive."],
         "deletions": [],
-        "proof_plan": [{
-            "name": "bounded-harness",
-            "kind": "harness",
-            "expected": "The supplied-answer fixture seals."
-        }]
+        "proof_plan": [
+            {
+                "name": "cold-selection",
+                "kind": "selection_trial",
+                "expected": "A natural demo request selects this skill and a publish-only request does not."
+            },
+            {
+                "name": "standalone-result",
+                "kind": "standalone_operator_journey",
+                "expected": "The direct request returns the bounded domain decision."
+            },
+            {
+                "name": "composed-reuse",
+                "kind": "composed_operator_journey",
+                "expected": "Prior evidence is reused without rediscovery."
+            }
+        ]
     })
 }
 

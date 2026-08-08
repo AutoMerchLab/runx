@@ -1,14 +1,14 @@
 skill: refund
-version: "0.3.1"
+version: "0.4.0"
 catalog:
   kind: graph
   audience: operator
   visibility: public
   role: canonical
-  execution: plan
-  completion: plan
-  requires_adapter: false
-  approval: none
+  execution: execute
+  completion: provider_readback
+  requires_adapter: true
+  approval: required
 input_definitions:
   original_receipt_ref:
     type: string
@@ -26,8 +26,129 @@ input_definitions:
     required: true
     description: Full typed parent refund AuthorityTerm; a reference alone is refused.
 runners:
-  mock:
+  refund:
     default: true
+    type: graph
+    inputs:
+      original_receipt_ref: { definition: original_receipt_ref }
+      refund_request: { definition: refund_request }
+      parent_payment_authority: { definition: parent_payment_authority }
+      settlement_family:
+        type: string
+        required: true
+        description: Real configured refund family; mock remains explicit test-only planning.
+        schema: { enum: [mpp, stripe] }
+      provider:
+        type: string
+        required: true
+        description: Configured provider that can reverse and read the original charge.
+      target:
+        type: string
+        required: true
+        description: Exact provider charge or payment target.
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for this exact refund.
+    graph:
+      name: refund-execute
+      result_from: [mpp-readback, stripe-readback]
+      steps:
+        - id: select-mpp
+          tool: data.compare
+          inputs: { actual: $input.settlement_family, expected: mpp }
+        - id: mpp-plan
+          when: { field: select-mpp.comparison.data.equal, equals: true }
+          skill: .
+          runner: mpp
+          inputs:
+            original_receipt_ref: $input.original_receipt_ref
+            refund_request: $input.refund_request
+            parent_payment_authority: $input.parent_payment_authority
+        - id: mpp-refund
+          when: { field: select-mpp.comparison.data.equal, equals: true }
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: $input.idempotency_key
+          scopes: [payment.refund]
+          policy:
+            provider_permission: { verb: write }
+          inputs:
+            operation: payment.refund
+            target: $input.target
+            expected_provider: $input.provider
+            idempotency_key: $input.idempotency_key
+            result_fields: [refund_ref, original_receipt_ref, amount_minor, currency, status]
+            expected_result:
+              original_receipt_ref: $input.original_receipt_ref
+              amount_minor: $input.refund_request.amount_minor
+            input:
+              refund_plan: $input.refund_plan
+          context:
+            refund_plan: mpp-plan.refund_plan.data
+        - id: mpp-readback
+          when: { field: select-mpp.comparison.data.equal, equals: true }
+          tool: provider.read
+          scopes: [payment.refund.read]
+          policy:
+            provider_permission: { verb: read }
+          inputs:
+            operation: payment.refund.read
+            target: $input.target
+            expected_provider: $input.provider
+            result_fields: [refund_ref, original_receipt_ref, amount_minor, currency, status]
+          context:
+            input: mpp-refund.provider_operation.data.result
+            expected_result: mpp-refund.provider_operation.data.result
+
+        - id: select-stripe
+          tool: data.compare
+          inputs: { actual: $input.settlement_family, expected: stripe }
+        - id: stripe-plan
+          when: { field: select-stripe.comparison.data.equal, equals: true }
+          skill: .
+          runner: stripe
+          inputs:
+            original_receipt_ref: $input.original_receipt_ref
+            refund_request: $input.refund_request
+            parent_payment_authority: $input.parent_payment_authority
+        - id: stripe-refund
+          when: { field: select-stripe.comparison.data.equal, equals: true }
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: $input.idempotency_key
+          scopes: [payment.refund]
+          policy:
+            provider_permission: { verb: write }
+          inputs:
+            operation: payment.refund
+            target: $input.target
+            expected_provider: $input.provider
+            idempotency_key: $input.idempotency_key
+            result_fields: [refund_ref, original_receipt_ref, amount_minor, currency, status]
+            expected_result:
+              original_receipt_ref: $input.original_receipt_ref
+              amount_minor: $input.refund_request.amount_minor
+            input:
+              refund_plan: $input.refund_plan
+          context:
+            refund_plan: stripe-plan.refund_plan.data
+        - id: stripe-readback
+          when: { field: select-stripe.comparison.data.equal, equals: true }
+          tool: provider.read
+          scopes: [payment.refund.read]
+          policy:
+            provider_permission: { verb: read }
+          inputs:
+            operation: payment.refund.read
+            target: $input.target
+            expected_provider: $input.provider
+            result_fields: [refund_ref, original_receipt_ref, amount_minor, currency, status]
+          context:
+            input: stripe-refund.provider_operation.data.result
+            expected_result: stripe-refund.provider_operation.data.result
+
+  mock:
     type: graph
     inputs:
       original_receipt_ref:

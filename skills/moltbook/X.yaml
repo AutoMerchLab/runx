@@ -1,5 +1,5 @@
 skill: moltbook
-version: "0.3.1"
+version: "0.4.0"
 
 catalog:
   kind: skill
@@ -8,10 +8,10 @@ catalog:
   role: context
   provider: moltbook
   runtime_path: moltbook
-  execution: execute
+  execution: read
   completion: provider_readback
   requires_adapter: true
-  approval: required
+  approval: none
 
 input_definitions:
   feed_snapshot:
@@ -52,6 +52,10 @@ input_definitions:
 harness:
   cases:
     - name: moltbook-scan-binds-fresh-opportunity
+      operator_journeys:
+        - mode: standalone
+          request: Scan Moltbook for credible opportunities relevant to this operator objective.
+          expected_outcome: Return fresh evidence-bound opportunities with credibility and source caveats explicit.
       runner: scan
       inputs:
         objective: Find one useful post for Runx builders.
@@ -110,6 +114,15 @@ harness:
         receipt: { schema: runx.receipt.v1 }
 
     - name: moltbook-post-preserves-scan-evidence-without-posting
+      operator_journeys:
+        - mode: composed
+          request: Prepare the exact Moltbook post from this completed opportunity scan.
+          expected_outcome: Reuse scan evidence and selected opportunity without rescanning or claiming publication.
+          prior_evidence:
+            - The completed Moltbook scan packet and selected opportunity supplied in the fixture.
+          must_not_repeat:
+            - Do not scan the Moltbook feed again.
+            - Do not publish without exact approval and provider readback.
       runner: post
       inputs:
         scan_packet:
@@ -159,6 +172,7 @@ harness:
 
 runners:
   scan-provider:
+    default: true
     type: graph
     inputs:
       objective:
@@ -288,7 +302,6 @@ runners:
               moltbook_scan_packet: runx.moltbook.scan.v1
 
   scan:
-    default: true
     type: graph
     inputs:
       objective:

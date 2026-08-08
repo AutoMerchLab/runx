@@ -33,6 +33,26 @@ pub enum HarnessExpectedStatus {
     Escalated,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperatorJourneyMode {
+    Standalone,
+    Composed,
+    Refusal,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OperatorJourneyClaim {
+    pub mode: OperatorJourneyMode,
+    pub request: String,
+    pub expected_outcome: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prior_evidence: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub must_not_repeat: Vec<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HarnessFixture {
     pub name: String,
@@ -44,6 +64,7 @@ pub struct HarnessFixture {
     pub env: BTreeMap<String, String>,
     pub caller: JsonObject,
     pub expect: HarnessExpectation,
+    pub operator_journeys: Vec<OperatorJourneyClaim>,
     pub metadata: JsonObject,
 }
 
@@ -106,6 +127,8 @@ struct RawHarnessFixture {
     #[serde(default)]
     expect: RawHarnessExpectation,
     #[serde(default)]
+    operator_journeys: Vec<OperatorJourneyClaim>,
+    #[serde(default)]
     metadata: JsonObject,
 }
 
@@ -167,6 +190,20 @@ pub fn parse_harness_fixture(contents: &str) -> Result<HarnessFixture, HarnessFi
     validate_fixture(parse_yaml_document::<RawHarnessFixture>(contents)?)
 }
 
+pub(crate) fn parse_operator_journey(
+    value: JsonObject,
+) -> Result<OperatorJourneyClaim, HarnessFixtureError> {
+    let value = serde_json::to_value(value).map_err(|error| HarnessFixtureError::Invalid {
+        field: "operator_journey".to_owned(),
+        message: error.to_string(),
+    })?;
+    let claim = serde_json::from_value(value).map_err(|error| HarnessFixtureError::Invalid {
+        field: "operator_journey".to_owned(),
+        message: error.to_string(),
+    })?;
+    validate_operator_journey(claim)
+}
+
 /// Validate an inline runner-harness expectation through the same contract as
 /// a conventional fixture. Inline `X.yaml` cases and standalone fixture files
 /// must not acquire parallel expectation vocabularies.
@@ -206,8 +243,52 @@ fn validate_fixture(fixture: RawHarnessFixture) -> Result<HarnessFixture, Harnes
         env: fixture.env,
         caller: fixture.caller,
         expect: validate_expectation(fixture.expect)?,
+        operator_journeys: fixture
+            .operator_journeys
+            .into_iter()
+            .map(validate_operator_journey)
+            .collect::<Result<_, _>>()?,
         metadata: fixture.metadata,
     })
+}
+
+fn validate_operator_journey(
+    claim: OperatorJourneyClaim,
+) -> Result<OperatorJourneyClaim, HarnessFixtureError> {
+    for (field, value) in [
+        ("operator_journey.request", claim.request.as_str()),
+        (
+            "operator_journey.expected_outcome",
+            claim.expected_outcome.as_str(),
+        ),
+    ] {
+        if value.trim().is_empty() {
+            return Err(HarnessFixtureError::Required {
+                field: field.to_owned(),
+            });
+        }
+    }
+    if claim
+        .prior_evidence
+        .iter()
+        .chain(&claim.must_not_repeat)
+        .any(|value| value.trim().is_empty())
+    {
+        return Err(HarnessFixtureError::Invalid {
+            field: "operator_journey".to_owned(),
+            message: "prior_evidence and must_not_repeat entries must not be empty".to_owned(),
+        });
+    }
+    if claim.mode == OperatorJourneyMode::Composed
+        && (claim.prior_evidence.is_empty() || claim.must_not_repeat.is_empty())
+    {
+        return Err(HarnessFixtureError::Invalid {
+            field: "operator_journey".to_owned(),
+            message: "composed journeys require prior_evidence and must_not_repeat assertions"
+                .to_owned(),
+        });
+    }
+    Ok(claim)
 }
 
 fn validate_setup(setup: HarnessSetup) -> Result<HarnessSetup, HarnessFixtureError> {

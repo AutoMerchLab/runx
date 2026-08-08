@@ -1,0 +1,9 @@
+name: moltbook-default-requires-provider-feed-binding
+kind: skill
+target: ..
+inputs:
+  objective: Find one useful post for Runx builders.
+  as_of: "2026-07-17T12:00:00Z"
+expect:
+  status: policy_denied
+metadata: { public_skill: moltbook, source_case: direct-default-preflight, source: skills-fixture }

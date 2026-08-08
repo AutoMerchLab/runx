@@ -1,5 +1,5 @@
 skill: stripe-pay
-version: "0.2.2"
+version: "0.3.0"
 catalog:
   kind: graph
   audience: operator
@@ -98,6 +98,7 @@ runners:
         - id: spend
           skill: ../spend
           runner: stripe-spt
+          mutation: true
           inputs:
             payment_signal: $input.payment_signal
             parent_payment_authority: $input.parent_payment_authority

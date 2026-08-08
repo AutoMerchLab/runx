@@ -2,6 +2,18 @@ name: spend-stripe-spt-path
 kind: skill
 target: ..
 runner: stripe-spt
+operator_journeys:
+  - mode: standalone
+    request: Execute this exact Stripe SPT payment under bounded Runx spend authority.
+    expected_outcome: Quote, reserve, approve, fulfill once, and return independently verified payment finality.
+  - mode: composed
+    request: Continue spending from this admitted payment signal and parent authority.
+    expected_outcome: Reuse the challenge, quote, and authority state without re-admission or duplicate settlement.
+    prior_evidence:
+      - The admitted payment signal and parent payment authority supplied in the fixture.
+    must_not_repeat:
+      - Do not requote or reserve authority again.
+      - Do not settle again after finality evidence exists.
 inputs:
   payment_signal:
     signal_type: effect_required

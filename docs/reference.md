@@ -559,7 +559,7 @@ or import uncompiled TypeScript.
 The official catalog is explicit about why each package is public:
 
 - canonical governed skills: `charge`, `dispute-respond`,
-  `skill-lab`, `review-skill`, `least-privilege`, `overlay`,
+  `skill-lab`, `review-skill`, `least-privilege`, `adopt-skill`,
   `policy-author`, `audit-receipt`, `refund`, `ops-desk`, `send-as`, `spend`,
   `weather-forecast`
 - branded provider skills: `nitrosend`, `nws-weather-forecast`, `stripe-pay`,

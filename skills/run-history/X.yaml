@@ -1,5 +1,5 @@
 skill: run-history
-version: "0.2.3"
+version: "0.2.4"
 
 catalog:
   kind: skill
@@ -14,6 +14,18 @@ catalog:
 harness:
   cases:
     - name: reports-native-history-and-catalog-coverage
+      operator_journeys:
+        - mode: standalone
+          request: Summarize recent Runx outcomes and catalog test coverage for this project.
+          expected_outcome: Return deterministic bounded history, pending-run, and catalog coverage facts with truthful follow-ups.
+        - mode: composed
+          request: Analyze these existing history and catalog projections for operator follow-up.
+          expected_outcome: Reuse supplied native projections without rereading receipt stores or inventing metrics.
+          prior_evidence:
+            - The bounded receipt rows, pending runs, and catalog items supplied in the fixture.
+          must_not_repeat:
+            - Do not query the receipt store again when replay projections are supplied.
+            - Do not inspect catalog entries already included in the projection.
       inputs:
         objective: Show how Runx behaved over the supplied window.
         scope: workspace

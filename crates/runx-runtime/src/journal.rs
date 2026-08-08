@@ -67,6 +67,7 @@ pub struct HistoryFilter {
     pub since: Option<String>,
     pub until: Option<String>,
     pub limit: Option<usize>,
+    pub include_harness: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -280,6 +281,7 @@ pub fn list_local_history_with_checkpoints_and_policy(
     let all_rows = match store.list_without_proof_for_history() {
         Ok(receipts) => receipts
             .iter()
+            .filter(|receipt| filter.include_harness || !is_harness_receipt(receipt))
             .map(|receipt| history_row_with_policy(receipt, signature_policy))
             .collect::<Vec<_>>(),
         Err(ReceiptStoreError::MissingStore { .. }) => Vec::new(),
@@ -289,12 +291,18 @@ pub fn list_local_history_with_checkpoints_and_policy(
         .iter()
         .flat_map(|row| [row.id.clone(), row.harness_id.clone()])
         .collect::<BTreeSet<_>>();
+    let terminal_rows = all_rows.clone();
     let mut rows = all_rows
         .into_iter()
         .filter(|row| matches_history_filter(row, &filter))
         .collect::<Vec<_>>();
     let mut pending_runs = list_paused_runs(store.root(), &terminal_ids, checkpoints)?
         .into_iter()
+        .filter(|pending| {
+            !terminal_rows
+                .iter()
+                .any(|receipt| receipt_terminates_run(receipt, pending))
+        })
         .filter(|row| matches_paused_history_filter(row, &filter))
         .collect::<Vec<_>>();
     rows.sort_by(|left, right| {
@@ -308,7 +316,7 @@ pub fn list_local_history_with_checkpoints_and_policy(
             .then_with(|| left.id.cmp(&right.id))
     });
     if let Some(limit) = filter.limit {
-        rows.truncate(limit);
+        truncate_combined_history(&mut rows, &mut pending_runs, limit);
     }
     Ok(LocalHistoryProjection {
         projector_id: HISTORY_PROJECTOR_ID.to_owned(),
@@ -562,6 +570,7 @@ struct ResolvedHistoryFilter {
     since: Option<Timestamp>,
     until: Option<Timestamp>,
     limit: Option<usize>,
+    include_harness: bool,
 }
 
 impl ResolvedHistoryFilter {
@@ -576,6 +585,7 @@ impl ResolvedHistoryFilter {
             since: parse_date_filter("since", &filter.since)?,
             until: parse_date_filter("until", &filter.until)?,
             limit: filter.limit,
+            include_harness: filter.include_harness,
         })
     }
 }
@@ -931,7 +941,12 @@ fn paused_run_from_events(run_id: &str, events: &[LedgerRunEvent]) -> Option<Pau
     for event in events.iter().rev() {
         if matches!(
             event.kind.as_str(),
-            "run_completed" | "run_failed" | "graph_completed"
+            "run_completed"
+                | "run_failed"
+                | "run_blocked"
+                | "graph_completed"
+                | "graph_failed"
+                | "graph_blocked"
         ) {
             return None;
         }
@@ -966,6 +981,85 @@ fn paused_run_from_events(run_id: &str, events: &[LedgerRunEvent]) -> Option<Pau
         }
     }
     None
+}
+
+fn is_harness_receipt(receipt: &Receipt) -> bool {
+    receipt.created_at.as_ref() == crate::time::DEFAULT_CREATED_AT
+        || matches!(receipt.subject.kind.as_ref(), "harness" | "trial")
+}
+
+fn receipt_terminates_run(receipt: &LocalHistoryReceipt, pending: &PausedRunSummary) -> bool {
+    let run_id = receipt_identity_segment(&pending.id);
+    if receipt.id == format!("hrn_rcpt_{run_id}")
+        || receipt.harness_id == format!("hrn_{run_id}_graph")
+    {
+        return true;
+    }
+    let Some(runner) = pending.selected_runner.as_deref() else {
+        return false;
+    };
+    let runner = receipt_identity_segment(runner);
+    receipt.id == format!("hrn_rcpt_{run_id}_{runner}")
+        || receipt.harness_id == format!("hrn_{run_id}_{runner}")
+}
+
+fn receipt_identity_segment(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '_' | '-') {
+                character
+            } else if character == '.' {
+                '-'
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .trim_matches(['.', '_', '-'])
+        .to_owned()
+}
+
+fn truncate_combined_history(
+    receipts: &mut Vec<LocalHistoryReceipt>,
+    pending: &mut Vec<PausedRunSummary>,
+    limit: usize,
+) {
+    while receipts.len().saturating_add(pending.len()) > limit {
+        if receipts.is_empty() {
+            pending.pop();
+            continue;
+        }
+        if pending.is_empty() {
+            receipts.pop();
+            continue;
+        }
+
+        let receipt_time = receipts
+            .last()
+            .and_then(|receipt| Timestamp::parse(&receipt.created_at));
+        let pending_time = pending
+            .last()
+            .and_then(|run| run.started_at.as_deref())
+            .and_then(Timestamp::parse);
+        match (receipt_time, pending_time) {
+            (None, None) => {
+                pending.pop();
+            }
+            (None, Some(_)) => {
+                receipts.pop();
+            }
+            (Some(_), None) => {
+                pending.pop();
+            }
+            (Some(receipt_time), Some(pending_time)) if receipt_time <= pending_time => {
+                receipts.pop();
+            }
+            (Some(_), Some(_)) => {
+                pending.pop();
+            }
+        }
+    }
 }
 
 fn invalid_paused_run(run_id: &str, reason: String) -> PausedRunSummary {

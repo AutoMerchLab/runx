@@ -1,29 +1,59 @@
 skill: business-ops
-version: "0.1.6"
+version: "0.2.0"
 
 catalog:
   kind: graph
   audience: public
   visibility: public
   role: canonical
-  execution: execute
-  completion: runtime_receipt
-  requires_adapter: true
-  approval: conditional
+  execution: plan
+  completion: plan
+  requires_adapter: false
+  approval: none
+
+input_definitions:
+  lane:
+    type: string
+    required: false
+    default: classify
+    description: One bounded lane to route; unrelated branches are not run.
+    schema: { enum: [classify, sourcey, release.prepare, issue-to-pr, outreach.plan, spend.quote, receipt-audit] }
+  signal:
+    type: string
+    required: true
+    description: Business signal to triage.
+  operator_context:
+    type: string
+    required: false
+    description: Optional product policy, topology, audience constraints, or provider state. Context only, not authority.
 
 runners:
-  main:
+  route:
     default: true
     type: graph
     inputs:
-      signal:
-        type: string
-        required: true
-        description: Business signal to triage.
-      operator_context:
-        type: string
-        required: false
-        description: Optional product policy, topology, audience constraints, or provider state. Context only, not authority.
+      lane: { definition: lane }
+      signal: { definition: signal }
+      operator_context: { definition: operator_context }
+    examples:
+      - signal: Launch readiness for API v2.
+        operator_context: Live sends and spend require their owning governed lanes.
+    graph:
+      name: business-ops-route
+      result_from: [route]
+      steps:
+        - id: route
+          skill: ./graph/ops-lane
+          inputs:
+            lane: "$input.lane"
+            signal: "$input.signal"
+            operator_context: "$input.operator_context"
+
+  main:
+    type: graph
+    inputs:
+      signal: { definition: signal }
+      operator_context: { definition: operator_context }
     graph:
       name: business-ops
       result_from: [package-route]
@@ -96,6 +126,7 @@ runners:
   route_and_append:
     type: graph
     inputs:
+      lane: { definition: lane }
       data_source_ref:
         type: string
         required: true
@@ -116,14 +147,8 @@ runners:
         type: string
         required: true
         description: Stable retry key for this routed signal.
-      signal:
-        type: string
-        required: true
-        description: Business signal to triage.
-      operator_context:
-        type: string
-        required: false
-        description: Optional product policy, topology, audience constraints, or provider state. Context only, not authority.
+      signal: { definition: signal }
+      operator_context: { definition: operator_context }
     graph:
       name: business-ops-route-and-append
       result_from: [persist-route, readback]
@@ -131,12 +156,13 @@ runners:
         - id: classify
           skill: ./graph/ops-lane
           inputs:
-            lane: classify
+            lane: "$input.lane"
             signal: "$input.signal"
             operator_context: "$input.operator_context"
         - id: persist-route
           skill: ../data-store
           runner: append_event
+          mutation: true
           inputs:
             data_source_ref: "$input.data_source_ref"
             resource: "$input.resource"

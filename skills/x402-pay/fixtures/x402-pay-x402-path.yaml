@@ -2,6 +2,18 @@ name: x402-pay-emits-bounded-quote-only
 kind: skill
 target: ..
 runner: x402
+operator_journeys:
+  - mode: standalone
+    request: Pay this exact x402 challenge under the supplied Runx payment authority.
+    expected_outcome: Validate the challenge and return the canonical spend quote without pretending settlement exists.
+  - mode: composed
+    request: Continue payment from this admitted x402 challenge and parent authority.
+    expected_outcome: Reuse challenge and authority evidence without re-admission, requoting, or false settlement.
+    prior_evidence:
+      - The admitted x402 payment signal and parent payment authority supplied in the fixture.
+    must_not_repeat:
+      - Do not revalidate or requote the same challenge.
+      - Do not claim settlement until canonical spend returns finality evidence.
 inputs:
   payment_signal:
     signal_type: effect_required

@@ -15,8 +15,8 @@ mod types;
 
 pub use manifest::resolve_skill_credential_for_path;
 pub use profile_store::{
-    bind_project_credential, list_local_credential_profiles, load_project_bindings,
-    remove_local_credential_profile, set_local_credential_profile,
+    bind_project_credential, bind_project_provider_transport, list_local_credential_profiles,
+    load_project_bindings, remove_local_credential_profile, set_local_credential_profile,
 };
 pub use types::{
     CredentialBindingsFile, CredentialProfileSummary, ResolvedSkillCredential,

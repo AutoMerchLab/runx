@@ -29,6 +29,12 @@ discover step can confirm existing config, the author/revise passes can return
 empty bundles, and the deterministic tool steps still perform the build and
 verification work.
 
+A direct zero-input invocation targets the current workspace, so `runx skill
+sourcey` reaches bounded discovery immediately. A composed chain targeting a
+different project should pass both `project` and `repo_root` explicitly so
+discovery, authored-source writes, and deterministic builds stay on the same
+workspace boundary.
+
 For repository-backed projects, Sourcey owns two separate surfaces: committed
 docs source and generated site output. Keep those separate. Do not mix emitted
 HTML, search indexes, or OG assets back into the authored docs tree.
@@ -110,7 +116,7 @@ thin. Missing evidence is not the same as missing files.
 
 ## Procedure
 
-1. Inspect the project and discover a bounded documentation plan from real project evidence.
+1. Inspect the current workspace by default, or the explicit project root supplied by a chain, and discover a bounded documentation plan from real project evidence.
 2. Approve the discovered plan before authoring.
 3. Author the bounded Sourcey source bundle.
 4. Persist that bundle deterministically.
@@ -187,8 +193,8 @@ with `needs_more_evidence` or `needs_review` instead of producing filler.
 
 ## Inputs
 
-- `project` (required): project root directory.
-- `repo_root`: optional alias for the project root when Sourcey is composed inside a parent graph that already uses `repo_root`.
+- `project`: project root directory (default: the current workspace).
+- `repo_root`: filesystem root for authored-source writes (default: the current workspace). When a composed chain targets another project, pass both `project` and `repo_root` explicitly and keep them aligned.
 - `brand_name`: project name (discovered from package evidence if omitted).
 - `homepage_url`: project homepage (discovered from project evidence if omitted).
 - `docs_inputs`: structured docs inputs, e.g. `{"mode":"config","config":"docs/sourcey.config.ts"}` or `{"mode":"openapi","spec":"openapi.yaml"}`. Discovered if omitted and may point at authored config produced by the skill.

@@ -1,17 +1,18 @@
 ---
 name: vault-unseal
-description: Plan or execute a scoped, time-bounded vault-unseal request through Runx Connect, returning only opaque handle metadata and provider readback.
+description: Plan or execute a scoped, time-bounded vault-unseal request through any compatible vault binding, returning only opaque handle metadata and provider readback.
 runx:
   category: security
 ---
 
 # Vault Unseal
 
-Prepare one least-privilege request to make an opaque secret reference available
+Execute one least-privilege request to make an opaque secret reference available
 to one principal for one purpose, scope, and short access window. The default
-runner stops at a plan. `execute` sends that exact request through a configured
-vault Connect grant after approval and independently reads the resulting handle
-metadata. Neither runner retrieves or reveals secret material.
+`execute` runner sends that exact request through a configured vault adapter
+after approval and independently reads the resulting handle metadata.
+`vault-unseal` remains the explicit plan-only runner. Neither runner retrieves
+or reveals secret material.
 
 Use it when a later workload needs a bounded secret handle and the request must
 pass a human approval and real vault adapter. Do not use it as a secret store,
@@ -33,8 +34,9 @@ agent context.
 
 The local plan needs no approval because it exposes no secret and changes no
 provider state. The unseal operation is consequential and remains a separate
-gate. Credentials stay in Runx Connect; the package receives no token and owns
-no request client.
+gate. Credential custody stays in the operator-selected local, self-hosted,
+third-party, or Runx-hosted vault binding; the package receives no token and
+owns no request client.
 
 ## Result and stop conditions
 
@@ -50,7 +52,7 @@ request.
 - Refuse TTL below one minute or above one hour.
 - Refuse wildcard principals, purposes, scopes, or an opaque ref that cannot be
   distinguished from secret material.
-- Refuse a missing, ambiguous, wrong-provider, or under-scoped Connect grant;
+- Refuse a missing, ambiguous, wrong-provider, or under-scoped vault binding;
   never fall back to local environment parsing or a raw vault token.
 - Do not claim a handle was issued, mounted, used, or revoked without adapter
   evidence and independent handle readback.

@@ -228,12 +228,13 @@ pub use skill_authoring::{
     SkillApplyResult, SkillApplyResultSchema, SkillApplyVerdict, SkillApprovalRequirement,
     SkillArchitectureDecision, SkillArchitectureDecisionSchema, SkillArchitectureDisposition,
     SkillArchitecturePlan, SkillArchitecturePlanSchema, SkillBehaviorDecision, SkillChainPlan,
-    SkillChangeBundle, SkillChangeBundleSchema, SkillChangeDecision, SkillChangeDraft,
-    SkillChangeDraftSchema, SkillEffectClass, SkillEffectRequirement, SkillExecutionLane,
-    SkillExpectedOutput, SkillFileWrite, SkillKnowledgeContract, SkillNativeReuseEvidence,
-    SkillPackageDelta, SkillPackageMetrics, SkillProofKind, SkillProofRequirement,
-    SkillResourceBudget, SkillValidationCheck, SkillValidationCheckStatus, SkillValidationResult,
-    SkillValidationResultSchema,
+    SkillChainUseContract, SkillChangeBundle, SkillChangeBundleSchema, SkillChangeDecision,
+    SkillChangeDraft, SkillChangeDraftSchema, SkillDirectUseContract, SkillEffectClass,
+    SkillEffectRequirement, SkillExecutionLane, SkillExpectedOutput, SkillFileWrite,
+    SkillIdentityAction, SkillIdentityDecision, SkillKnowledgeContract, SkillNativeReuseEvidence,
+    SkillPackageDelta, SkillPackageMetrics, SkillPackageVisibility, SkillProofKind,
+    SkillProofRequirement, SkillResourceBudget, SkillValidationCheck, SkillValidationCheckStatus,
+    SkillValidationResult, SkillValidationResultSchema,
 };
 pub use source_packet::{SOURCE_PACKET_SCHEMA, SourcePacket, SourcePacketSchema};
 pub use suppression::{SuppressionRecord, SuppressionRecordSchema, SuppressionScope};

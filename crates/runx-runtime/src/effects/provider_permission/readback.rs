@@ -98,11 +98,12 @@ pub(super) fn provider_operation_access(access: ProviderNativeAccess) -> Provide
 }
 
 #[cfg(feature = "catalog")]
-pub(super) struct ProviderReadbackContract<'a> {
+pub(super) struct ProviderReadbackContract {
     pub(super) expected_provider: String,
     pub(super) grant_id: String,
     pub(super) access: ProviderNativeAccess,
-    pub(super) principal_id: &'a str,
+    pub(super) principal_ref: String,
+    pub(super) transport: &'static str,
     pub(super) expected_result: Option<JsonObject>,
     pub(super) result_fields: Option<Vec<String>>,
     pub(super) finality: ProviderEffectFinality,
@@ -146,7 +147,7 @@ pub(super) fn complete_provider_effect(
 pub(super) fn project_provider_tool_readback(
     tool_ref: &str,
     mut readback: JsonObject,
-    contract: ProviderReadbackContract<'_>,
+    contract: ProviderReadbackContract,
 ) -> Result<JsonValue, RuntimeError> {
     validate_expected_provider(tool_ref, &readback, &contract.expected_provider)?;
     validate_expected_result(
@@ -245,7 +246,7 @@ fn provider_result_object<'a>(
         })
 }
 
-fn append_readback_contract(readback: &mut JsonObject, contract: &ProviderReadbackContract<'_>) {
+fn append_readback_contract(readback: &mut JsonObject, contract: &ProviderReadbackContract) {
     readback.insert(
         "schema".to_owned(),
         JsonValue::String("runx.provider.operation.v1".to_owned()),
@@ -262,7 +263,11 @@ fn append_readback_contract(readback: &mut JsonObject, contract: &ProviderReadba
     );
     readback.insert(
         "principal_ref".to_owned(),
-        JsonValue::String(format!("runx:principal:{}", contract.principal_id)),
+        JsonValue::String(contract.principal_ref.clone()),
+    );
+    readback.insert(
+        "transport".to_owned(),
+        JsonValue::String(contract.transport.to_owned()),
     );
     readback.insert(
         "grant_ref".to_owned(),

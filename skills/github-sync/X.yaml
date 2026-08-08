@@ -1,5 +1,5 @@
 skill: github-sync
-version: "0.4.1"
+version: "0.5.0"
 
 catalog:
   kind: skill
@@ -193,6 +193,119 @@ input_definitions:
 runners:
   github-sync:
     default: true
+    type: graph
+    inputs:
+      repo: { definition: repository }
+      direction: { definition: direction }
+      resources: { definition: resources }
+      scope: { definition: scope }
+      idempotency_key:
+        type: string
+        required: false
+        description: Stable retry key required for push and ignored for pull.
+    examples:
+      - repo: runxhq/runx
+        direction: pull
+        resources: { kind: issues, filters: { state: open, labels: [triage], limit: 25 } }
+        scope: read
+    graph:
+      name: github-sync
+      result_from: [pull, readback, plan]
+      steps:
+        - id: plan
+          inputs:
+            repo: $input.repo
+            direction: $input.direction
+            resources: $input.resources
+            scope: $input.scope
+          run:
+            type: javascript
+            module: github-sync.mjs
+            outputs:
+              sync_plan: object
+          artifacts:
+            named_emits:
+              sync_plan: sync_plan
+            packets:
+              sync_plan: runx.github_sync.v1
+
+        - id: pull
+          when:
+            field: plan.sync_plan.data.decision
+            equals: ready
+          tool: provider.read
+          scopes: [repo.read]
+          policy:
+            provider_permission:
+              verb: read
+          inputs:
+            expected_provider: github
+            target: $input.repo
+            expected_result:
+              repository: $input.repo
+            result_fields: [repository, items, cursor]
+          context:
+            operation: plan.sync_plan.data.provider_operation
+            input: plan.sync_plan.data
+
+        - id: digest-mutation
+          when:
+            field: plan.sync_plan.data.decision
+            equals: ready_for_approval
+          tool: data.digest
+          context:
+            value: plan.sync_plan.data.mutation
+
+        - id: push
+          when:
+            field: plan.sync_plan.data.decision
+            equals: ready_for_approval
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: $input.idempotency_key
+          scopes: [repo.write]
+          policy:
+            provider_permission:
+              verb: write
+          inputs:
+            target: $input.repo
+            expected_provider: github
+            idempotency_key: $input.idempotency_key
+            expected_result:
+              repository: $input.repo
+            result_fields: [repository, sync_ref, mutation_digest, mutation, resources]
+          context:
+            operation: plan.sync_plan.data.provider_operation
+            input: plan.sync_plan.data
+
+        - id: bind-mutation
+          when:
+            field: plan.sync_plan.data.decision
+            equals: ready_for_approval
+          tool: data.compare
+          context:
+            actual: push.provider_operation.data.result.mutation_digest
+            expected: digest-mutation.digest_result.data.digest
+
+        - id: readback
+          when:
+            field: bind-mutation.comparison.data.equal
+            equals: true
+          tool: provider.read
+          scopes: [repo.read]
+          policy:
+            provider_permission:
+              verb: read
+          inputs:
+            operation: sync.read
+            target: $input.repo
+            expected_provider: github
+            result_fields: [repository, sync_ref, mutation_digest, mutation, resources]
+          context:
+            expected_result: push.provider_operation.data.result
+            input: push.provider_operation.data.result
+
+  plan:
     type: javascript
     module: github-sync.mjs
     outputs:

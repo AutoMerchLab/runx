@@ -16,6 +16,9 @@ inputs:
       inventory:
         - name: example-lib
           version: 1.2.3
+          path: node_modules/example-lib
+          direct: true
+          development: false
       findings:
         - dependency: example-lib
           exact_version: 1.2.3

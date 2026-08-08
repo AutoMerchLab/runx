@@ -1,4 +1,4 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
@@ -14,6 +14,7 @@ use crate::RuntimeError;
 pub(crate) struct ResolutionAnswers {
     values: JsonObject,
     human_approvals: BTreeSet<String>,
+    request_digests: BTreeMap<String, String>,
 }
 
 impl ResolutionAnswers {
@@ -21,6 +22,7 @@ impl ResolutionAnswers {
         Self {
             values,
             human_approvals: BTreeSet::new(),
+            request_digests: BTreeMap::new(),
         }
     }
 
@@ -52,6 +54,14 @@ impl ResolutionAnswers {
     pub(super) fn is_human_approval(&self, request_id: &str) -> bool {
         self.human_approvals.contains(request_id)
     }
+
+    pub(super) fn request_digest(&self, request_id: &str) -> Option<&str> {
+        self.request_digests.get(request_id).map(String::as_str)
+    }
+
+    pub(super) fn has_request_digest_bindings(&self) -> bool {
+        !self.request_digests.is_empty()
+    }
 }
 
 pub(super) fn read_answers(path: &Path) -> Result<ResolutionAnswers, SkillRunError> {
@@ -67,13 +77,15 @@ pub(super) fn read_answers(path: &Path) -> Result<ResolutionAnswers, SkillRunErr
 }
 
 fn normalize_answers(mut object: JsonObject) -> Result<ResolutionAnswers, SkillRunError> {
-    let nested_shape = object.contains_key("answers") || object.contains_key("approvals");
+    let nested_shape = object.contains_key("answers")
+        || object.contains_key("approvals")
+        || object.contains_key("request_digests");
     if !nested_shape {
         return Ok(ResolutionAnswers::agent(object));
     }
     let extra = object
         .keys()
-        .filter(|key| !matches!(key.as_str(), "answers" | "approvals"))
+        .filter(|key| !matches!(key.as_str(), "answers" | "approvals" | "request_digests"))
         .cloned()
         .collect::<Vec<_>>();
     if !extra.is_empty() {
@@ -92,7 +104,22 @@ fn normalize_answers(mut object: JsonObject) -> Result<ResolutionAnswers, SkillR
         Some(_) => return Err(invalid("approvals field must be a JSON object")),
         None => JsonObject::new(),
     };
-    ResolutionAnswers::from_lanes(answers, approvals)
+    let request_digests = match object.remove("request_digests") {
+        Some(JsonValue::Object(digests)) => digests
+            .into_iter()
+            .map(|(id, digest)| match digest {
+                JsonValue::String(digest) if !digest.trim().is_empty() => Ok((id, digest)),
+                _ => Err(invalid(
+                    "request_digests values must be non-empty digest strings",
+                )),
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?,
+        Some(_) => return Err(invalid("request_digests field must be a JSON object")),
+        None => BTreeMap::new(),
+    };
+    let mut resolved = ResolutionAnswers::from_lanes(answers, approvals)?;
+    resolved.request_digests = request_digests;
+    Ok(resolved)
 }
 
 fn is_human_approval_payload(value: &JsonValue) -> bool {

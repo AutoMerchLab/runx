@@ -77,6 +77,15 @@ pub(crate) fn lexical_normalize(path: &Path) -> PathBuf {
     normalized
 }
 
+pub(crate) fn is_safe_url_path_identifier(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && value.len() <= 200
+        && !value
+            .chars()
+            .any(|character| character.is_control() || matches!(character, '/' | '?' | '#'))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

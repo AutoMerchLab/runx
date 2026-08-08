@@ -1,5 +1,5 @@
 skill: vault-unseal
-version: "0.3.1"
+version: "0.4.0"
 
 catalog:
   kind: skill
@@ -41,7 +41,6 @@ input_definitions:
 
 runners:
   vault-unseal:
-    default: true
     type: javascript
     module: vault-unseal.mjs
     outputs:
@@ -77,6 +76,7 @@ runners:
         policy_notes: The handle is limited to one monthly export.
 
   execute:
+    default: true
     type: graph
     inputs:
       provider:

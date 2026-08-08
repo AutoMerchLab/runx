@@ -7,12 +7,42 @@ inputs:
   repo_root: .
   target_dir: .runx-tmp/skill-lab-fixtures/fixture-decision-note
   project_context: Keep the package declarative and prove its native harness.
+operator_journeys:
+  - mode: standalone
+    request: Create a bounded decision-note skill without package-local runtime code.
+    expected_outcome: A validated declarative skill package is applied with a useful manual and semantic harness.
 caller:
   answers:
     agent_task.skill-lab-architecture.output:
       architecture_decision:
         schema: runx.skill.architecture_decision.v1
         disposition: build
+        identity:
+          proposed_name: fixture-decision-note
+          action: create
+          visibility: public
+          rationale: Decision note is the exact bounded artifact the fixture promises.
+        direct_use:
+          trigger_requests:
+            - Make a bounded decision note from this objective.
+          non_trigger_requests:
+            - Execute the recommendation in this note.
+          default_outcome: Return one reviewable decision note.
+          routine_host_work:
+            - Read the supplied objective.
+          runx_boundary: Bind the objective and decision note in a reusable receipt.
+          terminal_result: A bounded decision-note packet.
+          blocker_behavior: Stop once and request the missing objective.
+          native_escape: Return the unchanged objective for direct host reasoning.
+        chain_use:
+          accepted_inputs:
+            - A bounded objective or prior objective artifact.
+          result: A reusable decision-note packet.
+          reused_evidence:
+            - The supplied objective artifact.
+          reused_effects: []
+          must_not_repeat:
+            - Do not reacquire or rewrite the supplied objective.
         objective: Create a bounded decision-note skill without package-local runtime code.
         operator_value: Give an operator one reviewable decision from a bounded objective.
         knowledge_contract:
@@ -58,9 +88,15 @@ caller:
           - Keep the package manual useful to a cold operator.
         deletions: []
         proof_plan:
-          - name: decision-note-ready
-            kind: harness
-            expected: The objective is preserved and the supplied recommendation is sealed.
+          - name: decision-note-selection
+            kind: selection_trial
+            expected: A decision-note request selects the skill and an execution request does not.
+          - name: decision-note-standalone
+            kind: standalone_operator_journey
+            expected: The direct objective produces a useful decision note.
+          - name: decision-note-composed
+            kind: composed_operator_journey
+            expected: A prior objective artifact is reused without reacquisition.
     agent_task.skill-lab-author.output:
       change_draft:
         schema: runx.skill.change_draft.v1

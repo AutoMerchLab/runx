@@ -49,7 +49,7 @@ fn render_shim(
     output.push_str(&indent_block(&skill.description));
     if target == Target::Claude {
         output.push_str(&format!(
-            "allowed-tools: Bash({} skill *)\n",
+            "allowed-tools: Bash({} *)\n",
             shell_quote(&display_path(runx_bin))
         ));
     }
@@ -196,12 +196,16 @@ fn render_continuation(runx_bin: &str) -> String {
     format!(
         "\
 Interpret the runx JSON result exactly:
-- If `status` is `sealed`, surface the receipt id, status, and artifact ids.
-- If runx returns `status` `needs_agent`, inspect `requests[]`. For each request with `kind` `agent_act`, treat `request.invocation.envelope` as the only task packet: verify `instructions` against `instructions_sha256`, use its `inputs`, progressive `current_context` summaries, `historical_context`, exact `instructions`, and `output` contract; do not use tools outside `allowed_tools`.
-- Write an answers JSON file outside the skill package with one key per request id:
+- `status` is lifecycle state; `outcome` says whether the promised operation completed. A sealed blocked or failed run is not success.
+- If `status` is `sealed`, surface the outcome, receipt id, result, and artifact refs.
+- If runx returns `needs_agent` or `needs_approval`, each bounded request summary includes a digest-bound `artifact_ref.path`. Read only the selected request artifact, verify its digest and `instructions_sha256`, and obey its exact output contract and `allowed_tools`.
+- Build one structured continuation object in memory. Bind every answer to the `request_digest` from its request summary:
 
 ```json
 {{
+  \"request_digests\": {{
+    \"<request.id>\": \"<request.request_digest>\"
+  }},
   \"answers\": {{
     \"<request.id>\": {{
       \"...\": \"object matching request.invocation.envelope.output\",
@@ -215,14 +219,13 @@ Interpret the runx JSON result exactly:
 }}
 ```
 
-Then resume the same run with the `run_id` printed by runx:
+Pipe that object to the same run; do not create a manual answer file:
 
 ```bash
-{} resume \"<run_id>\" \"<answers.json>\" \\
-  --json
+printf '%s' \"$RUNX_ANSWERS_JSON\" | {} resume \"<run_id>\" - --json
 ```
 
-Repeat this loop until the result is sealed or runx asks for operator approval/input. If approval or human input is required, relay the exact runx request instead of fabricating an answer. Never place signing seeds, provider tokens, or raw credentials in the answers file or response.
+Repeat until sealed or until an exact operator approval/input is required. Relay approval requests; never fabricate human approval. Never place signing seeds, provider tokens, or raw credentials in the continuation object or response.
 
 ",
         shell_quote(runx_bin)

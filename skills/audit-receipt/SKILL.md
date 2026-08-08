@@ -59,7 +59,7 @@ grant from usage, this one verifies a run honored its grant.
 
 ## When not to use this skill
 
-- To diagnose a failed run and propose a fix. That is `review-receipt`
+- To diagnose a failed run and propose a fix. That is `diagnose-skill-run`
   (failure-to-improvement). This skill audits a sealed run for over-reach
   (success-to-governance); the two are different lenses on a receipt.
 - To narrow a grant from observed usage. That is `least-privilege`.

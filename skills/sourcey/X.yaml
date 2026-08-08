@@ -1,5 +1,5 @@
 skill: sourcey
-version: "0.1.4"
+version: "0.1.5"
 
 catalog:
   kind: skill
@@ -18,12 +18,14 @@ runners:
     inputs:
       project:
         type: string
-        required: true
-        description: "Project root containing Sourcey inputs."
+        required: false
+        default: .
+        description: "Project root containing Sourcey inputs; defaults to the current workspace."
       repo_root:
         type: string
         required: false
-        description: "Optional alias for the project root when Sourcey is composed inside a parent graph."
+        default: .
+        description: "Filesystem write root; defaults to the current workspace. Chains targeting another project should pass both project and repo_root explicitly."
       homepage_url:
         type: string
         required: false

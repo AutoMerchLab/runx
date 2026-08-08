@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use runx_contracts::JsonObject;
 #[cfg(feature = "catalog")]
-use runx_contracts::JsonValue;
+use runx_contracts::{AuthorityVerb, JsonValue};
 
 use crate::effects::{EffectStepRequest, RuntimeEffectError};
 #[cfg(feature = "catalog")]
@@ -13,20 +13,35 @@ use crate::{
 
 #[cfg(feature = "catalog")]
 use super::PROVIDER_PERMISSION_EFFECT_FAMILY;
+#[cfg(feature = "catalog")]
+use super::ProviderNativeAccess;
 #[cfg(not(feature = "catalog"))]
 use super::approval::required_provider_input;
-use super::policy::{ProviderGrantEvidence, provider_permission_policy_error, required_scopes_for};
+#[cfg(any(feature = "catalog", test))]
+use super::policy::display_scopes;
 #[cfg(feature = "catalog")]
-use super::policy::{display_scopes, missing_scopes, required_verb_field};
+use super::policy::required_verb_field;
+use super::policy::{ProviderGrantEvidence, provider_permission_policy_error, required_scopes_for};
 use super::{
     PROVIDER_PERMISSION_GRANT_ID_ENV, PROVIDER_PERMISSION_GRANTED_SCOPES_ENV,
     PROVIDER_PERMISSION_PRINCIPAL_REF_ENV, ProviderPermissionEffect, decode_provider_scopes_env,
 };
 
+#[cfg(feature = "catalog")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum ProviderTransportSelection {
+    Hosted,
+    LocalGithub(super::local_github::LocalGithubBinding),
+}
+
 pub(super) struct NativeProviderResolution {
     grant_id: String,
     granted_scopes: Vec<String>,
     pub(super) principal_ref: String,
+    #[cfg(feature = "catalog")]
+    pub(super) target: String,
+    #[cfg(feature = "catalog")]
+    pub(super) transport: ProviderTransportSelection,
 }
 
 impl NativeProviderResolution {
@@ -65,6 +80,10 @@ fn explicit_native_provider_resolution(
         grant_id: grant_id.to_owned(),
         granted_scopes,
         principal_ref: principal_ref.to_owned(),
+        #[cfg(feature = "catalog")]
+        target: String::new(),
+        #[cfg(feature = "catalog")]
+        transport: ProviderTransportSelection::Hosted,
     }))
 }
 
@@ -93,11 +112,78 @@ impl ProviderPermissionEffect {
         policy: &JsonObject,
     ) -> Result<NativeProviderResolution, RuntimeEffectError> {
         let provider = required_expected_provider(request)?;
+        let operation = super::approval::required_provider_input(request.inputs, "operation")?;
+        let access = super::native_provider_access(request.target.tool_ref).ok_or_else(|| {
+            provider_permission_policy_error("provider transport requires native access".to_owned())
+        })?;
         let required_scopes = required_scopes_for(request, policy)?;
-        if let Some(resolved) = explicit_native_provider_resolution(request.env)? {
+        let target = resolved_provider_target(request, provider)?;
+        if let Some(mut resolved) = explicit_native_provider_resolution(request.env)? {
+            resolved.target = target.value;
             return Ok(resolved);
         }
-        self.resolve_hosted_provider(request, policy, provider, required_scopes)
+        let requested =
+            super::resolve_provider_transport_preference(request.env, request.graph_dir, provider)
+                .map_err(provider_permission_policy_error)?;
+        if requested == super::ProviderTransportPreference::LocalGithub {
+            return resolve_local_github(
+                request,
+                operation,
+                access,
+                target.local_github.ok_or_else(|| {
+                    provider_permission_policy_error(
+                        "local GitHub transport requires a GitHub target".to_owned(),
+                    )
+                })?,
+                required_scopes,
+            );
+        }
+        if let super::ProviderTransportPreference::Hosted(explicit_grant) = requested {
+            return self.resolve_hosted_provider(
+                request,
+                policy,
+                provider,
+                target.value,
+                required_scopes,
+                explicit_grant.as_deref(),
+            );
+        }
+        let local_error = if provider == "github" {
+            match resolve_local_github(
+                request,
+                operation,
+                access,
+                target.local_github.clone().ok_or_else(|| {
+                    provider_permission_policy_error(
+                        "local GitHub transport requires a GitHub target".to_owned(),
+                    )
+                })?,
+                required_scopes.clone(),
+            ) {
+                Ok(resolution) => return Ok(resolution),
+                Err(error) => Some(error.to_string()),
+            }
+        } else {
+            None
+        };
+        self.resolve_hosted_provider(
+            request,
+            policy,
+            provider,
+            target.value,
+            required_scopes,
+            None,
+        )
+        .map_err(|error| match local_error {
+            Some(local) => RuntimeEffectError::Denied {
+                family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
+                verb: required_verb_field(policy).unwrap_or(runx_contracts::AuthorityVerb::Read),
+                message: format!(
+                    "local GitHub transport was unavailable ({local}); hosted fallback was unavailable ({error})"
+                ),
+            },
+            None => error,
+        })
     }
 
     fn resolve_hosted_provider(
@@ -105,27 +191,31 @@ impl ProviderPermissionEffect {
         request: &EffectStepRequest<'_>,
         policy: &JsonObject,
         provider: &str,
+        target: String,
         required_scopes: Vec<String>,
+        bound_grant: Option<&str>,
     ) -> Result<NativeProviderResolution, RuntimeEffectError> {
-        let explicit_grant = request
-            .env
-            .get(PROVIDER_PERMISSION_GRANT_ID_ENV)
-            .map(|value| value.trim())
-            .filter(|value| !value.is_empty())
-            .map(str::to_owned);
+        let explicit_grant = bound_grant.map(str::to_owned).or_else(|| {
+            request
+                .env
+                .get(PROVIDER_PERMISSION_GRANT_ID_ENV)
+                .map(|value| value.trim())
+                .filter(|value| !value.is_empty())
+                .map(str::to_owned)
+        });
+        let verb = required_verb_field(policy)?;
         let transport = self
             .http_transport(hosted_private_network_allowed(false, request.env))
-            .map_err(|error| provider_permission_policy_error(error.to_string()))?;
+            .map_err(|error| hosted_provider_preflight_denied(verb.clone(), error))?;
         let resolved = HostedApiEnvironment::resolve(None, None, request.env, request.graph_dir)
-            .map_err(|error| provider_permission_policy_error(error.to_string()))?;
+            .map_err(|error| hosted_provider_preflight_denied(verb.clone(), error))?;
         let environment = self
             .authenticated_environment(&resolved, transport.as_ref())
-            .map_err(|error| provider_permission_policy_error(error.to_string()))?;
+            .map_err(|error| hosted_provider_preflight_denied(verb.clone(), error))?;
         let principal_ref = format!("runx:principal:{}", environment.principal_id());
         let grants = self
             .hosted_grants(&resolved, &environment, transport.as_ref())
-            .map_err(|error| provider_permission_policy_error(error.to_string()))?;
-        let verb = required_verb_field(policy)?;
+            .map_err(|error| hosted_provider_preflight_denied(verb.clone(), error))?;
         let grant = select_hosted_provider_grant(
             &grants,
             provider,
@@ -141,6 +231,8 @@ impl ProviderPermissionEffect {
             grant_id: grant.grant_id.clone(),
             granted_scopes: grant.scopes.clone(),
             principal_ref,
+            target,
+            transport: ProviderTransportSelection::Hosted,
         })
     }
 
@@ -185,6 +277,78 @@ impl ProviderPermissionEffect {
 }
 
 #[cfg(feature = "catalog")]
+fn hosted_provider_preflight_denied(
+    verb: AuthorityVerb,
+    error: impl std::fmt::Display,
+) -> RuntimeEffectError {
+    RuntimeEffectError::Denied {
+        family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
+        verb,
+        message: format!("hosted provider preflight failed: {error}"),
+    }
+}
+
+#[cfg(feature = "catalog")]
+#[derive(Clone, Debug)]
+struct ResolvedProviderTarget {
+    value: String,
+    local_github: Option<super::local_github::ResolvedGithubTarget>,
+}
+
+#[cfg(feature = "catalog")]
+fn resolved_provider_target(
+    request: &EffectStepRequest<'_>,
+    provider: &str,
+) -> Result<ResolvedProviderTarget, RuntimeEffectError> {
+    let target = super::approval::required_provider_input(request.inputs, "target")?;
+    if provider != "github" {
+        return Ok(ResolvedProviderTarget {
+            value: target.to_owned(),
+            local_github: None,
+        });
+    }
+    super::local_github::resolve_target(request.env, request.graph_dir, target)
+        .map(|target| ResolvedProviderTarget {
+            value: target.repository.clone(),
+            local_github: Some(target),
+        })
+        .map_err(|error| provider_permission_policy_error(error.to_string()))
+}
+
+#[cfg(feature = "catalog")]
+fn resolve_local_github(
+    request: &EffectStepRequest<'_>,
+    operation: &str,
+    access: ProviderNativeAccess,
+    target: super::local_github::ResolvedGithubTarget,
+    required_scopes: Vec<String>,
+) -> Result<NativeProviderResolution, RuntimeEffectError> {
+    let binding = super::local_github::preflight_resolved(
+        request.env,
+        request.graph_dir,
+        operation,
+        access,
+        target,
+        &required_scopes,
+    )
+    .map_err(|error| RuntimeEffectError::Denied {
+        family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
+        verb: match access {
+            ProviderNativeAccess::Read => runx_contracts::AuthorityVerb::Read,
+            ProviderNativeAccess::Mutate => runx_contracts::AuthorityVerb::Write,
+        },
+        message: error.to_string(),
+    })?;
+    Ok(NativeProviderResolution {
+        grant_id: binding.grant_id(),
+        granted_scopes: required_scopes,
+        principal_ref: binding.principal_ref(),
+        target: binding.repository.clone(),
+        transport: ProviderTransportSelection::LocalGithub(binding),
+    })
+}
+
+#[cfg(feature = "catalog")]
 fn required_expected_provider<'a>(
     request: &EffectStepRequest<'a>,
 ) -> Result<&'a str, RuntimeEffectError> {
@@ -208,16 +372,50 @@ pub(super) fn select_hosted_provider_grant<'a>(
     required_scopes: &[String],
     explicit_grant: Option<&str>,
 ) -> Result<&'a HostedProviderGrant, String> {
+    let views = grants
+        .iter()
+        .map(|grant| HostedGrantView {
+            grant_id: &grant.grant_id,
+            provider: &grant.provider,
+            scopes: &grant.scopes,
+            status: &grant.status,
+        })
+        .collect::<Vec<_>>();
+    select_hosted_provider_grant_index(&views, provider, required_scopes, explicit_grant)
+        .map(|index| &grants[index])
+}
+
+#[cfg(any(feature = "catalog", test))]
+#[derive(Clone, Copy)]
+pub(super) struct HostedGrantView<'a> {
+    pub(super) grant_id: &'a str,
+    pub(super) provider: &'a str,
+    pub(super) scopes: &'a [String],
+    pub(super) status: &'a str,
+}
+
+#[cfg(any(feature = "catalog", test))]
+pub(super) fn select_hosted_provider_grant_index(
+    grants: &[HostedGrantView<'_>],
+    provider: &str,
+    required_scopes: &[String],
+    explicit_grant: Option<&str>,
+) -> Result<usize, String> {
     let mut candidates = grants
         .iter()
-        .filter(|grant| grant.status == "active")
-        .filter(|grant| grant.provider == provider)
-        .filter(|grant| explicit_grant.is_none_or(|expected| grant.grant_id == expected))
-        .filter(|grant| missing_scopes(required_scopes, &grant.scopes).is_empty())
+        .enumerate()
+        .filter(|(_, grant)| grant.status == "active")
+        .filter(|(_, grant)| grant.provider == provider)
+        .filter(|(_, grant)| explicit_grant.is_none_or(|expected| grant.grant_id == expected))
+        .filter(|(_, grant)| {
+            required_scopes
+                .iter()
+                .all(|scope| grant.scopes.contains(scope))
+        })
         .collect::<Vec<_>>();
-    candidates.sort_by(|left, right| left.grant_id.cmp(&right.grant_id));
+    candidates.sort_by(|(_, left), (_, right)| left.grant_id.cmp(right.grant_id));
     match candidates.as_slice() {
-        [grant] => Ok(*grant),
+        [(index, _)] => Ok(*index),
         [] if explicit_grant.is_some() => Err(format!(
             "configured provider grant does not authorize {provider} scopes {}",
             display_scopes(required_scopes)

@@ -151,6 +151,9 @@ fn inspect_provider_requirement(step: &GraphStep) -> Option<JsonValue> {
             JsonValue::String(operation.to_owned()),
         );
     }
+    if let Some(target) = step.inputs.get("target").and_then(JsonValue::as_str) {
+        requirement.insert("target".to_owned(), JsonValue::String(target.to_owned()));
+    }
     Some(JsonValue::Object(requirement))
 }
 
@@ -240,4 +243,87 @@ pub(super) fn fixture_examples(
     examples.sort_by(|left, right| left.as_str().cmp(&right.as_str()));
     examples.dedup();
     examples
+}
+
+pub(super) fn fixture_operator_journeys(
+    package: &ValidatedSkillPackage,
+    manifest: &SkillRunnerManifest,
+) -> Vec<JsonValue> {
+    let mut journeys = manifest
+        .harness
+        .iter()
+        .flat_map(|harness| harness.cases.iter())
+        .flat_map(|case| {
+            case.operator_journeys.iter().map(|journey| {
+                project_operator_journey(&case.name, case.runner.as_deref(), journey)
+            })
+        })
+        .chain(package.harness_fixtures.values().flat_map(|fixture| {
+            fixture.operator_journeys.iter().map(|journey| {
+                project_operator_journey(&fixture.name, fixture.runner.as_deref(), journey)
+            })
+        }))
+        .collect::<Vec<_>>();
+    journeys.sort_by(|left, right| {
+        left.as_object()
+            .and_then(|value| value.get("case"))
+            .and_then(JsonValue::as_str)
+            .cmp(
+                &right
+                    .as_object()
+                    .and_then(|value| value.get("case"))
+                    .and_then(JsonValue::as_str),
+            )
+    });
+    journeys
+}
+
+fn project_operator_journey(
+    case: &str,
+    runner: Option<&str>,
+    journey: &runx_parser::OperatorJourneyClaim,
+) -> JsonValue {
+    let mode = match journey.mode {
+        runx_parser::OperatorJourneyMode::Standalone => "standalone",
+        runx_parser::OperatorJourneyMode::Composed => "composed",
+        runx_parser::OperatorJourneyMode::Refusal => "refusal",
+    };
+    let mut object = JsonObject::from([
+        ("case".to_owned(), JsonValue::String(case.to_owned())),
+        ("mode".to_owned(), JsonValue::String(mode.to_owned())),
+        (
+            "request".to_owned(),
+            JsonValue::String(journey.request.clone()),
+        ),
+        (
+            "expected_outcome".to_owned(),
+            JsonValue::String(journey.expected_outcome.clone()),
+        ),
+        (
+            "prior_evidence".to_owned(),
+            JsonValue::Array(
+                journey
+                    .prior_evidence
+                    .iter()
+                    .cloned()
+                    .map(JsonValue::String)
+                    .collect(),
+            ),
+        ),
+        (
+            "must_not_repeat".to_owned(),
+            JsonValue::Array(
+                journey
+                    .must_not_repeat
+                    .iter()
+                    .cloned()
+                    .map(JsonValue::String)
+                    .collect(),
+            ),
+        ),
+    ]);
+    if let Some(runner) = runner {
+        object.insert("runner".to_owned(), JsonValue::String(runner.to_owned()));
+    }
+    JsonValue::Object(object)
 }

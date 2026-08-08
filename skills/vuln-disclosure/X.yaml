@@ -1,5 +1,5 @@
 skill: vuln-disclosure
-version: "0.3.1"
+version: "0.4.0"
 
 catalog:
   kind: graph
@@ -13,8 +13,60 @@ catalog:
   approval: required
 
 runners:
-  vuln-disclosure:
+  disclose:
     default: true
+    type: graph
+    inputs:
+      advisory_packet:
+        type: json
+        packet: runx.security.vulnerability_advisory.v1
+        required: true
+      channel:
+        type: string
+        required: true
+      target:
+        type: object
+        required: true
+        schema:
+          required: [locator]
+          properties:
+            locator: { type: string, minLength: 1, maxLength: 1000 }
+      disclosure_context:
+        type: json
+        required: false
+      provider:
+        type: string
+        required: true
+        description: Configured publication provider expected to publish and read the advisory.
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for this exact publication.
+    graph:
+      name: vuln-disclosure-run
+      result_from: [publish]
+      steps:
+        - id: prepare
+          skill: .
+          runner: vuln-disclosure
+          inputs:
+            advisory_packet: $input.advisory_packet
+            channel: $input.channel
+            target: $input.target
+            disclosure_context: $input.disclosure_context
+        - id: publish
+          when:
+            field: prepare.disclosure_packet.data.decision
+            equals: ready_for_publication_approval
+          skill: .
+          runner: publish
+          inputs:
+            provider: $input.provider
+            idempotency_key: $input.idempotency_key
+          context:
+            disclosure_packet: prepare.disclosure_packet.data
+
+  vuln-disclosure:
     type: graph
     inputs:
       advisory_packet:

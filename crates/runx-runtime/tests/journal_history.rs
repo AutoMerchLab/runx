@@ -55,7 +55,7 @@ fn history_lists_receipts_newest_first_with_safe_refs_and_filters()
     let old_receipt = receipt_with_metadata(
         InvocationStatus::Success,
         "hrn_rcpt_old",
-        "2026-05-18T00:00:00Z",
+        "2026-05-18T00:00:01Z",
         "Revision Skill",
         "local",
         "runner-a",
@@ -118,7 +118,7 @@ fn history_display_identity_ignores_unsigned_metadata() -> Result<(), Box<dyn st
     store.write_receipt(&receipt_with_metadata(
         InvocationStatus::Success,
         "hrn_rcpt_forged_metadata",
-        "2026-05-18T00:00:00Z",
+        "2026-05-18T00:00:01Z",
         "Forged Skill",
         "forged-source",
         "forged-runner",
@@ -436,6 +436,197 @@ fn history_does_not_double_list_paused_ledger_with_terminal_receipt()
 }
 
 #[test]
+fn journal_history_limit_bounds_receipts_and_pending_runs_together()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let workspace = temp.path().join("workspace");
+    let project_runx_dir = workspace.join(".runx");
+    let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
+    store.write_receipt(&receipt_with_metadata(
+        InvocationStatus::Success,
+        "terminal-old",
+        "2026-05-18T01:00:00Z",
+        "Old terminal",
+        "local",
+        "runner-a",
+    )?)?;
+    store.write_receipt(&receipt_with_metadata(
+        InvocationStatus::Success,
+        "terminal-new",
+        "2026-05-18T04:00:00Z",
+        "New terminal",
+        "local",
+        "runner-a",
+    )?)?;
+    write_paused_ledger(
+        store.root(),
+        "run_pending_old",
+        "old-pending",
+        "2026-05-18T02:00:00Z",
+    )?;
+    write_paused_ledger(
+        store.root(),
+        "run_pending_new",
+        "new-pending",
+        "2026-05-18T03:00:00Z",
+    )?;
+
+    let history = list_local_history(
+        &store,
+        &workspace,
+        &project_runx_dir,
+        &HistoryFilter {
+            limit: Some(2),
+            ..HistoryFilter::default()
+        },
+    )?;
+
+    assert_eq!(history.receipts.len() + history.pending_runs.len(), 2);
+    assert_eq!(history.receipts.len(), 1);
+    assert_eq!(history.pending_runs.len(), 1);
+    assert_eq!(history.pending_runs[0].id, "run_pending_new");
+    Ok(())
+}
+
+#[test]
+fn journal_history_limit_bounds_terminal_receipts_when_no_runs_are_pending()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let workspace = temp.path().join("workspace");
+    let project_runx_dir = workspace.join(".runx");
+    let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
+    for (id, created_at) in [
+        ("terminal-old", "2026-05-18T01:00:00Z"),
+        ("terminal-middle", "2026-05-18T02:00:00Z"),
+        ("terminal-new", "2026-05-18T03:00:00Z"),
+    ] {
+        store.write_receipt(&receipt_with_metadata(
+            InvocationStatus::Success,
+            id,
+            created_at,
+            id,
+            "local",
+            "runner-a",
+        )?)?;
+    }
+
+    let history = list_local_history(
+        &store,
+        &workspace,
+        &project_runx_dir,
+        &HistoryFilter {
+            limit: Some(1),
+            ..HistoryFilter::default()
+        },
+    )?;
+
+    assert_eq!(history.receipts.len(), 1);
+    assert!(history.pending_runs.is_empty());
+    Ok(())
+}
+
+#[test]
+fn journal_history_limit_bounds_pending_runs_when_no_receipts_exist()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let workspace = temp.path().join("workspace");
+    let project_runx_dir = workspace.join(".runx");
+    let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
+    for (run_id, started_at) in [
+        ("run_pending_old", "2026-05-18T01:00:00Z"),
+        ("run_pending_middle", "2026-05-18T02:00:00Z"),
+        ("run_pending_new", "2026-05-18T03:00:00Z"),
+    ] {
+        write_paused_ledger(store.root(), run_id, run_id, started_at)?;
+    }
+
+    let history = list_local_history(
+        &store,
+        &workspace,
+        &project_runx_dir,
+        &HistoryFilter {
+            limit: Some(1),
+            ..HistoryFilter::default()
+        },
+    )?;
+
+    assert!(history.receipts.is_empty());
+    assert_eq!(history.pending_runs.len(), 1);
+    Ok(())
+}
+
+#[test]
+fn journal_terminal_graph_receipt_supersedes_stale_resolution_request()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let workspace = temp.path().join("workspace");
+    let project_runx_dir = workspace.join(".runx");
+    let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
+    let run_id = "run_issue_442";
+    write_paused_ledger(store.root(), run_id, "issue-to-pr", "2026-05-18T01:00:00Z")?;
+    let mut terminal = receipt_with_metadata(
+        InvocationStatus::Success,
+        "terminal-graph",
+        "2026-05-18T02:00:00Z",
+        "issue-to-pr",
+        "local",
+        "graph",
+    )?;
+    terminal.subject.reference.uri = format!("hrn_{run_id}_graph").into();
+    reseal_receipt(&mut terminal)?;
+    store.write_receipt(&terminal)?;
+
+    let history = list_local_history(
+        &store,
+        &workspace,
+        &project_runx_dir,
+        &HistoryFilter::default(),
+    )?;
+
+    assert_eq!(history.receipts.len(), 1);
+    assert!(history.pending_runs.is_empty());
+    Ok(())
+}
+
+#[test]
+fn journal_history_excludes_harness_receipts_unless_requested()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let workspace = temp.path().join("workspace");
+    let project_runx_dir = workspace.join(".runx");
+    let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
+    let harness = receipt_with_metadata(
+        InvocationStatus::Success,
+        "harness-only",
+        "2026-05-18T00:00:00Z",
+        "fixture",
+        "local",
+        "harness",
+    )?;
+    store.write_receipt(&harness)?;
+
+    let default_history = list_local_history(
+        &store,
+        &workspace,
+        &project_runx_dir,
+        &HistoryFilter::default(),
+    )?;
+    let harness_history = list_local_history(
+        &store,
+        &workspace,
+        &project_runx_dir,
+        &HistoryFilter {
+            include_harness: true,
+            ..HistoryFilter::default()
+        },
+    )?;
+
+    assert!(default_history.receipts.is_empty());
+    assert_eq!(harness_history.receipts.len(), 1);
+    Ok(())
+}
+
+#[test]
 fn malformed_history_store_remains_typed_error() -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;
     let store = LocalReceiptStore::new(temp.path());
@@ -551,7 +742,7 @@ fn journal_projection_uses_exact_refs_and_reprojects_deterministically()
     let receipt = receipt_with_metadata(
         InvocationStatus::Success,
         "hrn_rcpt_123",
-        "2026-05-18T00:00:00Z",
+        "2026-05-18T00:00:01Z",
         "Journal Skill",
         "local",
         "runner-a",
@@ -596,7 +787,7 @@ fn journal_lookup_does_not_use_suffix_matching() -> Result<(), Box<dyn std::erro
     let receipt = receipt_with_metadata(
         InvocationStatus::Success,
         "hrn_rcpt_123",
-        "2026-05-18T00:00:00Z",
+        "2026-05-18T00:00:01Z",
         "Journal Skill",
         "local",
         "runner-a",
@@ -642,7 +833,7 @@ fn generated_runtime_receipt() -> Result<Receipt, Box<dyn std::error::Error>> {
     generated_runtime_receipt_with(
         "hrn_rcpt_journal-history_strict-proof",
         InvocationStatus::Success,
-        "2026-05-18T00:00:00Z",
+        "2026-05-18T00:00:01Z",
     )
 }
 
@@ -730,7 +921,7 @@ fn production_generated_receipt(
         1,
         &output,
         &claim,
-        "2026-05-18T00:00:00Z",
+        "2026-05-18T00:00:01Z",
         RuntimeReceiptSignaturePolicy::production_signing(signer, verifier),
     )?)
 }

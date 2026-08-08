@@ -430,7 +430,7 @@ do not compensate with more fixtures, prose padding, or a bespoke wrapper.
 - `target_dir` (required for mutating runners): repo-relative package directory.
 - `project_context` (optional): product, repository, and operator constraints.
 - `receipt_id`, `receipt_summary`, `harness_output`, `failure_packet` (improve):
-  failure evidence, including the stable packet from `review-receipt`.
+  failure evidence, including the stable packet from `diagnose-skill-run`.
 
 ## Agent task contracts
 
@@ -448,6 +448,29 @@ and genuinely missing native capabilities; use `needs_core` only for a runtime
 or security invariant or a primitive with two independent existing consumers.
 When `package_name` is supplied, treat it as the requested package identity;
 do not silently rename the package from its target path.
+
+For every `build` or `extend_existing` decision, make the identity decision
+explicit. Record the current and proposed name, choose `keep`, `rename`,
+`create`, or `internalize`, state whether the package is public or internal,
+and explain why that name is the operation a cold agent will reach for. A
+rename or internalization is a clean cutover: identify every consumer and do
+not plan aliases or duplicate discovery rows. Internal packages have no public
+direct-use contract.
+
+For every public package, declare both operator contexts before authoring:
+
+- `direct_use` names realistic natural-language trigger and non-trigger
+  requests, the default outcome, routine work the host should do normally, the
+  exact boundary where Runx adds value, the terminal result, one actionable
+  blocker behavior, and the context-preserving native escape path.
+- `chain_use` names accepted typed inputs, the reusable result, prior evidence
+  and effects that survive the boundary, and work that must not repeat.
+
+The proof plan must contain distinct `selection_trial`,
+`standalone_operator_journey`, and `composed_operator_journey` entries for a
+public package. They are different claims: intuitive selection, useful direct
+completion, and evidence-preserving composition. A generic harness or sealed
+receipt may supplement them but cannot replace them.
 
 Declare effects, authority scopes, approval meaning, provider boundary, skill
 routes, resource ceilings, preservation obligations, exact intended deletions,

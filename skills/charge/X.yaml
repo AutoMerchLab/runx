@@ -1,14 +1,14 @@
 skill: charge
-version: "0.3.1"
+version: "0.4.0"
 catalog:
   kind: graph
   audience: operator
   visibility: public
   role: canonical
-  execution: plan
-  completion: plan
-  requires_adapter: false
-  approval: none
+  execution: execute
+  completion: provider_readback
+  requires_adapter: true
+  approval: required
 input_definitions:
   mcp_tool_call:
     type: json
@@ -36,8 +36,133 @@ input_definitions:
     description: Stable caller-owned challenge idempotency material.
     schema: { minLength: 1, maxLength: 256 }
 runners:
-  mock:
+  charge:
     default: true
+    type: graph
+    inputs:
+      mcp_tool_call: { definition: mcp_tool_call }
+      provider_policy: { definition: provider_policy }
+      returned_credential: { definition: returned_credential }
+      verify_capability_ref: { definition: verify_capability_ref }
+      idempotency_seed: { definition: idempotency_seed }
+      settlement_family:
+        type: string
+        required: true
+        description: Real configured settlement family; mock is never a production default.
+        schema: { enum: [mpp, stripe] }
+      provider:
+        type: string
+        required: true
+        description: Configured seller-side settlement provider.
+      target:
+        type: string
+        required: true
+        description: Exact provider account or paid-operation target.
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for verification and settlement.
+    graph:
+      name: charge-settle
+      result_from: [mpp-readback, stripe-readback]
+      steps:
+        - id: select-mpp
+          tool: data.compare
+          inputs: { actual: $input.settlement_family, expected: mpp }
+        - id: mpp-plan
+          when: { field: select-mpp.comparison.data.equal, equals: true }
+          skill: .
+          runner: mpp
+          inputs:
+            mcp_tool_call: $input.mcp_tool_call
+            provider_policy: $input.provider_policy
+            returned_credential: $input.returned_credential
+            verify_capability_ref: $input.verify_capability_ref
+            idempotency_seed: $input.idempotency_seed
+        - id: mpp-settle
+          when: { field: select-mpp.comparison.data.equal, equals: true }
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: $input.idempotency_key
+          scopes: [payment.charge]
+          policy:
+            provider_permission: { verb: write }
+          inputs:
+            operation: payment.charge
+            target: $input.target
+            expected_provider: $input.provider
+            idempotency_key: $input.idempotency_key
+            result_fields: [charge_ref, settlement_family, status, credential_ref]
+            expected_result: { settlement_family: mpp, status: settled }
+            input:
+              settlement_family: mpp
+              charge_plan: $input.mpp_charge_plan
+          context:
+            mpp_charge_plan: mpp-plan.charge_plan.data
+        - id: mpp-readback
+          when: { field: select-mpp.comparison.data.equal, equals: true }
+          tool: provider.read
+          scopes: [payment.charge.read]
+          policy:
+            provider_permission: { verb: read }
+          inputs:
+            operation: payment.charge.read
+            target: $input.target
+            expected_provider: $input.provider
+            result_fields: [charge_ref, settlement_family, status, credential_ref]
+          context:
+            input: mpp-settle.provider_operation.data.result
+            expected_result: mpp-settle.provider_operation.data.result
+
+        - id: select-stripe
+          tool: data.compare
+          inputs: { actual: $input.settlement_family, expected: stripe }
+        - id: stripe-plan
+          when: { field: select-stripe.comparison.data.equal, equals: true }
+          skill: .
+          runner: stripe
+          inputs:
+            mcp_tool_call: $input.mcp_tool_call
+            provider_policy: $input.provider_policy
+            returned_credential: $input.returned_credential
+            verify_capability_ref: $input.verify_capability_ref
+            idempotency_seed: $input.idempotency_seed
+        - id: stripe-settle
+          when: { field: select-stripe.comparison.data.equal, equals: true }
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: $input.idempotency_key
+          scopes: [payment.charge]
+          policy:
+            provider_permission: { verb: write }
+          inputs:
+            operation: payment.charge
+            target: $input.target
+            expected_provider: $input.provider
+            idempotency_key: $input.idempotency_key
+            result_fields: [charge_ref, settlement_family, status, credential_ref]
+            expected_result: { settlement_family: stripe, status: settled }
+            input:
+              settlement_family: stripe
+              charge_plan: $input.stripe_charge_plan
+          context:
+            stripe_charge_plan: stripe-plan.charge_plan.data
+        - id: stripe-readback
+          when: { field: select-stripe.comparison.data.equal, equals: true }
+          tool: provider.read
+          scopes: [payment.charge.read]
+          policy:
+            provider_permission: { verb: read }
+          inputs:
+            operation: payment.charge.read
+            target: $input.target
+            expected_provider: $input.provider
+            result_fields: [charge_ref, settlement_family, status, credential_ref]
+          context:
+            input: stripe-settle.provider_operation.data.result
+            expected_result: stripe-settle.provider_operation.data.result
+
+  mock:
     type: graph
     inputs:
       mcp_tool_call:

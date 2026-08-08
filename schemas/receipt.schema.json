@@ -13555,5 +13555,6 @@
     "seal"
   ],
   "type": "object",
+  "x-runx-packet": true,
   "x-runx-schema": "runx.receipt.v1"
 }

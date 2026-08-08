@@ -1,5 +1,5 @@
 skill: meeting-followup
-version: "0.2.0"
+version: "0.2.1"
 
 catalog:
   kind: graph
@@ -14,6 +14,18 @@ catalog:
 harness:
   cases:
     - name: meeting-followup-grounds-actionable-work
+      operator_journeys:
+        - mode: standalone
+          request: Extract grounded follow-up actions from this meeting transcript.
+          expected_outcome: Return source-linked owners, actions, due-state caveats, and non-actions without sending reminders.
+        - mode: composed
+          request: Continue operations from this recorded meeting transcript and attendee evidence.
+          expected_outcome: Reuse the supplied transcript and provenance without rereading the meeting source or inventing owners.
+          prior_evidence:
+            - The bounded transcript, attendee evidence, and source bindings supplied in the fixture.
+          must_not_repeat:
+            - Do not fetch or transcribe the meeting again.
+            - Do not resolve owners or dates beyond the supplied evidence.
       inputs:
         transcript: |
           Alice: We decided to launch the beta after QA signs off.

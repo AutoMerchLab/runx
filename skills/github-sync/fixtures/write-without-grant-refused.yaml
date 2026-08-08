@@ -1,7 +1,7 @@
 name: github-sync-refuses-push-with-read-scope
 kind: skill
 target: ..
-runner: github-sync
+runner: plan
 inputs:
   repo: runxhq/runx
   direction: push

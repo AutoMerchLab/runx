@@ -252,6 +252,29 @@ mod tests {
         serde_json::from_value(json!({
             "schema": "runx.skill.architecture_decision.v1",
             "disposition": "build",
+            "identity": {
+                "proposed_name": "demo",
+                "action": "create",
+                "visibility": "public",
+                "rationale": "Demo is the exact operator-facing identity."
+            },
+            "direct_use": {
+                "trigger_requests": ["Make one bounded demo decision."],
+                "non_trigger_requests": ["Publish this decision."],
+                "default_outcome": "Return one bounded decision.",
+                "routine_host_work": ["Inspect the supplied objective."],
+                "runx_boundary": "Bind result evidence in a receipt.",
+                "terminal_result": "A reviewable demo decision.",
+                "blocker_behavior": "Block once and name missing evidence.",
+                "native_escape": "Return gathered evidence for native continuation."
+            },
+            "chain_use": {
+                "accepted_inputs": ["A supplied objective or prior evidence packet."],
+                "result": "A reusable demo decision.",
+                "reused_evidence": ["Prior objective evidence."],
+                "reused_effects": [],
+                "must_not_repeat": ["Do not rediscover supplied evidence."]
+            },
             "objective": "Create a bounded operator skill.",
             "operator_value": "Return one reviewable result.",
             "knowledge_contract": {
@@ -292,11 +315,23 @@ mod tests {
             },
             "preservation_obligations": ["Keep the operating manual substantive."],
             "deletions": [],
-            "proof_plan": [{
-                "name": "focused-harness",
-                "kind": "harness",
-                "expected": "The focused harness passes."
-            }]
+            "proof_plan": [
+                {
+                    "name": "cold-selection",
+                    "kind": "selection_trial",
+                    "expected": "The natural request selects demo and a publish request does not."
+                },
+                {
+                    "name": "standalone-result",
+                    "kind": "standalone_operator_journey",
+                    "expected": "The direct request returns a decision."
+                },
+                {
+                    "name": "composed-reuse",
+                    "kind": "composed_operator_journey",
+                    "expected": "Prior evidence is reused without rediscovery."
+                }
+            ]
         }))
         .expect("architecture fixture must be valid")
     }

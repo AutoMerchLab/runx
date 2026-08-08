@@ -193,3 +193,64 @@ fn native_provider_tools_require_matching_access_policy_and_explicit_identity() 
         Some("github-mcp-read")
     );
 }
+
+#[test]
+fn hosted_provider_explicit_binding_and_unambiguous_fallback_remain_supported() {
+    let effect = ProviderPermissionEffect::default();
+    let inputs = provider_inputs("messages.search");
+    let env = provider_env("github-mcp-read", "messages.search");
+    let step = native_step(PROVIDER_READ_TOOL, &["messages.search"], "read");
+    let admission = effect
+        .admit(effect_request(&step, &inputs, &env))
+        .expect("explicit hosted identity")
+        .expect("provider admission");
+    assert_eq!(
+        admission
+            .context::<ProviderPermissionAdmission>()
+            .map(|context| context.grant_id.as_str()),
+        Some("github-mcp-read")
+    );
+
+    let github_scopes = ["repo.read".to_owned()];
+    let slack_scopes = ["messages.search".to_owned()];
+    let grants = [
+        HostedGrantView {
+            grant_id: "grant_other",
+            provider: "github",
+            scopes: &github_scopes,
+            status: "active",
+        },
+        HostedGrantView {
+            grant_id: "grant_only",
+            provider: "slack",
+            scopes: &slack_scopes,
+            status: "active",
+        },
+    ];
+    let selected =
+        select_hosted_provider_grant_index(&grants, "slack", &["messages.search".to_owned()], None)
+            .expect("unambiguous hosted fallback");
+    assert_eq!(grants[selected].grant_id, "grant_only");
+}
+
+#[cfg(feature = "catalog")]
+#[test]
+fn missing_hosted_provider_auth_is_an_actionable_denial_not_receipt_corruption() {
+    let effect = ProviderPermissionEffect::default();
+    let inputs = provider_inputs("messages.search");
+    let env = BTreeMap::from([(
+        "RUNX_HOME".to_owned(),
+        ".runx/tests/provider-missing-auth".to_owned(),
+    )]);
+    let step = native_step(PROVIDER_READ_TOOL, &["messages.search"], "read");
+
+    let error = effect
+        .admit(effect_request(&step, &inputs, &env))
+        .expect_err("missing hosted authentication must stop in preflight");
+
+    assert!(
+        matches!(error, RuntimeEffectError::Denied { verb: AuthorityVerb::Read, ref message, .. }
+            if message.contains("missing public API token") && message.contains("runx login")),
+        "unexpected hosted preflight error: {error:?}"
+    );
+}

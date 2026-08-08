@@ -1,5 +1,5 @@
 skill: zapier-handoff
-version: "0.1.6"
+version: "0.1.7"
 catalog:
   kind: graph
   audience: operator
@@ -61,6 +61,18 @@ input_definitions:
 harness:
   cases:
     - name: zapier-handoff-preflight-ready
+      operator_journeys:
+        - mode: standalone
+          request: Hand this governed Runx payload to the configured Zapier Catch Hook.
+          expected_outcome: Validate context, scoped auth, idempotency, and receipt expectations for the exact webhook handoff.
+        - mode: composed
+          request: Continue this completed Runx operation into the selected Zapier workflow.
+          expected_outcome: Reuse the supplied run context and payload without rebuilding upstream results or duplicating webhook delivery.
+          prior_evidence:
+            - The validated Runx execution context, payload, hook target, and idempotency key supplied in the fixture.
+          must_not_repeat:
+            - Do not rerun the upstream Runx operation.
+            - Do not deliver the hook again after stable receipt evidence exists.
       runner: preflight
       inputs:
         event_id: evt_zapier_demo_001

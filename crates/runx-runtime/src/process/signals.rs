@@ -8,7 +8,8 @@ pub(crate) enum ProcessSignal {
         feature = "cli-tool",
         feature = "external-adapter",
         feature = "thread-outbox-provider",
-        feature = "mcp"
+        feature = "mcp",
+        test
     ))]
     Terminate,
     Force,
@@ -22,7 +23,8 @@ impl ProcessSignal {
                 feature = "cli-tool",
                 feature = "external-adapter",
                 feature = "thread-outbox-provider",
-                feature = "mcp"
+                feature = "mcp",
+                test
             ))]
             Self::Terminate => rustix::process::Signal::TERM,
             Self::Force => rustix::process::Signal::KILL,

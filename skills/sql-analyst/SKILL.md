@@ -1,14 +1,16 @@
 ---
 name: sql-analyst
-description: Produce a schema-validated, read-only SQL analysis plan and explicit governed execution handoff without running raw SQL.
+description: Answer a bounded data question from one declared governed read; use the explicit plan runner when only a schema-validated analysis plan is wanted.
 runx:
   category: data
 ---
 
 # SQL Analyst
 
-Use this skill to turn a bounded data question into a reviewable read-only query
-plan.
+Use this skill to answer a bounded data question from one declared, typed data
+source operation. The default validates the plan, performs the exact
+`data-store` read, and interprets only that returned evidence. The explicit
+`plan` runner stops at a reviewable read-only plan.
 
 The schema and optional sample snapshot must carry stable upstream SHA-256
 digests and observation times. Runx treats them as caller-supplied provenance,
@@ -19,11 +21,18 @@ against a normalized table/field index. A deterministic finalizer then rejects
 invented tables and fields, untyped joins, unstructured filters, literal filter
 values, invalid limits, incomplete interpretation, and write tokens.
 
-This skill never emits or executes raw SQL. Without an execution context, a
-ready plan is `planned_only`. With a validated `execution_context`, it emits an
-exact handoff to `data-store.read_projection`, `read_events`, or
-`list_stream_heads`. That handoff reads only a declared bounded resource; it
-does not translate model-authored prose into arbitrary SQL.
+This skill never emits or executes raw SQL. The default requires a validated
+`execution_context` for `data-store.read_projection`, `read_events`, or
+`list_stream_heads`; it performs that read and returns an interpretation. The
+explicit `plan` runner may omit the context and returns `planned_only`.
+
+## Composes
+
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
+- `data-store#list_stream_heads`
+- `data-store#read_events`
+- `data-store#read_projection`
 
 ## Inputs
 
@@ -34,13 +43,14 @@ does not translate model-authored prose into arbitrary SQL.
 - `sample_rows`: optional source-bound snapshot containing at most 20
   non-sensitive rows.
 - `constraints`: allowed tables, maximum rows, and privacy limits.
-- `execution_context`: optional exact governed data-store read runner and
-  bounded resource inputs.
+- `execution_context`: required for the default; an exact governed data-store
+  read runner and bounded resource inputs. It is optional only for `plan`.
 
 ## Output
 
-A `runx.data.sql_analysis_plan.v1` packet with a validated query plan,
-interpretation checks, residual risks, and an explicit non-executed handoff.
+The default returns `analysis_result` from the validated plan and actual
+`runx.data.operation_result.v1` evidence. `plan` returns the existing
+`runx.data.sql_analysis_plan.v1` packet.
 
 ## Agent task contracts
 
@@ -50,3 +60,10 @@ Produce sql_plan_draft using only analysis_context tables and qualified fields. 
 query_plan, validation_checks, interpretation, and residual_risks. The plan is read-only and
 does not execute. Use the declared dialect and bounded limit. Do not invent schema, request
 credentials, expose PII, or emit write SQL.
+
+### `sql-interpret`
+
+Answer the supplied question using only `validated_plan` and `governed_data`.
+Return `analysis_result` with a direct answer, material observations, caveats,
+and the data operation evidence reference. Never claim access to rows, fields,
+or freshness not present in the governed result.

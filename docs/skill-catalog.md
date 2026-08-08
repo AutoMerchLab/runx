@@ -44,6 +44,46 @@ The command shape is deliberate:
 Do not combine the install and execution verbs. Installation is `runx add`;
 execution is `runx skill`.
 
+## Operator-first package contract
+
+A public package has one memorable capability name and two supported invocation
+contexts. Direct use selects the truthful default described by its exact
+`SKILL.md`; a parent graph selects an exact named runner and passes typed prior
+results. Runx binds both the injected manual bytes and executable closure by
+digest, so a host cannot silently operate from instructions that disagree with
+the installed package.
+
+Defaults follow the public promise:
+
+- an operation such as send, sync, spend, refund, publish, or unseal executes
+  through its real boundary or returns one honest, resumable blocker;
+- a skill whose name promises a plan, draft, brief, review, or route returns
+  that typed artifact without pretending an external effect occurred;
+- explicit `plan`, `inspect`, `apply`, and `verify` runners remain available for
+  composed use and do not compete as separate public skills;
+- normal output contains one compact domain result and receipt references;
+  intermediate graph context is available only with diagnostics.
+
+For GitHub, an explicit project binding wins. Otherwise a compatible existing
+authenticated local `gh` session is preferred for supported reads and writes;
+Runx Connect remains the tenant-agnostic hosted transport when selected or when
+no compatible local driver exists. A connector account never determines the
+repository target. Reads do not acquire approval ceremony. Remote mutations
+retain exact approval, stable idempotency, recovery, and independent readback
+regardless of transport.
+
+Changing an implicit default is a versioned behavior change, not an immediate
+release. Existing explicitly named runners whose semantics remain truthful are
+kept for at least one normal compatibility release. Callers that need plan-only
+behavior must select the named `plan` runner; unqualified invocation follows
+the new advertised default. Publication and deployment remain separate
+operator decisions.
+
+Package admission and `core-skills:audit` reject public promise/default drift,
+unreachable required adapters or provider readback, and public mock or fixture
+defaults. Internal rails and harness fixtures remain executable through their
+own explicit identities but are excluded from normal discovery.
+
 ## Naming a skill
 
 Name a skill so an agent instinctively reaches for the right one:
@@ -94,7 +134,7 @@ evidence, not copied into the repo by default.
 
 | Category | Maintained packages |
 | --- | --- |
-| `authoring` | `overlay`, `policy-author`, `prior-art`, `review-receipt`, `review-skill`, `skill-lab`, `work-plan` |
+| `authoring` | `adopt-skill`, `diagnose-skill-run`, `policy-author`, `prior-art`, `review-skill`, `skill-lab`, `work-plan` |
 | `code` | `release` |
 | `content` | `brand-voice`, `content-pipeline`, `ghostwrite`, `moltbook` |
 | `data` | `data-store`, `run-history`, `sql-analyst` |

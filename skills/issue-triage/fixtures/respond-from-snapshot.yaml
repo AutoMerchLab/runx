@@ -2,6 +2,18 @@ name: issue-triage-drafts-from-one-snapshot
 kind: skill
 target: ..
 runner: respond
+operator_journeys:
+  - mode: standalone
+    request: Triage runxhq/runx issue 241 and draft the next helpful maintainer response.
+    expected_outcome: Return a high-signal evidence-bound issue profile and response draft without mutating GitHub.
+  - mode: composed
+    request: Draft the maintainer response from this existing issue snapshot.
+    expected_outcome: Reuse the supplied snapshot and source reference without fetching or reclassifying the issue.
+    prior_evidence:
+      - The typed issue snapshot and source reference supplied in the fixture.
+    must_not_repeat:
+      - Do not fetch the GitHub issue again.
+      - Do not repeat issue discovery or target resolution.
 inputs:
   issue_snapshot:
     repository: runxhq/runx

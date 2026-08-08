@@ -42,6 +42,57 @@ export default function validatePlan(inputs) {
   };
 }
 
+export function bindDelivery(inputs) {
+  const redaction = requiredRecord(inputs.redaction, "redaction");
+  if (redaction.decision !== "ready") throw new Error("redaction must be ready before delivery binding");
+  const redactedContent = requiredString(redaction.redacted_content, "redaction.redacted_content");
+  const redactedDigest = requiredDigest(redaction.redacted_digest, "redaction.redacted_digest");
+  const candidate = requiredRecord(inputs.delivery, "delivery");
+  const payloadTemplate = requiredRecord(candidate.payload, "delivery.payload");
+  const replacement = replacePlaceholder(payloadTemplate, redactedContent);
+  if (replacement.count !== 1) {
+    throw new Error("delivery.payload must contain exactly one {{runx.redacted_content}} placeholder");
+  }
+  const resultFields = strings(candidate.result_fields);
+  if (!resultFields.includes("content_digest")) {
+    throw new Error("delivery.result_fields must include content_digest for independent readback");
+  }
+  return {
+    delivery: {
+      provider: requiredString(candidate.provider, "delivery.provider"),
+      target: requiredString(candidate.target, "delivery.target"),
+      operation: requiredString(candidate.operation, "delivery.operation"),
+      readback_operation: requiredString(candidate.readback_operation, "delivery.readback_operation"),
+      payload: replacement.value,
+      expected_result: { ...record(candidate.expected_result), content_digest: redactedDigest },
+      result_fields: resultFields,
+    },
+  };
+}
+
+function replacePlaceholder(value, content) {
+  if (value === "{{runx.redacted_content}}") return { value: content, count: 1 };
+  if (Array.isArray(value)) {
+    let count = 0;
+    const output = value.map((entry) => {
+      const replaced = replacePlaceholder(entry, content);
+      count += replaced.count;
+      return replaced.value;
+    });
+    return { value: output, count };
+  }
+  if (value && typeof value === "object") {
+    let count = 0;
+    const output = Object.fromEntries(Object.entries(value).map(([key, entry]) => {
+      const replaced = replacePlaceholder(entry, content);
+      count += replaced.count;
+      return [key, replaced.value];
+    }));
+    return { value: output, count };
+  }
+  return { value, count: 0 };
+}
+
 function assertEqual(actual, expected, message) { if (actual !== expected) throw new Error(message); }
 function requiredDigest(value, field) {
   const parsed = requiredString(value, field);

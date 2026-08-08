@@ -1,0 +1,15 @@
+name: vault-unseal-default-requires-live-vault-binding
+kind: skill
+target: ..
+inputs:
+  secret_ref: vault://drive/service-account
+  purpose: Sign one Drive export request for the monthly reports job
+  ttl: 10m
+  scope: { resource: drive.files, action: export, path: /reports/* }
+  principal: svc/report-exporter
+expect:
+  status: failure
+metadata:
+  public_skill: vault-unseal
+  source_case: direct-default-preflight
+  source: skills-fixture

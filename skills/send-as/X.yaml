@@ -1,34 +1,47 @@
 skill: send-as
-version: "0.1.5"
+version: "0.2.0"
+
 catalog:
-  kind: skill
+  kind: graph
   audience: public
   visibility: public
   role: canonical
-  execution: plan
-  completion: plan
-  requires_adapter: false
+  execution: execute
+  completion: provider_readback
+  requires_adapter: true
   approval: required
+
+input_definitions:
+  delivery:
+    type: object
+    required: true
+    description: Exact normalized connector operation used to deliver and independently read the message back.
+    schema:
+      required: [provider, target, operation, readback_operation, payload, expected_result, result_fields]
+      additionalProperties: false
+      properties:
+        provider: { type: string, minLength: 1, maxLength: 100 }
+        target: { type: string, minLength: 1, maxLength: 2048 }
+        operation: { type: string, minLength: 1, maxLength: 100 }
+        readback_operation: { type: string, minLength: 1, maxLength: 100 }
+        payload: { type: object, additionalProperties: true }
+        expected_result: { type: object, additionalProperties: true }
+        result_fields:
+          type: array
+          minItems: 1
+          maxItems: 32
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 100 }
+
 runners:
-  plan:
+  send:
     default: true
-    type: agent-task
-    agent: reviewer
-    task: send-as
-    outputs:
-      send_plan: object
-    artifacts:
-      named_emits:
-        send_plan: send_plan
-      packets:
-        send_plan: runx.send_as.plan.v1
-    runx:
-      category: ops
+    type: graph
     inputs:
       objective:
         type: string
         required: true
-        description: Bounded send-planning or authorization objective; provider delivery is outside this runner.
+        description: Bounded live-send objective.
       principal:
         type: string
         required: true
@@ -53,3 +66,180 @@ runners:
         type: string
         required: false
         description: Approval posture, legal constraints, or extra guardrails.
+      delivery:
+        definition: delivery
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for this exact digest-bound send.
+        schema: { minLength: 1, maxLength: 256 }
+    graph:
+      name: send-as
+      result_from: [finalize, plan]
+      steps:
+        - id: plan
+          skill: .
+          runner: plan
+          inputs:
+            objective: $input.objective
+            principal: $input.principal
+            provider_context: $input.provider_context
+            audience: $input.audience
+            content_ref: $input.content_ref
+            consent_basis: $input.consent_basis
+            operator_context: $input.operator_context
+
+        - id: apply
+          when:
+            field: plan.send_plan.data.decision
+            equals: ready
+          skill: .
+          runner: apply
+          inputs:
+            delivery: $input.delivery
+            idempotency_key: $input.idempotency_key
+          context:
+            send_plan: plan.send_plan.data
+
+        - id: finalize
+          when:
+            field: plan.send_plan.data.decision
+            equals: ready
+          skill: .
+          runner: verify
+          inputs:
+            delivery: $input.delivery
+          context:
+            send_plan: plan.send_plan.data
+            apply_result: apply.provider_operation.data
+
+  plan:
+    type: agent-task
+    agent: reviewer
+    task: send-as
+    outputs:
+      send_plan: object
+    artifacts:
+      named_emits:
+        send_plan: send_plan
+      packets:
+        send_plan: runx.send_as.plan.v1
+    runx:
+      category: ops
+    inputs:
+      objective:
+        type: string
+        required: true
+        description: Bounded send-planning or authorization objective; this explicit runner does not deliver.
+      principal:
+        type: string
+        required: true
+        description: Principal the message is sent as.
+      provider_context:
+        type: json
+        required: false
+        description: Provider/account readiness, connector, or MCP status.
+      audience:
+        type: json
+        required: false
+        description: Recipient, list, segment, thread, channel, or audience brief.
+      content_ref:
+        type: json
+        required: false
+        description: Digest, draft id, template id, campaign id, or stable content reference.
+      consent_basis:
+        type: string
+        required: false
+        description: Why the recipient or audience may receive this message.
+      operator_context:
+        type: string
+        required: false
+        description: Approval posture, legal constraints, or extra guardrails.
+
+  apply:
+    type: graph
+    inputs:
+      send_plan:
+        type: json
+        packet: runx.send_as.plan.v1
+        required: true
+        description: Exact digest-bound plan emitted by send-as:plan.
+      delivery:
+        definition: delivery
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for this exact digest-bound send.
+        schema: { minLength: 1, maxLength: 256 }
+    graph:
+      name: send-as-apply
+      result_from: [deliver]
+      steps:
+        - id: deliver
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: $input.idempotency_key
+          scopes: [message.send]
+          policy:
+            provider_permission:
+              verb: write
+          inputs:
+            expected_provider: $input.delivery.provider
+            operation: $input.delivery.operation
+            target: $input.delivery.target
+            idempotency_key: $input.idempotency_key
+            result_fields: $input.delivery.result_fields
+            input: $input.delivery.payload
+            expected_result: $input.delivery.expected_result
+
+  verify:
+    type: graph
+    inputs:
+      send_plan:
+        type: json
+        packet: runx.send_as.plan.v1
+        required: true
+        description: Exact digest-bound plan consumed by apply.
+      apply_result:
+        type: json
+        packet: runx.provider.operation.v1
+        required: true
+        description: Provider mutation result emitted by apply; the producer is not repeated.
+      delivery:
+        definition: delivery
+    graph:
+      name: send-as-verify
+      result_from: [finalize]
+      steps:
+        - id: readback
+          tool: provider.read
+          scopes: [message.read]
+          policy:
+            provider_permission:
+              verb: read
+          inputs:
+            expected_provider: $input.delivery.provider
+            operation: $input.delivery.readback_operation
+            target: $input.delivery.target
+            result_fields: $input.delivery.result_fields
+            input: $input.apply_result.result
+            expected_result: $input.apply_result.result
+
+        - id: finalize
+          inputs:
+            send_plan: $input.send_plan
+            apply_result: $input.apply_result
+            delivery: $input.delivery
+          context:
+            readback_result: readback.provider_operation.data
+          run:
+            type: javascript
+            module: send-as.mjs
+            export: finalizeSend
+            outputs:
+              send_result: object
+          artifacts:
+            named_emits:
+              send_result: send_result
+            packets:
+              send_result: runx.send_as.result.v1

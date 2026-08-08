@@ -569,7 +569,13 @@ fn agent_request(
     agent_act_resolution_request(invocation, source_type).map_err(Into::into)
 }
 
-fn needs_agent_output(run_id: &str, request_id: &str, request: JsonValue) -> JsonObject {
+fn needs_agent_output(
+    manifest: &SkillRunnerManifest,
+    runner: &str,
+    run_id: &str,
+    request_id: &str,
+    request: JsonValue,
+) -> JsonObject {
     let mut output = JsonObject::new();
     output.insert(
         "schema".to_owned(),
@@ -579,6 +585,11 @@ fn needs_agent_output(run_id: &str, request_id: &str, request: JsonValue) -> Jso
         "status".to_owned(),
         JsonValue::String("needs_agent".to_owned()),
     );
+    output.insert(
+        "skill_name".to_owned(),
+        JsonValue::String(manifest.skill.clone().unwrap_or_else(|| "skill".to_owned())),
+    );
+    output.insert("runner".to_owned(), JsonValue::String(runner.to_owned()));
     output.insert("run_id".to_owned(), JsonValue::String(run_id.to_owned()));
     output.insert(
         "requests".to_owned(),
@@ -599,17 +610,45 @@ fn request_for_public_loop(request_id: &str, request: JsonValue) -> JsonValue {
     JsonValue::Object(object)
 }
 
-fn read_answer(path: &Path, request_id: &str) -> Result<JsonValue, SkillRunError> {
+fn read_answer(
+    path: &Path,
+    request_id: &str,
+    request: &JsonValue,
+) -> Result<JsonValue, SkillRunError> {
     let raw = fs::read_to_string(path)
         .map_err(|source| RuntimeError::io(format!("reading {}", path.display()), source))?;
     let value = serde_json::from_str::<JsonValue>(&raw).map_err(|source| {
         RuntimeError::json(format!("parsing answers file {}", path.display()), source)
     })?;
     let answers = match &value {
-        JsonValue::Object(object) => match object.get("answers") {
-            Some(JsonValue::Object(nested)) => nested,
-            _ => object,
-        },
+        JsonValue::Object(object) => {
+            if let Some(digests) = object.get("request_digests") {
+                let digests = digests
+                    .as_object()
+                    .ok_or_else(|| invalid("request_digests field must be a JSON object"))?;
+                let supplied = digests
+                    .get(request_id)
+                    .and_then(JsonValue::as_str)
+                    .ok_or_else(|| {
+                        invalid(format!(
+                            "request_digests did not include pending request {request_id}"
+                        ))
+                    })?;
+                let bytes = serde_json::to_vec(request).map_err(|source| {
+                    RuntimeError::json("serializing pending request for digest binding", source)
+                })?;
+                let expected = runx_contracts::sha256_prefixed(&bytes);
+                if supplied != expected {
+                    return Err(invalid(format!(
+                        "request digest mismatch for {request_id}: supplied {supplied}, current {expected}"
+                    )));
+                }
+            }
+            match object.get("answers") {
+                Some(JsonValue::Object(nested)) => nested,
+                _ => object,
+            }
+        }
         _ => return Err(invalid("answers file must be a JSON object")),
     };
     answers
@@ -939,11 +978,11 @@ fn answer_disposition(answer: &JsonValue) -> Result<ClosureDisposition, SkillRun
 
 fn sealed_output(
     manifest: &SkillRunnerManifest,
+    runner: &str,
     run_id: &str,
     skill_output: &InvocationOutput,
     result: &JsonValue,
-    context: Option<JsonValue>,
-    trace: Option<JsonValue>,
+    diagnostics: SkillOutputDiagnostics,
     receipt: &runx_contracts::Receipt,
 ) -> JsonObject {
     let mut output = JsonObject::new();
@@ -956,6 +995,7 @@ fn sealed_output(
         "skill_name".to_owned(),
         JsonValue::String(manifest.skill.clone().unwrap_or_else(|| "skill".to_owned())),
     );
+    output.insert("runner".to_owned(), JsonValue::String(runner.to_owned()));
     output.insert("run_id".to_owned(), JsonValue::String(run_id.to_owned()));
     output.insert(
         "receipt_id".to_owned(),
@@ -966,10 +1006,10 @@ fn sealed_output(
         JsonValue::Object(closure_output(&receipt.seal)),
     );
     output.insert("result".to_owned(), result.clone());
-    if let Some(context) = context {
+    if let Some(context) = diagnostics.context {
         output.insert("context".to_owned(), context);
     }
-    if let Some(trace) = trace {
+    if let Some(trace) = diagnostics.trace {
         output.insert("trace".to_owned(), trace);
     }
     if let Some(observations) = skill_output
@@ -1001,6 +1041,12 @@ fn sealed_output(
         output.insert("error".to_owned(), JsonValue::Object(error));
     }
     output
+}
+
+#[derive(Default)]
+struct SkillOutputDiagnostics {
+    context: Option<JsonValue>,
+    trace: Option<JsonValue>,
 }
 
 fn closure_output(seal: &runx_contracts::Seal) -> JsonObject {

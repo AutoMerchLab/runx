@@ -1,7 +1,6 @@
 name: list-actions
 kind: skill
 target: ..
-runner: list_actions
 inputs:
   data_source_ref: local://runx/operator-inbox/list-actions
   event_types:

@@ -6,7 +6,7 @@ use std::fs;
 use runx_contracts::{
     JsonNumber, JsonValue, SkillApplyVerdict, SkillArchitectureDecision,
     SkillArchitectureDisposition, SkillChangeBundle, SkillChangeDecision, SkillChangeDraft,
-    SkillChangeDraftSchema, SkillFileWrite,
+    SkillChangeDraftSchema, SkillFileWrite, SkillPackageVisibility, SkillProofKind,
 };
 use serde_json::json;
 
@@ -38,6 +38,46 @@ fn architecture(
     serde_json::from_value(json!({
         "schema": "runx.skill.architecture_decision.v1",
         "disposition": disposition_name,
+        "identity": if implements_package {
+            json!({
+                "current_name": if disposition == SkillArchitectureDisposition::ExtendExisting {
+                    json!("demo")
+                } else {
+                    json!(null)
+                },
+                "proposed_name": "demo",
+                "action": if disposition == SkillArchitectureDisposition::Build { "create" } else { "keep" },
+                "visibility": "public",
+                "rationale": "Demo is the exact operator-facing identity."
+            })
+        } else {
+            json!(null)
+        },
+        "direct_use": if implements_package {
+            json!({
+                "trigger_requests": ["Make one bounded demo decision."],
+                "non_trigger_requests": ["Publish this decision."],
+                "default_outcome": "Return one bounded decision.",
+                "routine_host_work": ["Inspect the supplied objective."],
+                "runx_boundary": "Bind the result and evidence in a receipt.",
+                "terminal_result": "A reviewable demo decision.",
+                "blocker_behavior": "Block once and name missing evidence.",
+                "native_escape": "Return gathered context for native continuation."
+            })
+        } else {
+            json!(null)
+        },
+        "chain_use": if implements_package {
+            json!({
+                "accepted_inputs": ["A supplied objective or prior evidence packet."],
+                "result": "A reusable demo decision.",
+                "reused_evidence": ["Prior objective evidence."],
+                "reused_effects": [],
+                "must_not_repeat": ["Do not rediscover supplied evidence."]
+            })
+        } else {
+            json!(null)
+        },
         "objective": "Create or maintain the bounded demo skill.",
         "operator_value": "Give the operator one reviewable decision.",
         "knowledge_contract": {
@@ -82,11 +122,23 @@ fn architecture(
         "preservation_obligations": ["Keep the operating manual substantive."],
         "deletions": deletes,
         "proof_plan": if implements_package {
-            json!([{
-                "name": "focused-harness",
-                "kind": "harness",
-                "expected": "The package validates and its focused harness passes."
-            }])
+            json!([
+                {
+                    "name": "cold-selection",
+                    "kind": "selection_trial",
+                    "expected": "The natural request selects demo and a publish request does not."
+                },
+                {
+                    "name": "standalone-result",
+                    "kind": "standalone_operator_journey",
+                    "expected": "The direct request returns a decision."
+                },
+                {
+                    "name": "composed-reuse",
+                    "kind": "composed_operator_journey",
+                    "expected": "Prior evidence is reused without rediscovery."
+                }
+            ])
         } else {
             json!([])
         }
@@ -313,6 +365,45 @@ fn skill_authoring_plan_digest_binds_the_base_and_architecture()
 
     assert_ne!(first.plan_digest, second.plan_digest);
     Ok(())
+}
+
+#[test]
+fn skill_authoring_rejects_public_architecture_without_operator_contract_and_each_journey_proof() {
+    let digest = format!("sha256:{}", "a".repeat(64));
+    let mut missing_identity = architecture(SkillArchitectureDisposition::Build, &[]);
+    missing_identity.identity = None;
+    assert!(plan_skill_architecture(&digest, missing_identity).is_err());
+
+    for missing in [
+        SkillProofKind::SelectionTrial,
+        SkillProofKind::StandaloneOperatorJourney,
+        SkillProofKind::ComposedOperatorJourney,
+    ] {
+        let mut incomplete = architecture(SkillArchitectureDisposition::Build, &[]);
+        incomplete.proof_plan.retain(|proof| proof.kind != missing);
+        assert!(
+            plan_skill_architecture(&digest, incomplete).is_err(),
+            "missing {missing:?} must fail admission"
+        );
+    }
+
+    let mut internal = architecture(SkillArchitectureDisposition::ExtendExisting, &[]);
+    let identity = internal
+        .identity
+        .as_mut()
+        .expect("extension fixture must have identity");
+    identity.visibility = SkillPackageVisibility::Internal;
+    internal.direct_use = None;
+    assert!(plan_skill_architecture(&digest, internal).is_ok());
+
+    let mut internal_with_public_triggers =
+        architecture(SkillArchitectureDisposition::ExtendExisting, &[]);
+    internal_with_public_triggers
+        .identity
+        .as_mut()
+        .expect("extension fixture must have identity")
+        .visibility = SkillPackageVisibility::Internal;
+    assert!(plan_skill_architecture(&digest, internal_with_public_triggers).is_err());
 }
 
 #[test]

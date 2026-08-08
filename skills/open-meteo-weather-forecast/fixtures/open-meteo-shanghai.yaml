@@ -2,6 +2,18 @@ name: open-meteo-shanghai
 kind: skill
 target: ..
 runner: main
+operator_journeys:
+  - mode: standalone
+    request: Fetch a three-day Open-Meteo forecast for Shanghai.
+    expected_outcome: Return bounded global forecast evidence with exact coordinates and provider provenance.
+  - mode: composed
+    request: Acquire Open-Meteo evidence for these already resolved Shanghai coordinates.
+    expected_outcome: Reuse supplied coordinates without geocoding again and return one downstream-ready provider packet.
+    prior_evidence:
+      - The resolved Shanghai name, latitude, longitude, and horizon supplied in the fixture.
+    must_not_repeat:
+      - Do not geocode Shanghai again.
+      - Do not fetch the forecast again downstream when the evidence packet is present.
 inputs:
   name: Shanghai
   latitude: "31.2222"

@@ -2,6 +2,18 @@ name: scheduled-campaign-ready
 kind: skill
 target: ..
 runner: plan-campaign
+operator_journeys:
+  - mode: standalone
+    request: Prepare the weekly newsletter campaign for next Tuesday at 9am in this Nitrosend account.
+    expected_outcome: Return an account-ready campaign plan with audience, schedule, and delivery boundary explicit without sending.
+  - mode: composed
+    request: Prepare the campaign from this completed account-readiness and audience evidence.
+    expected_outcome: Reuse the supplied account status and audience brief without reinspecting the account or sending the campaign.
+    prior_evidence:
+      - The Nitrosend account status, brand configuration, audience brief, and operator context supplied in the fixture.
+    must_not_repeat:
+      - Do not re-fetch account readiness or audience facts.
+      - Do not create or send a campaign before the explicit delivery lane is selected.
 inputs:
   objective: Schedule our weekly newsletter to the subscribers list for next Tuesday at 9am.
   account_status_json: '{"status":"healthy","account":{"tier":"pro","can_send":true,"domain_verified":true,"using_sandbox":false,"contact_count":4200,"campaign_count":7},"brand":{"setup_complete":true,"company_name":"Acme Co"},"config":{"from_email":"news@acme.com"},"issues":[],"recommendations":[]}'

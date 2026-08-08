@@ -1,5 +1,5 @@
 skill: deep-research
-version: "0.2.2"
+version: "0.2.3"
 
 catalog:
   kind: graph
@@ -47,6 +47,18 @@ input_definitions:
 harness:
   cases:
     - name: deep-research-packages-bound-brief-without-publishing
+      operator_journeys:
+        - mode: standalone
+          request: Produce a decision-ready deep-research brief from these bounded sources.
+          expected_outcome: Return a rigorous brief with material claims bound to source evidence and no publication claim.
+        - mode: composed
+          request: Continue the decision from this completed bounded research collection.
+          expected_outcome: Reuse supplied research evidence and provenance without reacquiring sources or repeating collection.
+          prior_evidence:
+            - The bounded source collection, objective, and provenance supplied in the fixture.
+          must_not_repeat:
+            - Do not refetch or rediscover material sources.
+            - Do not repeat evidence collection already preserved in the input packet.
       inputs:
         objective: Identify the strongest architectural signal in the supplied Runx evidence.
         audience: operators

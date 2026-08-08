@@ -1,0 +1,16 @@
+name: x402-pay-default-requires-trusted-buyer-adapter
+kind: skill
+target: ..
+inputs:
+  payment_signal:
+    signal_type: effect_required
+    challenge_id: ch_x402_001
+    amount_minor: 125
+    currency: USD
+    rail: x402
+    counterparty: merchant:demo
+    operation: search.paid
+  idempotency_seed: demo-x402-001
+expect:
+  status: failure
+metadata: { public_skill: x402-pay, source_case: direct-default-preflight, source: skills-fixture }

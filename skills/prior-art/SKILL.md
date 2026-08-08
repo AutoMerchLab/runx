@@ -7,9 +7,45 @@ description: Inspect bounded local repository and Runx catalog evidence before a
 
 Ground the next decision in sources that were actually inspected.
 
-## Procedure
+## Direct use
 
-1. Supply a bounded `objective`, optional work-plan `decomposition`, and any repo-relative `source_paths` that matter.
+Do the inspection and return the recommendation in the same task. Do not stop
+after announcing a search plan, ask the operator to enumerate obvious files, or
+turn bounded discovery into a repository-wide grep.
+
+1. Start from the operator's objective and current workspace. When exact
+   `source_paths` are already supplied, reuse them.
+2. Otherwise, make one targeted discovery pass for the smallest likely owning
+   set: repository instructions and conventions, the named product or package,
+   exact active plans or specs implicated by the objective, and adjacent Runx
+   skill manifests. Select at most sixteen files. Listing filenames is
+   discovery, not the prior-art result; continue through inspection.
+3. Invoke the default runner with the objective, chosen paths, and any existing
+   decomposition. Complete its bounded research request, resume it in memory,
+   and return the validated prior-art report—not a narration of what you intend
+   to read.
+4. If the selected evidence is insufficient, return one precise
+   `needs_more_evidence` result naming the missing source. Do not broaden the
+   search repeatedly or cycle through unrelated skills.
+
+Routine local discovery and reads use the host's normal authenticated tools and
+need no approval. Runx adds the catalog projection, digest-bound source bundle,
+citation validation, reusable packet, and receipt. If Runx is unavailable,
+preserve the selected paths and findings in the documented output shape so the
+operator can continue locally without repeating discovery; do not claim a Runx
+receipt.
+
+## Composed use
+
+A parent should pass its objective, decomposition, and already selected source
+paths. Reuse that evidence boundary exactly. Do not enumerate the repository,
+reacquire the catalog, or repeat a prior evidence-selection step unless the
+packet is missing, stale, or outside the current objective.
+
+## Executable procedure
+
+1. Supply a bounded `objective`, optional work-plan `decomposition`, and the
+   repo-relative `source_paths` selected by direct discovery or a parent chain.
 2. Native `runx.skill.inspect` indexes the local Runx catalog and
    `fs.read_bundle` reads and hashes at most sixteen requested files under the
    workspace boundary. Missing files are recorded; escaping, duplicate, or

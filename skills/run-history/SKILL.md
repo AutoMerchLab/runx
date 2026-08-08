@@ -14,7 +14,7 @@ transcribe counts.
 
 Use it for operational questions about recent Runx activity, failed or blocked
 runs, pending runs, frequently used receipt subjects, and skill entries without
-fixtures or inline harness cases. Use `audit-receipt` or `review-receipt` to
+fixtures or inline harness cases. Use `audit-receipt` or `diagnose-skill-run` to
 inspect one suspicious run, and `least-privilege` when receipt-backed authority
 usage is available for grant attenuation.
 
@@ -44,7 +44,7 @@ usage is available for grant attenuation.
 - terminal and pending counts, status counts, closed/refusal rates;
 - the most frequent receipt subjects;
 - catalog entry and test-coverage counts;
-- bounded recommendations routed to `review-receipt`, `audit-receipt`, or
+- bounded recommendations routed to `diagnose-skill-run`, `audit-receipt`, or
   `skill-lab harness`;
 - limitations when native projections cannot support a stronger claim.
 

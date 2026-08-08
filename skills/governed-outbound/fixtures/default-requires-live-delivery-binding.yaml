@@ -1,0 +1,14 @@
+name: governed-outbound-default-requires-live-delivery-binding
+kind: skill
+target: ..
+inputs:
+  url: https://example.com/
+  allowlist: [example.com]
+  channel: "#incidents"
+  principal: account:ops-bot
+expect:
+  status: failure
+metadata:
+  public_skill: governed-outbound
+  source_case: direct-default-preflight
+  source: skills-fixture

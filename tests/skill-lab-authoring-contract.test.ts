@@ -86,7 +86,8 @@ describe("Skill Lab authoring ownership", () => {
   });
 
   it("preserves the substantive operator manual", async () => {
-    const manual = await readFile(path.join(root, "skills/skill-lab/SKILL.md"), "utf8");
+    const manual = (await readFile(path.join(root, "skills/skill-lab/SKILL.md"), "utf8"))
+      .replace(/\s+/g, " ");
     for (const meaning of [
       "## Authoring rules",
       "## Agent task contracts",
@@ -130,6 +131,29 @@ function architectureDecision(): Record<string, any> {
   return {
     schema: "runx.skill.architecture_decision.v1",
     disposition: "build",
+    identity: {
+      proposed_name: "demo",
+      action: "create",
+      visibility: "public",
+      rationale: "Demo is the natural operation name.",
+    },
+    direct_use: {
+      trigger_requests: ["Make a bounded demo decision."],
+      non_trigger_requests: ["Publish this decision."],
+      default_outcome: "Return one bounded decision.",
+      routine_host_work: ["Inspect the supplied objective."],
+      runx_boundary: "Bind result evidence in a receipt.",
+      terminal_result: "A reviewable demo decision.",
+      blocker_behavior: "Block once and name missing evidence.",
+      native_escape: "Return gathered evidence for native continuation.",
+    },
+    chain_use: {
+      accepted_inputs: ["A supplied objective or prior evidence packet."],
+      result: "A reusable demo decision.",
+      reused_evidence: ["Prior objective evidence."],
+      reused_effects: [],
+      must_not_repeat: ["Do not rediscover supplied evidence."],
+    },
     objective: "Create one bounded skill.",
     operator_value: "Give the operator one reviewable outcome.",
     knowledge_contract: {
@@ -152,7 +176,23 @@ function architectureDecision(): Record<string, any> {
     },
     preservation_obligations: ["Keep the manual substantive."],
     deletions: [],
-    proof_plan: [{ name: "focused", kind: "harness", expected: "The package passes." }],
+    proof_plan: [
+      {
+        name: "cold-selection",
+        kind: "selection_trial",
+        expected: "The natural request selects demo and a publish request does not.",
+      },
+      {
+        name: "standalone-result",
+        kind: "standalone_operator_journey",
+        expected: "The direct request returns a decision.",
+      },
+      {
+        name: "composed-reuse",
+        kind: "composed_operator_journey",
+        expected: "Prior evidence is reused without rediscovery.",
+      },
+    ],
   };
 }
 

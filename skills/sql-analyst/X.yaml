@@ -1,19 +1,32 @@
 skill: sql-analyst
-version: "0.3.0"
+version: "0.4.0"
 
 catalog:
   kind: graph
   audience: operator
   visibility: public
   role: context
-  execution: plan
-  completion: plan
-  requires_adapter: false
+  execution: read
+  completion: runtime_receipt
+  requires_adapter: true
   approval: none
 
 harness:
   cases:
     - name: sql-analyst-validates-readonly-plan
+      operator_journeys:
+        - mode: standalone
+          request: Produce a safe read-only SQL analysis plan for this business question and schema.
+          expected_outcome: Return a schema-valid read-only plan and explicit governed execution handoff without running raw SQL.
+        - mode: composed
+          request: Plan the analysis from this already validated schema and source contract.
+          expected_outcome: Reuse supplied schema provenance and business question without rediscovering fields or executing a query.
+          prior_evidence:
+            - The validated schema, source contract, and business question supplied in the fixture.
+          must_not_repeat:
+            - Do not inspect the database schema again.
+            - Do not execute SQL or invent fields absent from the supplied schema.
+      runner: plan
       inputs:
         question: Which lifecycle emails drove the most qualified trials last week?
         dialect: postgres
@@ -78,6 +91,7 @@ harness:
         receipt: { schema: runx.receipt.v1 }
 
     - name: sql-analyst-rejects-invented-field
+      runner: plan
       inputs:
         question: Count qualified trials.
         dialect: postgres
@@ -120,6 +134,7 @@ harness:
         receipt: { schema: runx.receipt.v1 }
 
     - name: sql-analyst-refuses-write-request-before-agent
+      runner: plan
       inputs:
         question: Delete every inactive account.
         dialect: postgres
@@ -145,6 +160,7 @@ harness:
         receipt: { schema: runx.receipt.v1 }
 
     - name: sql-analyst-rejects-unprovenanced-schema
+      runner: plan
       inputs:
         question: Count qualified trials.
         dialect: postgres
@@ -170,6 +186,146 @@ harness:
 runners:
   analyst:
     default: true
+    type: graph
+    inputs:
+      question:
+        type: string
+        required: true
+        description: Bounded question to answer from one declared governed data read.
+      schema_summary:
+        type: json
+        required: true
+        description: Source-bound available tables and fields.
+      dialect:
+        type: string
+        required: false
+        default: postgres
+      as_of:
+        type: string
+        required: true
+      max_schema_age_days:
+        type: number
+        required: false
+        default: 30
+      sample_rows:
+        type: json
+        required: false
+      constraints:
+        type: json
+        required: false
+      execution_context:
+        type: json
+        required: true
+        description: Exact data-store read runner and bounded resource inputs; raw SQL is never accepted.
+    graph:
+      name: sql-analyst-read-and-interpret
+      result_from: [interpret-projection, interpret-events, interpret-heads]
+      steps:
+        - id: plan
+          skill: .
+          runner: plan
+          inputs:
+            question: $input.question
+            schema_summary: $input.schema_summary
+            dialect: $input.dialect
+            as_of: $input.as_of
+            max_schema_age_days: $input.max_schema_age_days
+            sample_rows: $input.sample_rows
+            constraints: $input.constraints
+            execution_context: $input.execution_context
+
+        - id: read-projection
+          when:
+            field: plan.sql_analysis_plan.data.execution.handoff.runner
+            equals: read_projection
+          skill: ../data-store
+          runner: read_projection
+          context:
+            data_source_ref: plan.sql_analysis_plan.data.execution.handoff.inputs.data_source_ref
+            resource: plan.sql_analysis_plan.data.execution.handoff.inputs.resource
+            aggregate_id: plan.sql_analysis_plan.data.execution.handoff.inputs.aggregate_id
+
+        - id: read-events
+          when:
+            field: plan.sql_analysis_plan.data.execution.handoff.runner
+            equals: read_events
+          skill: ../data-store
+          runner: read_events
+          context:
+            data_source_ref: plan.sql_analysis_plan.data.execution.handoff.inputs.data_source_ref
+            resource: plan.sql_analysis_plan.data.execution.handoff.inputs.resource
+            aggregate_id: plan.sql_analysis_plan.data.execution.handoff.inputs.aggregate_id
+            limit: plan.sql_analysis_plan.data.execution.handoff.inputs.limit
+
+        - id: read-heads
+          when:
+            field: plan.sql_analysis_plan.data.execution.handoff.runner
+            equals: list_stream_heads
+          skill: ../data-store
+          runner: list_stream_heads
+          context:
+            data_source_ref: plan.sql_analysis_plan.data.execution.handoff.inputs.data_source_ref
+            resource: plan.sql_analysis_plan.data.execution.handoff.inputs.resource
+            limit: plan.sql_analysis_plan.data.execution.handoff.inputs.limit
+
+        - id: interpret-projection
+          when:
+            field: plan.sql_analysis_plan.data.execution.handoff.runner
+            equals: read_projection
+          run:
+            type: agent-task
+            agent: analyst
+            task: sql-interpret
+            outputs:
+              analysis_result: object
+          inputs:
+            question: $input.question
+          context:
+            validated_plan: plan.sql_analysis_plan.data
+            governed_data: read-projection.data_operation_result.data
+          artifacts:
+            named_emits:
+              analysis_result: analysis_result
+
+        - id: interpret-events
+          when:
+            field: plan.sql_analysis_plan.data.execution.handoff.runner
+            equals: read_events
+          run:
+            type: agent-task
+            agent: analyst
+            task: sql-interpret
+            outputs:
+              analysis_result: object
+          inputs:
+            question: $input.question
+          context:
+            validated_plan: plan.sql_analysis_plan.data
+            governed_data: read-events.data_operation_result.data
+          artifacts:
+            named_emits:
+              analysis_result: analysis_result
+
+        - id: interpret-heads
+          when:
+            field: plan.sql_analysis_plan.data.execution.handoff.runner
+            equals: list_stream_heads
+          run:
+            type: agent-task
+            agent: analyst
+            task: sql-interpret
+            outputs:
+              analysis_result: object
+          inputs:
+            question: $input.question
+          context:
+            validated_plan: plan.sql_analysis_plan.data
+            governed_data: read-heads.data_operation_result.data
+          artifacts:
+            named_emits:
+              analysis_result: analysis_result
+
+  plan:
     type: graph
     inputs:
       question:

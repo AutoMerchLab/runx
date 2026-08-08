@@ -1,17 +1,30 @@
 skill: governed-outbound
-version: "0.2.2"
+version: "0.3.0"
 catalog:
   kind: graph
   audience: public
   visibility: public
   role: context
-  execution: read
-  completion: plan
-  requires_adapter: false
+  execution: execute
+  completion: provider_readback
+  requires_adapter: true
   approval: required
 harness:
   cases:
     - name: governed-outbound-approved-plan
+      operator_journeys:
+        - mode: standalone
+          request: Fetch this allowlisted source, remove personal data, and prepare the exact approved outbound handoff.
+          expected_outcome: Return a digest-bound scrubbed payload and truthful provider-neutral delivery handoff without leaking source PII.
+        - mode: composed
+          request: Continue outbound delivery from this already bounded source and target plan.
+          expected_outcome: Reuse supplied source evidence and target intent without refetching, rescrubbing, or claiming delivery.
+          prior_evidence:
+            - The allowlisted source, target intent, and approval context supplied in the fixture.
+          must_not_repeat:
+            - Do not fetch the external source again.
+            - Do not repeat redaction after deterministic residual scanning has passed.
+      runner: plan
       env:
         RUNX_PROVIDER_PERMISSION_GRANT_ID: provider-read-demo
         RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: '["runx:net:allowlist"]'
@@ -90,6 +103,7 @@ harness:
         receipt:
           schema: runx.receipt.v1
     - name: governed-outbound-redaction-hold
+      runner: plan
       env:
         RUNX_PROVIDER_PERMISSION_GRANT_ID: provider-read-hold-demo
         RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: '["runx:net:allowlist"]'
@@ -118,12 +132,106 @@ harness:
                   decision: needs_review
                   redacted_digest: null
     - name: governed-outbound-needs-target
+      runner: plan
       inputs: {}
       expect:
         status: failure
 runners:
-  governed-outbound:
+  deliver:
     default: true
+    type: graph
+    inputs:
+      url:
+        type: string
+        required: true
+        description: Allowlisted source URL to fetch before outbound delivery.
+      allowlist:
+        type: json
+        required: true
+      channel:
+        type: string
+        required: true
+        description: Exact provider-neutral audience or destination.
+      principal:
+        type: string
+        required: true
+        description: Principal the scrubbed content is sent as.
+      operator_context:
+        type: string
+        required: false
+      delivery:
+        type: object
+        required: true
+        description: Provider operation descriptor whose payload contains exactly one `{{runx.redacted_content}}` placeholder.
+        schema:
+          required: [provider, target, operation, readback_operation, payload, result_fields]
+          additionalProperties: false
+          properties:
+            provider: { type: string, minLength: 1, maxLength: 100 }
+            target: { type: string, minLength: 1, maxLength: 2048 }
+            operation: { type: string, minLength: 1, maxLength: 100 }
+            readback_operation: { type: string, minLength: 1, maxLength: 100 }
+            payload: { type: object, additionalProperties: true }
+            expected_result: { type: object, additionalProperties: true }
+            result_fields:
+              type: array
+              minItems: 1
+              maxItems: 32
+              uniqueItems: true
+              items: { type: string, minLength: 1, maxLength: 100 }
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for this exact outbound delivery.
+    graph:
+      name: governed-outbound-deliver
+      result_from: [send]
+      steps:
+        - id: fetch-source
+          skill: ../web-fetch
+          runner: web-fetch
+          scopes: [runx:net:allowlist]
+          inputs:
+            url: $input.url
+            allowlist: $input.allowlist
+            extract: text
+        - id: scrub-content
+          skill: ../redact-pii
+          runner: redact-pii
+          scopes: [runx:content:read]
+          inputs:
+            mode: redact
+          context:
+            content: fetch-source.fetch_result.data.extracted
+        - id: bind-delivery
+          inputs:
+            delivery: $input.delivery
+          context:
+            redaction: scrub-content.redaction_report.data
+          run:
+            type: javascript
+            module: governed-outbound.mjs
+            export: bindDelivery
+            outputs:
+              delivery: object
+        - id: send
+          when:
+            field: scrub-content.redaction_report.data.decision
+            equals: ready
+          skill: ../send-as
+          runner: send
+          mutation: true
+          inputs:
+            objective: Deliver the exact scrubbed outbound content and verify provider readback.
+            principal: $input.principal
+            audience: $input.channel
+            operator_context: $input.operator_context
+            idempotency_key: $input.idempotency_key
+          context:
+            content_ref: scrub-content.redaction_report.data
+            delivery: bind-delivery.delivery
+
+  plan:
     type: graph
     inputs:
       url:

@@ -119,7 +119,7 @@ function handleToolCall(id, params) {
     respondText(id, {
       repository: String(args.repository ?? ""),
       number: String(args.number ?? ""),
-      review_note_id: "pr-review-note-fixture-001",
+      review_note_id: "github-pr-comment-fixture-001",
       body_sha256: sha256(String(args.body ?? "")),
     });
     return;

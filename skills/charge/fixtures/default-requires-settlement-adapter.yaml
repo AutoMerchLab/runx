@@ -1,0 +1,17 @@
+name: charge-default-requires-settlement-adapter
+kind: skill
+target: ..
+inputs:
+  mcp_tool_call: { tool: search.paid, arguments: { query: runx } }
+  provider_policy:
+    price_minor: 125
+    currency: USD
+    accepted_settlement_families: [mpp]
+    counterparty: provider:demo
+    realm: test
+  returned_credential: { family: mpp, credential_ref: credential:mpp:paid-search-001 }
+  verify_capability_ref: capability:charge-verify:paid-search-001
+  idempotency_seed: paid-search-001
+expect:
+  status: failure
+metadata: { public_skill: charge, source_case: direct-default-preflight, source: skills-fixture }

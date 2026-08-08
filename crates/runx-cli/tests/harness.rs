@@ -70,7 +70,7 @@ expect:
 fn package_mode_keeps_default_receipts_after_isolated_replay() -> TestResult {
     let root = crate::support::temp_root("runx-package-harness-default-receipts");
     let skill_dir = root.join("skill");
-    let receipt_dir = root.join(".runx/receipts");
+    let receipt_dir = root.join(".runx/harness-receipts");
     fs::create_dir_all(&skill_dir)?;
     write_cli_tool_skill(&skill_dir)?;
 

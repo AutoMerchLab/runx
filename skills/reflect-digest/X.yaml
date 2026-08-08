@@ -1,10 +1,10 @@
 skill: reflect-digest
-version: "0.2.3"
+version: "0.3.0"
 
 catalog:
   kind: graph
   audience: builder
-  visibility: public
+  visibility: internal
   role: context
   execution: read
   completion: runtime_receipt

@@ -13,11 +13,12 @@ persuasive story: it proves which charge and refund receipts were consulted,
 which external evidence may be cited, what remains unknown, and why the operator
 should accept, contest, review, or acknowledge an existing refund.
 
-The default runner prepares evidence and wording without external mutation. The
-explicit `file` runner can submit that exact packet through a configured payment
-provider, but only after human approval and only when independent provider
-readback confirms what was filed. Neither runner closes a dispute, moves money,
-or invents provider acceptance.
+The default `file-response` runner prepares the evidence-bound response, files
+it through the selected configured provider after one exact approval, and
+requires independent readback. `respond` remains the explicit draft-only
+runner, while `file` consumes an admitted prior response packet without
+repeating the evidence work. No runner closes a dispute, moves money, or
+invents provider acceptance.
 
 ## When to use it
 

@@ -1,20 +1,20 @@
 ---
 name: x402-pay
-description: Validate an x402 payment challenge against bounded Runx payment authority and prepare the canonical spend quote without pretending a wallet adapter or settlement exists.
+description: Validate and pay one x402 challenge through a trusted configured buyer adapter with approval and readback; use x402 explicitly for quote-only planning.
 runx:
   category: payments
 ---
 
 # X402 Pay
 
-`x402-pay` is the discoverable x402 planning facade over the canonical `spend`
-authority model. It answers a narrow but important question: does this exact
-payment challenge fit the authority the operator actually granted?
+`x402-pay` is the discoverable x402 execution boundary over the canonical
+`spend` authority model. It validates the exact challenge, performs one
+approved payment through a trusted configured buyer adapter, and requires
+provider readback.
 
-It does not currently move money. That is deliberate. Runx does not yet bundle
-a trusted x402 buyer adapter, so the skill will not ask an agent to improvise
-wallet signing, accept a signer or facilitator URL in public input, or label a
-synthetic transaction as settlement.
+Runx does not bundle or custody a wallet. Without a compatible tenant-selected
+adapter the default blocks with the missing binding. It never asks an agent to
+improvise signing or labels a quote or synthetic transaction as settlement.
 
 ## Composes
 
@@ -25,25 +25,23 @@ synthetic transaction as settlement.
 ## When to use it
 
 Use this skill after a paid resource has returned structured x402 payment
-requirements and before any wallet receives a signing request. It is useful for
-preflight, policy review, adapter integration, and diagnosing why an x402
-challenge falls outside a grant.
+requirements and the operator wants that exact challenge paid. Select `x402`
+explicitly for preflight, policy review, or quote-only planning.
 
-Use `spend` when choosing among supported executable rails. Do not use this
-facade when you need a live x402 payment today: until a trusted rail adapter is
-installed and wired into `spend`, the correct result is a bounded quote plus an
-explicit adapter requirement, not a supposed payment receipt.
+Use `spend` when choosing among other executable rails. If a trusted x402
+adapter is unavailable, stop at the actionable binding blocker or select the
+explicit quote runner; never substitute a supposed payment receipt.
 
 ## What happens
 
-1. The facade delegates to `spend:plan`; it does not define a second payment
-   policy or authority model.
+1. The default delegates validation to `spend:plan`; it does not define a
+   second payment policy or authority model.
 2. Native `payment.quote` validates the amount, currency, `x402` rail, realm,
    counterparty, operation, limits, and idempotency seed against the complete
    parent `AuthorityTerm`.
-3. Runx emits the canonical `runx.payment.quote.v1` packet. It does not reserve
-   funds, request approval, call a wallet, retry the paid resource, or claim
-   provider finality.
+3. Runx passes that packet to the selected adapter, gates the exact payment,
+   preserves one idempotency key, and requires payment readback. The explicit
+   `x402` runner stops after the canonical quote.
 
 A grant id or prose assertion is not authority. The parent term must contain
 the actual bounded effect limits and must authorize the same counterparty,

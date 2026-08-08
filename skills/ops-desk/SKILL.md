@@ -30,9 +30,11 @@ gate.
 
 ## What this skill does
 
-`ops-desk` produces an ops desk packet for a manager dashboard, agent
-session, or self-operation run. It reads projected state, classifies findings,
-ranks the next action, selects the governed lane, names blockers, writes the
+The default `operate_from_projection` runner reads bounded durable state before
+producing an ops desk packet for a manager dashboard, agent session, or
+self-operation run. The explicit `operate` runner accepts an already-supplied
+snapshot. Both classify findings,
+rank the next action, select the governed lane, name blockers, write the
 approval prompt when a human decision is required, and states the
 receipt/effect/readback that will prove success.
 

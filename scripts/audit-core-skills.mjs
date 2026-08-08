@@ -56,6 +56,7 @@ function buildReport(options) {
   const findings = validateCoverage({ official, review, catalog });
   const entries = [];
   let rewrittenManualCount = 0;
+  let semanticDiagnosticCount = 0;
 
   for (const record of official) {
     const name = officialName(record);
@@ -71,6 +72,10 @@ function buildReport(options) {
     if (inspection.name !== name) {
       findings.push(`${name}: native inspection returned name ${inspection.name ?? "<missing>"}`);
     }
+    findings.push(...validateSemanticReport(name, inspection.semantic_report));
+    semanticDiagnosticCount += Array.isArray(inspection.semantic_report?.diagnostics)
+      ? inspection.semantic_report.diagnostics.length
+      : 0;
     findings.push(
       ...validateInspectionClaims({
         name,
@@ -125,6 +130,8 @@ function buildReport(options) {
         catalog: inspection.catalog ?? null,
         package_digest: inspection.package_digest ?? null,
         manual_digest: inspection.manual_digest ?? null,
+        semantic_report: inspection.semantic_report ?? null,
+        operator_journeys: inspection.operator_journeys ?? null,
         runners: runnerInspections.map((runnerInspection) => ({
           runner: runnerInspection.runner?.name ?? null,
           execution_closure: runnerInspection.execution_closure ?? null,
@@ -154,6 +161,7 @@ function buildReport(options) {
       internal: internalCount,
       native_processes: nativeProcessCount,
       rewritten_manuals: rewrittenManualCount,
+      semantic_diagnostics: semanticDiagnosticCount,
       decisions,
       archetypes,
     },
@@ -316,6 +324,7 @@ function validateInspectionClaims({
       `${name}: native role ${nativeRole ?? "<missing>"} does not match lock ${record.catalog_role ?? "<missing>"}`,
     );
   }
+  findings.push(...validateOperatorJourneys(name, record, inspection));
   const closure = inspection.execution_closure;
   if (!hasCanonicalExecutionClosure(closure)) {
     findings.push(`${name}: native inspection omitted the canonical execution closure`);
@@ -341,6 +350,100 @@ function validateInspectionClaims({
     if (!hasCanonicalExecutionClosure(runnerInspection.execution_closure)) {
       findings.push(`${name}#${expectedRunner}: native inspection omitted the execution closure`);
     }
+  }
+  return findings;
+}
+
+function validateOperatorJourneys(name, record, inspection) {
+  if (record.catalog_visibility !== "public") return [];
+  const findings = [];
+  const journeys = inspection.operator_journeys;
+  if (!Array.isArray(journeys)) {
+    return [`${name}: native inspection omitted operator journeys`];
+  }
+  const modes = new Set();
+  const identities = new Set();
+  for (const [index, journey] of journeys.entries()) {
+    const label = `${name}: operator journey ${index}`;
+    if (!journey || typeof journey !== "object") {
+      findings.push(`${label} is malformed`);
+      continue;
+    }
+    if (!["standalone", "composed", "refusal"].includes(journey.mode)) {
+      findings.push(`${label} has unsupported mode ${journey.mode ?? "<missing>"}`);
+    } else {
+      modes.add(journey.mode);
+    }
+    for (const field of ["case", "request", "expected_outcome"]) {
+      if (typeof journey[field] !== "string" || journey[field].trim().length === 0) {
+        findings.push(`${label} has no ${field}`);
+      }
+    }
+    const identity = `${journey.runner ?? ""}\u0000${journey.case ?? ""}\u0000${journey.mode ?? ""}`;
+    if (identities.has(identity)) findings.push(`${label} duplicates an earlier journey claim`);
+    identities.add(identity);
+    if (journey.mode === "composed") {
+      if (!nonEmptyStrings(journey.prior_evidence)) {
+        findings.push(`${label} has no reusable prior evidence`);
+      }
+      if (!nonEmptyStrings(journey.must_not_repeat)) {
+        findings.push(`${label} has no explicit non-repetition boundary`);
+      }
+    }
+  }
+  for (const required of ["standalone", "composed"]) {
+    if (!modes.has(required)) findings.push(`${name}: public skill has no ${required} operator journey`);
+  }
+  return findings;
+}
+
+function nonEmptyStrings(value) {
+  return Array.isArray(value)
+    && value.length > 0
+    && value.every((entry) => typeof entry === "string" && entry.trim().length > 0);
+}
+
+function validateSemanticReport(name, report) {
+  const findings = [];
+  if (!report || typeof report !== "object") {
+    return [`${name}: native inspection omitted its catalog semantic report`];
+  }
+  if (report.mode !== "enforced") {
+    findings.push(`${name}: semantic report mode is ${report.mode ?? "<missing>"}`);
+  }
+  if (report.skill !== name) {
+    findings.push(`${name}: semantic report names ${report.skill ?? "<missing>"}`);
+  }
+  if (report.defaultRunner !== undefined && typeof report.defaultRunner !== "string") {
+    findings.push(`${name}: semantic report default runner is malformed`);
+  }
+  if (!Array.isArray(report.diagnostics)) {
+    findings.push(`${name}: semantic report diagnostics are missing`);
+    return findings;
+  }
+  for (const [index, diagnostic] of report.diagnostics.entries()) {
+    const label = `${name}: semantic diagnostic ${index}`;
+    if (typeof diagnostic?.code !== "string" || diagnostic.code.length === 0) {
+      findings.push(`${label} has no code`);
+    }
+    if (diagnostic?.skill !== name) {
+      findings.push(`${label} names ${diagnostic?.skill ?? "<missing>"}`);
+    }
+    if (typeof diagnostic?.runner !== "string" || diagnostic.runner.length === 0) {
+      findings.push(`${label} has no runner`);
+    }
+    if (!Array.isArray(diagnostic?.observed)) {
+      findings.push(`${label} has no observed execution facts`);
+    }
+    if (
+      typeof diagnostic?.requiredCorrection !== "string"
+      || diagnostic.requiredCorrection.length === 0
+    ) {
+      findings.push(`${label} has no required correction`);
+    }
+    findings.push(
+      `${label} ${diagnostic?.code ?? "<missing>"} rejects runner ${diagnostic?.runner ?? "<missing>"}: ${diagnostic?.requiredCorrection ?? "<missing correction>"}`,
+    );
   }
   return findings;
 }
@@ -585,7 +688,57 @@ function runSelfTests() {
       agent_acts: 0,
       declared_artifact: false,
     },
+    semantic_report: {
+      mode: "enforced",
+      skill: "alpha",
+      defaultRunner: "default",
+      diagnostics: [],
+    },
+    operator_journeys: [
+      {
+        case: "standalone",
+        runner: "default",
+        mode: "standalone",
+        request: "Perform alpha directly.",
+        expected_outcome: "Return the completed alpha result.",
+        prior_evidence: [],
+        must_not_repeat: [],
+      },
+      {
+        case: "composed",
+        runner: "default",
+        mode: "composed",
+        request: "Continue alpha from prior evidence.",
+        expected_outcome: "Return the completed alpha result without repeating discovery.",
+        prior_evidence: ["prior alpha evidence"],
+        must_not_repeat: ["discovery"],
+      },
+    ],
   };
+  assert(
+    validateSemanticReport("alpha", inspection.semantic_report).length === 0,
+    "native semantic reports must be consumed without reimplementing their analysis",
+  );
+  assert(
+    validateSemanticReport("alpha", { ...inspection.semantic_report, skill: "beta" })
+      .some((finding) => finding.includes("names beta")),
+    "semantic report identity drift must fail",
+  );
+  assert(
+    validateSemanticReport("alpha", {
+      ...inspection.semantic_report,
+      diagnostics: [{
+        code: "default_runner_is_planning_only",
+        skill: "alpha",
+        runner: "default",
+        claimedExecution: "execute",
+        claimedCompletion: "provider_readback",
+        observed: ["source:javascript"],
+        requiredCorrection: "Select an executing default.",
+      }],
+    }).some((finding) => finding.includes("rejects runner default")),
+    "semantic diagnostics must block the core-skill audit",
+  );
   assert(
     validateInspectionClaims({
       name: "alpha",
@@ -605,6 +758,17 @@ function runSelfTests() {
       runnerInspections: [inspection],
     }).length === 0,
     "matching catalog and execution claims must pass",
+  );
+  const missingJourney = {
+    ...inspection,
+    operator_journeys: inspection.operator_journeys.filter((journey) =>
+      journey.mode !== "composed"
+    ),
+  };
+  assert(
+    validateOperatorJourneys("alpha", official[0], missingJourney)
+      .some((finding) => finding.includes("no composed operator journey")),
+    "public skills without a composed journey must fail",
   );
   const validGuide = [
     "---",

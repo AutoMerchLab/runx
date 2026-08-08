@@ -1,23 +1,22 @@
 ---
 name: charge
-description: Prepare a provider-side paid-call challenge and exact credential-verification handoff; forwarding requires a real settlement adapter.
+description: Verify and settle a provider-side paid-call credential through a configured adapter; use a named rail runner explicitly for challenge planning only.
 runx:
   category: payments
 ---
 
 # Charge
 
-`charge` is the canonical seller-side planner for a paid tool call. It binds one
+`charge` is the canonical seller-side settlement boundary for a paid tool call. It binds one
 requested operation to provider pricing policy, emits a replay-safe payment
 challenge, validates an opaque returned credential reference against that exact
 challenge, and prepares the verifier and forwarding handoff.
 
-The current public skill stops before provider settlement. It does not verify a
-rail credential itself, seal provider settlement evidence, or forward the paid
-operation. Its truthful result is `provider_status: not_called`,
-`receipt_status: not_sealed`, and `forwarding_status: not_forwarded`. A real
-settlement-family adapter must complete those actions before the service can be
-released.
+The default selects a real `mpp` or `stripe` planning lane, sends its exact
+verification request to a configured seller-side adapter after approval, and
+requires settlement readback. The named `mpp`, `stripe`, and test-only `mock`
+runners remain plan-only. Missing adapter authority blocks; it never becomes a
+mock settlement or permission to release the paid operation.
 
 ## When to use it
 

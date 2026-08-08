@@ -22191,6 +22191,7 @@ export const runxSchemaArtifacts = {
       "closure"
     ],
     "type": "object",
+    "x-runx-packet": true,
     "x-runx-schema": "runx.decision.v1"
   } as JsonSchema,
   "dev.schema.json": {
@@ -27757,6 +27758,7 @@ export const runxSchemaArtifacts = {
       "permissions"
     ],
     "type": "object",
+    "x-runx-packet": true,
     "x-runx-schema": "runx.operational_policy.v1"
   } as JsonSchema,
   "operational-proposal.schema.json": {
@@ -61470,6 +61472,7 @@ export const runxSchemaArtifacts = {
       "seal"
     ],
     "type": "object",
+    "x-runx-packet": true,
     "x-runx-schema": "runx.receipt.v1"
   } as JsonSchema,
   "redaction.schema.json": {
@@ -67203,6 +67206,7 @@ export const runxSchemaArtifacts = {
       "observed_at"
     ],
     "type": "object",
+    "x-runx-packet": true,
     "x-runx-schema": "runx.signal.v1"
   } as JsonSchema,
   "skill-apply-result.schema.json": {
@@ -67507,12 +67511,114 @@ export const runxSchemaArtifacts = {
     "$schema": "https://json-schema.org/draft/2020-12/schema",
     "additionalProperties": false,
     "properties": {
+      "chain_use": {
+        "additionalProperties": false,
+        "properties": {
+          "accepted_inputs": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "must_not_repeat": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "result": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "reused_effects": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "reused_evidence": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "accepted_inputs",
+          "result",
+          "reused_evidence",
+          "reused_effects",
+          "must_not_repeat"
+        ],
+        "type": "object"
+      },
       "deletions": {
         "items": {
           "minLength": 1,
           "type": "string"
         },
         "type": "array"
+      },
+      "direct_use": {
+        "additionalProperties": false,
+        "properties": {
+          "blocker_behavior": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "default_outcome": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "native_escape": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "non_trigger_requests": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "routine_host_work": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "runx_boundary": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "terminal_result": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "trigger_requests": {
+            "items": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "trigger_requests",
+          "non_trigger_requests",
+          "default_outcome",
+          "routine_host_work",
+          "runx_boundary",
+          "terminal_result",
+          "blocker_behavior",
+          "native_escape"
+        ],
+        "type": "object"
       },
       "disposition": {
         "anyOf": [
@@ -67598,6 +67704,61 @@ export const runxSchemaArtifacts = {
           "type": "object"
         },
         "type": "array"
+      },
+      "identity": {
+        "additionalProperties": false,
+        "properties": {
+          "action": {
+            "anyOf": [
+              {
+                "const": "keep",
+                "type": "string"
+              },
+              {
+                "const": "rename",
+                "type": "string"
+              },
+              {
+                "const": "create",
+                "type": "string"
+              },
+              {
+                "const": "internalize",
+                "type": "string"
+              }
+            ]
+          },
+          "current_name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "proposed_name": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "rationale": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "visibility": {
+            "anyOf": [
+              {
+                "const": "public",
+                "type": "string"
+              },
+              {
+                "const": "internal",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "required": [
+          "action",
+          "visibility",
+          "rationale"
+        ],
+        "type": "object"
       },
       "knowledge_contract": {
         "additionalProperties": false,
@@ -67722,7 +67883,15 @@ export const runxSchemaArtifacts = {
                   "type": "string"
                 },
                 {
-                  "const": "operator_trial",
+                  "const": "selection_trial",
+                  "type": "string"
+                },
+                {
+                  "const": "standalone_operator_journey",
+                  "type": "string"
+                },
+                {
+                  "const": "composed_operator_journey",
                   "type": "string"
                 }
               ]
@@ -67892,12 +68061,114 @@ export const runxSchemaArtifacts = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "chain_use": {
+            "additionalProperties": false,
+            "properties": {
+              "accepted_inputs": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "must_not_repeat": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "result": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "reused_effects": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "reused_evidence": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "accepted_inputs",
+              "result",
+              "reused_evidence",
+              "reused_effects",
+              "must_not_repeat"
+            ],
+            "type": "object"
+          },
           "deletions": {
             "items": {
               "minLength": 1,
               "type": "string"
             },
             "type": "array"
+          },
+          "direct_use": {
+            "additionalProperties": false,
+            "properties": {
+              "blocker_behavior": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "default_outcome": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "native_escape": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "non_trigger_requests": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "routine_host_work": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "runx_boundary": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "terminal_result": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "trigger_requests": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "trigger_requests",
+              "non_trigger_requests",
+              "default_outcome",
+              "routine_host_work",
+              "runx_boundary",
+              "terminal_result",
+              "blocker_behavior",
+              "native_escape"
+            ],
+            "type": "object"
           },
           "disposition": {
             "anyOf": [
@@ -67983,6 +68254,61 @@ export const runxSchemaArtifacts = {
               "type": "object"
             },
             "type": "array"
+          },
+          "identity": {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "anyOf": [
+                  {
+                    "const": "keep",
+                    "type": "string"
+                  },
+                  {
+                    "const": "rename",
+                    "type": "string"
+                  },
+                  {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  {
+                    "const": "internalize",
+                    "type": "string"
+                  }
+                ]
+              },
+              "current_name": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "proposed_name": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "rationale": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "visibility": {
+                "anyOf": [
+                  {
+                    "const": "public",
+                    "type": "string"
+                  },
+                  {
+                    "const": "internal",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "action",
+              "visibility",
+              "rationale"
+            ],
+            "type": "object"
           },
           "knowledge_contract": {
             "additionalProperties": false,
@@ -68107,7 +68433,15 @@ export const runxSchemaArtifacts = {
                       "type": "string"
                     },
                     {
-                      "const": "operator_trial",
+                      "const": "selection_trial",
+                      "type": "string"
+                    },
+                    {
+                      "const": "standalone_operator_journey",
+                      "type": "string"
+                    },
+                    {
+                      "const": "composed_operator_journey",
                       "type": "string"
                     }
                   ]
@@ -68304,12 +68638,114 @@ export const runxSchemaArtifacts = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "chain_use": {
+            "additionalProperties": false,
+            "properties": {
+              "accepted_inputs": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "must_not_repeat": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "result": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "reused_effects": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "reused_evidence": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "accepted_inputs",
+              "result",
+              "reused_evidence",
+              "reused_effects",
+              "must_not_repeat"
+            ],
+            "type": "object"
+          },
           "deletions": {
             "items": {
               "minLength": 1,
               "type": "string"
             },
             "type": "array"
+          },
+          "direct_use": {
+            "additionalProperties": false,
+            "properties": {
+              "blocker_behavior": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "default_outcome": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "native_escape": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "non_trigger_requests": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "routine_host_work": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "runx_boundary": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "terminal_result": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "trigger_requests": {
+                "items": {
+                  "minLength": 1,
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "trigger_requests",
+              "non_trigger_requests",
+              "default_outcome",
+              "routine_host_work",
+              "runx_boundary",
+              "terminal_result",
+              "blocker_behavior",
+              "native_escape"
+            ],
+            "type": "object"
           },
           "disposition": {
             "anyOf": [
@@ -68395,6 +68831,61 @@ export const runxSchemaArtifacts = {
               "type": "object"
             },
             "type": "array"
+          },
+          "identity": {
+            "additionalProperties": false,
+            "properties": {
+              "action": {
+                "anyOf": [
+                  {
+                    "const": "keep",
+                    "type": "string"
+                  },
+                  {
+                    "const": "rename",
+                    "type": "string"
+                  },
+                  {
+                    "const": "create",
+                    "type": "string"
+                  },
+                  {
+                    "const": "internalize",
+                    "type": "string"
+                  }
+                ]
+              },
+              "current_name": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "proposed_name": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "rationale": {
+                "minLength": 1,
+                "type": "string"
+              },
+              "visibility": {
+                "anyOf": [
+                  {
+                    "const": "public",
+                    "type": "string"
+                  },
+                  {
+                    "const": "internal",
+                    "type": "string"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "action",
+              "visibility",
+              "rationale"
+            ],
+            "type": "object"
           },
           "knowledge_contract": {
             "additionalProperties": false,
@@ -68519,7 +69010,15 @@ export const runxSchemaArtifacts = {
                       "type": "string"
                     },
                     {
-                      "const": "operator_trial",
+                      "const": "selection_trial",
+                      "type": "string"
+                    },
+                    {
+                      "const": "standalone_operator_journey",
+                      "type": "string"
+                    },
+                    {
+                      "const": "composed_operator_journey",
                       "type": "string"
                     }
                   ]

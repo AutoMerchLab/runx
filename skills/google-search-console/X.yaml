@@ -1,5 +1,5 @@
 skill: google-search-console
-version: "0.1.4"
+version: "0.1.5"
 
 catalog:
   kind: graph
@@ -115,6 +115,18 @@ input_definitions:
 harness:
   cases:
     - name: normalizes-bounded-page-performance
+      operator_journeys:
+        - mode: standalone
+          request: Show page-level Google Search performance for this verified site and date range.
+          expected_outcome: Return normalized clicks, impressions, CTR, position, dimensions, and data-state caveats with site identity preserved.
+        - mode: composed
+          request: Normalize this connector-returned Search Console performance evidence for the growth brief.
+          expected_outcome: Reuse provider evidence without querying Google again or losing property, dimension, and completeness semantics.
+          prior_evidence:
+            - The compatible connector response, site binding, query dimensions, and date range supplied in the fixture.
+          must_not_repeat:
+            - Do not call Search Console again.
+            - Do not recompute provider metrics or erase incomplete-data caveats.
       runner: normalize-performance
       inputs:
         request:

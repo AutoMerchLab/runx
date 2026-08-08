@@ -1,6 +1,6 @@
 ---
 name: moltbook
-description: Scan Moltbook for credible opportunities, prepare evidence-bound posts, and publish an exact approved payload through Runx Connect with readback.
+description: Scan Moltbook for credible opportunities, prepare evidence-bound posts, and publish an exact approved payload through any compatible provider binding with readback.
 runx:
   category: content
 ---
@@ -19,8 +19,8 @@ more active.”
 
 ## Runners
 
-`scan-provider` reads a bounded feed through the native Moltbook Connect grant,
-then follows the same evidence path as `scan`. Use `scan` when replaying an
+The default `scan-provider` reads a bounded feed through the provider boundary,
+then follows the same evidence path as `scan`. Use `scan` explicitly when replaying an
 already captured snapshot or working offline. Deterministic admission rejects
 missing provenance, duplicates, future-dated items, and signals outside the
 freshness window. The analysis may recommend at most one opportunity and must
@@ -38,6 +38,10 @@ that exact packet, requests human approval, calls native `provider.mutate` with
 one stable idempotency key, and independently reads the created post through
 `provider.read`. Provider acceptance without the `post.read` result is not
 completion. Tokens and request plumbing remain outside the package.
+
+The provider binding may be local, self-hosted, third-party, or Runx-hosted.
+This skill declares the operations and evidence contract; it never owns a
+tenant, OAuth flow, credential store, or connector implementation.
 
 ## Inputs and result
 
@@ -62,7 +66,7 @@ accepted and what it subsequently returned.
 - Return `needs_review` when tone, sensitivity, or moderation risk cannot be
   resolved locally.
 - Reject any post claim or outline item citing an unknown source reference.
-- Refuse a missing, ambiguous, wrong-provider, or under-scoped Connect grant;
+- Refuse a missing, ambiguous, wrong-provider, or under-scoped provider binding;
   never fall back to a raw token or package HTTP client.
 - Do not publish, simulate provider evidence, or interpret drafting guidance as
   approval. A mutation without independent post readback is incomplete.

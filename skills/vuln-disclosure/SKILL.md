@@ -1,14 +1,17 @@
 ---
 name: vuln-disclosure
-description: Prepare an evidence-bound vulnerability publication and publish the exact approved advisory through Runx Connect with independent provider readback.
+description: Prepare an evidence-bound vulnerability publication and publish the exact approved advisory through any compatible provider binding with independent readback.
 runx:
   category: security
 ---
 
 # Vulnerability Disclosure
 
-Move a reviewed security advisory to the edge of an external publication
-system without pretending the publication happened. Where `cve-audit` proves
+Publish a reviewed security advisory through a configured provider without
+pretending an attempted publication succeeded. The default prepares the exact
+payload, gates the live publication, and requires independent readback;
+`vuln-disclosure` remains the explicit preparation runner and `publish` accepts
+its typed packet in composed use. Where `cve-audit` proves
 exact vulnerability identities and `vuln-triage` decides exposure,
 remediation, and wording, this skill checks whether one exact advisory is ready
 to enter a consequential provider lane.
@@ -34,10 +37,13 @@ must all be visible before publication approval is requested.
    `advisory.read`. The returned advisory ref and payload digest must match.
 
 Safe review and packaging need no human approval because they remain local. The
-native provider lane owns the human gate, idempotency, configured grant,
+native provider lane owns the human gate, idempotency, configured binding,
 publication request, and stable readback. No provider token or HTTP client lives
 in this package. Until the independent read succeeds, no receipt may describe
 the advisory as live.
+
+The binding may be local, self-hosted, third-party, or Runx-hosted. This skill
+does not own credential acquisition, tenant selection, or a connector vendor.
 
 ## When to use it
 
@@ -63,7 +69,7 @@ its native mutation and readback packets are the publication evidence.
 - Hold when remediation or coordinated-disclosure posture is not ready.
 - Do not broaden affected scope, embellish impact, or move private speculation
   into the public payload.
-- Refuse a missing, ambiguous, wrong-provider, or under-scoped Connect grant;
+- Refuse a missing, ambiguous, wrong-provider, or under-scoped provider binding;
   never fall back to a raw token or package request client.
 - Never interpret local review as publication approval or provider success.
   Provider acknowledgement without matching `advisory.read` is incomplete.

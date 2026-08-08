@@ -1,5 +1,5 @@
 skill: google-analytics
-version: "0.1.1"
+version: "0.1.2"
 
 catalog:
   kind: graph
@@ -117,6 +117,18 @@ input_definitions:
 harness:
   cases:
     - name: normalizes-organic-landing-page-outcomes
+      operator_journeys:
+        - mode: standalone
+          request: Show which organic landing pages produced engaged sessions and conversions in this GA4 property.
+          expected_outcome: Return a normalized bounded GA4 report with property identity, dimensions, metrics, dates, and measurement caveats intact.
+        - mode: composed
+          request: Normalize this connector-returned GA4 report for the growth analysis chain.
+          expected_outcome: Reuse provider evidence without querying GA4 again or hiding thresholding and attribution caveats.
+          prior_evidence:
+            - The compatible connector response, property binding, report request, and measurement metadata supplied in the fixture.
+          must_not_repeat:
+            - Do not call the analytics provider again.
+            - Do not recompute or discard provider measurement caveats.
       runner: normalize-report
       inputs:
         request:

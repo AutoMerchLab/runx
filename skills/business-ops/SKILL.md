@@ -9,22 +9,24 @@ runx:
 
 Turn one business signal into a replayable operations graph.
 
-`business-ops` is the generic public example for how runx makes agentic
-business work composable without giving the agent ambient authority. It is a
-deterministic graph skeleton: it classifies one signal, fans it into bounded
-lanes, records why each lane exists, names the real skill or provider lane that
-would replace the fixture, and stops before any live send, spend, publish,
-merge, deploy, or customer-visible action.
+`business-ops` routes one signal into one selected bounded lane without giving
+the agent ambient authority. The default `route` runner returns that typed
+lane immediately; it does not require event-store configuration or run
+unrelated docs, release, work, outreach, spend, and audit branches. Select
+`route_and_append` only when a chain needs a durable event plus projection
+readback, and select `main` only when the full planning fan-out is the
+requested artifact.
 
 This is not a provider integration and not an operator dashboard. It is the
 small core shape that teams copy when they want one objective to fan out into a
 chain of skills, then replay that chain with receipts.
 
-When the route itself should become durable, use `route_and_append`. That runner
-classifies the signal, appends the classification packet through `data-store`,
-and reads back the projection. The same graph can use local JSON, SQLite,
-Postgres, D1, Redis, or a product adapter by changing the `data_source_ref`
-binding.
+The explicit `route_and_append` runner takes the same selected lane, appends
+its packet through `data-store`, and reads back the projection. The same graph
+can use local JSON, SQLite, Postgres, D1, Redis, or a product adapter by changing
+the `data_source_ref` binding. Its aggregate id, expected version, and
+idempotency key stay explicit because guessing them would corrupt durable
+workflow state.
 
 ## Composes
 
@@ -35,9 +37,9 @@ binding.
 
 ## What this skill does
 
-- Classifies one business signal before doing work.
-- Fans the signal through representative lanes: docs, release, issue/PR,
-  outreach planning, spend quoting, and proof audit.
+- Routes one business signal into one selected typed lane by default.
+- Can explicitly fan the signal through representative lanes: docs, release,
+  issue/PR, outreach planning, spend quoting, and proof audit.
 - Produces structured lane packets with authority, gate, handoff, evidence, and
   readback fields.
 - Demonstrates the runx split between proposal work and consequential action:
@@ -83,13 +85,16 @@ binding.
 ## Mental model
 
 ```text
-signal -> classify -> fanout lanes -> approval stops -> governed handoffs -> proof
+standalone: signal -> one typed lane -> downstream handoff
+durable:    signal -> one typed lane -> append -> projection readback
+fanout:     signal -> all planning lanes -> approval stops -> governed handoffs -> proof
 ```
 
-The useful part is the chain. A single objective becomes several typed packets:
-some read-only, some draft-only, some blocked until approval, and one proof lane
-that states how success should be verified later. A human, agent, dashboard, or
-CI loop can replay the same route and see the same stops.
+The useful part is the reusable route. A direct call returns one packet instead
+of forcing the operator through the whole operating system. A chain may persist
+that packet or request the complete fan-out, where some lanes are read-only,
+some draft-only, some blocked until approval, and one proof lane states how
+later execution should be verified.
 
 ## How this maps to real runx work
 
@@ -114,18 +119,16 @@ skill runner or provider tool.
 
 ## Procedure
 
-1. Receive one concise `signal`.
-2. Optionally receive `operator_context` with project constraints, policy, or
-   the concrete business situation.
-3. Run `classify` first. It decides which lanes are relevant and what authority
-   class each lane belongs to.
-4. Fan out docs, release, issue, outreach, spend, and proof packets.
-5. Mark each lane as read-only, draft-only, approval-required, or proof-only.
-6. Name the exact downstream handoff that should replace the fixture in a real
-   workflow.
-7. Seal the graph so the route itself is replayable.
-8. If using `route_and_append`, append the classification packet with an
-   idempotency key and expected version, then read back the projection.
+1. Receive one concise `signal` and optional `operator_context`.
+2. Route the selected `lane`, which defaults to `classify`.
+3. Mark the lane as read-only, draft-only, approval-required, or proof-only and
+   name its exact downstream owner.
+4. Return the typed lane packet and seal the graph receipt.
+5. If durable state is actually required, select `route_and_append`, supply the
+   data source, aggregate, expected version, and idempotency key, then read back
+   the projection.
+6. If the complete planning artifact is actually required, select `main` to
+   fan out docs, release, issue, outreach, spend, and proof packets.
 
 ## Edge cases and stop conditions
 
@@ -145,7 +148,11 @@ skill runner or provider tool.
 
 ## Output schema
 
-The graph's public `result` contains one `lane_packets` packet keyed by stable step identity. Runtime graph context retains producer outputs for nested execution, while machine-readable CLI output omits an exact result-producer duplicate and child receipts bind the execution lineage. Every value under `lanes` follows the lane contract shown below:
+The default graph's public result is one `lane_packet`, ready for the named
+downstream skill. The explicit `main` runner instead returns the complete
+`lane_packets` artifact shown below. Runtime graph context retains producer
+outputs for nested execution, while machine-readable CLI output omits exact
+result-producer duplicates and child receipts bind the execution lineage.
 
 ```yaml
 lane_packets:
@@ -202,13 +209,17 @@ runx skill business-ops \
   --json
 ```
 
-The graph classifies the launch signal, prepares docs/release/work packets,
-routes customer communication to an outreach plan, stops spend at a quote gate,
-and names receipt/history checks that would prove later execution. No external
-provider is called.
+The default graph returns one classify lane packet with its authority class,
+evidence requirements, and next governed handoff. It does not configure a data
+store, run the other planning lanes, or call an external provider.
 
 ## Inputs
 
 - `signal` (required): concise business operations signal to classify and route.
+- `lane` (optional, default `classify`): the one bounded lane to return.
 - `operator_context` (optional): product policy, project topology, audience
   constraints, or known provider state. Context only, not authority.
+- `route_and_append` additionally requires `data_source_ref`, `resource`,
+  `aggregate_id`, `expected_version`, and `idempotency_key`; these identify
+  durable state and therefore are never guessed.
+- `main` accepts the signal and context only, and must be selected explicitly.

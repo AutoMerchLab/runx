@@ -46,6 +46,7 @@ pub fn run_native_new_with_workspace(plan: NewPlan, workspace: &WorkspaceEnv) ->
             expected_package_digest: None,
             expected_execution_closure_digest: None,
             json: plan.json,
+            diagnostics: false,
             non_interactive: plan.non_interactive,
             trusted_command_execution: true,
             full_operator_context: false,

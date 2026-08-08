@@ -1,7 +1,18 @@
 name: append-read-default-sqlite-event
 kind: skill
 target: ..
-runner: append_and_readback
+operator_journeys:
+  - mode: standalone
+    request: Append this event to the local Runx data source and read the resulting stream state.
+    expected_outcome: Apply one idempotent declared data transition and return the persisted version and event projection.
+  - mode: composed
+    request: Persist this already validated posting event for the next operations step.
+    expected_outcome: Reuse the supplied event, aggregate version, and idempotency key without reclassifying or duplicating the transition.
+    prior_evidence:
+      - The validated event packet, aggregate identity, expected version, and idempotency key supplied in the fixture.
+    must_not_repeat:
+      - Do not recreate or reinterpret the event payload.
+      - Do not append again when the idempotency key has already committed the transition.
 inputs:
   data_source_ref: local://runx-data-store/default-sqlite-fixture
   resource: board_events

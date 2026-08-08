@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::ffi::OsString;
-use std::io::{self, Write};
+use std::fs;
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -9,6 +10,8 @@ use runx_runtime::{
     LocalReceiptStore, ManagedAgentPolicy, ReceiptPathInputs, RuntimeReceiptConfig, WorkspaceEnv,
     resolve_receipt_path,
 };
+
+const MAX_STDIN_ANSWERS_BYTES: u64 = 4 * 1024 * 1024;
 
 use crate::managed_agent::{managed_agent_policy, parse_boolean_flag, parse_managed_agent_rounds};
 use crate::skill::{SkillAction, SkillPlan};
@@ -21,6 +24,7 @@ pub struct ResumePlan {
     pub expected_package_digest: Option<String>,
     pub expected_execution_closure_digest: Option<String>,
     pub json: bool,
+    pub diagnostics: bool,
     pub managed_agent: ManagedAgentPolicy,
 }
 
@@ -39,6 +43,7 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
     let mut expected_package_digest = None;
     let mut expected_execution_closure_digest = None;
     let mut json = false;
+    let mut diagnostics = false;
     let mut managed_agent = false;
     let mut managed_agent_rounds = None;
     let mut positionals = Vec::<OsString>::new();
@@ -52,6 +57,10 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
         match token {
             "--json" | "-j" => {
                 json = true;
+                index += 1;
+            }
+            "--diagnostics" => {
+                diagnostics = true;
                 index += 1;
             }
             "--non-interactive" => {
@@ -141,6 +150,10 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
                 )?);
                 index += 1;
             }
+            "-" => {
+                positionals.push(OsString::from("-"));
+                index += 1;
+            }
             value if value.starts_with('-') => {
                 return Err(format!("unknown runx resume option {value}"));
             }
@@ -151,7 +164,7 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
         }
     }
     if positionals.len() != 2 {
-        return Err("runx resume requires <run-id> <answers.json>".to_owned());
+        return Err("runx resume requires <run-id> <answers.json|->".to_owned());
     }
     Ok(ResumePlan {
         run_id: positionals
@@ -163,6 +176,7 @@ pub fn parse_resume_plan(args: &[OsString]) -> Result<ResumePlan, String> {
         expected_package_digest,
         expected_execution_closure_digest,
         json,
+        diagnostics,
         managed_agent: managed_agent_policy("resume", managed_agent, managed_agent_rounds)?,
     })
 }
@@ -239,18 +253,27 @@ pub fn run_native_resume_with_workspace(plan: ResumePlan, workspace: &WorkspaceE
             1,
         );
     }
+    let answers_path = if plan.answers_path == Path::new("-") {
+        match materialize_stdin_answers(workspace, &plan.run_id) {
+            Ok(path) => path,
+            Err(error) => return write_resume_failure(&error, plan.json, 1),
+        }
+    } else {
+        plan.answers_path
+    };
     let skill_plan = SkillPlan {
         action: SkillAction::Run,
         skill_path: PathBuf::from(skill_ref),
         runner: pending.selected_runner.clone(),
         receipt_dir: plan.receipt_dir,
         run_id: Some(plan.run_id),
-        answers: Some(plan.answers_path),
+        answers: Some(answers_path),
         registry: None,
         expected_digest: None,
         expected_package_digest,
         expected_execution_closure_digest,
         json: plan.json,
+        diagnostics: plan.diagnostics,
         non_interactive: true,
         trusted_command_execution: false,
         full_operator_context: false,
@@ -260,6 +283,75 @@ pub fn run_native_resume_with_workspace(plan: ResumePlan, workspace: &WorkspaceE
         managed_agent: plan.managed_agent,
     };
     crate::skill::run_native_skill_with_workspace(skill_plan, workspace)
+}
+
+fn materialize_stdin_answers(workspace: &WorkspaceEnv, run_id: &str) -> Result<PathBuf, String> {
+    let mut bytes = Vec::new();
+    io::stdin()
+        .lock()
+        .take(MAX_STDIN_ANSWERS_BYTES + 1)
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("failed to read resume answers from stdin: {error}"))?;
+    if bytes.len() as u64 > MAX_STDIN_ANSWERS_BYTES {
+        return Err(format!(
+            "resume answers from stdin exceed the {} byte limit",
+            MAX_STDIN_ANSWERS_BYTES
+        ));
+    }
+    let value = serde_json::from_slice::<runx_contracts::JsonValue>(&bytes)
+        .map_err(|error| format!("resume answers from stdin are not valid JSON: {error}"))?;
+    if value.as_object().is_none() {
+        return Err("resume answers from stdin must be a JSON object".to_owned());
+    }
+    let canonical = serde_json::to_vec(&value)
+        .map_err(|error| format!("failed to encode resume answers: {error}"))?;
+    let workspace_base =
+        runx_runtime::resolve_runx_workspace_base(workspace.env(), workspace.cwd());
+    let project_runx_dir = runx_runtime::resolve_project_runx_dir(workspace.env(), &workspace_base);
+    let directory = project_runx_dir.join("continuations");
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("failed to create {}: {error}", directory.display()))?;
+    let digest = runx_contracts::sha256_prefixed(&canonical);
+    let digest = digest.strip_prefix("sha256:").unwrap_or(&digest);
+    let path = directory.join(format!(
+        "{}-{digest}.answers.json",
+        safe_path_segment(run_id)
+    ));
+    if !path.exists() {
+        let temporary = directory.join(format!(
+            ".{}-{digest}.answers.tmp-{}",
+            safe_path_segment(run_id),
+            std::process::id()
+        ));
+        fs::write(&temporary, &canonical)
+            .map_err(|error| format!("failed to write {}: {error}", temporary.display()))?;
+        if let Err(error) = fs::rename(&temporary, &path) {
+            if !path.exists() {
+                let _ = fs::remove_file(&temporary);
+                return Err(format!("failed to commit {}: {error}", path.display()));
+            }
+            let _ = fs::remove_file(&temporary);
+        }
+    }
+    Ok(path)
+}
+
+fn safe_path_segment(value: &str) -> String {
+    let value = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    if value.is_empty() {
+        "run".to_owned()
+    } else {
+        value
+    }
 }
 
 fn binding_flag_value(flag: &str, value: &str) -> Result<String, String> {
@@ -294,7 +386,7 @@ pub(crate) fn render_skill_resume_command(command: SkillResumeCommand<'_>) -> St
     parts.push(shell_token(
         &command
             .answers_path
-            .map_or_else(|| "answers.json".into(), Path::to_string_lossy),
+            .map_or_else(|| "-".into(), Path::to_string_lossy),
     ));
     if let Some(receipt_dir) = command.receipt_dir {
         parts.push("--receipt-dir".to_owned());
@@ -416,6 +508,6 @@ mod tests {
             answers_path: None,
         });
 
-        assert_eq!(command, "runx resume rx_123 answers.json");
+        assert_eq!(command, "runx resume rx_123 -");
     }
 }

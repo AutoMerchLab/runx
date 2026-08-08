@@ -1,5 +1,5 @@
 skill: lead-enrichment
-version: "0.3.0"
+version: "0.3.1"
 
 catalog:
   kind: graph
@@ -14,6 +14,18 @@ catalog:
 harness:
   cases:
     - name: lead-enrichment-binds-fresh-signals
+      operator_journeys:
+        - mode: standalone
+          request: Enrich this lead from the supplied fresh account signals and recommend the consent-safe next action.
+          expected_outcome: Return evidence-bound lead context, consent posture, and outreach recommendation without sending.
+        - mode: composed
+          request: Continue lead qualification from these collected account signals.
+          expected_outcome: Reuse the supplied signals and consent evidence without refetching or inventing account facts.
+          prior_evidence:
+            - The fresh account signals and consent evidence supplied in the fixture.
+          must_not_repeat:
+            - Do not re-enrich the account from external sources.
+            - Do not re-evaluate consent evidence already bound to the lead packet.
       inputs:
         lead: { account_id: acct_42, company: ExampleCRM, role: Head of Lifecycle }
         as_of: "2026-07-17T12:00:00Z"

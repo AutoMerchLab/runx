@@ -1,7 +1,8 @@
 #[cfg(any(
     feature = "cli-tool",
     feature = "external-adapter",
-    feature = "thread-outbox-provider"
+    feature = "thread-outbox-provider",
+    test
 ))]
 mod owned_process;
 mod signals;
@@ -14,32 +15,38 @@ mod windows_host_job;
 #[cfg(any(
     feature = "cli-tool",
     feature = "external-adapter",
-    feature = "thread-outbox-provider"
+    feature = "thread-outbox-provider",
+    test
 ))]
+#[cfg_attr(test, allow(dead_code))]
 pub(crate) const STANDARD_PROCESS_OUTPUT_BYTES: usize = 8 * 1024 * 1024;
 
 #[cfg(any(
     feature = "cli-tool",
     feature = "external-adapter",
-    feature = "thread-outbox-provider"
+    feature = "thread-outbox-provider",
+    test
 ))]
 mod capture;
 #[cfg(any(
     feature = "cli-tool",
     feature = "external-adapter",
-    feature = "thread-outbox-provider"
+    feature = "thread-outbox-provider",
+    test
 ))]
 mod resource_limits;
 #[cfg(any(
     feature = "cli-tool",
     feature = "external-adapter",
-    feature = "thread-outbox-provider"
+    feature = "thread-outbox-provider",
+    test
 ))]
 mod spec;
 #[cfg(any(
     feature = "cli-tool",
     feature = "external-adapter",
-    feature = "thread-outbox-provider"
+    feature = "thread-outbox-provider",
+    test
 ))]
 mod supervisor;
 #[cfg(feature = "mcp")]
@@ -51,13 +58,15 @@ pub(crate) use self::signals::{ProcessSignal, configure_process_group, signal_pr
 #[cfg(any(
     feature = "cli-tool",
     feature = "external-adapter",
-    feature = "thread-outbox-provider"
+    feature = "thread-outbox-provider",
+    test
 ))]
 pub(crate) use self::spec::{ProcessOutcome, ProcessSpec, ProcessStdin, ProcessSupervisorError};
 #[cfg(any(
     feature = "cli-tool",
     feature = "external-adapter",
-    feature = "thread-outbox-provider"
+    feature = "thread-outbox-provider",
+    test
 ))]
 pub(crate) use self::supervisor::run_process;
 #[cfg(feature = "mcp")]

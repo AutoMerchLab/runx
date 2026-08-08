@@ -12,7 +12,7 @@ const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url))
 const fixtureRoot = path.join(workspaceRoot, "fixtures", "runtime", "skills");
 const check = process.argv.includes("--check");
 const generatedAt = "2026-05-18T00:00:00Z";
-const skillNames = ["issue-intake", "issue-to-pr"] as const;
+const skillNames = ["issue-intake"] as const;
 const retiredReceiptFields = [
   "kind",
   retiredExecutionShape("skill"),
@@ -23,26 +23,11 @@ const retiredReceiptFields = [
   "owner",
 ];
 
-interface ParsedGraphStep {
-  readonly id: string;
-  readonly run?: {
-    readonly type: string;
-    readonly task?: string;
-  };
-}
-
 interface ParsedRunnerManifest {
   readonly skill?: string;
   readonly harness?: {
     readonly cases: readonly Record<string, unknown>[];
   };
-  readonly runners: Readonly<Record<string, {
-    readonly source: {
-      readonly graph?: {
-        readonly steps: readonly ParsedGraphStep[];
-      };
-    };
-  }>>;
 }
 
 process.chdir(workspaceRoot);
@@ -108,12 +93,9 @@ async function generateSkillFixtures(
     case_names: cases.map((entry) => String(entry.name)),
   }, null, 2)}\n`);
 
-  const replaySteps = skillName === "issue-to-pr" ? graphReplaySteps(profile, skillName) : [];
   for (const entry of cases) {
-    const normalizedEntry = skillName === "issue-intake" ? withIntakeDecision(entry) : entry;
-    const fixture = skillName === "issue-intake"
-      ? intakeFixture(normalizedEntry, skillName)
-      : issueToPrFixture(normalizedEntry, skillName, replaySteps);
+    const normalizedEntry = withIntakeDecision(entry);
+    const fixture = intakeFixture(normalizedEntry, skillName);
     assertNoRetiredReceiptFields(fixture, `${skillName}.${normalizedEntry.name}`);
     await writeOrCheck(
       path.join(targetDir, "cases", `${normalizedEntry.name}.yaml`),
@@ -144,65 +126,6 @@ function intakeFixture(entry: Record<string, unknown>, skillName: string): Recor
       runner_kind: "agent_task",
     },
   };
-}
-
-function issueToPrFixture(
-  entry: Record<string, unknown>,
-  skillName: string,
-  replaySteps: { step_id: string; task: string }[],
-): Record<string, unknown> {
-  const childSteps = replayedChildSteps(entry, replaySteps);
-  const expect = canonicalExpectation(entry, {
-    status: "needs_agent",
-    state: "deferred",
-    disposition: "deferred",
-    childReceiptCount: childSteps.length,
-  });
-  expect.steps = childSteps.map((step) => step.step_id);
-  return {
-    name: entry.name,
-    kind: "graph",
-    target: "../../../../../skills/issue-to-pr/X.yaml",
-    runner: "issue-to-pr",
-    inputs: entry.inputs ?? {},
-    caller: entry.caller ?? {},
-    expect,
-    metadata: {
-      product_skill: skillName,
-      source_case: entry.name,
-      runner_kind: "graph",
-      graph_shape: "fixture_replay",
-      graph_replay_steps: replaySteps,
-    },
-  };
-}
-
-function graphReplaySteps(
-  profile: ParsedRunnerManifest,
-  skillName: string,
-): { step_id: string; task: string }[] {
-  const steps = profile.runners[skillName]?.source.graph?.steps ?? [];
-  return steps.flatMap((step) => {
-    if (step.run?.type !== "agent-task" || typeof step.run.task !== "string") {
-      return [];
-    }
-    return [{ step_id: step.id, task: step.run.task }];
-  });
-}
-
-function replayedChildSteps(
-  entry: Record<string, unknown>,
-  replaySteps: { step_id: string; task: string }[],
-): { step_id: string; task: string }[] {
-  const answers = record(record(entry.caller, "caller")?.answers, "caller.answers") ?? {};
-  const childSteps = [];
-  for (const step of replaySteps) {
-    childSteps.push(step);
-    if (!answers[`agent_task.${step.task}.output`]) {
-      break;
-    }
-  }
-  return childSteps;
 }
 
 function withIntakeDecision(entry: Record<string, unknown>): Record<string, unknown> {

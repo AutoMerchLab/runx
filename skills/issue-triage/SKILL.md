@@ -13,18 +13,13 @@ silently mutating a repository or inventing state that is not present in the
 thread snapshot.
 
 Discovery and response are separate jobs. The default `provider-respond` runner
-reads one issue through a configured GitHub Connect grant, binds the returned
-snapshot and readback into the receipt, and turns it into a concise profile,
+reads one issue through Runx's provider boundary—preferring an authenticated
+local `gh` session and using Connect only when explicitly selected or needed—
+binds the returned snapshot and readback into the receipt, and turns it into a concise profile,
 recommended posture, draft reply, and follow-up plan. `discover` and `respond`
 remain explicit supplied-evidence lanes for offline queues and replay. Every
-lane stops at a draft; posting belongs to an approval-gated GitHub provider
-operation.
-
-## Composes
-
-<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
-
-- `github-mcp-read-issue#default`
+lane stops at a draft. Select `post` explicitly to consume that exact packet,
+gate the GitHub comment, and require provider readback without repeating triage.
 
 ## When to use it
 
@@ -73,8 +68,9 @@ from supplied evidence.
 - Reject issue ids, repository state, labels, commitments, or completed work not
   present in the admitted snapshot.
 - Do not turn maintainer context into provider evidence.
-- Refuse a missing, ambiguous, wrong-provider, or under-scoped GitHub Connect
-  grant instead of falling back to a raw token or package HTTP client.
+- Refuse a missing, ambiguous, wrong-provider, or under-scoped GitHub binding;
+  use compatible local `gh` or an explicitly selected hosted connector instead
+  of a raw token or package HTTP client.
 - Keep mutation outside this skill. An accepted draft must move to a scoped
   GitHub comment operation with approval and provider readback.
 

@@ -1,6 +1,6 @@
 ---
 name: send-as
-description: Plan and authorize a provider-neutral message or campaign send; this skill never delivers, so use a provider adapter for the actual send and its delivery evidence.
+description: Send one digest-bound provider-neutral message or campaign action through a compatible connector, with an explicit plan runner and approval plus readback at the live-delivery boundary.
 runx:
   category: ops
 ---
@@ -9,30 +9,33 @@ runx:
 
 Govern a message, campaign, or notification sent on behalf of a principal.
 
-`send-as` is the planning and authority layer for the canonical
-communication-action family. Provider adapter skills select concrete sending
-surfaces and perform delivery; this skill owns the common authority
-model: who is allowed to speak, to whom, through which channel, with what
-content, under which proof, and where the send must stop for human approval.
+The default `send` runner performs one delivery through a compatible normalized
+connector and closes only after independent provider readback. `plan` is the
+explicit no-effect runner. `apply` consumes an existing
+`runx.send_as.plan.v1` packet without planning again, and `verify` consumes the
+provider mutation result without sending again. Provider-specific skills can
+compose these phase runners while retaining the same authority model.
 
 ## What this skill does
 
-`send-as` produces a sealed send plan and authority request. It binds the
+`send-as` binds the
 principal, provider, channel, recipients or audience, content digest, consent
-basis, preflight checks, and approval gate. It refuses to treat a draft,
-provider preview, or test message as live delivery. A live send is final only
-after the provider-specific lane records delivery evidence and the runx receipt
-seals.
+basis, preflight checks, and approval gate. The default then applies the exact
+normalized connector operation under one approval and verifies the provider
+result. It refuses to treat a draft, preview, mutation acknowledgement, or test
+message as live delivery. A live send is final only after provider readback and
+the Runx receipt seal.
 
-This skill may be used directly for provider-neutral planning, or as the
-canonical family beneath branded provider adapters. A sealed `send-as` receipt
-means the plan was sealed. It never means the message was sent.
+Use `plan` when only an authorization packet is wanted. A sealed plan receipt
+means only that the plan was sealed. A completed default result emits
+`runx.send_as.result.v1`; its `sent` status is unavailable unless mutation and
+readback both succeed.
 
 ## When to use this skill
 
-- An agent needs to plan or authorize a message before a concrete provider
-  adapter sends or schedules it on behalf of a user, team, brand, account, or
-  service.
+- An agent needs to send or schedule one bounded message on behalf of a user,
+  team, brand, account, or service through a compatible connector.
+- An operator explicitly wants a plan and selects `plan`.
 - A provider-specific skill needs a shared authority model before it can call a
   send API or MCP tool.
 - The workflow must prove the intended audience, content, consent basis, and
@@ -44,8 +47,8 @@ means the plan was sealed. It never means the message was sent.
 
 - To write copy only. Use a drafting or brand-voice skill unless delivery is in
   scope.
-- To prove delivery. Use the provider-specific adapter and require provider
-  readback evidence; a `send_plan` is not a delivery receipt.
+- To claim delivery from a `send_plan`; only `send_result` with provider
+  readback is terminal evidence.
 - To import contacts, enrich leads, verify domains, or configure billing as the
   main objective.
 - To send without a named principal and audience.
@@ -71,10 +74,15 @@ means the plan was sealed. It never means the message was sent.
      approval when provider policy permits them;
    - customer, public, audience, or live sends require explicit approval;
    - billing/account mutation is outside this skill and needs its own gate.
-7. Produce the smallest provider-neutral `send_plan` that a branded skill can
-   execute without widening authority.
-8. Return `needs_input` for missing principal, audience, content digest, consent
-   basis, or provider readiness; return `refused` for requested gate bypass.
+7. Produce the smallest provider-neutral `send_plan` that execution can consume
+   without widening authority.
+8. For the default runner, require the exact normalized connector operation,
+   target, payload, expected result, readback operation, and stable idempotency
+   key. Missing adapter data blocks before mutation.
+9. Apply once, then verify using the mutation result. Never re-plan or resend
+   during `verify`.
+10. Return `needs_input` for missing principal, audience, content digest,
+    consent basis, or provider readiness; return `refused` for gate bypass.
 
 ## Edge cases and stop conditions
 
@@ -88,6 +96,10 @@ means the plan was sealed. It never means the message was sent.
 - **Missing consent or unsubscribe path:** block live delivery.
 - **Preflight failure:** block provider send and preserve blocker evidence.
 - **Approval denied or absent:** do not deliver.
+- **No compatible connector operation:** return one actionable blocker; do not
+  downgrade the default invocation to a plan or simulation.
+- **Ambiguous mutation outcome:** resume with the same idempotency key; never
+  create a new key to escape uncertainty.
 - **Raw credentials or contact dumps:** redact; if redaction would remove the
   evidence needed to decide, return `needs_input`.
 
@@ -124,6 +136,26 @@ send_plan:
   success_checkpoint:
     milestone: string
     description: string
+```
+
+Successful default execution additionally emits:
+
+```yaml
+send_result:
+  schema: runx.send_as.result.v1
+  status: sent | failed
+  outcome: completed | failed
+  provider: string
+  target: string
+  operation: string
+  content_digest: string
+  operation_id: string
+  readback_ref: string
+  idempotency_key: string
+  evidence:
+    mutation_readback_ref: string
+    verification_readback_ref: string
+  errors: array
 ```
 
 ## Worked example

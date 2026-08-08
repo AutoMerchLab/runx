@@ -413,7 +413,7 @@ fn standalone_harness_options(
         .receipt_dir
         .clone()
         .or_else(|| env.get(RUNX_RECEIPT_DIR_ENV).map(PathBuf::from))
-        .unwrap_or_else(|| workspace.cwd().join(".runx").join("receipts"));
+        .unwrap_or_else(|| workspace.cwd().join(".runx").join("harness-receipts"));
     let receipt_dir = if configured.is_absolute() {
         configured
     } else {

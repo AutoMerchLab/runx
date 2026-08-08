@@ -39,11 +39,11 @@ pub(super) fn run_tool_fixture(
     #[cfg(not(feature = "catalog"))]
     {
         let _ = (root, fixture, base_env);
-        return Err(crate::RuntimeError::SkillFailed {
+        Err(crate::RuntimeError::SkillFailed {
             skill_name: "runx-dev".to_owned(),
             message: "tool fixtures require the runx-runtime catalog feature".to_owned(),
         }
-        .into());
+        .into())
     }
 
     #[cfg(feature = "catalog")]

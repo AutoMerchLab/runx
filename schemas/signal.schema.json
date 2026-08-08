@@ -3498,5 +3498,6 @@
     "observed_at"
   ],
   "type": "object",
+  "x-runx-packet": true,
   "x-runx-schema": "runx.signal.v1"
 }

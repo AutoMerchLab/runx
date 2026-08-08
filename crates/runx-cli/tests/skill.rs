@@ -68,8 +68,9 @@ fn input_document_supports_file_and_stdin_without_a_second_input_map()
         ])
         .output()?;
     let value = assert_json(&output, Some(2))?;
+    let request = pending_request_artifact(&value)?;
     assert_eq!(
-        value["requests"][0]["invocation"]["envelope"]["inputs"]["thread_title"],
+        request["invocation"]["envelope"]["inputs"]["thread_title"],
         "from-file"
     );
 
@@ -95,8 +96,9 @@ fn input_document_supports_file_and_stdin_without_a_second_input_map()
         .write_all(br#"{"thread_title":"from-stdin"}"#)?;
     let output = child.wait_with_output()?;
     let value = assert_json(&output, Some(2))?;
+    let request = pending_request_artifact(&value)?;
     assert_eq!(
-        value["requests"][0]["invocation"]["envelope"]["inputs"]["thread_title"],
+        request["invocation"]["envelope"]["inputs"]["thread_title"],
         "from-stdin"
     );
     Ok(())
@@ -144,6 +146,15 @@ fn native_skill_resolves_bare_local_skill_and_documented_input_flags()
     let skills_root = root.join("skills");
     fs::create_dir_all(&skills_root)?;
     let skill_dir = crate::support::write_agent_task_skill(&skills_root)?;
+    let profile_path = skill_dir.join("X.yaml");
+    let profile = fs::read_to_string(&profile_path)?;
+    fs::write(
+        &profile_path,
+        profile.replace(
+            "      thread_title:\n        type: string\n        required: false\n",
+            "      thread_title:\n        type: string\n        required: false\n      severity:\n        type: string\n        required: false\n",
+        ),
+    )?;
     let receipt_dir = root.join("receipts");
 
     let output = runx_command()
@@ -163,12 +174,12 @@ fn native_skill_resolves_bare_local_skill_and_documented_input_flags()
         ])
         .output()?;
     let output_json = assert_json(&output, Some(2))?;
-    let inputs = &output_json["requests"][0]["invocation"]["envelope"]["inputs"];
+    let request = pending_request_artifact(&output_json)?;
+    let inputs = &request["invocation"]["envelope"]["inputs"];
     assert_eq!(inputs["thread_title"], "Docs bug");
     assert_eq!(inputs["severity"], "low");
     let actual_skill_dir = PathBuf::from(
-        output_json["requests"][0]["invocation"]["envelope"]["execution_location"]
-            ["skill_directory"]
+        request["invocation"]["envelope"]["execution_location"]["skill_directory"]
             .as_str()
             .ok_or("missing skill directory")?,
     );
@@ -212,7 +223,8 @@ fn native_skill_prints_operator_context_and_admits_safe_run_by_default()
     let stdout = serde_json::from_slice::<serde_json::Value>(&output.stdout)?;
     assert_eq!(stdout["status"], "needs_agent");
     assert!(stdout.get("approval_flag").is_none());
-    let instructions = stdout["requests"][0]["invocation"]["envelope"]["instructions"]
+    let request = pending_request_artifact(&stdout)?;
+    let instructions = request["invocation"]["envelope"]["instructions"]
         .as_str()
         .ok_or("missing nested skill instructions")?;
     assert!(instructions.contains("# Nested Review Skill"));
@@ -307,7 +319,7 @@ fn graph_action_approval_remains_the_only_operator_resolution()
         String::from_utf8_lossy(&graph_run.stderr)
     );
     let graph_json = serde_json::from_slice::<serde_json::Value>(&graph_run.stdout)?;
-    assert_eq!(graph_json["status"], "needs_agent");
+    assert_eq!(graph_json["status"], "needs_approval");
     assert_eq!(graph_json["requests"][0]["kind"], "approval");
 
     let mutating_skill = write_operator_context_skill(&root.join("mutating"))?;
@@ -364,7 +376,7 @@ fn graph_action_approval_remains_the_only_operator_resolution()
         .output()?;
     assert_eq!(signed_run.status.code(), Some(2));
     let signed_json = serde_json::from_slice::<serde_json::Value>(&signed_run.stdout)?;
-    assert_eq!(signed_json["status"], "needs_agent");
+    assert_eq!(signed_json["status"], "needs_approval");
     assert_eq!(signed_json["requests"][0]["kind"], "approval");
 
     Ok(())
@@ -465,9 +477,9 @@ fn native_skill_exported_shim_resolves_to_source_skill() -> Result<(), Box<dyn s
         ])
         .output()?;
     let output_json = assert_json(&output, Some(2))?;
+    let request = pending_request_artifact(&output_json)?;
     let actual_source_dir = PathBuf::from(
-        output_json["requests"][0]["invocation"]["envelope"]["execution_location"]
-            ["skill_directory"]
+        request["invocation"]["envelope"]["execution_location"]["skill_directory"]
             .as_str()
             .ok_or("missing skill directory")?,
     );
@@ -742,7 +754,7 @@ fn native_skill_rejects_legacy_answers_flag() -> Result<(), Box<dyn std::error::
 
     assert_eq!(output.status.code(), Some(64));
     assert!(
-        String::from_utf8(output.stderr)?.contains("use `runx resume <run-id> <answers.json>`")
+        String::from_utf8(output.stderr)?.contains("use `runx resume <run-id> <answers.json|->`")
     );
     assert_eq!(String::from_utf8(output.stdout)?, "");
 
@@ -764,7 +776,7 @@ fn native_skill_rejects_legacy_run_id_flag() -> Result<(), Box<dyn std::error::E
 
     assert_eq!(output.status.code(), Some(64));
     assert!(
-        String::from_utf8(output.stderr)?.contains("use `runx resume <run-id> <answers.json>`")
+        String::from_utf8(output.stderr)?.contains("use `runx resume <run-id> <answers.json|->`")
     );
     assert_eq!(String::from_utf8(output.stdout)?, "");
 
@@ -1390,9 +1402,19 @@ fn test_manifest_key_pair() -> Result<ring::signature::Ed25519KeyPair, io::Error
 fn needs_agent_skill_directory(
     value: &serde_json::Value,
 ) -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let request = pending_request_artifact(value)?;
     Ok(PathBuf::from(
-        value["requests"][0]["invocation"]["envelope"]["execution_location"]["skill_directory"]
+        request["invocation"]["envelope"]["execution_location"]["skill_directory"]
             .as_str()
             .ok_or("missing skill directory")?,
     ))
+}
+
+fn pending_request_artifact(
+    value: &serde_json::Value,
+) -> Result<serde_json::Value, Box<dyn std::error::Error>> {
+    let path = value["requests"][0]["artifact_ref"]["path"]
+        .as_str()
+        .ok_or("missing pending request artifact path")?;
+    Ok(serde_json::from_slice(&fs::read(path)?)?)
 }

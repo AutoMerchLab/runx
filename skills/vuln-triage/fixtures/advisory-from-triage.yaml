@@ -2,12 +2,30 @@ name: advisory-from-triage
 kind: skill
 target: ..
 runner: advisory
+operator_journeys:
+  - mode: standalone
+    request: Turn this verified exact-version vulnerability finding into a remediation and advisory packet.
+    expected_outcome: Return bounded affected-version, remediation, and advisory evidence without claiming publication.
+  - mode: composed
+    request: Continue from this verified vulnerability scan into an affected-user advisory.
+    expected_outcome: Reuse the exact scan and triage evidence without rescanning dependencies or re-evaluating unsupported exposure.
+    prior_evidence:
+      - The verified triage packet, exact dependency inventory, and affected audience supplied in the fixture.
+    must_not_repeat:
+      - Do not rescan the dependency tree.
+      - Do not re-fetch or reclassify findings already verified in the triage packet.
 inputs:
   audience: affected_users
   triage_packet:
     schema: runx.security.vulnerability_scan.v1
     decision: remediate
     target: example/service
+    dependency_inventory:
+      - name: example-lib
+        version: 1.2.3
+        path: node_modules/example-lib
+        direct: true
+        development: false
     advisories:
       - dependency: example-lib
         exact_version: 1.2.3
@@ -19,15 +37,23 @@ inputs:
           confidence: high
           evidence_status: verified_exact_cve
           rationale: verified direct dependency
+    escalation_criteria:
+      - advisory_id: GHSA-example-1234
+        trigger: priority_high_or_urgent
+        action: human_remediation_review
     remediation_plan:
       immediate:
         - upgrade example-lib
+    operator_summary:
+      verdict: remediate
+      summary: Prioritize the verified direct dependency finding.
     evidence_binding:
       receipt_ref: runx:receipt:sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
       evidence_digest: sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc
     validation:
       status: pass
       findings: []
+    publication_status: not_published
 caller:
   answers:
     agent_task.vuln-triage-advisory.output:

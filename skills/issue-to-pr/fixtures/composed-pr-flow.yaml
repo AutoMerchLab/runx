@@ -1,0 +1,74 @@
+name: issue-to-pr-composed-pr-flow
+kind: skill
+target: ..
+runner: resume
+operator_journeys:
+  - mode: composed
+    request: Continue issue 442 from this prior issue evidence and completed host result to the PR boundary.
+    expected_outcome: Reuse repository preflight, issue evidence, tested change, and finalization evidence without repeating reads, edits, tests, or finalize.
+    prior_evidence:
+      - The typed issue evidence, repository preflight, tested host result, and finalization receipt supplied in the fixture.
+    must_not_repeat:
+      - Do not fetch the GitHub issue again.
+      - Do not repeat host edits or tests.
+      - Do not call finalize again.
+inputs:
+  issue_evidence:
+    schema: runx.issue_to_pr.issue_evidence.v1
+    repository: runxhq/runx
+    number: "442"
+    title: Make issue-to-PR operator-first
+    state: open
+    body: Reuse prior evidence instead of reading the provider again.
+    url: https://github.com/runxhq/runx/issues/442
+    labels: [operator-experience]
+    assignees: []
+    source:
+      provider: github
+      transport: local_github
+      principal_ref: runx:principal:github:github.com:operator:U_operator
+      readback_ref: runx:github-readback:sha256:fixture
+    checkout_resolved: true
+  host_result:
+    schema: runx.issue_to_pr.host_result.v1
+    status: completed
+    repository: runxhq/runx
+    issue_number: "442"
+    branch: fix/442-operator-first
+    files: [oss/skills/issue-to-pr/X.yaml]
+    tests:
+      - command: cargo test -p runx-cli --test integration issue_to_pr_journey
+        status: passed
+        evidence: receipt:test:issue-to-pr-composed
+    finalization:
+      status: passed
+      receipt_ref: scafld:receipt:issue-to-pr-composed
+      contract_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+      invocation_count: 1
+    publication:
+      decision: hold
+      title: ""
+      body: ""
+      head: ""
+      base: ""
+      draft: false
+      idempotency_key: ""
+    errors: []
+expect:
+  status: sealed
+  receipt: { schema: runx.receipt.v1 }
+  steps: [admit-host-result, finalize-hold]
+  output:
+    subset:
+      issue_to_pr_result:
+        data:
+          schema: runx.issue_to_pr.result.v1
+          status: completed
+          repository: runxhq/runx
+          issue_number: "442"
+          finalization_ref: scafld:receipt:issue-to-pr-composed
+          publication: { status: not_requested }
+metadata:
+  public_skill: issue-to-pr
+  source_case: composed-pr-flow
+  source: operator-journey

@@ -35,7 +35,7 @@ fn new_skill_authoring_waits_for_agent_then_applies_one_validated_package() -> T
     assert!(pending_text.contains("status: needs_agent"));
     assert!(pending_text.contains("agent_task.skill-lab-architecture.output"));
     assert!(pending_text.contains(&format!(
-        "runx resume {run_id} answers.json --receipt-dir {}",
+        "runx resume {run_id} - --receipt-dir {}",
         receipts.display()
     )));
     assert!(
@@ -51,7 +51,7 @@ fn new_skill_authoring_waits_for_agent_then_applies_one_validated_package() -> T
         .arg(&answers)
         .arg("--receipt-dir")
         .arg(&receipts)
-        .arg("--json")
+        .args(["--json", "--diagnostics"])
         .output()?;
     let completed = assert_json(&completed, 0)?;
 
@@ -136,6 +136,29 @@ fn authoring_answers() -> String {
                 "architecture_decision": {
                     "schema": "runx.skill.architecture_decision.v1",
                     "disposition": "build",
+                    "identity": {
+                        "proposed_name": "digest-note",
+                        "action": "create",
+                        "visibility": "public",
+                        "rationale": "Digest note is the exact operation an agent requests."
+                    },
+                    "direct_use": {
+                        "trigger_requests": ["Digest this note."],
+                        "non_trigger_requests": ["Publish this note."],
+                        "default_outcome": "Return the canonical digest for the supplied note.",
+                        "routine_host_work": ["Read the supplied note."],
+                        "runx_boundary": "Execute the canonical digest capability and receipt the result.",
+                        "terminal_result": "A reusable digest packet.",
+                        "blocker_behavior": "Block once when the note is absent.",
+                        "native_escape": "Return the unchanged note for native hashing."
+                    },
+                    "chain_use": {
+                        "accepted_inputs": ["A note or prior note artifact."],
+                        "result": "A reusable digest packet.",
+                        "reused_evidence": ["The supplied note artifact."],
+                        "reused_effects": [],
+                        "must_not_repeat": ["Do not reacquire or rewrite the supplied note."]
+                    },
                     "objective": "Create a bounded digest-note skill using the native digest capability.",
                     "operator_value": "Give an operator one stable digest for a supplied note without package code.",
                     "knowledge_contract": {
@@ -185,11 +208,23 @@ fn authoring_answers() -> String {
                     },
                     "preservation_obligations": ["Keep the operator manual and native runner aligned."],
                     "deletions": [],
-                    "proof_plan": [{
-                        "name": "digest-note-harness",
-                        "kind": "harness",
-                        "expected": "A supplied note is digested and sealed without package code."
-                    }]
+                    "proof_plan": [
+                        {
+                            "name": "digest-note-selection",
+                            "kind": "selection_trial",
+                            "expected": "Digest requests select this skill and publish requests do not."
+                        },
+                        {
+                            "name": "digest-note-standalone",
+                            "kind": "standalone_operator_journey",
+                            "expected": "A supplied note is digested without package code."
+                        },
+                        {
+                            "name": "digest-note-composed",
+                            "kind": "composed_operator_journey",
+                            "expected": "A prior note artifact is reused without reacquisition."
+                        }
+                    ]
                 }
             },
             "agent_task.skill-lab-author.output": {

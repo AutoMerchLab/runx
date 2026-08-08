@@ -45,13 +45,15 @@ pub use runner::{
 pub use skill::{
     ActDeclaration, ArtifactPageFraming, ArtifactPageSource, CatalogApproval, CatalogAudience,
     CatalogCompletion, CatalogExecution, CatalogKind, CatalogMetadata, CatalogRole,
-    CatalogVisibility, CredentialRequirement, HarnessCallerFixture, HarnessExpectation, InputMode,
-    RawSkillIr, ReceiptExpectation, RunnerHarnessCase, RunnerHarnessManifest,
-    SkillArtifactContract, SkillExternalAdapterManifest, SkillIdempotencyPolicy, SkillInput,
-    SkillMcpServer, SkillRetryPolicy, SkillRunnerDefinition, SkillSource,
-    SkillThreadOutboxProviderSource, SourceKind, ValidateSkillMode, ValidateSkillOptions,
-    ValidatedSkill, parse_skill_markdown, validate_input_examples, validate_skill,
-    validate_skill_artifact_contract, validate_skill_source, validate_skill_with_options,
+    CatalogSemanticCode, CatalogSemanticDiagnostic, CatalogSemanticReport, CatalogVisibility,
+    CredentialRequirement, HarnessCallerFixture, HarnessExpectation, InputMode,
+    OperatorJourneyClaim, OperatorJourneyMode, RawSkillIr, ReceiptExpectation, RunnerHarnessCase,
+    RunnerHarnessManifest, SkillArtifactContract, SkillExternalAdapterManifest,
+    SkillIdempotencyPolicy, SkillInput, SkillMcpServer, SkillRetryPolicy, SkillRunnerDefinition,
+    SkillSource, SkillThreadOutboxProviderSource, SourceKind, ValidateSkillMode,
+    ValidateSkillOptions, ValidatedSkill, analyze_catalog_semantics, parse_skill_markdown,
+    validate_input_examples, validate_skill, validate_skill_artifact_contract,
+    validate_skill_source, validate_skill_with_options,
 };
 pub use tool::{
     RawToolManifestIr, ValidatedTool, parse_tool_manifest_json, parse_tool_manifest_yaml,

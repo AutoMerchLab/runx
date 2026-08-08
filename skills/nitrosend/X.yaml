@@ -1,5 +1,5 @@
 skill: nitrosend
-version: "0.2.6"
+version: "0.3.0"
 catalog:
   kind: skill
   audience: public
@@ -8,10 +8,10 @@ catalog:
   canonical_skill: runx/send-as
   provider: nitrosend
   runtime_path: mcp
-  execution: execute
+  execution: read
   completion: provider_readback
   requires_adapter: true
-  approval: required
+  approval: none
 credentials:
   nitrosend:
     provider: nitrosend

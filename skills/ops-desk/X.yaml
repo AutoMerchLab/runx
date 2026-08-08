@@ -1,5 +1,5 @@
 skill: ops-desk
-version: "0.2.4"
+version: "0.3.0"
 
 catalog:
   kind: skill
@@ -13,7 +13,6 @@ catalog:
 
 runners:
   operate:
-    default: true
     type: agent-task
     agent: operator
     task: ops-desk
@@ -289,6 +288,7 @@ runners:
         description: Project topology and expected execution surfaces.
 
   operate_from_projection:
+    default: true
     type: graph
     inputs:
       data_source_ref:

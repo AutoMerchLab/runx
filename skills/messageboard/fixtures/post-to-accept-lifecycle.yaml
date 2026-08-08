@@ -1,6 +1,18 @@
 name: post-to-accept-persists-one-lifecycle
 kind: graph
 target: ../harness/post-to-accept.yaml
+operator_journeys:
+  - mode: standalone
+    request: Run this bounty from posting through acceptance with every transition recorded.
+    expected_outcome: Persist the governed posting, claim, delivery, and acceptance lifecycle with exact authority and proof.
+  - mode: composed
+    request: Continue this bounty lifecycle from the persisted posting and current transition evidence.
+    expected_outcome: Reuse completed lifecycle events without reposting, reclaiming, redelivering, or reaccepting work.
+    prior_evidence:
+      - The stable posting identity and lifecycle event stream carried across the fixture graph.
+    must_not_repeat:
+      - Do not repeat a completed lifecycle transition.
+      - Do not recreate the posting or payout authority.
 env:
   RUNX_DATA_SOURCES: '{"data_sources":{"tenant://messageboard/post-to-accept":{"adapter":"data.sqlite","database_path":".runx/data/messageboard-post-to-accept.sqlite","resources":{"board_events":{"kind":"event_stream","partition_key":"aggregate_id"}}}}}'
 caller:

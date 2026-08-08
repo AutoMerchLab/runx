@@ -21,6 +21,16 @@ mod plan;
 pub use plan::{ConnectAction, ConnectPlan, ConnectStartPlan, parse_connect_plan};
 
 pub fn run_native_connect(plan: ConnectPlan, workspace: &WorkspaceEnv) -> ExitCode {
+    if let ConnectAction::Bind {
+        provider,
+        transport,
+    } = &plan.action
+    {
+        return match run_connect_binding(&plan, workspace, provider, transport) {
+            Ok(output) => crate::cli_io::write_stdout_code(&output, 0),
+            Err(error) => fail(&plan, &error),
+        };
+    }
     let transport = match runx_runtime::hosted_api_transport(
         runx_runtime::hosted_private_network_allowed(plan.allow_local_api, workspace.env()),
     ) {
@@ -54,11 +64,12 @@ fn run_connect_with_transport<T: Transport>(
     let authenticated = environment
         .authenticate(transport)
         .map_err(|error| ConnectError::Environment(error.to_string()))?;
-    let response = runx_runtime::execute_hosted_connect(
-        transport,
-        &authenticated,
-        hosted_connect_action(&plan.action),
-    )?;
+    let action = hosted_connect_action(&plan.action).ok_or_else(|| {
+        ConnectError::Environment(
+            "project transport binding cannot use hosted execution".to_owned(),
+        )
+    })?;
+    let response = runx_runtime::execute_hosted_connect(transport, &authenticated, action)?;
     render_connect_result(
         plan.json,
         authenticated.base_url(),
@@ -68,12 +79,13 @@ fn run_connect_with_transport<T: Transport>(
     )
 }
 
-fn hosted_connect_action(action: &ConnectAction) -> HostedConnectAction<'_> {
+fn hosted_connect_action(action: &ConnectAction) -> Option<HostedConnectAction<'_>> {
     match action {
-        ConnectAction::List => HostedConnectAction::List,
-        ConnectAction::Status { session_id } => HostedConnectAction::Status { session_id },
-        ConnectAction::Revoke { grant_id } => HostedConnectAction::Revoke { grant_id },
-        ConnectAction::Start(start) => HostedConnectAction::Start(HostedConnectStart {
+        ConnectAction::List => Some(HostedConnectAction::List),
+        ConnectAction::Bind { .. } => None,
+        ConnectAction::Status { session_id } => Some(HostedConnectAction::Status { session_id }),
+        ConnectAction::Revoke { grant_id } => Some(HostedConnectAction::Revoke { grant_id }),
+        ConnectAction::Start(start) => Some(HostedConnectAction::Start(HostedConnectStart {
             provider: &start.provider,
             scopes: &start.scopes,
             scope_family: start.scope_family.as_deref(),
@@ -81,7 +93,7 @@ fn hosted_connect_action(action: &ConnectAction) -> HostedConnectAction<'_> {
             target_repo: start.target_repo.as_deref(),
             target_locator: start.target_locator.as_deref(),
             binding_id: start.binding_id.as_deref(),
-        }),
+        })),
     }
 }
 
@@ -106,12 +118,48 @@ fn render_connect_result(
     }
     let body = match action {
         ConnectAction::List => render_grants(&response)?,
+        ConnectAction::Bind { .. } => {
+            return Err(ConnectError::InvalidJson(
+                "project transport binding has no hosted response".to_owned(),
+            ));
+        }
         ConnectAction::Start(_) => render_start(&response),
         ConnectAction::Status { .. } | ConnectAction::Revoke { .. } => pretty_json(&response)?,
     };
     let mut output = format!("runx connect · {principal_id} · {base_url}\n");
     output.push_str(&body);
     Ok(output)
+}
+
+fn run_connect_binding(
+    plan: &ConnectPlan,
+    workspace: &WorkspaceEnv,
+    provider: &str,
+    transport: &str,
+) -> Result<String, String> {
+    let path = runx_runtime::bind_project_provider_transport(workspace, provider, transport)
+        .map_err(|error| error.to_string())?;
+    let normalized = match transport {
+        "local" if provider == "github" => "local:github",
+        "runx-connect" => "hosted",
+        value => value,
+    };
+    if plan.json {
+        return serde_json::to_string_pretty(&serde_json::json!({
+            "status": "success",
+            "binding": {
+                "provider": provider,
+                "transport": normalized,
+                "path": path,
+            }
+        }))
+        .map(|value| format!("{value}\n"))
+        .map_err(|error| error.to_string());
+    }
+    Ok(format!(
+        "provider {provider} uses {normalized} in {}\n",
+        path.display()
+    ))
 }
 
 fn render_grants(response: &Value) -> Result<String, ConnectError> {
@@ -236,6 +284,36 @@ mod tests {
             "grant_slack_1".into(),
         ]);
         assert!(raw_invocation.is_err());
+    }
+
+    #[test]
+    fn connect_bind_persists_non_secret_project_transport_without_hosted_io()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = std::env::temp_dir().join(format!(
+            "runx-connect-bind-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)?
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root)?;
+        let workspace = WorkspaceEnv::load_process(root.clone())?;
+        let plan = parse_connect_plan(&[
+            "connect".into(),
+            "bind".into(),
+            "github".into(),
+            "local".into(),
+            "--json".into(),
+        ])?;
+        let output = run_connect_binding(&plan, &workspace, "github", "local")?;
+        assert!(output.contains("local:github"));
+        let bindings = runx_runtime::load_project_bindings(&root)?;
+        assert_eq!(
+            bindings.bindings.get("provider-transport:github"),
+            Some(&"local:github".to_owned())
+        );
+        std::fs::remove_dir_all(root)?;
+        Ok(())
     }
 
     #[test]

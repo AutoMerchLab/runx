@@ -1,0 +1,24 @@
+name: send-as-default-requires-live-delivery-binding
+kind: skill
+target: ..
+operator_journeys:
+  - mode: standalone
+    request: Send this digest-bound release notice as the release bot.
+    expected_outcome: Perform one preflight and return one actionable delivery-binding blocker without drafting a false success.
+  - mode: composed
+    request: Deliver this already approved release-notice plan.
+    expected_outcome: Reuse the exact plan and principal without re-drafting, then stop before mutation when no compatible adapter exists.
+    prior_evidence:
+      - The prepared release-notice plan and principal supplied to the run.
+    must_not_repeat:
+      - Do not redraft or reapprove the message.
+      - Do not claim delivery without a compatible adapter.
+inputs:
+  objective: Send the digest-bound release notice.
+  principal: account:release-bot
+expect:
+  status: failure
+metadata:
+  public_skill: send-as
+  source_case: direct-default-preflight
+  source: skills-fixture

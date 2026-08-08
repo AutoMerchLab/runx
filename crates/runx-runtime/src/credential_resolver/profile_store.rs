@@ -133,10 +133,65 @@ pub fn bind_project_credential(
     bindings
         .bindings
         .insert(target.to_owned(), profile.to_owned());
+    write_project_bindings(path, &bindings)
+}
+
+pub fn bind_project_provider_transport(
+    workspace: &WorkspaceEnv,
+    provider: &str,
+    transport: &str,
+) -> Result<PathBuf, SkillCredentialError> {
+    let provider = required(provider, SkillCredentialError::EmptyProvider)?;
+    if provider.len() > 100
+        || provider.chars().any(|character| {
+            !character.is_ascii_lowercase()
+                && !character.is_ascii_digit()
+                && !matches!(character, '-' | '_' | '.')
+        })
+    {
+        return Err(SkillCredentialError::InvalidProviderTransportBinding(
+            "provider must be a bounded lowercase identifier".to_owned(),
+        ));
+    }
+    let transport = required(transport, SkillCredentialError::EmptyBindingTarget)?;
+    let transport = match transport {
+        "auto" => "auto".to_owned(),
+        "local" | "local:github" if provider == "github" => "local:github".to_owned(),
+        "hosted" | "runx-connect" => "hosted".to_owned(),
+        value if value.starts_with("hosted:") && value.len() > "hosted:".len() => {
+            let grant_id = &value["hosted:".len()..];
+            if !crate::path_util::is_safe_url_path_identifier(grant_id) {
+                return Err(SkillCredentialError::InvalidProviderTransportBinding(
+                    "hosted grant id must be a safe, non-empty identifier".to_owned(),
+                ));
+            }
+            value.to_owned()
+        }
+        _ => {
+            return Err(SkillCredentialError::InvalidProviderTransportBinding(
+                "use auto, local for GitHub, hosted, or hosted:<grant-id>".to_owned(),
+            ));
+        }
+    };
+    let path = workspace.cwd().join(PROJECT_BINDINGS_PATH);
+    let mut bindings = load_project_bindings(workspace.cwd())?;
+    let key = format!("provider-transport:{provider}");
+    if transport == "auto" {
+        bindings.bindings.remove(&key);
+    } else {
+        bindings.bindings.insert(key, transport);
+    }
+    write_project_bindings(path, &bindings)
+}
+
+fn write_project_bindings(
+    path: PathBuf,
+    bindings: &CredentialBindingsFile,
+) -> Result<PathBuf, SkillCredentialError> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)?;
     }
-    let contents = serde_json::to_string_pretty(&bindings).map_err(|error| {
+    let contents = serde_json::to_string_pretty(bindings).map_err(|error| {
         SkillCredentialError::InvalidBindings {
             path: path.clone(),
             message: error.to_string(),

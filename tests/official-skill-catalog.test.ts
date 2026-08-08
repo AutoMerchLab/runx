@@ -39,6 +39,45 @@ type SkillRunnerManifest = {
   readonly raw: { readonly document: Record<string, unknown> };
 };
 
+type CatalogSemanticDiagnostic = {
+  readonly code: string;
+  readonly skill: string;
+  readonly runner: string;
+  readonly claimedExecution?: string;
+  readonly claimedCompletion?: string;
+  readonly observed: readonly string[];
+  readonly requiredCorrection: string;
+};
+
+type CatalogSemanticReport = {
+  readonly mode: "enforced";
+  readonly skill: string;
+  readonly defaultRunner?: string;
+  readonly diagnostics: readonly CatalogSemanticDiagnostic[];
+};
+
+type NativeSkillInspection = {
+  readonly status: string;
+  readonly name: string;
+  readonly description?: string;
+  readonly runner?: { readonly name?: string };
+  readonly catalog?: {
+    readonly visibility?: "public" | "internal";
+    readonly role?: string;
+    readonly execution?: string;
+    readonly completion?: string;
+  };
+  readonly semantic_report: CatalogSemanticReport;
+  readonly operator_journeys?: readonly {
+    readonly case: string;
+    readonly mode: "standalone" | "composed" | "refusal";
+    readonly request: string;
+    readonly expected_outcome: string;
+    readonly prior_evidence: readonly string[];
+    readonly must_not_repeat: readonly string[];
+  }[];
+};
+
 const currentPaymentRegistrySkillIds = [
   "runx/charge",
   "runx/dispute-respond",
@@ -120,9 +159,8 @@ const harnessedShowcasePackages = [
   "moltbook",
   "work-plan",
   "prior-art",
-  "review-receipt",
+  "diagnose-skill-run",
   "review-skill",
-  "reflect-digest",
   "release",
   "skill-lab",
   "research",
@@ -177,7 +215,7 @@ describe("official skill catalog", () => {
     ) as ReadonlyArray<{ readonly skill_id: string; readonly catalog_visibility?: string }>;
     const publicLockSkills = entries
       .filter((entry) => entry.catalog_visibility === "public")
-      .map((entry) => entry.skill_id.slice("runx/".length))
+      .map((entry) => entry.skill_id.split("/").at(-1)!)
       .sort();
 
     expect(publicLockSkills).toEqual(publicSkills);
@@ -300,6 +338,130 @@ describe("official skill catalog", () => {
       }
     }
   });
+
+  it("enforces clean public defaults while retaining explicit internal fixtures", () => {
+    for (const skillName of ["charge", "refund", "spend", "github-sync", "business-ops"]) {
+      const inspection = inspectOfficialSkill(skillName);
+      expect(inspection.status, skillName).toBe("ok");
+      expect(inspection.catalog?.visibility, skillName).toBe("public");
+      expect(inspection.semantic_report.mode, skillName).toBe("enforced");
+      expect(inspection.semantic_report.diagnostics, skillName).toEqual([]);
+    }
+
+    const internal = inspectOfficialSkill("mock-pay");
+    expect(internal.catalog?.visibility).toBe("internal");
+    expect(internal.semantic_report.mode).toBe("enforced");
+    expect(internal.semantic_report.diagnostics).toEqual([]);
+    const harness = runNativeJson(["harness", "skills/mock-pay", "--json"]);
+    expect(harness).toMatchObject({ status: "passed", assertion_error_count: 0 });
+  }, 20_000);
+
+  it("emits deterministic structured semantic diagnostics from native inspection", () => {
+    const first = inspectOfficialSkill("github-sync");
+    const second = inspectOfficialSkill("github-sync");
+    expect(second.semantic_report).toEqual(first.semantic_report);
+    expect(first.semantic_report).toMatchObject({
+      mode: "enforced",
+      skill: "github-sync",
+      defaultRunner: "github-sync",
+      diagnostics: [],
+    });
+
+    const auditSelfTest = spawnSync(process.execPath, [
+      "scripts/audit-core-skills.mjs",
+      "--self-test",
+    ], {
+      cwd: workspaceRoot,
+      encoding: "utf8",
+    });
+    expect(
+      auditSelfTest.status,
+      auditSelfTest.stderr || auditSelfTest.stdout,
+    ).toBe(0);
+  }, 20_000);
+
+  it("keeps operator intent selection on terminal issue-to-pr and hides internal stages", async () => {
+    const terminal = inspectOfficialSkill("issue-to-pr");
+    expect(terminal).toMatchObject({
+      name: "issue-to-pr",
+      runner: { name: "issue-to-pr" },
+      catalog: {
+        visibility: "public",
+        role: "canonical",
+        execution: "execute",
+        completion: "provider_readback",
+      },
+    });
+
+    for (const optionalSkill of ["issue-intake", "issue-triage", "work-plan"]) {
+      expect(inspectOfficialSkill(optionalSkill)).toMatchObject({
+        name: optionalSkill,
+        catalog: { visibility: "public" },
+      });
+    }
+
+    const home = await mkdtemp(path.join(os.tmpdir(), "runx-operator-selection-"));
+    try {
+      const exported = runNativeJson(["export", "codex", "--json"], {
+        HOME: home,
+        RUNX_HOME: path.join(home, ".runx"),
+      }) as { readonly exported: readonly { readonly skill: string }[] };
+      const names = exported.exported.map((entry) => entry.skill);
+      expect(names).toHaveLength(71);
+      expect(names).toEqual(expect.arrayContaining([
+        "adopt-skill",
+        "diagnose-skill-run",
+        "github-pr-comment",
+        "issue-to-pr",
+        "issue-intake",
+        "issue-triage",
+        "runx",
+        "work-plan",
+      ]));
+      expect(names).not.toContain("overlay");
+      expect(names).not.toContain("pr-review-note");
+      expect(names).not.toContain("review-receipt");
+      expect(names).not.toContain("reflect-digest");
+      expect(names).not.toContain("scafld");
+      expect(names).not.toContain("issue-to-pr-push-outbox");
+      expect(names).not.toContain("issue-to-pr-push-outbox-provider");
+
+      const shim = await readFile(
+        path.join(home, ".codex", "skills", "issue-to-pr", "SKILL.md"),
+        "utf8",
+      );
+      expect(shim).toContain("name: issue-to-pr");
+      expect(shim).toContain("runx skill");
+      expect(shim).toContain("skills/issue-to-pr");
+    } finally {
+      await rm(home, { recursive: true, force: true });
+    }
+  });
+
+  it("projects an intuitive direct request and reusable chain journey for every public skill", () => {
+    for (const skillName of officialSkillPackages()) {
+      if (catalogVisibility(skillName) !== "public") continue;
+      const inspection = inspectOfficialSkill(skillName);
+      const journeys = inspection.operator_journeys ?? [];
+      const standalone = journeys.filter((journey) => journey.mode === "standalone");
+      const composed = journeys.filter((journey) => journey.mode === "composed");
+
+      expect(inspection.description?.trim().length, `${skillName} selection description`).toBeGreaterThan(24);
+      expect(standalone.length, `${skillName} standalone journey`).toBeGreaterThan(0);
+      expect(composed.length, `${skillName} composed journey`).toBeGreaterThan(0);
+      for (const journey of journeys) {
+        expect(journey.request.trim().length, `${skillName}/${journey.case} request`).toBeGreaterThan(12);
+        expect(
+          journey.expected_outcome.trim().length,
+          `${skillName}/${journey.case} expected outcome`,
+        ).toBeGreaterThan(12);
+        if (journey.mode === "composed") {
+          expect(journey.prior_evidence.length, `${skillName}/${journey.case} prior evidence`).toBeGreaterThan(0);
+          expect(journey.must_not_repeat.length, `${skillName}/${journey.case} non-repetition`).toBeGreaterThan(0);
+        }
+      }
+    }
+  }, 60_000);
 
   it("keeps evaluator-facing packages runnable through native inline harness fixtures", async () => {
     const internalHarnessedShowcasePackages = harnessedShowcasePackages.filter(
@@ -446,4 +608,35 @@ function publicSkillFixtureCases(skillName: string): readonly PublicSkillFixture
 
 function validateRunnerManifestYaml(profileDocument: string): SkillRunnerManifest {
   return validateNativeRunnerManifestYaml(profileDocument);
+}
+
+function inspectOfficialSkill(skillName: string): NativeSkillInspection {
+  return runNativeJson([
+    "skill",
+    "inspect",
+    `skills/${skillName}`,
+    "--json",
+  ]) as NativeSkillInspection;
+}
+
+function runNativeJson(
+  args: readonly string[],
+  env: Readonly<Record<string, string>> = {},
+): unknown {
+  const result = spawnSync(nativeRunx, args, {
+    cwd: workspaceRoot,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      ...receiptSigningEnv,
+      RUNX_CWD: workspaceRoot,
+      ...env,
+      NO_COLOR: "1",
+    },
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  if (result.status !== 0) {
+    throw new Error(`${nativeRunx} ${args.join(" ")} failed: ${result.stderr || result.stdout}`);
+  }
+  return JSON.parse(result.stdout) as unknown;
 }

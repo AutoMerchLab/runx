@@ -2,6 +2,18 @@ name: clean-run-within-grant
 kind: skill
 target: ..
 runner: audit
+operator_journeys:
+  - mode: standalone
+    request: Audit this sealed Runx receipt for authority over-reach and ungated mutation.
+    expected_outcome: Return a governance verdict grounded in verified receipt authority, acts, decisions, and seal evidence.
+  - mode: composed
+    request: Continue governance review from this verified receipt detail.
+    expected_outcome: Reuse the supplied receipt projection and return the same audit without hydrating or replaying the original run.
+    prior_evidence:
+      - The verified receipt row and redacted receipt detail supplied in the fixture.
+    must_not_repeat:
+      - Do not rerun the audited operation.
+      - Do not fetch receipt bodies already present in the native detail projection.
 inputs:
   receipt_id: rcpt_issue_triage_4471
   receipt_rows:

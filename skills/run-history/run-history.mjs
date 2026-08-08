@@ -94,7 +94,7 @@ function recommendations({ decision, statuses, refusalCount, untestedCatalogEntr
   }
   const items = [];
   if ((statuses.failed || 0) > 0 || (statuses.timed_out || 0) > 0) {
-    items.push({ lane: "review-receipt", action: "Review representative failed or timed-out receipts and route bounded fixes through skill-lab improve." });
+    items.push({ lane: "diagnose-skill-run", action: "Diagnose representative failed or timed-out receipts and route bounded fixes through skill-lab improve." });
   }
   if (refusalCount > 0) {
     items.push({ lane: "audit-receipt", action: "Sample blocked or declined receipts to confirm the governance boundary is behaving as intended." });

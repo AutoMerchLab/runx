@@ -86,7 +86,9 @@ pub enum SkillApprovalRequirement {
     Human,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, RunxSchema)]
+#[derive(
+    Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd, Serialize, Deserialize, RunxSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum SkillProofKind {
     Contract,
@@ -94,7 +96,60 @@ pub enum SkillProofKind {
     Regression,
     Security,
     Performance,
-    OperatorTrial,
+    SelectionTrial,
+    StandaloneOperatorJourney,
+    ComposedOperatorJourney,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, RunxSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillIdentityAction {
+    Keep,
+    Rename,
+    Create,
+    Internalize,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize, RunxSchema)]
+#[serde(rename_all = "snake_case")]
+pub enum SkillPackageVisibility {
+    Public,
+    Internal,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, RunxSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SkillIdentityDecision {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub current_name: Option<NonEmptyString>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub proposed_name: Option<NonEmptyString>,
+    pub action: SkillIdentityAction,
+    pub visibility: SkillPackageVisibility,
+    pub rationale: NonEmptyString,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, RunxSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SkillDirectUseContract {
+    pub trigger_requests: Vec<NonEmptyString>,
+    pub non_trigger_requests: Vec<NonEmptyString>,
+    pub default_outcome: NonEmptyString,
+    pub routine_host_work: Vec<NonEmptyString>,
+    pub runx_boundary: NonEmptyString,
+    pub terminal_result: NonEmptyString,
+    pub blocker_behavior: NonEmptyString,
+    pub native_escape: NonEmptyString,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, RunxSchema)]
+#[serde(deny_unknown_fields)]
+pub struct SkillChainUseContract {
+    pub accepted_inputs: Vec<NonEmptyString>,
+    pub result: NonEmptyString,
+    pub reused_evidence: Vec<NonEmptyString>,
+    pub reused_effects: Vec<NonEmptyString>,
+    pub must_not_repeat: Vec<NonEmptyString>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize, RunxSchema)]
@@ -167,6 +222,12 @@ pub struct SkillProofRequirement {
 pub struct SkillArchitectureDecision {
     pub schema: SkillArchitectureDecisionSchema,
     pub disposition: SkillArchitectureDisposition,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub identity: Option<SkillIdentityDecision>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub direct_use: Option<SkillDirectUseContract>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chain_use: Option<SkillChainUseContract>,
     pub objective: NonEmptyString,
     pub operator_value: NonEmptyString,
     pub knowledge_contract: SkillKnowledgeContract,
