@@ -1,5 +1,5 @@
 mod error;
-#[cfg(feature = "cli-tool")]
+#[cfg(feature = "catalog")]
 mod external_receipt;
 mod metadata;
 mod provider_effect;
@@ -9,7 +9,7 @@ mod state;
 mod types;
 
 pub use error::RuntimeEffectError;
-#[cfg(feature = "cli-tool")]
+#[cfg(feature = "catalog")]
 pub use external_receipt::{
     EXTERNAL_RECEIPT_EFFECT_FAMILY, EXTERNAL_RECEIPT_VERIFY_TOOL, ExternalReceiptEffect,
 };

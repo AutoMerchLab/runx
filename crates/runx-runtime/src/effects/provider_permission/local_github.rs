@@ -1810,9 +1810,11 @@ fn local_operation_id(
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
     use std::fs;
     #[cfg(unix)]
     use std::os::unix::fs::PermissionsExt;
+    #[cfg(unix)]
     use std::path::PathBuf;
 
     use super::*;

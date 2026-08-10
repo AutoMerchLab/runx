@@ -107,7 +107,7 @@ pub(super) fn execute_batch(
     let allowed_hosts = admitted_hosts(invocation, &auth)?;
     let requests = admit_requests(&invocation.inputs.requests, mode)?;
     let stop_on_error = invocation.inputs.stop_on_error;
-    let transport = NativeHttpTransport::new(invocation.effects.harness_http_responses())
+    let transport = NativeHttpTransport::new(invocation.harness_http_responses())
         .map_err(|error| invalid(format!("native HTTP transport unavailable: {error}")))?;
     let mut batch = BatchAccumulator::new();
 
