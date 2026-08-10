@@ -235,6 +235,56 @@ fn hosted_provider_explicit_binding_and_unambiguous_fallback_remain_supported() 
 
 #[cfg(feature = "catalog")]
 #[test]
+fn host_injected_provider_authority_rejects_conflicting_transport_bindings() {
+    let effect = ProviderPermissionEffect::default();
+    let inputs = JsonObject::from([
+        (
+            "expected_provider".to_owned(),
+            JsonValue::String("github".to_owned()),
+        ),
+        (
+            "operation".to_owned(),
+            JsonValue::String("issues.read".to_owned()),
+        ),
+        (
+            "target".to_owned(),
+            JsonValue::String("nitrosend/nitrosend".to_owned()),
+        ),
+    ]);
+    let step = native_step(PROVIDER_READ_TOOL, &["repo.read"], "read");
+
+    let mut local_env = provider_env("github-mcp-read", "repo.read");
+    local_env.insert(
+        PROVIDER_PERMISSION_TRANSPORT_ENV.to_owned(),
+        "local:github".to_owned(),
+    );
+    let local_error = effect
+        .admit(effect_request(&step, &inputs, &local_env))
+        .expect_err("hosted authority must not override a local transport binding");
+    assert!(
+        matches!(local_error, RuntimeEffectError::Denied { ref message, .. }
+            if message.contains("conflicts with explicit local:github")
+                && message.contains(PROVIDER_PERMISSION_GRANT_ID_ENV)),
+        "unexpected local transport conflict: {local_error:?}"
+    );
+
+    let mut hosted_env = provider_env("github-mcp-read", "repo.read");
+    hosted_env.insert(
+        PROVIDER_PERMISSION_TRANSPORT_ENV.to_owned(),
+        "hosted:different-grant".to_owned(),
+    );
+    let hosted_error = effect
+        .admit(effect_request(&step, &inputs, &hosted_env))
+        .expect_err("hosted authority must match an exact hosted binding");
+    assert!(
+        matches!(hosted_error, RuntimeEffectError::Denied { ref message, .. }
+            if message.contains("does not match the explicit hosted:different-grant")),
+        "unexpected hosted transport conflict: {hosted_error:?}"
+    );
+}
+
+#[cfg(feature = "catalog")]
+#[test]
 fn missing_hosted_provider_auth_is_an_actionable_denial_not_receipt_corruption() {
     let effect = ProviderPermissionEffect::default();
     let inputs = provider_inputs("messages.search");

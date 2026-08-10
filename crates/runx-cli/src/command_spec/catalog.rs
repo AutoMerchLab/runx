@@ -140,7 +140,9 @@ pub const COMMAND_SPECS: &[CommandSpec] = &[
             "runx connect status <session-id> [-j|--json]",
             "runx connect revoke <grant-id> [-j|--json]",
         ],
-        notes: &[],
+        notes: &[
+            "Host-injected provider grant environment selects hosted authority and cannot coexist with an explicit local transport binding.",
+        ],
         options: &[
             "--api-base-url url",
             "--token token",

@@ -183,6 +183,16 @@ it does not expose raw provider invocation. Provider operations stay inside a
 skill run so admission, approval when required, projection, and receipt sealing
 remain one path.
 
+`runx connect bind <provider> <transport>` records the project's transport
+preference. `RUNX_PROVIDER_PERMISSION_TRANSPORT` overrides that project binding.
+A complete host-injected `RUNX_PROVIDER_PERMISSION_GRANT_ID`,
+`RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES`, and
+`RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF` triplet represents hosted authority;
+Runx fails preflight when that triplet conflicts with `local:github`, or when its
+grant id differs from an exact `hosted:<grant-id>` binding. Resolve the conflict
+explicitly instead of allowing ambient CI credentials to silently change the
+operator's selected transport.
+
 A skill may also declare `expected_result` to require exact top-level resource
 identity fields and `result_fields` to allow only named provider result fields
 into the receipt. This is mandatory for secret-adjacent operations and useful

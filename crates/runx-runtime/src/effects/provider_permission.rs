@@ -46,10 +46,16 @@ use policy::{
 pub const PROVIDER_PERMISSION_EFFECT_FAMILY: &str = "provider_permission";
 pub const PROVIDER_READ_TOOL: &str = "provider.read";
 pub const PROVIDER_MUTATE_TOOL: &str = "provider.mutate";
+/// Host-injected provider grant identity. Together with granted scopes and the
+/// principal reference, this selects hosted execution. A complete triplet
+/// cannot coexist with an explicit local transport binding.
 pub const PROVIDER_PERMISSION_GRANT_ID_ENV: &str = "RUNX_PROVIDER_PERMISSION_GRANT_ID";
 pub const PROVIDER_PERMISSION_GRANTED_SCOPES_ENV: &str = "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES";
 pub const PROVIDER_PERMISSION_PRINCIPAL_REF_ENV: &str = "RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF";
 #[cfg(feature = "catalog")]
+/// Explicit provider transport preference. The environment overrides the
+/// project binding; either source conflicts fail closed when a complete
+/// host-injected hosted-grant triplet requests a different transport.
 pub const PROVIDER_PERMISSION_TRANSPORT_ENV: &str = "RUNX_PROVIDER_PERMISSION_TRANSPORT";
 
 #[cfg(feature = "catalog")]

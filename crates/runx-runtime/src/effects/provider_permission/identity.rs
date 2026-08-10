@@ -118,13 +118,33 @@ impl ProviderPermissionEffect {
         })?;
         let required_scopes = required_scopes_for(request, policy)?;
         let target = resolved_provider_target(request, provider)?;
-        if let Some(mut resolved) = explicit_native_provider_resolution(request.env)? {
-            resolved.target = target.value;
-            return Ok(resolved);
-        }
         let requested =
             super::resolve_provider_transport_preference(request.env, request.graph_dir, provider)
                 .map_err(provider_permission_policy_error)?;
+        if let Some(mut resolved) = explicit_native_provider_resolution(request.env)? {
+            let conflict = match &requested {
+                super::ProviderTransportPreference::LocalGithub => Some(format!(
+                    "host-injected provider authority ({PROVIDER_PERMISSION_GRANT_ID_ENV}, {PROVIDER_PERMISSION_GRANTED_SCOPES_ENV}, and {PROVIDER_PERMISSION_PRINCIPAL_REF_ENV}) selects hosted transport and conflicts with explicit local:github transport; unset the hosted grant triplet or change the transport binding to hosted"
+                )),
+                super::ProviderTransportPreference::Hosted(Some(bound_grant))
+                    if bound_grant != &resolved.grant_id =>
+                {
+                    Some(format!(
+                        "host-injected provider grant does not match the explicit hosted:{bound_grant} transport binding; update the binding or inject the matching grant"
+                    ))
+                }
+                _ => None,
+            };
+            if let Some(message) = conflict {
+                return Err(RuntimeEffectError::Denied {
+                    family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
+                    verb: required_verb_field(policy)?,
+                    message,
+                });
+            }
+            resolved.target = target.value;
+            return Ok(resolved);
+        }
         if requested == super::ProviderTransportPreference::LocalGithub {
             return resolve_local_github(
                 request,
