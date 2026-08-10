@@ -1,9 +1,16 @@
 name: moltbook-default-requires-provider-feed-binding
 kind: skill
 target: ..
+operator_journeys:
+  - mode: standalone
+    confusors: [ecosystem-brief, research]
+    request: Scan Moltbook for current credible opportunities relevant to Runx builders.
+    expected_outcome: Use the live feed runner by default and fail immediately with one provider-binding message when no feed grant is configured.
 inputs:
   objective: Find one useful post for Runx builders.
   as_of: "2026-07-17T12:00:00Z"
+  max_age_hours: 48
+  max_items: 50
 expect:
   status: policy_denied
 metadata: { public_skill: moltbook, source_case: direct-default-preflight, source: skills-fixture }

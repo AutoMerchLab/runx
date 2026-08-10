@@ -298,6 +298,18 @@ harness:
   cases:
     - name: digest-note-ready
       runner: digest
+      operator_journeys:
+        - mode: standalone
+          confusors: [extract, sign-receipt]
+          request: Digest this exact note into one reusable content identity.
+          expected_outcome: Hash the supplied note once and return its canonical digest in a sealed receipt.
+        - mode: composed
+          request: Digest the note already supplied by the upstream content step.
+          expected_outcome: Reuse the exact supplied note bytes without reacquiring or rewriting them.
+          prior_evidence:
+            - The exact note bytes supplied by the upstream step.
+          must_not_repeat:
+            - Do not reacquire or rewrite the supplied note.
       inputs:
         note: one bounded note
       expect:

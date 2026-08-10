@@ -15,8 +15,9 @@ mod types;
 
 pub use catalog::{
     CatalogApproval, CatalogAudience, CatalogCompletion, CatalogExecution, CatalogKind,
-    CatalogMetadata, CatalogRole, CatalogSemanticCode, CatalogSemanticDiagnostic,
-    CatalogSemanticReport, CatalogVisibility, analyze_catalog_semantics,
+    CatalogMetadata, CatalogOperatorReadiness, CatalogProviderProof, CatalogRole,
+    CatalogSemanticCode, CatalogSemanticDiagnostic, CatalogSemanticReport, CatalogVisibility,
+    analyze_catalog_semantics, analyze_package_catalog_semantics,
 };
 pub use fixtures::{
     HarnessCallerFixture, HarnessExpectation, HarnessHttpResponseFixture, OperatorJourneyClaim,

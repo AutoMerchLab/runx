@@ -4,6 +4,7 @@ target: ..
 runner: x402
 operator_journeys:
   - mode: standalone
+    confusors: [spend, stripe-pay]
     request: Pay this exact x402 challenge under the supplied Runx payment authority.
     expected_outcome: Validate the challenge and return the canonical spend quote without pretending settlement exists.
   - mode: composed

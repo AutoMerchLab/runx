@@ -3,6 +3,8 @@ kind: graph
 target: ../harness/sourcey-lifecycle.yaml
 operator_journeys:
   - mode: standalone
+    exercises_runner: sourcey
+    confusors: [release, answer-from-docs]
     request: Generate and verify this project's documentation with Sourcey.
     expected_outcome: Complete discovery, bounded authoring, critique, verification, and package handoff with truthful artifacts.
   - mode: composed

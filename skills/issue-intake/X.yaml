@@ -1,5 +1,5 @@
 skill: issue-intake
-version: "0.1.4"
+version: "0.1.5"
 catalog:
   kind: skill
   audience: public
@@ -14,6 +14,7 @@ harness:
     - name: bounded-docs-fix
       operator_journeys:
         - mode: standalone
+          confusors: [issue-triage, work-plan]
           request: Turn this noisy documentation bug report into a bounded intake artifact.
           expected_outcome: Return the normalized request, evidence gaps, mutation posture, and explicit next Runx lane.
         - mode: composed

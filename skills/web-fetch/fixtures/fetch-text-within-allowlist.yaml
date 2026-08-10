@@ -4,6 +4,7 @@ target: ..
 runner: web-fetch
 operator_journeys:
   - mode: standalone
+    confusors: [extract, research]
     request: Fetch RFC 9110 from the allowlisted host and return bounded text with provenance.
     expected_outcome: Return one digest-bound source artifact with exact URL, content metadata, and bounded extracted text.
   - mode: composed

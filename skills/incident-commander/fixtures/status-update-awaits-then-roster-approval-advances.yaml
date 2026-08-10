@@ -4,6 +4,7 @@ target: ..
 runner: advance
 operator_journeys:
   - mode: standalone
+    confusors: [ops-desk, agency]
     request: Advance this SEV-2 incident and prepare the approved status update handoff.
     expected_outcome: Return the next incident action with roster authority, approval state, and send handoff explicit.
   - mode: composed

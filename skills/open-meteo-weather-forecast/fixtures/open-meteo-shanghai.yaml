@@ -4,6 +4,7 @@ target: ..
 runner: main
 operator_journeys:
   - mode: standalone
+    confusors: [nws-weather-forecast, weather-forecast]
     request: Fetch a three-day Open-Meteo forecast for Shanghai.
     expected_outcome: Return bounded global forecast evidence with exact coordinates and provider provenance.
   - mode: composed

@@ -4,6 +4,7 @@ target: ..
 runner: plan-campaign
 operator_journeys:
   - mode: standalone
+    confusors: [send-as, content-pipeline]
     request: Prepare the weekly newsletter campaign for next Tuesday at 9am in this Nitrosend account.
     expected_outcome: Return an account-ready campaign plan with audience, schedule, and delivery boundary explicit without sending.
   - mode: composed

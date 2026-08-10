@@ -343,9 +343,20 @@ The catalog gate blocks structural dishonesty and unusable packages:
 - a claimed adapter with no reachable adapter boundary;
 - agent-authored work with no declared artifact packet;
 - no executable contract or operation proof;
+- no cold-selection proof against at least two real nearby public skills;
+- no standalone journey through the actual advertised default runner;
+- no composed journey that names reused evidence and work that must not repeat;
 - a missing product archetype review.
 
-Metadata, provider readback, forward tests, and evidence-depth gaps remain
+The native semantic report owns those readiness facts. TypeScript catalog
+checks, inspection, and review tooling consume the report instead of
+reclassifying fixtures. Provider proof remains graded: deterministic provider
+replay is `harness`, live-provider evidence is `live`, and supplied agent
+answers never upgrade either. Harness execution strips ambient Runx grants,
+tokens, credential deliveries, and global configuration before applying the
+fixture's explicit fake bindings.
+
+Metadata, live provider readback, forward tests, and evidence-depth gaps remain
 visible improvement findings. They may prevent a skill from meeting the full
 archetype bar without pretending the underlying product capability should be
 deleted.

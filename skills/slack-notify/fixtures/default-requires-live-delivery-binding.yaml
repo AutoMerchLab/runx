@@ -3,6 +3,7 @@ kind: skill
 target: ..
 operator_journeys:
   - mode: standalone
+    confusors: [slack, send-as]
     request: Notify this Slack channel that release 0.8.2 is live.
     expected_outcome: Preflight the exact notification once and return one actionable connector blocker when delivery is unavailable.
   - mode: composed

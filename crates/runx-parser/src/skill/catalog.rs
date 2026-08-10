@@ -1,5 +1,5 @@
 // Module rationale: catalog enums, parsing, and cross-field capability validation form one public metadata contract.
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 
 use runx_contracts::JsonObject;
 use serde::{Deserialize, Serialize};
@@ -188,6 +188,9 @@ pub enum CatalogSemanticCode {
     ApprovalUnreachable,
     MockDefault,
     FixtureDefault,
+    MissingColdSelectionProof,
+    MissingStandaloneDefaultProof,
+    MissingComposedReuseProof,
 }
 
 impl CatalogSemanticCode {
@@ -201,8 +204,37 @@ impl CatalogSemanticCode {
             Self::ApprovalUnreachable => "approval_unreachable",
             Self::MockDefault => "mock_default",
             Self::FixtureDefault => "fixture_default",
+            Self::MissingColdSelectionProof => "missing_cold_selection_proof",
+            Self::MissingStandaloneDefaultProof => "missing_standalone_default_proof",
+            Self::MissingComposedReuseProof => "missing_composed_reuse_proof",
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CatalogProviderProof {
+    #[default]
+    None,
+    Harness,
+    Live,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CatalogOperatorReadiness {
+    pub evaluated: bool,
+    pub cold_selection: bool,
+    pub standalone_default: bool,
+    pub composed_reuse: bool,
+    pub provider_proof: CatalogProviderProof,
+    pub supplied_agent_answers: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cold_selection_confusors: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub standalone_case: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub composed_case: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -227,12 +259,14 @@ pub struct CatalogSemanticReport {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub default_runner: Option<String>,
     pub diagnostics: Vec<CatalogSemanticDiagnostic>,
+    pub readiness: CatalogOperatorReadiness,
 }
 
 #[derive(Default)]
 struct DefaultRunnerFacts {
     observations: BTreeSet<String>,
     provider_readback: bool,
+    provider_boundary: bool,
     mutation: bool,
     adapter: bool,
     artifact: bool,
@@ -266,6 +300,7 @@ pub fn analyze_catalog_semantics(
             skill: skill.to_owned(),
             default_runner: None,
             diagnostics: Vec::new(),
+            readiness: CatalogOperatorReadiness::default(),
         };
     };
     let Some(catalog) = manifest.catalog.as_ref() else {
@@ -274,6 +309,7 @@ pub fn analyze_catalog_semantics(
             skill: skill.to_owned(),
             default_runner: Some(runner.name.clone()),
             diagnostics: Vec::new(),
+            readiness: CatalogOperatorReadiness::default(),
         };
     };
     let facts = default_runner_facts(skill, manifest, runner);
@@ -375,7 +411,199 @@ pub fn analyze_catalog_semantics(
         skill: skill.to_owned(),
         default_runner: Some(runner.name.clone()),
         diagnostics,
+        readiness: CatalogOperatorReadiness::default(),
     }
+}
+
+/// Add package-fixture evidence to the structural catalog report. This is the
+/// only readiness owner used by complete package admission and inspection;
+/// callers with a raw manifest receive structural facts with
+/// `readiness.evaluated = false` rather than invented journey proof.
+#[must_use]
+pub fn analyze_package_catalog_semantics(
+    skill: &str,
+    manifest: &crate::SkillRunnerManifest,
+    fixtures: &BTreeMap<String, crate::harness_fixture::HarnessFixture>,
+) -> CatalogSemanticReport {
+    let mut report = analyze_catalog_semantics(skill, manifest);
+    let Some(catalog) = manifest.catalog.as_ref() else {
+        return report;
+    };
+    if catalog.visibility != CatalogVisibility::Public {
+        return report;
+    }
+    let Some(default_runner) = report.default_runner.as_deref() else {
+        return report;
+    };
+    let Some(runner) = manifest.runners.get(default_runner) else {
+        return report;
+    };
+    let facts = default_runner_facts(skill, manifest, runner);
+    let readiness = package_operator_readiness(skill, manifest, fixtures, default_runner, &facts);
+    let observed = readiness_observations(&readiness);
+    if !readiness.cold_selection {
+        report.diagnostics.push(semantic_diagnostic(
+            CatalogSemanticCode::MissingColdSelectionProof,
+            skill,
+            runner,
+            catalog,
+            &observed,
+            "add a standalone journey for the actual default runner with at least two nearby public skill confusors",
+        ));
+    }
+    if !readiness.standalone_default {
+        report.diagnostics.push(semantic_diagnostic(
+            CatalogSemanticCode::MissingStandaloneDefaultProof,
+            skill,
+            runner,
+            catalog,
+            &observed,
+            "run a standalone operator journey against the actual default runner rather than a convenient phase runner",
+        ));
+    }
+    if !readiness.composed_reuse {
+        report.diagnostics.push(semantic_diagnostic(
+            CatalogSemanticCode::MissingComposedReuseProof,
+            skill,
+            runner,
+            catalog,
+            &observed,
+            "add a composed journey that names reused prior evidence and work that must not be repeated",
+        ));
+    }
+    report.diagnostics.sort_by_key(|diagnostic| diagnostic.code);
+    report.readiness = readiness;
+    report
+}
+
+fn package_operator_readiness(
+    skill: &str,
+    manifest: &crate::SkillRunnerManifest,
+    fixtures: &BTreeMap<String, crate::harness_fixture::HarnessFixture>,
+    default_runner: &str,
+    facts: &DefaultRunnerFacts,
+) -> CatalogOperatorReadiness {
+    let mut readiness = CatalogOperatorReadiness {
+        evaluated: true,
+        ..CatalogOperatorReadiness::default()
+    };
+    if let Some(harness) = manifest.harness.as_ref() {
+        for case in &harness.cases {
+            update_operator_readiness(
+                skill,
+                default_runner,
+                &case.name,
+                true,
+                case.runner.as_deref(),
+                &case.operator_journeys,
+                case.caller
+                    .answers
+                    .as_ref()
+                    .is_some_and(|answers| !answers.is_empty()),
+                case.expect.status.as_ref(),
+                facts,
+                &mut readiness,
+            );
+        }
+    }
+    for fixture in fixtures.values() {
+        update_operator_readiness(
+            skill,
+            default_runner,
+            &fixture.name,
+            matches!(
+                fixture.kind,
+                crate::harness_fixture::HarnessFixtureKind::Skill
+            ) && fixture.target == "..",
+            fixture.runner.as_deref(),
+            &fixture.operator_journeys,
+            fixture
+                .caller
+                .get("answers")
+                .and_then(runx_contracts::JsonValue::as_object)
+                .is_some_and(|answers| !answers.is_empty()),
+            fixture.expect.status.as_ref(),
+            facts,
+            &mut readiness,
+        );
+    }
+    readiness
+}
+
+#[allow(clippy::too_many_arguments)]
+fn update_operator_readiness(
+    skill: &str,
+    default_runner: &str,
+    case_name: &str,
+    package_runner_case: bool,
+    selected_runner: Option<&str>,
+    journeys: &[crate::OperatorJourneyClaim],
+    supplied_agent_answers: bool,
+    expected_status: Option<&crate::harness_fixture::HarnessExpectedStatus>,
+    facts: &DefaultRunnerFacts,
+    readiness: &mut CatalogOperatorReadiness,
+) {
+    for journey in journeys {
+        let exercises_default = if package_runner_case {
+            selected_runner.is_none_or(|runner| runner == default_runner)
+        } else {
+            journey.exercises_runner.as_deref() == Some(default_runner)
+        };
+        match journey.mode {
+            crate::OperatorJourneyMode::Standalone if exercises_default => {
+                readiness.standalone_default = true;
+                readiness
+                    .standalone_case
+                    .get_or_insert_with(|| case_name.to_owned());
+                readiness.supplied_agent_answers |= supplied_agent_answers;
+                let confusors = journey
+                    .confusors
+                    .iter()
+                    .map(|value| value.trim())
+                    .filter(|value| !value.is_empty() && *value != skill)
+                    .collect::<BTreeSet<_>>();
+                if confusors.len() >= 2 {
+                    readiness.cold_selection = true;
+                    readiness.cold_selection_confusors =
+                        confusors.into_iter().map(str::to_owned).collect();
+                }
+                if facts.provider_readback
+                    && !supplied_agent_answers
+                    && matches!(
+                        expected_status,
+                        Some(crate::harness_fixture::HarnessExpectedStatus::Sealed)
+                    )
+                {
+                    readiness.provider_proof = CatalogProviderProof::Harness;
+                }
+            }
+            crate::OperatorJourneyMode::Composed => {
+                readiness.composed_reuse = true;
+                readiness
+                    .composed_case
+                    .get_or_insert_with(|| case_name.to_owned());
+            }
+            crate::OperatorJourneyMode::Standalone | crate::OperatorJourneyMode::Refusal => {}
+        }
+    }
+}
+
+fn readiness_observations(readiness: &CatalogOperatorReadiness) -> Vec<String> {
+    let mut observed = Vec::new();
+    if readiness.cold_selection {
+        observed.push("cold_selection_harness".to_owned());
+    }
+    if readiness.standalone_default {
+        observed.push("standalone_default_harness".to_owned());
+    }
+    if readiness.composed_reuse {
+        observed.push("composed_reuse_harness".to_owned());
+    }
+    if readiness.supplied_agent_answers {
+        observed.push("supplied_agent_answers".to_owned());
+    }
+    observed.push(format!("provider_proof:{:?}", readiness.provider_proof).to_lowercase());
+    observed
 }
 
 fn semantic_diagnostic(
@@ -415,6 +643,11 @@ fn default_runner_facts(
         ..Default::default()
     };
     observe_source(manifest, &runner.source, &mut facts, &mut BTreeSet::new());
+    facts.provider_readback = source_readback_reaches_result(
+        manifest,
+        &runner.source,
+        &mut BTreeSet::from([runner.name.clone()]),
+    );
     if facts.planning_name {
         facts.observations.insert("planning_runner_name".to_owned());
     }
@@ -423,6 +656,16 @@ fn default_runner_facts(
     }
     if facts.agent {
         facts.observations.insert("agent_act".to_owned());
+    }
+    if facts.provider_boundary {
+        facts
+            .observations
+            .insert("provider_boundary_reachable".to_owned());
+    }
+    if facts.provider_readback {
+        facts
+            .observations
+            .insert("provider_readback_result_path".to_owned());
     }
     if facts.mock || contains_word(skill, &["mock"]) {
         facts.observations.insert("mock_path".to_owned());
@@ -446,7 +689,7 @@ fn observe_source(
                     if let Some(tool) = step.tool.as_deref() {
                         facts.observations.insert(format!("tool:{tool}"));
                         if matches!(tool, "provider.read" | "provider.mutate") {
-                            facts.provider_readback = true;
+                            facts.provider_boundary = true;
                         }
                         if tool == "provider.mutate" {
                             facts.mutation = true;
@@ -468,14 +711,14 @@ fn observe_source(
                         }
                         if matches!(tool, "http.read" | "http.execute" | "web.fetch") {
                             facts.adapter = true;
-                            facts.provider_readback = true;
+                            facts.provider_boundary = true;
                             facts
                                 .observations
                                 .insert("native_network_boundary".to_owned());
                         }
                         if matches!(tool, "http.execute" | "command.execute") {
                             facts.mutation = true;
-                            facts.provider_readback = true;
+                            facts.provider_boundary = true;
                         }
                         if tool == "receipt.attest" {
                             facts.mutation = true;
@@ -500,7 +743,7 @@ fn observe_source(
                         }
                         if reference.contains("provider-operation") {
                             facts.adapter = true;
-                            facts.provider_readback = true;
+                            facts.provider_boundary = true;
                             facts
                                 .observations
                                 .insert("provider_operation_boundary".to_owned());
@@ -513,7 +756,7 @@ fn observe_source(
                         facts.fixture |= contains_word(reference, &["fixture", "harness"]);
                         if !matches!(reference, "." | "./") && step.mutating {
                             facts.adapter = true;
-                            facts.provider_readback = true;
+                            facts.provider_boundary = true;
                             facts
                                 .observations
                                 .insert("external_mutation_boundary".to_owned());
@@ -535,6 +778,7 @@ fn observe_source(
         super::SourceKind::ExternalAdapter | super::SourceKind::ThreadOutboxProvider => {
             facts.adapter = true;
             facts.mutation = true;
+            facts.provider_boundary = true;
             facts
                 .observations
                 .insert(format!("source:{}", source.source_type.as_str()));
@@ -549,6 +793,106 @@ fn observe_source(
                 .insert(format!("source:{}", source.source_type.as_str()));
         }
     }
+}
+
+fn source_readback_reaches_result(
+    manifest: &crate::SkillRunnerManifest,
+    source: &super::SkillSource,
+    visited_runners: &mut BTreeSet<String>,
+) -> bool {
+    match source.source_type {
+        super::SourceKind::ExternalAdapter | super::SourceKind::ThreadOutboxProvider => true,
+        super::SourceKind::Graph => source.graph.as_ref().is_some_and(|graph| {
+            let mut effect_steps = BTreeSet::new();
+            for step in &graph.steps {
+                let direct_effect = step.tool.as_deref().is_some_and(|tool| {
+                    matches!(
+                        tool,
+                        "provider.read"
+                            | "provider.mutate"
+                            | "http.read"
+                            | "http.execute"
+                            | "web.fetch"
+                            | "command.execute"
+                    )
+                }) || step.skill.as_deref().is_some_and(|reference| {
+                    if matches!(reference, "." | "./") {
+                        let Some(runner_name) = step.runner.as_deref() else {
+                            return false;
+                        };
+                        if !visited_runners.insert(runner_name.to_owned()) {
+                            return false;
+                        }
+                        let result = manifest.runners.get(runner_name).is_some_and(|runner| {
+                            source_readback_reaches_result(
+                                manifest,
+                                &runner.source,
+                                visited_runners,
+                            )
+                        });
+                        visited_runners.remove(runner_name);
+                        result
+                    } else {
+                        step.mutating || reference.contains("provider-operation")
+                    }
+                }) || step
+                    .run
+                    .as_ref()
+                    .and_then(|run| run.source())
+                    .is_some_and(|run| {
+                        source_readback_reaches_result(manifest, run, visited_runners)
+                    });
+                if direct_effect || step_depends_on_any(step, &effect_steps) {
+                    effect_steps.insert(step.id.clone());
+                }
+            }
+            graph
+                .result_from
+                .iter()
+                .any(|result| effect_steps.contains(result))
+        }),
+        _ => false,
+    }
+}
+
+fn step_depends_on_any(step: &crate::GraphStep, producers: &BTreeSet<String>) -> bool {
+    step.context
+        .values()
+        .any(|reference| reference_names_step(reference, producers))
+        || step
+            .context_edges
+            .iter()
+            .any(|edge| producers.contains(&edge.from_step))
+        || step
+            .when
+            .as_ref()
+            .is_some_and(|when| reference_names_step(&when.field, producers))
+        || step
+            .inputs
+            .values()
+            .any(|value| value_references_any_step(value, producers))
+}
+
+fn value_references_any_step(
+    value: &runx_contracts::JsonValue,
+    producers: &BTreeSet<String>,
+) -> bool {
+    match value {
+        runx_contracts::JsonValue::String(value) => reference_names_step(value, producers),
+        runx_contracts::JsonValue::Array(values) => values
+            .iter()
+            .any(|value| value_references_any_step(value, producers)),
+        runx_contracts::JsonValue::Object(values) => values
+            .values()
+            .any(|value| value_references_any_step(value, producers)),
+        _ => false,
+    }
+}
+
+fn reference_names_step(reference: &str, producers: &BTreeSet<String>) -> bool {
+    reference
+        .split_once('.')
+        .is_some_and(|(step, _)| producers.contains(step))
 }
 
 fn inferred_operation_promise(skill: &str) -> bool {
@@ -882,6 +1226,120 @@ runners:
                 .iter()
                 .any(|diagnostic| diagnostic.code == CatalogSemanticCode::MockDefault)
         );
+        Ok(())
+    }
+
+    #[test]
+    fn package_semantic_report_requires_executable_cold_direct_and_composed_proof()
+    -> Result<(), String> {
+        let manifest = manifest(
+            r#"skill: digest-note
+catalog:
+  kind: graph
+  audience: public
+  visibility: public
+  role: context
+  execution: read
+  completion: runtime_receipt
+  requires_adapter: false
+  approval: none
+harness:
+  cases:
+    - name: direct-only
+      runner: digest
+      operator_journeys:
+        - mode: standalone
+          confusors: [extract, sign-receipt]
+          request: Digest this exact note into a reusable identity.
+          expected_outcome: Return the canonical digest for the supplied bytes.
+      inputs: { note: hello }
+      expect: { status: sealed }
+runners:
+  digest:
+    default: true
+    type: graph
+    inputs:
+      note: { type: string, required: true, description: Exact note bytes. }
+    graph:
+      name: digest-note
+      result_from: [digest]
+      steps:
+        - id: digest
+          tool: data.digest
+          inputs: { value: $input.note }
+"#,
+        )?;
+
+        let report = analyze_package_catalog_semantics("digest-note", &manifest, &BTreeMap::new());
+        assert!(report.readiness.evaluated);
+        assert!(report.readiness.cold_selection);
+        assert!(report.readiness.standalone_default);
+        assert!(!report.readiness.composed_reuse);
+        assert!(report.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == CatalogSemanticCode::MissingComposedReuseProof
+        }));
+        Ok(())
+    }
+
+    #[test]
+    fn package_semantic_report_never_upgrades_supplied_agent_answers_to_provider_proof()
+    -> Result<(), String> {
+        let manifest = manifest(
+            r#"skill: provider-reader
+catalog:
+  kind: graph
+  audience: public
+  visibility: public
+  role: canonical
+  execution: read
+  completion: provider_readback
+  requires_adapter: true
+  approval: none
+harness:
+  cases:
+    - name: supplied-answer-provider-case
+      runner: read
+      operator_journeys:
+        - mode: standalone
+          confusors: [github-sync, slack]
+          request: Read this exact provider resource through its configured account.
+          expected_outcome: Return bounded provider readback for the exact target.
+        - mode: composed
+          request: Continue from this already selected provider target.
+          expected_outcome: Reuse the selected target without repeating discovery.
+          prior_evidence: [The exact provider and target selected upstream.]
+          must_not_repeat: [Do not rediscover or replace the selected target.]
+      caller:
+        answers:
+          agent_task.fake.output: { provider_result: { id: resource-1 } }
+      expect: { status: sealed }
+runners:
+  read:
+    default: true
+    type: graph
+    inputs: {}
+    graph:
+      name: provider-reader
+      result_from: [readback]
+      steps:
+        - id: readback
+          tool: provider.read
+          scopes: [resource.read]
+          policy:
+            provider_permission: { verb: read }
+          inputs:
+            operation: resource.read
+            target: resource-1
+            expected_provider: example
+            result_fields: [id]
+"#,
+        )?;
+
+        let report =
+            analyze_package_catalog_semantics("provider-reader", &manifest, &BTreeMap::new());
+        assert!(report.diagnostics.is_empty(), "{:#?}", report.diagnostics);
+        assert!(report.readiness.supplied_agent_answers);
+        assert_eq!(report.readiness.provider_proof, CatalogProviderProof::None);
         Ok(())
     }
 }

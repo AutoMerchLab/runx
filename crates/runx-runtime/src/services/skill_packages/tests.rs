@@ -19,7 +19,52 @@ use crate::RuntimeEffectRegistry;
 use crate::filesystem::TextBundle;
 
 const VALID_MANUAL: &str = "---\nname: demo\ndescription: Make one bounded, reviewable decision from supplied evidence.\n---\n\n# Demo\n\nUse this skill when an operator needs one bounded decision. Inspect the supplied evidence, stop when it is incomplete, and return the decision without mutating an external system.\n";
-const VALID_MANIFEST: &str = "skill: demo\nversion: \"0.1.0\"\n\ncatalog:\n  kind: skill\n  audience: builder\n  visibility: public\n  role: canonical\n  execution: plan\n  completion: plan\n  requires_adapter: false\n  approval: none\n\nrunners:\n  decide:\n    default: true\n    type: agent-task\n    agent: builder\n    task: demo-decide\n    outputs:\n      decision: object\n";
+const VALID_MANIFEST: &str = r#"skill: demo
+version: "0.1.0"
+
+catalog:
+  kind: skill
+  audience: builder
+  visibility: public
+  role: canonical
+  execution: plan
+  completion: plan
+  requires_adapter: false
+  approval: none
+
+harness:
+  cases:
+    - name: demo-operator-journeys
+      runner: decide
+      operator_journeys:
+        - mode: standalone
+          confusors: [work-plan, issue-intake]
+          request: Make one bounded demo decision from supplied evidence.
+          expected_outcome: Return the advertised reviewable decision.
+        - mode: composed
+          request: Continue a bounded decision from prior evidence.
+          expected_outcome: Reuse the supplied evidence without rediscovery.
+          prior_evidence:
+            - The objective evidence supplied by the prior step.
+          must_not_repeat:
+            - Do not rediscover supplied evidence.
+      caller:
+        answers:
+          agent_task.demo-decide.output:
+            decision:
+              status: ready
+      expect:
+        status: sealed
+
+runners:
+  decide:
+    default: true
+    type: agent-task
+    agent: builder
+    task: demo-decide
+    outputs:
+      decision: object
+"#;
 
 fn architecture(
     disposition: SkillArchitectureDisposition,

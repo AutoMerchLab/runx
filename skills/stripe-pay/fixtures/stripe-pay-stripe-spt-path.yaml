@@ -4,6 +4,7 @@ target: ..
 runner: stripe-spt
 operator_journeys:
   - mode: standalone
+    confusors: [spend, x402-pay]
     request: Pay this exact Stripe SPT challenge under the supplied payment authority.
     expected_outcome: Delegate to canonical spend authority, execute once, and return verified payment finality.
   - mode: composed

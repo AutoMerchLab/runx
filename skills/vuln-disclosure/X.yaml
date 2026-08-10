@@ -1,5 +1,5 @@
 skill: vuln-disclosure
-version: "0.4.0"
+version: "0.4.1"
 
 catalog:
   kind: graph
@@ -348,7 +348,7 @@ runners:
               verb: write
           inputs:
             operation: advisory.publish
-            target: $input.disclosure_packet.target
+            target: $input.disclosure_packet.target.locator
             expected_provider: $input.provider
             idempotency_key: $input.idempotency_key
             expected_result:
@@ -373,7 +373,7 @@ runners:
               verb: read
           inputs:
             operation: advisory.read
-            target: $input.disclosure_packet.target
+            target: $input.disclosure_packet.target.locator
             expected_provider: $input.provider
             result_fields: [advisory_ref, payload_digest, status]
           context:

@@ -1,5 +1,5 @@
 skill: meeting-followup
-version: "0.2.1"
+version: "0.2.2"
 
 catalog:
   kind: graph
@@ -16,6 +16,7 @@ harness:
     - name: meeting-followup-grounds-actionable-work
       operator_journeys:
         - mode: standalone
+          confusors: [chief-of-staff, work-plan]
           request: Extract grounded follow-up actions from this meeting transcript.
           expected_outcome: Return source-linked owners, actions, due-state caveats, and non-actions without sending reminders.
         - mode: composed

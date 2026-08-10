@@ -4,6 +4,7 @@ target: ..
 runner: extract
 operator_journeys:
   - mode: standalone
+    confusors: [web-fetch, redact-pii]
     request: Extract the RFC 9110 HTTP semantics into this exact JSON schema.
     expected_outcome: Return schema-valid structured data bound to the admitted HTML, source URL, and content digest.
   - mode: composed

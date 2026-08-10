@@ -1,5 +1,5 @@
 skill: send-as
-version: "0.2.0"
+version: "0.3.0"
 
 catalog:
   kind: graph
@@ -12,26 +12,16 @@ catalog:
   approval: required
 
 input_definitions:
-  delivery:
+  connector:
     type: object
     required: true
-    description: Exact normalized connector operation used to deliver and independently read the message back.
+    description: Operator-selected provider and account, workspace, channel, campaign, or other bounded target; the runtime owns credentials and provider translation.
     schema:
-      required: [provider, target, operation, readback_operation, payload, expected_result, result_fields]
+      required: [provider, target]
       additionalProperties: false
       properties:
         provider: { type: string, minLength: 1, maxLength: 100 }
         target: { type: string, minLength: 1, maxLength: 2048 }
-        operation: { type: string, minLength: 1, maxLength: 100 }
-        readback_operation: { type: string, minLength: 1, maxLength: 100 }
-        payload: { type: object, additionalProperties: true }
-        expected_result: { type: object, additionalProperties: true }
-        result_fields:
-          type: array
-          minItems: 1
-          maxItems: 32
-          uniqueItems: true
-          items: { type: string, minLength: 1, maxLength: 100 }
 
 runners:
   send:
@@ -66,13 +56,8 @@ runners:
         type: string
         required: false
         description: Approval posture, legal constraints, or extra guardrails.
-      delivery:
-        definition: delivery
-      idempotency_key:
-        type: string
-        required: true
-        description: Stable retry key for this exact digest-bound send.
-        schema: { minLength: 1, maxLength: 256 }
+      connector:
+        definition: connector
     graph:
       name: send-as
       result_from: [finalize, plan]
@@ -88,6 +73,7 @@ runners:
             content_ref: $input.content_ref
             consent_basis: $input.consent_basis
             operator_context: $input.operator_context
+            connector: $input.connector
 
         - id: apply
           when:
@@ -96,8 +82,7 @@ runners:
           skill: .
           runner: apply
           inputs:
-            delivery: $input.delivery
-            idempotency_key: $input.idempotency_key
+            connector: $input.connector
           context:
             send_plan: plan.send_plan.data
 
@@ -108,7 +93,7 @@ runners:
           skill: .
           runner: verify
           inputs:
-            delivery: $input.delivery
+            connector: $input.connector
           context:
             send_plan: plan.send_plan.data
             apply_result: apply.provider_operation.data
@@ -155,6 +140,10 @@ runners:
         type: string
         required: false
         description: Approval posture, legal constraints, or extra guardrails.
+      connector:
+        type: json
+        required: false
+        description: Provider and target identity available to the direct send; planning never receives credentials.
 
   apply:
     type: graph
@@ -164,33 +153,57 @@ runners:
         packet: runx.send_as.plan.v1
         required: true
         description: Exact digest-bound plan emitted by send-as:plan.
-      delivery:
-        definition: delivery
-      idempotency_key:
-        type: string
-        required: true
-        description: Stable retry key for this exact digest-bound send.
-        schema: { minLength: 1, maxLength: 256 }
+      connector:
+        definition: connector
     graph:
       name: send-as-apply
-      result_from: [deliver]
+      result_from: [deliver, bind]
       steps:
+        - id: prepare
+          inputs:
+            send_plan: $input.send_plan
+            connector: $input.connector
+          run:
+            type: javascript
+            module: send-as.mjs
+            export: prepareDelivery
+            outputs:
+              delivery_draft: object
+              digest_subject: object
+
+        - id: digest
+          tool: data.digest
+          context:
+            value: prepare.digest_subject
+
+        - id: bind
+          context:
+            delivery_draft: prepare.delivery_draft
+            digest_result: digest.digest_result.data
+          run:
+            type: javascript
+            module: send-as.mjs
+            export: bindDelivery
+            outputs:
+              delivery_request: object
+
         - id: deliver
           tool: provider.mutate
           mutation: true
-          idempotency_key: $input.idempotency_key
+          idempotency_key: bind.delivery_request.idempotency_key
           scopes: [message.send]
           policy:
             provider_permission:
               verb: write
           inputs:
-            expected_provider: $input.delivery.provider
-            operation: $input.delivery.operation
-            target: $input.delivery.target
-            idempotency_key: $input.idempotency_key
-            result_fields: $input.delivery.result_fields
-            input: $input.delivery.payload
-            expected_result: $input.delivery.expected_result
+            expected_provider: $input.connector.provider
+            operation: message.send
+            target: $input.connector.target
+            result_fields: [message_id, principal_ref, audience_ref, content_digest, status, sent_at, idempotency_key]
+          context:
+            idempotency_key: bind.delivery_request.idempotency_key
+            input: bind.delivery_request.payload
+            expected_result: bind.delivery_request.expected_result
 
   verify:
     type: graph
@@ -205,8 +218,8 @@ runners:
         packet: runx.provider.operation.v1
         required: true
         description: Provider mutation result emitted by apply; the producer is not repeated.
-      delivery:
-        definition: delivery
+      connector:
+        definition: connector
     graph:
       name: send-as-verify
       result_from: [finalize]
@@ -218,18 +231,23 @@ runners:
             provider_permission:
               verb: read
           inputs:
-            expected_provider: $input.delivery.provider
-            operation: $input.delivery.readback_operation
-            target: $input.delivery.target
-            result_fields: $input.delivery.result_fields
-            input: $input.apply_result.result
-            expected_result: $input.apply_result.result
+            expected_provider: $input.connector.provider
+            operation: message.read
+            target: $input.connector.target
+            result_fields: [message_id, principal_ref, audience_ref, content_digest, status, sent_at, idempotency_key]
+            input:
+              message_id: $input.apply_result.result.message_id
+            expected_result:
+              message_id: $input.apply_result.result.message_id
+              principal_ref: $input.apply_result.result.principal_ref
+              audience_ref: $input.apply_result.result.audience_ref
+              content_digest: $input.apply_result.result.content_digest
 
         - id: finalize
           inputs:
             send_plan: $input.send_plan
             apply_result: $input.apply_result
-            delivery: $input.delivery
+            connector: $input.connector
           context:
             readback_result: readback.provider_operation.data
           run:

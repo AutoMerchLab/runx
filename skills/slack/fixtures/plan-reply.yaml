@@ -4,6 +4,7 @@ target: ..
 runner: plan_reply
 operator_journeys:
   - mode: standalone
+    confusors: [slack-notify, send-as]
     request: Prepare the exact reply for this Slack thread and stop before delivery.
     expected_outcome: Return a digest-bound reply plan with exact target, body, principal, and approval boundary.
   - mode: composed

@@ -3,12 +3,12 @@ kind: skill
 target: ..
 operator_journeys:
   - mode: standalone
+    confusors: [issue-triage, github-sync]
     request: Fix issue 442 in this checkout, run the tests, finalize once, and stop before an unauthorized PR.
     expected_outcome: Resolve the repository, inspect the issue locally, preserve host edit and test results, finalize once, and return a compact blocked-before-publish result.
 env:
   PATH: fixtures/bin:/usr/bin:/bin
   RUNX_CWD: ../..
-  RUNX_ISSUE_TO_PR_GH_LOG: /tmp/runx-issue-to-pr-standalone-gh.log
   RUNX_PROVIDER_PERMISSION_GRANT_ID: ""
   RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: ""
   RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF: ""
@@ -25,17 +25,17 @@ caller:
         status: completed
         repository: runxhq/runx
         issue_number: "442"
+        repo_root: .
         branch: fix/442-operator-first
+        commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
         files: [oss/skills/issue-to-pr/X.yaml]
         tests:
           - command: cargo test -p runx-cli --test integration issue_to_pr_journey
             status: passed
             evidence: receipt:test:issue-to-pr-standalone
         finalization:
-          status: passed
-          receipt_ref: scafld:receipt:issue-to-pr-standalone
-          contract_digest: sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
-          invocation_count: 1
+          receipt_path: skills/issue-to-pr/fixtures/scafld-pass.json
+          contract_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
         publication:
           decision: hold
           title: ""
@@ -54,10 +54,14 @@ expect:
         data:
           schema: runx.issue_to_pr.result.v1
           status: completed
+          outcome: finalized_local
           repository: runxhq/runx
           issue_number: "442"
           tested: true
-          finalization_ref: scafld:receipt:issue-to-pr-standalone
+          commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          finalization:
+            status: verified
+            target: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           publication: { status: not_requested }
 metadata:
   public_skill: issue-to-pr

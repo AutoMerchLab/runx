@@ -3,6 +3,7 @@ kind: skill
 target: ..
 operator_journeys:
   - mode: standalone
+    confusors: [ops-desk, agency]
     request: Route this API v2 launch-readiness signal through the right business operations lane.
     expected_outcome: Return one explicit governed lane and preserved signal context without forcing unrelated work.
   - mode: composed

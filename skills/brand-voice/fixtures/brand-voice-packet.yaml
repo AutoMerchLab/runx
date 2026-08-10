@@ -4,6 +4,7 @@ target: ..
 runner: voice
 operator_journeys:
   - mode: standalone
+    confusors: [taste-profile, ghostwrite]
     request: Build a Runx homepage voice packet from these approved and rejected examples.
     expected_outcome: Return a scoped voice packet with evidence-bound rules, safe claims, and explicit anti-patterns.
   - mode: composed

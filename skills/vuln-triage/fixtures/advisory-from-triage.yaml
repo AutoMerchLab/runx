@@ -4,6 +4,7 @@ target: ..
 runner: advisory
 operator_journeys:
   - mode: standalone
+    confusors: [cve-audit, vuln-disclosure]
     request: Turn this verified exact-version vulnerability finding into a remediation and advisory packet.
     expected_outcome: Return bounded affected-version, remediation, and advisory evidence without claiming publication.
   - mode: composed

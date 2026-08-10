@@ -3,6 +3,7 @@ kind: skill
 target: ..
 operator_journeys:
   - mode: standalone
+    confusors: [refund, charge]
     request: Respond to this payment dispute using the original receipt evidence.
     expected_outcome: Preflight evidence and filing authority once, then return one actionable connector requirement when no compatible filing binding exists.
   - mode: composed

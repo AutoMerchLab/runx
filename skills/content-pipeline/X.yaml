@@ -1,5 +1,5 @@
 skill: content-pipeline
-version: "0.3.2"
+version: "0.3.3"
 
 catalog:
   kind: graph
@@ -16,6 +16,7 @@ harness:
     - name: content-pipeline-produces-bound-draft
       operator_journeys:
         - mode: standalone
+          confusors: [ghostwrite, deep-research]
           request: Turn this governed evidence into a citation-bound draft and channel package.
           expected_outcome: Return reader-facing copy, citations, and a provider-neutral publication handoff without claiming publication.
         - mode: composed

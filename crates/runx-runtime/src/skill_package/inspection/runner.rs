@@ -300,6 +300,17 @@ fn project_operator_journey(
             JsonValue::String(journey.expected_outcome.clone()),
         ),
         (
+            "confusors".to_owned(),
+            JsonValue::Array(
+                journey
+                    .confusors
+                    .iter()
+                    .cloned()
+                    .map(JsonValue::String)
+                    .collect(),
+            ),
+        ),
+        (
             "prior_evidence".to_owned(),
             JsonValue::Array(
                 journey
@@ -324,6 +335,12 @@ fn project_operator_journey(
     ]);
     if let Some(runner) = runner {
         object.insert("runner".to_owned(), JsonValue::String(runner.to_owned()));
+    }
+    if let Some(exercises_runner) = &journey.exercises_runner {
+        object.insert(
+            "exercises_runner".to_owned(),
+            JsonValue::String(exercises_runner.clone()),
+        );
     }
     JsonValue::Object(object)
 }

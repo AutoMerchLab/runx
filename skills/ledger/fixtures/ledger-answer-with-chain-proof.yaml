@@ -4,6 +4,7 @@ target: ..
 runner: read
 operator_journeys:
   - mode: standalone
+    confusors: [run-history, audit-receipt]
     request: Which spend runs sealed for the ops principal in this ledger slice?
     expected_outcome: Return the matched receipts and a deterministic verification result for their chain.
   - mode: composed

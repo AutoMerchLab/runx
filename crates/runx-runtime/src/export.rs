@@ -37,6 +37,7 @@ pub struct RunxExportRunner {
     /// X.yaml. Named X.yaml runners are always explicit in generated commands.
     pub name: Option<String>,
     pub default: bool,
+    pub execution_closure_digest: Option<String>,
     pub inputs: BTreeMap<String, SkillInput>,
     pub examples: Vec<runx_contracts::JsonObject>,
 }
@@ -46,6 +47,7 @@ pub struct RunxExportLoadOptions<'a> {
     pub root: &'a Path,
     pub refs: &'a [String],
     pub official_roots: Vec<PathBuf>,
+    pub execution_env: Option<&'a BTreeMap<String, String>>,
 }
 
 #[derive(Debug)]
@@ -77,6 +79,7 @@ pub fn load_export_skills(
         root,
         refs,
         official_roots: Vec::new(),
+        execution_env: None,
     })
 }
 
@@ -100,7 +103,12 @@ pub fn load_export_skills_with_options(
         if !explicit && manifest_visibility(&manifest) == Some(CatalogVisibility::Internal) {
             continue;
         }
-        skills.push(export_skill(directory, package, manifest)?);
+        skills.push(export_skill(
+            directory,
+            package,
+            manifest,
+            options.execution_env,
+        )?);
     }
     validate_unique_export_names(&mut skills)?;
     Ok(skills)
@@ -123,10 +131,35 @@ fn export_skill(
     directory: PathBuf,
     package: ValidatedSkillPackage,
     manifest: Option<SkillRunnerManifest>,
+    execution_env: Option<&BTreeMap<String, String>>,
 ) -> Result<RunxExportSkill, RunxExportLoadError> {
     let skill = package.skill;
     let mode = export_mode(&skill, manifest.as_ref());
-    let runners = export_runners(&skill, manifest.as_ref());
+    let mut runners = export_runners(&skill, manifest.as_ref());
+    if mode == RunxExportMode::Delegated {
+        let loaded = crate::load_validated_skill_package(&directory)
+            .map_err(|error| RunxExportLoadError::Parse(error.to_string()))?;
+        let empty_env = BTreeMap::new();
+        let execution_env = execution_env.unwrap_or(&empty_env);
+        for runner in &mut runners {
+            let Some(name) = runner.name.as_deref() else {
+                continue;
+            };
+            let binding = crate::skill_package::inspect_loaded_execution_closure_binding(
+                loaded.clone(),
+                name,
+                execution_env,
+            )
+            .map_err(|error| RunxExportLoadError::Parse(error.to_string()))?;
+            if !binding.fully_bound {
+                return Err(RunxExportLoadError::InvalidArgs(format!(
+                    "cannot export {} runner {name:?} because its execution closure is not fully bound",
+                    skill.name
+                )));
+            }
+            runner.execution_closure_digest = Some(binding.digest);
+        }
+    }
     for runner in &runners {
         validate_export_skill_inputs(&runner.inputs)?;
     }
@@ -173,9 +206,8 @@ fn load_export_package(
     Ok((loaded.directory, loaded.package, manifest))
 }
 
-fn export_mode(skill: &ValidatedSkill, manifest: Option<&SkillRunnerManifest>) -> RunxExportMode {
-    let is_runtime_guide = skill.name == "runx" && manifest.is_none();
-    if is_runtime_guide {
+fn export_mode(_skill: &ValidatedSkill, manifest: Option<&SkillRunnerManifest>) -> RunxExportMode {
+    if manifest.is_none() {
         return RunxExportMode::NativeInstructions;
     }
     RunxExportMode::Delegated
@@ -189,20 +221,29 @@ fn export_runners(
         return vec![RunxExportRunner {
             name: None,
             default: true,
+            execution_closure_digest: None,
             inputs: skill.inputs.clone(),
             examples: Vec::new(),
         }];
     };
-    manifest
+    let mut runners = manifest
         .runners
         .values()
         .map(|runner| RunxExportRunner {
             name: Some(runner.name.clone()),
             default: runner.default || manifest.runners.len() == 1,
+            execution_closure_digest: None,
             inputs: runner.inputs.clone(),
             examples: runner.examples.clone(),
         })
-        .collect()
+        .collect::<Vec<_>>();
+    runners.sort_by(|left, right| {
+        right
+            .default
+            .cmp(&left.default)
+            .then_with(|| left.name.cmp(&right.name))
+    });
+    runners
 }
 
 fn export_skill_name(name: &str) -> Result<String, RunxExportLoadError> {

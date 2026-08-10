@@ -1,0 +1,19 @@
+name: github-pr-comment-default-requires-github-binding
+kind: skill
+target: ..
+operator_journeys:
+  - mode: standalone
+    confusors: [github-sync, issue-triage]
+    request: Post this exact review comment to the selected GitHub pull request.
+    expected_outcome: Bind the body digest and stop before mutation with one actionable grant error when no GitHub provider binding is configured.
+inputs:
+  repository: runxhq/runx
+  pr_number: "42"
+  body: The reviewed path is sound; please add the missing harness case.
+  idempotency_key: runxhq-runx-pr-42-connect-note-v1
+caller:
+  approvals:
+    "provider-effect:sha256:059ee0a4e400a412a35f8bf305dc2f63fde8d6aee25dc0d4e5e4e9d001d4423a": false
+expect:
+  status: policy_denied
+metadata: { public_skill: github-pr-comment, source_case: direct-default-preflight, source: skills-fixture }

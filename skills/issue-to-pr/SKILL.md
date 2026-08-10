@@ -24,13 +24,16 @@ host agent's editor, shell, Git, tests, or repository judgment.
 4. Investigate, edit, and test with the host agent's ordinary tools. Do not
    manufacture Runx answer files between normal coding steps.
 5. Call `scafld finalize` exactly once after the change and tests are ready.
-   Preserve its signed receipt reference and contract digest in `host_result`.
+   Preserve its workspace-scoped receipt path, exact target commit, and
+   contract digest in `host_result`. Runx verifies that receipt with scafld;
+   host-authored status strings are not proof.
 6. If PR publication is not authorized, return the tested/finalized result and
    stop. Do not silently downgrade the work to a plan.
 7. If publication is authorized, pass the exact `host_result` to `publish`.
-   Runx approves one `pullrequest.open` mutation and independently reads the PR
-   back. Notifications, feeds, issue comments, and documentation sync are
-   optional downstream skills.
+   Runx approves one `pullrequest.publish` mutation. That boundary publishes
+   the exact commit to the requested branch, recovers by reading existing
+   remote state, and independently reads the PR back. Notifications, feeds,
+   issue comments, and documentation sync are optional downstream skills.
 
 ## Reuse in chains
 
@@ -38,8 +41,12 @@ host agent's editor, shell, Git, tests, or repository judgment.
   discovery and issue read.
 - `resume` accepts both prior issue evidence and a completed
   `runx.issue_to_pr.host_result.v1`; it does not repeat host work or finalize.
-- `publish` accepts the completed host result and performs only the approved PR
-  mutation plus readback.
+- `verify` verifies the signed scafld receipt against the exact commit and
+  contract without publishing anything.
+- `finalize-local` verifies the completed host result and returns it without a
+  remote mutation.
+- `publish` verifies the completed host result, publishes its exact Git ref,
+  and creates or recovers the approved PR with readback.
 - Preserve the same idempotency key across pause, retry, and resume. An
   uncertain PR creation never gets a new key.
 
@@ -53,17 +60,17 @@ host_result:
   status: completed | blocked | failed
   repository: owner/name
   issue_number: string
+  repo_root: workspace-relative-or-absolute-path
   branch: string
+  commit: full-git-object-id
   files: [relative/path]
   tests:
     - command: string
       status: passed | failed
       evidence: string
   finalization:
-    status: passed | failed
-    receipt_ref: string
+    receipt_path: workspace-relative-path
     contract_digest: sha256:...
-    invocation_count: 1
   publication:
     decision: hold | ready
     title: string

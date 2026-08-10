@@ -1,6 +1,12 @@
 name: sql-analyst-forwards-governed-data-store-read
 kind: graph
 target: ../harness/forward-data-store-read.yaml
+operator_journeys:
+  - mode: standalone
+    exercises_runner: analyst
+    confusors: [data-store, research]
+    request: Answer this bounded analytics question through the declared governed data read.
+    expected_outcome: Validate the plan, perform only the declared data-store read, and return a source-bound interpretation without raw SQL.
 caller:
   answers:
     agent_task.sql-plan.output:

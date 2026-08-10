@@ -1,6 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
-use crate::analyze_catalog_semantics;
+use crate::analyze_package_catalog_semantics;
 use runx_contracts::sha256_prefixed;
 
 use super::path::validate_source_paths;
@@ -31,8 +31,8 @@ pub fn validate_skill_package(
     let skill = validate_manual(&manual_markdown)?;
     let profiles = validate_profiles(&source)?;
     validate_package_identity(&skill, profiles.get("X.yaml"))?;
-    validate_catalog_semantics(&skill.name, profiles.get("X.yaml"))?;
     let harness_fixtures = validate_harness_fixtures(&source)?;
+    validate_catalog_semantics(&skill.name, profiles.get("X.yaml"), &harness_fixtures)?;
     let mut references = collect_package_references(&profiles, &source)?;
     let harness_fixture_files =
         collect_harness_fixture_references(&harness_fixtures, &source, &mut references)?;
@@ -92,6 +92,7 @@ pub fn validate_skill_package(
 fn validate_catalog_semantics(
     skill_name: &str,
     manifest: Option<&crate::SkillRunnerManifest>,
+    fixtures: &BTreeMap<String, crate::harness_fixture::HarnessFixture>,
 ) -> Result<(), SkillPackageError> {
     let Some(manifest) = manifest else {
         return Ok(());
@@ -103,7 +104,7 @@ fn validate_catalog_semantics(
     {
         return Ok(());
     }
-    let report = analyze_catalog_semantics(skill_name, manifest);
+    let report = analyze_package_catalog_semantics(skill_name, manifest, fixtures);
     if report.diagnostics.is_empty() {
         return Ok(());
     }

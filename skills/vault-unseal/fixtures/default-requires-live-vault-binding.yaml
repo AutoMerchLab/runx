@@ -1,14 +1,21 @@
 name: vault-unseal-default-requires-live-vault-binding
 kind: skill
 target: ..
+operator_journeys:
+  - mode: standalone
+    confusors: [least-privilege, policy-author]
+    request: Unseal one scoped time-bounded opaque vault handle for this principal.
+    expected_outcome: Prepare the exact request and stop at the provider boundary when no live vault binding is configured; never expose secret material.
 inputs:
+  provider: vault
   secret_ref: vault://drive/service-account
   purpose: Sign one Drive export request for the monthly reports job
   ttl: 10m
   scope: { resource: drive.files, action: export, path: /reports/* }
   principal: svc/report-exporter
+  idempotency_key: vault-unseal-monthly-report-001
 expect:
-  status: failure
+  status: policy_denied
 metadata:
   public_skill: vault-unseal
   source_case: direct-default-preflight

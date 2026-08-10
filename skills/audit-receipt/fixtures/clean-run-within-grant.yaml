@@ -4,6 +4,7 @@ target: ..
 runner: audit
 operator_journeys:
   - mode: standalone
+    confusors: [ledger, least-privilege]
     request: Audit this sealed Runx receipt for authority over-reach and ungated mutation.
     expected_outcome: Return a governance verdict grounded in verified receipt authority, acts, decisions, and seal evidence.
   - mode: composed

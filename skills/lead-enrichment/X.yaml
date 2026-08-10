@@ -1,5 +1,5 @@
 skill: lead-enrichment
-version: "0.3.1"
+version: "0.3.2"
 
 catalog:
   kind: graph
@@ -16,6 +16,7 @@ harness:
     - name: lead-enrichment-binds-fresh-signals
       operator_journeys:
         - mode: standalone
+          confusors: [lead-router, research]
           request: Enrich this lead from the supplied fresh account signals and recommend the consent-safe next action.
           expected_outcome: Return evidence-bound lead context, consent posture, and outreach recommendation without sending.
         - mode: composed

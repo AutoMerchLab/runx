@@ -382,6 +382,23 @@ authoring.
   certify a package that needs the original checkout to run.
 - Include a realistic happy path and refusal, stop, or error path.
 - Never treat supplied agent answers as provider-effect proof.
+- For every public package, make the native readiness report the acceptance
+  boundary. One executable `standalone` journey must select the actual default
+  runner and name at least two existing nearby public skills as `confusors`.
+  One executable `composed` journey must consume named prior evidence and state
+  the work or effects it must not repeat. A journey on a convenient phase runner
+  cannot prove the standalone default. A graph-level harness may use
+  `exercises_runner` only to identify the public runner it really invokes.
+- Read `semantic_report.readiness` from `runx skill inspect`; do not recreate its
+  classification in package code, prose, or a second test script. Public work is
+  not ready unless `evaluated`, `coldSelection`, `standaloneDefault`, and
+  `composedReuse` are true and native semantic diagnostics are empty.
+- Keep provider proof labels exact. Deterministic replay is `harness`, not
+  `live`. A sealed provider-readback case supplied through caller agent answers
+  does not prove provider execution. Harnesses must not inherit local Runx
+  grants, tokens, credential delivery, or global configuration; every fake
+  binding must be explicit in the fixture, and live proof must come from a
+  separately identified provider run.
 
 Before admitting an architecture, perform a cold-operator trial against the
 actual proposed result:
@@ -470,7 +487,11 @@ The proof plan must contain distinct `selection_trial`,
 `standalone_operator_journey`, and `composed_operator_journey` entries for a
 public package. They are different claims: intuitive selection, useful direct
 completion, and evidence-preserving composition. A generic harness or sealed
-receipt may supplement them but cannot replace them.
+receipt may supplement them but cannot replace them. The selection trial names
+at least two real public catalog confusors; the standalone journey runs the
+actual default; and the composed journey names both reused prior evidence and
+work that must not repeat. The final package inspection must report all four
+native readiness facts true with no semantic diagnostics.
 
 Declare effects, authority scopes, approval meaning, provider boundary, skill
 routes, resource ceilings, preservation obligations, exact intended deletions,

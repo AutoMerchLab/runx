@@ -52,7 +52,6 @@ pub const PROVIDER_MUTATE_TOOL: &str = "provider.mutate";
 pub const PROVIDER_PERMISSION_GRANT_ID_ENV: &str = "RUNX_PROVIDER_PERMISSION_GRANT_ID";
 pub const PROVIDER_PERMISSION_GRANTED_SCOPES_ENV: &str = "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES";
 pub const PROVIDER_PERMISSION_PRINCIPAL_REF_ENV: &str = "RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF";
-#[cfg(feature = "catalog")]
 /// Explicit provider transport preference. The environment overrides the
 /// project binding; either source conflicts fail closed when a complete
 /// host-injected hosted-grant triplet requests a different transport.
@@ -153,6 +152,9 @@ pub struct ProviderPermissionEffect {
         Mutex<Option<(HostedApiEnvironment, AuthenticatedHostedApiEnvironment)>>,
     #[cfg(feature = "catalog")]
     hosted_grants: Mutex<Option<(HostedApiEnvironment, Vec<HostedProviderGrant>)>>,
+    #[cfg(feature = "catalog")]
+    local_github_bindings:
+        Mutex<std::collections::BTreeMap<(String, String), local_github::LocalGithubBinding>>,
 }
 
 impl std::fmt::Debug for ProviderPermissionEffect {

@@ -30,6 +30,7 @@ pub(super) struct LocalGithubBinding {
     pub(super) repository: String,
     pub(super) login: String,
     account_id: String,
+    permission: String,
 }
 
 impl LocalGithubBinding {
@@ -54,6 +55,7 @@ enum GithubOperation {
     PullRequestsRead,
     PullRequestsWrite,
     PullRequestOpen,
+    PullRequestPublish,
     PullRequestRead,
     ThreadsRead,
     ThreadsWrite,
@@ -71,6 +73,7 @@ impl GithubOperation {
             "pullrequests.read" | "pull_requests.read" => Ok(Self::PullRequestsRead),
             "pullrequests.write" | "pull_requests.write" => Ok(Self::PullRequestsWrite),
             "pullrequest.open" => Ok(Self::PullRequestOpen),
+            "pullrequest.publish" => Ok(Self::PullRequestPublish),
             "pullrequest.read" => Ok(Self::PullRequestRead),
             "threads.read" => Ok(Self::ThreadsRead),
             "threads.write" => Ok(Self::ThreadsWrite),
@@ -95,6 +98,7 @@ impl GithubOperation {
             Self::IssuesWrite
             | Self::PullRequestsWrite
             | Self::PullRequestOpen
+            | Self::PullRequestPublish
             | Self::ThreadsWrite
             | Self::PullRequestComment => ProviderNativeAccess::Mutate,
         }
@@ -107,7 +111,7 @@ impl GithubOperation {
             Self::PullRequestsRead | Self::PullRequestRead | Self::PullRequestCommentRead => {
                 matches!(scope, "repo.read" | "pr.read")
             }
-            Self::PullRequestsWrite | Self::PullRequestOpen => {
+            Self::PullRequestsWrite | Self::PullRequestOpen | Self::PullRequestPublish => {
                 matches!(scope, "repo.write" | "pr.write")
             }
             Self::ThreadsRead => matches!(scope, "repo.read" | "pr.read"),
@@ -121,7 +125,9 @@ impl GithubOperation {
 pub(super) fn mutation_is_replay_safe(operation: &str) -> Result<bool, LocalGithubError> {
     Ok(matches!(
         GithubOperation::parse(operation)?,
-        GithubOperation::IssuesWrite | GithubOperation::PullRequestsWrite
+        GithubOperation::IssuesWrite
+            | GithubOperation::PullRequestsWrite
+            | GithubOperation::PullRequestPublish
     ))
 }
 
@@ -188,20 +194,7 @@ pub(super) fn preflight_resolved(
     target: ResolvedGithubTarget,
     required_scopes: &[String],
 ) -> Result<LocalGithubBinding, LocalGithubError> {
-    let operation = GithubOperation::parse(operation)?;
-    if operation.access() != access {
-        return Err(LocalGithubError::new(
-            "local GitHub operation access does not match provider.read/provider.mutate",
-        ));
-    }
-    if let Some(scope) = required_scopes
-        .iter()
-        .find(|scope| !operation.permits_scope(scope))
-    {
-        return Err(LocalGithubError::new(format!(
-            "local GitHub operation does not admit required scope {scope:?}"
-        )));
-    }
+    validate_operation(operation, access, required_scopes)?;
     let (owner, name) = repository_parts(&target.repository)?;
     let body = serde_json::to_vec(&serde_json::json!({
         "query": PREFLIGHT_QUERY,
@@ -255,19 +248,64 @@ pub(super) fn preflight_resolved(
         "viewerPermission",
         "GitHub repository permission",
     )?;
-    if access == ProviderNativeAccess::Mutate
-        && !matches!(permission.as_str(), "WRITE" | "MAINTAIN" | "ADMIN")
-    {
-        return Err(LocalGithubError::new(format!(
-            "the active gh account has {permission} permission for {canonical_repository}; write access is required"
-        )));
-    }
-    Ok(LocalGithubBinding {
+    let binding = LocalGithubBinding {
         host: target.host,
         repository: canonical_repository,
         login,
         account_id,
-    })
+        permission,
+    };
+    validate_binding_access(&binding, access)?;
+    Ok(binding)
+}
+
+#[cfg(feature = "catalog")]
+pub(super) fn validate_cached_binding(
+    binding: LocalGithubBinding,
+    operation: &str,
+    access: ProviderNativeAccess,
+    required_scopes: &[String],
+) -> Result<LocalGithubBinding, LocalGithubError> {
+    validate_operation(operation, access, required_scopes)?;
+    validate_binding_access(&binding, access)?;
+    Ok(binding)
+}
+
+fn validate_operation(
+    operation: &str,
+    access: ProviderNativeAccess,
+    required_scopes: &[String],
+) -> Result<(), LocalGithubError> {
+    let operation = GithubOperation::parse(operation)?;
+    if operation.access() != access {
+        return Err(LocalGithubError::new(
+            "local GitHub operation access does not match provider.read/provider.mutate",
+        ));
+    }
+    if let Some(scope) = required_scopes
+        .iter()
+        .find(|scope| !operation.permits_scope(scope))
+    {
+        return Err(LocalGithubError::new(format!(
+            "local GitHub operation does not admit required scope {scope:?}"
+        )));
+    }
+    Ok(())
+}
+
+fn validate_binding_access(
+    binding: &LocalGithubBinding,
+    access: ProviderNativeAccess,
+) -> Result<(), LocalGithubError> {
+    if access == ProviderNativeAccess::Mutate
+        && !matches!(binding.permission.as_str(), "WRITE" | "MAINTAIN" | "ADMIN")
+    {
+        return Err(LocalGithubError::new(format!(
+            "the active gh account has {} permission for {}; write access is required",
+            binding.permission, binding.repository
+        )));
+    }
+    Ok(())
 }
 
 pub(super) fn invoke(
@@ -293,6 +331,7 @@ pub(super) fn invoke(
         GithubOperation::IssuesWrite => mutate_issue(env, cwd, binding, input)?,
         GithubOperation::PullRequestsWrite => mutate_pull_request(env, cwd, binding, input)?,
         GithubOperation::PullRequestOpen => open_pull_request(env, cwd, binding, input)?,
+        GithubOperation::PullRequestPublish => publish_pull_request(env, cwd, binding, input)?,
         GithubOperation::ThreadsWrite => mutate_thread(env, cwd, binding, input)?,
         GithubOperation::PullRequestComment => comment_on_pull_request(env, cwd, binding, input)?,
         GithubOperation::PullRequestCommentRead => {
@@ -511,6 +550,290 @@ fn open_pull_request(
         "GitHub pull-request creation",
     )?;
     normalize_pull_request(&pull, &binding.repository)
+}
+
+fn publish_pull_request(
+    env: &BTreeMap<String, String>,
+    cwd: &Path,
+    binding: &LocalGithubBinding,
+    input: &JsonObject,
+) -> Result<JsonObject, LocalGithubError> {
+    let workspace = crate::config::resolve_runx_workspace_base(env, cwd);
+    let remote = parse_github_remote(&git_remote_origin(env, &workspace)?)?;
+    if remote.host != binding.host || !remote.repository.eq_ignore_ascii_case(&binding.repository) {
+        return Err(LocalGithubError::new(format!(
+            "checkout origin targets {}, not admitted repository {}",
+            remote.repository, binding.repository
+        )));
+    }
+    let commit = exact_commit(input)?;
+    let head = safe_git_ref(
+        input
+            .get("head")
+            .ok_or_else(|| LocalGithubError::new("GitHub pull-request head is missing"))?,
+        "head",
+    )?;
+    let base = safe_git_ref(
+        input
+            .get("base")
+            .ok_or_else(|| LocalGithubError::new("GitHub pull-request base is missing"))?,
+        "base",
+    )?;
+    let title = required_string(input, "title", "GitHub pull-request title")?;
+    let body = required_string(input, "body", "GitHub pull-request body")?;
+    if title.len() > 256 || body.len() > 65_536 || title.contains('\0') || body.contains('\0') {
+        return Err(LocalGithubError::new(
+            "GitHub pull-request title or body exceeds its bounded contract",
+        ));
+    }
+    let draft = input
+        .get("draft")
+        .and_then(JsonValue::as_bool)
+        .unwrap_or(false);
+    let resolved_commit = run_git_text(
+        env,
+        &workspace,
+        vec![
+            "rev-parse".to_owned(),
+            "--verify".to_owned(),
+            format!("{commit}^{{commit}}"),
+        ],
+        "Git commit verification",
+    )?;
+    if resolved_commit != commit {
+        return Err(LocalGithubError::new(
+            "commit must be the exact full object id selected for publication",
+        ));
+    }
+    let remote_ref = format!("refs/heads/{head}");
+    match read_remote_ref(env, &workspace, &remote_ref)? {
+        Some(remote_commit) if remote_commit == commit => {}
+        Some(remote_commit) => {
+            return Err(LocalGithubError::new(format!(
+                "remote {remote_ref} already points to {remote_commit}; refusing to overwrite it with {commit}"
+            )));
+        }
+        None => {
+            run_git_success(
+                env,
+                &workspace,
+                vec![
+                    "push".to_owned(),
+                    "--porcelain".to_owned(),
+                    "origin".to_owned(),
+                    format!("{commit}:{remote_ref}"),
+                ],
+                "exact Git ref publication",
+            )?;
+        }
+    }
+    if read_remote_ref(env, &workspace, &remote_ref)?.as_deref() != Some(commit.as_str()) {
+        return Err(LocalGithubError::new(
+            "remote branch readback did not match the approved commit",
+        ));
+    }
+
+    let owner = binding
+        .repository
+        .split_once('/')
+        .map(|(owner, _)| owner)
+        .ok_or_else(|| LocalGithubError::new("GitHub repository identity is malformed"))?;
+    let mut query = url::form_urlencoded::Serializer::new(String::new());
+    query.append_pair("state", "open");
+    query.append_pair("head", &format!("{owner}:{head}"));
+    query.append_pair("base", &base);
+    query.append_pair("per_page", "2");
+    let candidates = github_api_get(
+        env,
+        cwd,
+        binding,
+        &format!("repos/{}/pulls?{}", binding.repository, query.finish()),
+        "GitHub pull-request publication recovery",
+    )?;
+    let candidates = candidates.as_array().ok_or_else(|| {
+        LocalGithubError::new("GitHub pull-request recovery response was not an array")
+    })?;
+    let pull = match candidates.as_slice() {
+        [] => github_api_write(
+            env,
+            cwd,
+            binding,
+            "POST",
+            &format!("repos/{}/pulls", binding.repository),
+            JsonObject::from([
+                ("title".to_owned(), JsonValue::String(title.clone())),
+                ("body".to_owned(), JsonValue::String(body.clone())),
+                ("head".to_owned(), JsonValue::String(head.clone())),
+                ("base".to_owned(), JsonValue::String(base.clone())),
+                ("draft".to_owned(), JsonValue::Bool(draft)),
+            ]),
+            "GitHub pull-request publication",
+        )?,
+        [pull] => pull.clone(),
+        _ => {
+            return Err(LocalGithubError::new(
+                "multiple open pull requests match the approved head and base",
+            ));
+        }
+    };
+    let number = json_u64(&pull, "number", "GitHub pull-request number")?;
+    let readback = github_api_get(
+        env,
+        cwd,
+        binding,
+        &format!("repos/{}/pulls/{number}", binding.repository),
+        "GitHub pull-request publication readback",
+    )?;
+    verify_published_pull_request(&readback, &title, &body, &head, &base, &commit, draft)?;
+    let mut result = normalize_pull_request(&readback, &binding.repository)?;
+    result.insert("published_commit".to_owned(), JsonValue::String(commit));
+    result.insert("branch_ref".to_owned(), JsonValue::String(remote_ref));
+    Ok(result)
+}
+
+fn verify_published_pull_request(
+    pull: &JsonValue,
+    title: &str,
+    body: &str,
+    head: &str,
+    base: &str,
+    commit: &str,
+    draft: bool,
+) -> Result<(), LocalGithubError> {
+    let matches = required_json_string(pull, "title", "GitHub pull-request title")? == title
+        && value_field(pull, "body").and_then(JsonValue::as_str) == Some(body)
+        && required_json_string(pull, "state", "GitHub pull-request state")? == "open"
+        && nested_string(pull, "head", "ref")? == head
+        && nested_string(pull, "head", "sha")? == commit
+        && nested_string(pull, "base", "ref")? == base
+        && value_field(pull, "draft")
+            .and_then(JsonValue::as_bool)
+            .unwrap_or(false)
+            == draft;
+    if !matches {
+        return Err(LocalGithubError::new(
+            "pull-request readback did not match the approved publication",
+        ));
+    }
+    Ok(())
+}
+
+fn nested_string<'a>(
+    value: &'a JsonValue,
+    object: &str,
+    field: &str,
+) -> Result<&'a str, LocalGithubError> {
+    value_field(value, object)
+        .and_then(JsonValue::as_object)
+        .and_then(|object| object.get(field))
+        .and_then(JsonValue::as_str)
+        .ok_or_else(|| LocalGithubError::new(format!("GitHub {object}.{field} is missing")))
+}
+
+fn exact_commit(input: &JsonObject) -> Result<String, LocalGithubError> {
+    let commit = required_string(input, "commit", "exact Git commit")?;
+    if !matches!(commit.len(), 40 | 64) || !commit.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return Err(LocalGithubError::new(
+            "commit must be an exact full hexadecimal Git object id",
+        ));
+    }
+    Ok(commit.to_ascii_lowercase())
+}
+
+fn read_remote_ref(
+    env: &BTreeMap<String, String>,
+    workspace: &Path,
+    remote_ref: &str,
+) -> Result<Option<String>, LocalGithubError> {
+    let output = run_git_text(
+        env,
+        workspace,
+        vec![
+            "ls-remote".to_owned(),
+            "--refs".to_owned(),
+            "origin".to_owned(),
+            remote_ref.to_owned(),
+        ],
+        "Git remote ref readback",
+    )?;
+    if output.is_empty() {
+        return Ok(None);
+    }
+    let mut lines = output.lines();
+    let first = lines
+        .next()
+        .and_then(|line| line.split_whitespace().next())
+        .filter(|oid| {
+            matches!(oid.len(), 40 | 64) && oid.bytes().all(|byte| byte.is_ascii_hexdigit())
+        })
+        .ok_or_else(|| LocalGithubError::new("Git remote ref readback was malformed"))?;
+    if lines.next().is_some() {
+        return Err(LocalGithubError::new(
+            "Git remote ref readback returned multiple refs",
+        ));
+    }
+    Ok(Some(first.to_ascii_lowercase()))
+}
+
+fn run_git_text(
+    env: &BTreeMap<String, String>,
+    workspace: &Path,
+    args: Vec<String>,
+    label: &'static str,
+) -> Result<String, LocalGithubError> {
+    let outcome = run_git(env, workspace, args, label)?;
+    if !outcome.status.success() {
+        return Err(LocalGithubError::new(format!(
+            "{label} failed with exit status {}",
+            outcome.status
+        )));
+    }
+    std::str::from_utf8(&outcome.stdout.bytes)
+        .map(str::trim)
+        .map(str::to_owned)
+        .map_err(|_| LocalGithubError::new(format!("{label} returned non-UTF-8 output")))
+}
+
+fn run_git_success(
+    env: &BTreeMap<String, String>,
+    workspace: &Path,
+    args: Vec<String>,
+    label: &'static str,
+) -> Result<(), LocalGithubError> {
+    let outcome = run_git(env, workspace, args, label)?;
+    if !outcome.status.success() {
+        return Err(LocalGithubError::new(format!(
+            "{label} failed with exit status {}",
+            outcome.status
+        )));
+    }
+    Ok(())
+}
+
+fn run_git(
+    env: &BTreeMap<String, String>,
+    workspace: &Path,
+    args: Vec<String>,
+    label: &'static str,
+) -> Result<crate::process::ProcessOutcome, LocalGithubError> {
+    let mut child_env =
+        process_base_environment(env).map_err(|error| LocalGithubError::new(error.to_string()))?;
+    child_env.insert("GIT_OPTIONAL_LOCKS".to_owned(), "0".to_owned());
+    child_env.insert("GIT_TERMINAL_PROMPT".to_owned(), "0".to_owned());
+    let outcome = run_process(
+        ProcessSpec::new(label, "git", GIT_OUTPUT_LIMIT_BYTES)
+            .args(args)
+            .cwd(workspace)
+            .env(child_env)
+            .timeout(Some(GIT_TIMEOUT)),
+    )
+    .map_err(|error| LocalGithubError::new(format!("{label} could not run: {error}")))?;
+    if outcome.timed_out || outcome.stdout.truncated || outcome.stderr.truncated {
+        return Err(LocalGithubError::new(format!(
+            "{label} exceeded runtime bounds"
+        )));
+    }
+    Ok(outcome)
 }
 
 fn read_threads(
@@ -1475,6 +1798,10 @@ fn local_operation_id(
             "pulls/{}",
             required_string(result, "number", "GitHub pull-request number")?
         )),
+        GithubOperation::PullRequestPublish => Ok(format!(
+            "pulls/{}",
+            required_string(result, "number", "GitHub pull-request number")?
+        )),
         _ => Err(LocalGithubError::new(
             "read operation cannot produce a mutation operation id",
         )),
@@ -1751,6 +2078,83 @@ mod tests {
 
     #[cfg(unix)]
     #[test]
+    fn local_github_publish_pushes_exact_ref_once_and_recovers_by_readback()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = FakeGh::new("runxhq/runx", false)?;
+        let commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        fixture.install_fake_git(commit)?;
+        let env = fixture.env();
+        let binding = preflight(
+            &env,
+            fixture.root.path(),
+            "pullrequest.publish",
+            ProviderNativeAccess::Mutate,
+            "runxhq/runx",
+            &["repo.write".to_owned(), "pr.write".to_owned()],
+        )?;
+        let input = JsonObject::from([
+            ("commit".to_owned(), JsonValue::String(commit.to_owned())),
+            (
+                "title".to_owned(),
+                JsonValue::String("Make issue-to-PR operator-first".to_owned()),
+            ),
+            (
+                "body".to_owned(),
+                JsonValue::String("Closes #442.".to_owned()),
+            ),
+            (
+                "head".to_owned(),
+                JsonValue::String("fix/442-operator-first".to_owned()),
+            ),
+            ("base".to_owned(), JsonValue::String("main".to_owned())),
+            ("draft".to_owned(), JsonValue::Bool(false)),
+            (
+                "idempotency_key".to_owned(),
+                JsonValue::String("runx:sha256:publish".to_owned()),
+            ),
+        ]);
+
+        for _ in 0..2 {
+            let published = invoke(
+                &env,
+                fixture.root.path(),
+                &binding,
+                "pullrequest.publish",
+                ProviderNativeAccess::Mutate,
+                &input,
+            )?;
+            assert_eq!(
+                published
+                    .get("result")
+                    .and_then(JsonValue::as_object)
+                    .and_then(|result| result.get("published_commit"))
+                    .and_then(JsonValue::as_str),
+                Some(commit)
+            );
+        }
+        let git_log = fs::read_to_string(fixture.root.path().join("git-argv.log"))?;
+        assert_eq!(
+            git_log
+                .lines()
+                .filter(|line| line.contains("push --porcelain origin"))
+                .count(),
+            1,
+            "retry must reuse remote ref readback instead of pushing twice"
+        );
+        let gh_log = fs::read_to_string(fixture.log_path())?;
+        assert_eq!(
+            gh_log
+                .lines()
+                .filter(|line| line.contains("--method POST repos/runxhq/runx/pulls"))
+                .count(),
+            1,
+            "retry must reuse the matching open PR"
+        );
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
     fn local_github_mutation_fails_when_independent_readback_does_not_match()
     -> Result<(), Box<dyn std::error::Error>> {
         let fixture = FakeGh::with_readback_label("runxhq/runx", "wrong")?;
@@ -1887,10 +2291,18 @@ case "$*" in
     ;;
   *"--method POST repos/runxhq/runx/pulls"*)
     /bin/cat > "$dir/body.json"
-    printf '%s\n' '{{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.test/runxhq/runx/pull/77","head":{{"ref":"fix/442-operator-first"}},"base":{{"ref":"main"}},"draft":false}}'
+    : > "$dir/pr-created"
+    printf '%s\n' '{{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.test/runxhq/runx/pull/77","head":{{"ref":"fix/442-operator-first","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"base":{{"ref":"main"}},"draft":false}}'
     ;;
   *"--method GET repos/runxhq/runx/pulls/77"*)
-    printf '%s\n' '{{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.test/runxhq/runx/pull/77","head":{{"ref":"fix/442-operator-first"}},"base":{{"ref":"main"}},"draft":false}}'
+    printf '%s\n' '{{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.test/runxhq/runx/pull/77","head":{{"ref":"fix/442-operator-first","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"base":{{"ref":"main"}},"draft":false}}'
+    ;;
+  *"--method GET repos/runxhq/runx/pulls?"*)
+    if [ -f "$dir/pr-created" ]; then
+      printf '%s\n' '[{{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.test/runxhq/runx/pull/77","head":{{"ref":"fix/442-operator-first","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},"base":{{"ref":"main"}},"draft":false}}]'
+    else
+      printf '%s\n' '[]'
+    fi
     ;;
   *"--method PATCH"*)
     /bin/cat > "$dir/body.json"
@@ -1911,6 +2323,43 @@ esac
             permissions.set_mode(0o700);
             fs::set_permissions(&gh, permissions)?;
             Ok(Self { root })
+        }
+
+        fn install_fake_git(&self, commit: &str) -> Result<(), Box<dyn std::error::Error>> {
+            let git = self.root.path().join("git");
+            fs::write(
+                &git,
+                format!(
+                    r#"#!/bin/sh
+dir=$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && pwd)
+printf '%s\n' "$*" >> "$dir/git-argv.log"
+case "$*" in
+  *"remote get-url origin"*)
+    printf '%s\n' 'https://github.com/runxhq/runx.git'
+    ;;
+  *"rev-parse --verify"*)
+    printf '%s\n' '{commit}'
+    ;;
+  *"ls-remote --refs origin"*)
+    if [ -f "$dir/git-remote-state" ]; then /bin/cat "$dir/git-remote-state"; fi
+    ;;
+  *"push --porcelain origin"*)
+    for arg do last=$arg; done
+    ref=${{last#*:}}
+    printf '%s\t%s\n' '{commit}' "$ref" > "$dir/git-remote-state"
+    ;;
+  *)
+    printf '%s\n' 'unexpected fake git invocation' >&2
+    exit 2
+    ;;
+esac
+"#
+                ),
+            )?;
+            let mut permissions = fs::metadata(&git)?.permissions();
+            permissions.set_mode(0o700);
+            fs::set_permissions(&git, permissions)?;
+            Ok(())
         }
 
         fn env(&self) -> BTreeMap<String, String> {

@@ -4,6 +4,7 @@ target: ..
 runner: generate
 operator_journeys:
   - mode: standalone
+    confusors: [skill-lab, review-skill]
     request: Adopt this pinned third-party summarizer as a native Runx skill binding.
     expected_outcome: Return a validated binding bundle with exact source pins, bounded authority, and isolated harness proof.
   - mode: composed

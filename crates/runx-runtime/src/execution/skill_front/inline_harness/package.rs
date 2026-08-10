@@ -26,7 +26,11 @@ pub(crate) fn run_package_harness_with_effects(
 ) -> Result<PackageHarnessReport, SkillRunError> {
     let loaded = crate::load_validated_skill_package(skill_path)?;
     let workspace = crate::WorkspaceEnv::from_admitted(env.clone()).map_err(RuntimeError::from)?;
-    let base_env = workspace.env().clone();
+    let mut base_env = workspace.env().clone();
+    crate::execution::harness::isolate_harness_environment(
+        &mut base_env,
+        loaded.package.profiles.values(),
+    );
     let harness = PackageHarnessEnvironment::prepare(
         base_env,
         workspace.cwd(),
@@ -201,6 +205,10 @@ impl PackageHarnessEnvironment {
         env.insert(
             RUNX_CWD_ENV.to_owned(),
             workspace.to_string_lossy().into_owned(),
+        );
+        env.insert(
+            "RUNX_HOME".to_owned(),
+            scratch_root.join("home").to_string_lossy().into_owned(),
         );
         Ok(Self {
             env,

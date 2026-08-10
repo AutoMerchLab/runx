@@ -1,4 +1,6 @@
 mod error;
+#[cfg(feature = "cli-tool")]
+mod external_receipt;
 mod metadata;
 mod provider_effect;
 mod provider_permission;
@@ -7,6 +9,10 @@ mod state;
 mod types;
 
 pub use error::RuntimeEffectError;
+#[cfg(feature = "cli-tool")]
+pub use external_receipt::{
+    EXTERNAL_RECEIPT_EFFECT_FAMILY, EXTERNAL_RECEIPT_VERIFY_TOOL, ExternalReceiptEffect,
+};
 pub(crate) use metadata::effect_verification_refs;
 pub use metadata::{EFFECT_VERIFICATION_REFS_METADATA, insert_effect_verification_ref};
 pub use provider_effect::{
@@ -18,15 +24,15 @@ pub use provider_effect::{
 };
 #[cfg(feature = "catalog")]
 pub use provider_permission::{
-    LocalProviderTransportReadiness, PROVIDER_PERMISSION_TRANSPORT_ENV,
-    ProviderTransportPreference, preflight_local_provider_transport,
-    resolve_provider_transport_preference,
+    LocalProviderTransportReadiness, ProviderTransportPreference,
+    preflight_local_provider_transport, resolve_provider_transport_preference,
 };
 pub use provider_permission::{
     PROVIDER_MUTATE_TOOL, PROVIDER_PERMISSION_EFFECT_FAMILY, PROVIDER_PERMISSION_GRANT_ID_ENV,
     PROVIDER_PERMISSION_GRANTED_SCOPES_ENV, PROVIDER_PERMISSION_PRINCIPAL_REF_ENV,
-    PROVIDER_READ_TOOL, ProviderPermissionAdmission, ProviderPermissionEffect,
-    ProviderScopeTransportError, decode_provider_scopes_env, encode_provider_scopes_env,
+    PROVIDER_PERMISSION_TRANSPORT_ENV, PROVIDER_READ_TOOL, ProviderPermissionAdmission,
+    ProviderPermissionEffect, ProviderScopeTransportError, decode_provider_scopes_env,
+    encode_provider_scopes_env,
 };
 pub use registry::RuntimeEffectRegistry;
 pub use state::{EffectAdmission, EffectReplay};

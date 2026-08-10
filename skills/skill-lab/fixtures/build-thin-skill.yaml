@@ -9,6 +9,7 @@ inputs:
   project_context: Keep the package declarative and prove its native harness.
 operator_journeys:
   - mode: standalone
+    confusors: [adopt-skill, review-skill]
     request: Create a bounded decision-note skill without package-local runtime code.
     expected_outcome: A validated declarative skill package is applied with a useful manual and semantic harness.
 caller:

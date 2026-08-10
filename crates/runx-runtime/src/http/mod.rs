@@ -225,7 +225,7 @@ impl<'a> NativeHttpTransport<'a> {
         match self {
             Self::Live(transport) => transport.send_bounded(request, response_limit),
             Self::Harness(responses) => Ok(bound_harness_response(
-                exact_harness_response(responses, &request)?,
+                exact_harness_response(responses, &request, false)?,
                 response_limit,
             )),
         }
@@ -237,7 +237,7 @@ impl RuntimeHttpTransport for NativeHttpTransport<'_> {
     fn send(&self, request: RuntimeHttpRequest) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
         match self {
             Self::Live(transport) => transport.send(request),
-            Self::Harness(responses) => exact_harness_response(responses, &request),
+            Self::Harness(responses) => exact_harness_response(responses, &request, false),
         }
     }
 
@@ -249,7 +249,7 @@ impl RuntimeHttpTransport for NativeHttpTransport<'_> {
         match self {
             Self::Live(transport) => transport.send_limited(request, response_limit),
             Self::Harness(responses) => enforce_harness_response_limit(
-                exact_harness_response(responses, &request)?,
+                exact_harness_response(responses, &request, false)?,
                 response_limit,
             ),
         }
@@ -261,7 +261,7 @@ impl RuntimeHttpTransport for NativeHttpTransport<'_> {
     ) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
         match self {
             Self::Live(transport) => transport.send_idempotent(request),
-            Self::Harness(responses) => exact_harness_response(responses, &request),
+            Self::Harness(responses) => exact_harness_response(responses, &request, true),
         }
     }
 
@@ -273,7 +273,7 @@ impl RuntimeHttpTransport for NativeHttpTransport<'_> {
         match self {
             Self::Live(transport) => transport.send_idempotent_limited(request, response_limit),
             Self::Harness(responses) => enforce_harness_response_limit(
-                exact_harness_response(responses, &request)?,
+                exact_harness_response(responses, &request, true)?,
                 response_limit,
             ),
         }
@@ -284,11 +284,14 @@ impl RuntimeHttpTransport for NativeHttpTransport<'_> {
 fn exact_harness_response(
     responses: &BTreeMap<String, RuntimeHttpResponse>,
     request: &RuntimeHttpRequest,
+    admit_idempotent_query: bool,
 ) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
-    if request.method != HttpMethod::Get {
+    if request.method != HttpMethod::Get
+        && !(admit_idempotent_query && request.method == HttpMethod::Post)
+    {
         return Err(RuntimeHttpError::Transport {
             message: format!(
-                "deterministic harness HTTP responses admit GET reads only, not {}",
+                "deterministic harness HTTP responses admit GET reads and idempotent POST queries only, not {}",
                 request.method.as_str()
             ),
         });
@@ -962,15 +965,15 @@ mod tests {
     use std::time::Duration;
 
     #[cfg(feature = "async-http")]
+    use super::RuntimeHttpResponse;
+    #[cfg(feature = "async-http")]
     use super::RuntimeHttpTransport;
     #[cfg(feature = "async-http")]
     use super::{
         GuardedDnsResolver, NativeHttpTransport, ReqwestHttpTransport,
         STANDARD_HTTP_RESPONSE_BYTES, TransportProfile, block_on_http, http_runtime,
     };
-    use super::{
-        HttpMethod, RuntimeHttpError, RuntimeHttpHeader, RuntimeHttpRequest, RuntimeHttpResponse,
-    };
+    use super::{HttpMethod, RuntimeHttpError, RuntimeHttpHeader, RuntimeHttpRequest};
     #[cfg(feature = "async-http")]
     use reqwest::dns::Resolve as _;
 
@@ -1035,6 +1038,14 @@ mod tests {
             body: Some("{}".to_owned()),
         });
         assert!(matches!(mutation, Err(RuntimeHttpError::Transport { .. })));
+
+        let query = transport.send_idempotent(RuntimeHttpRequest {
+            method: HttpMethod::Post,
+            url: url.to_owned(),
+            headers: Vec::new(),
+            body: Some("{}".to_owned()),
+        })?;
+        assert_eq!(query.body, "hello world");
         Ok(())
     }
 

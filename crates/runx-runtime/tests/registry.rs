@@ -87,10 +87,52 @@ fn file_registry_store_covers_profiled_skill_surface() -> Result<(), Box<dyn std
     let temp = tempdir()?;
     let store = FileRegistryStore::new(temp.path());
     let markdown = include_str!("../../../skills/sourcey/SKILL.md");
-    let profile_document = include_str!("../../../skills/sourcey/X.yaml").replace(
-        "visibility: internal\n  role: context",
-        "visibility: public\n  role: context",
-    );
+    let profile_document = r#"skill: sourcey
+version: "1.0.0"
+
+catalog:
+  kind: skill
+  audience: public
+  visibility: public
+  role: context
+  execution: read
+  completion: runtime_receipt
+  requires_adapter: false
+  approval: none
+
+harness:
+  cases:
+    - name: sourcey-registry-profile
+      runner: sourcey
+      operator_journeys:
+        - mode: standalone
+          confusors: [release, answer-from-docs]
+          request: Inspect this profiled documentation operation.
+          expected_outcome: Return the advertised bounded documentation profile result.
+        - mode: composed
+          request: Continue from a prior documentation profile result.
+          expected_outcome: Reuse the supplied result without repeating profile discovery.
+          prior_evidence:
+            - The documentation profile result supplied by the prior step.
+          must_not_repeat:
+            - Do not repeat profile discovery.
+      expect:
+        status: sealed
+
+runners:
+  sourcey:
+    default: true
+    type: graph
+    graph:
+      name: sourcey-registry-profile
+      result_from: [digest]
+      steps:
+        - id: digest
+          tool: data.digest
+          inputs:
+            value: sourcey-registry-profile
+"#
+    .to_owned();
 
     let version = ingest_skill_markdown(
         &store,

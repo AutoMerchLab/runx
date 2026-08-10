@@ -1,5 +1,5 @@
 skill: ecosystem-brief
-version: "0.2.3"
+version: "0.2.4"
 
 catalog:
   kind: graph
@@ -16,6 +16,7 @@ harness:
     - name: ecosystem-brief-produces-fresh-bound-brief
       operator_journeys:
         - mode: standalone
+          confusors: [deep-research, research]
           request: Produce a fresh decision-ready ecosystem brief from these bounded sources.
           expected_outcome: Return a concise evidence-bound ecosystem briefing with source freshness and uncertainty explicit.
         - mode: composed

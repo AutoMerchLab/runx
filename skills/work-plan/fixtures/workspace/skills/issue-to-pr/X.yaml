@@ -2,9 +2,10 @@ skill: issue-to-pr
 version: "0.0.0"
 catalog:
   kind: graph
-  audience: public
-  visibility: public
-  role: canonical
+  audience: operator
+  visibility: internal
+  role: harness-fixture
+  part_of: [runx/work-plan]
   execution: execute
   completion: runtime_receipt
   requires_adapter: false

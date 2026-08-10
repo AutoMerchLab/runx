@@ -1,5 +1,5 @@
 skill: lead-router
-version: "0.3.1"
+version: "0.3.2"
 
 catalog:
   kind: graph
@@ -16,6 +16,7 @@ harness:
     - name: lead-router-prepares-evidence-bound-outreach-handoff
       operator_journeys:
         - mode: standalone
+          confusors: [lead-enrichment, send-as]
           request: Route this validated lead to outreach, nurture, or hold and preserve why.
           expected_outcome: Return one evidence-bound route and downstream handoff without sending a message.
         - mode: composed

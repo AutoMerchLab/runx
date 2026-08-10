@@ -628,6 +628,7 @@ where
         })?;
     let graph = materialize_graph_parameter_inputs(graph, &invocation.inputs);
     overlay_harness_env(&mut options, &invocation.env);
+    options.credential_delivery = invocation.credential_delivery.clone();
     let run_id = options
         .env
         .entry(crate::execution::runner::RUNX_RUN_ID_ENV.to_owned())
@@ -710,10 +711,13 @@ fn skill_fixture_invocation(
         })?;
     let runner = select_harness_runner(manifest, fixture.runner.as_deref())?.clone();
     let mut env = options.env.clone();
+    super::isolate_harness_environment(&mut env, loaded.package.profiles.values());
     env.extend(fixture.env.clone());
     resolve_fixture_path(&mut env, &skill_dir)?;
     crate::services::merge_inferred_tool_roots(&mut env, &skill_dir);
     let skill_name = runner.name.clone();
+    let credential_delivery =
+        harness_credential_delivery(manifest, &runner, &fixture.env, &loaded.package.skill.name)?;
     let invocation = SkillInvocation {
         skill_name: skill_name.clone(),
         step_id: None,
@@ -727,9 +731,57 @@ fn skill_fixture_invocation(
         provenance: Vec::new(),
         skill_directory: skill_dir,
         env,
-        credential_delivery: crate::credentials::CredentialDelivery::none(),
+        credential_delivery,
     };
     Ok((skill_name, runner, invocation))
+}
+
+fn harness_credential_delivery(
+    manifest: &SkillRunnerManifest,
+    runner: &SkillRunnerDefinition,
+    fixture_env: &BTreeMap<String, String>,
+    skill_name: &str,
+) -> Result<crate::credentials::CredentialDelivery, HarnessReplayError> {
+    let Some(requirement) = runner
+        .credential
+        .as_ref()
+        .and_then(|name| manifest.credentials.get(name))
+    else {
+        return Ok(crate::credentials::CredentialDelivery::none());
+    };
+    let supplied = requirement
+        .deliveries
+        .iter()
+        .filter_map(|(auth_mode, env_name)| {
+            fixture_env
+                .get(env_name)
+                .filter(|value| !value.is_empty())
+                .map(|value| (auth_mode, env_name, value))
+        })
+        .collect::<Vec<_>>();
+    let [(auth_mode, env_name, secret)] = supplied.as_slice() else {
+        if supplied.is_empty() {
+            return Ok(crate::credentials::CredentialDelivery::none());
+        }
+        return Err(HarnessReplayError::InvalidFixtureEnvironment {
+            name: runner
+                .credential
+                .clone()
+                .unwrap_or_else(|| "credential".to_owned()),
+            message: "declare exactly one non-empty harness credential delivery mode".to_owned(),
+        });
+    };
+    crate::credentials::CredentialDelivery::from_local_descriptor(
+        requirement.provider.clone(),
+        (*auth_mode).clone(),
+        (*env_name).clone(),
+        format!("harness:{skill_name}:{auth_mode}"),
+        manifest.execution_requirements(runner).scopes,
+        (*secret).clone(),
+    )
+    .and_then(|delivery| delivery.bind_audience(requirement.audience.as_deref()))
+    .map_err(RuntimeError::from)
+    .map_err(HarnessReplayError::from)
 }
 
 struct SkillFixtureInvocationOutcome {
@@ -934,6 +986,7 @@ fn run_graph_fixture<A>(
 where
     A: SkillAdapter,
 {
+    super::isolate_harness_environment(&mut options.env, std::iter::empty());
     overlay_harness_env(&mut options, &fixture.env);
     // Harness graph replays need a deterministic run_id so per-run governance
     // can resolve one, mirroring the production graph runner. Derived from the

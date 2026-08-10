@@ -4,6 +4,7 @@ target: ..
 runner: audit
 operator_journeys:
   - mode: standalone
+    confusors: [audit-receipt, policy-author]
     request: Determine the narrowest grant supported by these receipt-backed authority observations.
     expected_outcome: Verify the cited receipts and return a least-privilege scope proposal with unsupported scopes removed.
   - mode: composed

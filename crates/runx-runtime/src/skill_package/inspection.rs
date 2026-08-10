@@ -243,7 +243,11 @@ fn base_inspection(loaded: &LoadedSkillPackage) -> Result<JsonObject, SkillInspe
         if let Some(catalog) = manifest.catalog.as_ref() {
             output.insert("catalog".to_owned(), inspect_catalog(catalog));
         }
-        let semantic_report = runx_parser::analyze_catalog_semantics(&package.skill.name, manifest);
+        let semantic_report = runx_parser::analyze_package_catalog_semantics(
+            &package.skill.name,
+            manifest,
+            &package.harness_fixtures,
+        );
         let encoded =
             serde_json::to_vec(&semantic_report).map_err(|source| SkillInspectionError::Json {
                 context: "serializing catalog semantic report",

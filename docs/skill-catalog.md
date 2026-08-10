@@ -81,8 +81,14 @@ operator decisions.
 
 Package admission and `core-skills:audit` reject public promise/default drift,
 unreachable required adapters or provider readback, and public mock or fixture
-defaults. Internal rails and harness fixtures remain executable through their
-own explicit identities but are excluded from normal discovery.
+defaults. The same native semantic report requires an executable cold-selection
+journey with at least two real public confusors, a standalone journey through
+the actual default runner, and a composed journey that reuses named prior
+evidence without repeating completed work. Inspection reports deterministic
+provider replay as `harness` and reserves `live` for separately identified live
+provider evidence; caller-supplied agent answers never count as provider proof.
+Internal rails and harness fixtures remain executable through their own
+explicit identities but are excluded from normal discovery.
 
 ## Naming a skill
 

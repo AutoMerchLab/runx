@@ -214,6 +214,7 @@ impl<T: RuntimeHttpTransport + Clone> AgentResolver for AnthropicAgentResolver<T
             max_rounds: self.max_rounds,
             max_empty_turn_resamples: MAX_EMPTY_TURN_RESAMPLES,
             final_result_tool: FINAL_RESULT_TOOL.to_owned(),
+            final_result_output: envelope.output.clone(),
         };
         run_agent_loop(&config, &model, &executor, prompt).map_err(|error| {
             AgentResolverError::bounded_failure(

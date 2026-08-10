@@ -4,6 +4,7 @@ target: ..
 runner: forecast
 operator_journeys:
   - mode: standalone
+    confusors: [open-meteo-weather-forecast, weather-forecast]
     request: Fetch the National Weather Service forecast for gridpoint LWX 97,71.
     expected_outcome: Return bounded NWS forecast evidence with provider provenance for downstream planning.
   - mode: composed

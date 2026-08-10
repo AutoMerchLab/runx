@@ -2,6 +2,66 @@ use runx_contracts::AuthorityVerb;
 
 use super::*;
 
+#[cfg(all(feature = "catalog", unix))]
+#[test]
+fn local_github_identity_preflight_is_reused_within_one_effect_instance()
+-> Result<(), Box<dyn std::error::Error>> {
+    use std::fs;
+    use std::os::unix::fs::PermissionsExt;
+
+    let root = tempfile::tempdir()?;
+    let gh = root.path().join("gh");
+    fs::write(
+        &gh,
+        r#"#!/bin/sh
+dir=$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && pwd)
+printf '%s\n' "$*" >> "$dir/argv.log"
+/bin/cat >/dev/null
+printf '%s\n' '{"data":{"viewer":{"id":"U_1","login":"operator"},"repository":{"nameWithOwner":"runxhq/runx","viewerPermission":"WRITE"}}}'
+"#,
+    )?;
+    fs::set_permissions(&gh, fs::Permissions::from_mode(0o700))?;
+    let env = BTreeMap::from([
+        (
+            "PATH".to_owned(),
+            root.path().to_string_lossy().into_owned(),
+        ),
+        (
+            crate::RUNX_CWD_ENV.to_owned(),
+            root.path().to_string_lossy().into_owned(),
+        ),
+        (
+            PROVIDER_PERMISSION_TRANSPORT_ENV.to_owned(),
+            "local:github".to_owned(),
+        ),
+    ]);
+    let effect = ProviderPermissionEffect::default();
+    for operation in ["issue.read", "pullrequest.read"] {
+        let mut step = native_step(PROVIDER_READ_TOOL, &["repo.read"], "read");
+        policy_mut(&mut step).remove("grant_id");
+        let inputs = JsonObject::from([
+            (
+                "expected_provider".to_owned(),
+                JsonValue::String("github".to_owned()),
+            ),
+            (
+                "operation".to_owned(),
+                JsonValue::String(operation.to_owned()),
+            ),
+            (
+                "target".to_owned(),
+                JsonValue::String("runxhq/runx".to_owned()),
+            ),
+        ]);
+        effect
+            .admit(effect_request(&step, &inputs, &env))?
+            .ok_or("provider admission")?;
+    }
+    let log = fs::read_to_string(root.path().join("argv.log"))?;
+    assert_eq!(log.lines().count(), 1, "identity preflight must run once");
+    Ok(())
+}
+
 #[test]
 fn provider_capabilities_bind_idempotency_and_approval_to_mutation_only() {
     let effect = ProviderPermissionEffect::default();

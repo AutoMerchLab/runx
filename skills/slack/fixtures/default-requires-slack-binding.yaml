@@ -1,0 +1,13 @@
+name: slack-default-requires-provider-binding
+kind: skill
+target: ..
+operator_journeys:
+  - mode: standalone
+    confusors: [slack-notify, send-as]
+    request: Find the bounded Slack messages about release readiness.
+    expected_outcome: Use local or configured Slack evidence through the default search runner and fail immediately with one binding message when unavailable.
+inputs:
+  query: { keywords: release readiness, channel_types: [public_channel, private_channel], limit: 20 }
+expect:
+  status: policy_denied
+metadata: { public_skill: slack, source_case: direct-default-preflight, source: skills-fixture }

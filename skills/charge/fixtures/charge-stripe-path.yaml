@@ -4,6 +4,7 @@ target: ..
 runner: stripe
 operator_journeys:
   - mode: standalone
+    confusors: [spend, x402-pay]
     request: Charge for this paid search call through the admitted Stripe settlement path.
     expected_outcome: Validate price and authority, settle once, and return verification evidence.
   - mode: composed

@@ -1,5 +1,5 @@
 skill: prior-art
-version: "0.2.3"
+version: "0.2.4"
 catalog:
   kind: graph
   audience: builder
@@ -17,6 +17,7 @@ harness:
     - name: prior-art-recommends-catalog-reuse
       operator_journeys:
         - mode: standalone
+          confusors: [research, knowledge-router]
           request: Inspect prior art for this design before I create anything new.
           expected_outcome: Return bounded citation-backed findings and a reuse, amend, new-work, or stop recommendation.
         - mode: composed

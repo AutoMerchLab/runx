@@ -4,6 +4,7 @@ target: ..
 runner: stripe-spt
 operator_journeys:
   - mode: standalone
+    confusors: [settle-invoice, x402-pay]
     request: Execute this exact Stripe SPT payment under bounded Runx spend authority.
     expected_outcome: Quote, reserve, approve, fulfill once, and return independently verified payment finality.
   - mode: composed

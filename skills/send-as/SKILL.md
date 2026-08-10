@@ -18,13 +18,15 @@ compose these phase runners while retaining the same authority model.
 
 ## What this skill does
 
-`send-as` binds the
-principal, provider, channel, recipients or audience, content digest, consent
-basis, preflight checks, and approval gate. The default then applies the exact
-normalized connector operation under one approval and verifies the provider
-result. It refuses to treat a draft, preview, mutation acknowledgement, or test
-message as live delivery. A live send is final only after provider readback and
-the Runx receipt seal.
+`send-as` binds the principal, provider, channel, recipients or audience,
+content digest, consent basis, preflight checks, and approval gate. The caller
+selects only a compatible provider and bounded target; it does not author
+provider operations, result fields, payload plumbing, or retry keys. Runx
+derives a canonical `message.send` request from the approved plan, binds its
+idempotency key to a native digest, applies it under one approval, and verifies
+the stable identity with `message.read`. It refuses to treat a draft, preview,
+mutation acknowledgement, or test message as live delivery. A live send is
+final only after provider readback and the Runx receipt seal.
 
 Use `plan` when only an authorization packet is wanted. A sealed plan receipt
 means only that the plan was sealed. A completed default result emits
@@ -76,9 +78,10 @@ readback both succeed.
    - billing/account mutation is outside this skill and needs its own gate.
 7. Produce the smallest provider-neutral `send_plan` that execution can consume
    without widening authority.
-8. For the default runner, require the exact normalized connector operation,
-   target, payload, expected result, readback operation, and stable idempotency
-   key. Missing adapter data blocks before mutation.
+8. For the default runner, require only a compatible connector provider and
+   bounded target. Runx derives the normalized operations, payload, expected
+   stable identity, result fields, and digest-bound idempotency key. Missing
+   connector authority blocks before mutation.
 9. Apply once, then verify using the mutation result. Never re-plan or resend
    during `verify`.
 10. Return `needs_input` for missing principal, audience, content digest,
@@ -181,3 +184,6 @@ No live send is authorized until the approval gate is satisfied.
 - `consent_basis` (optional): why the recipient/audience may receive this.
 - `operator_context` (optional): approval posture, legal constraints, or extra
   guardrails.
+- `connector` (required for `send`, `apply`, and `verify`): provider name and
+  bounded account, workspace, channel, campaign, or equivalent target. It
+  contains no credentials or caller-authored operation grammar.

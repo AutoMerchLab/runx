@@ -2,6 +2,11 @@ name: scan-verified-finding
 kind: skill
 target: ..
 runner: scan
+operator_journeys:
+  - mode: standalone
+    confusors: [cve-audit, vuln-disclosure]
+    request: Triage these verified exact-version vulnerability findings for remediation priority.
+    expected_outcome: Return a bounded remediation packet from verified evidence without inventing exposure or publishing an advisory.
 inputs:
   target: example/service
   objective: choose today's remediation priority

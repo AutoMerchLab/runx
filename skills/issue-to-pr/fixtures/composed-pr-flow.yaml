@@ -2,6 +2,9 @@ name: issue-to-pr-composed-pr-flow
 kind: skill
 target: ..
 runner: resume
+env:
+  PATH: fixtures/bin:/usr/bin:/bin
+  RUNX_CWD: ../..
 operator_journeys:
   - mode: composed
     request: Continue issue 442 from this prior issue evidence and completed host result to the PR boundary.
@@ -34,17 +37,17 @@ inputs:
     status: completed
     repository: runxhq/runx
     issue_number: "442"
+    repo_root: .
     branch: fix/442-operator-first
+    commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
     files: [oss/skills/issue-to-pr/X.yaml]
     tests:
       - command: cargo test -p runx-cli --test integration issue_to_pr_journey
         status: passed
         evidence: receipt:test:issue-to-pr-composed
     finalization:
-      status: passed
-      receipt_ref: scafld:receipt:issue-to-pr-composed
+      receipt_path: skills/issue-to-pr/fixtures/scafld-pass.json
       contract_digest: sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-      invocation_count: 1
     publication:
       decision: hold
       title: ""
@@ -57,16 +60,20 @@ inputs:
 expect:
   status: sealed
   receipt: { schema: runx.receipt.v1 }
-  steps: [admit-host-result, finalize-hold]
+  steps: [admit-host-result, verify-local, finalize-local]
   output:
     subset:
       issue_to_pr_result:
         data:
           schema: runx.issue_to_pr.result.v1
           status: completed
+          outcome: finalized_local
           repository: runxhq/runx
           issue_number: "442"
-          finalization_ref: scafld:receipt:issue-to-pr-composed
+          commit: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          finalization:
+            status: verified
+            target: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
           publication: { status: not_requested }
 metadata:
   public_skill: issue-to-pr

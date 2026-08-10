@@ -4,6 +4,7 @@ target: ..
 runner: profile
 operator_journeys:
   - mode: standalone
+    confusors: [brand-voice, ghostwrite]
     request: Build a product-UI taste profile from these likes and dislikes.
     expected_outcome: Return scoped design preferences, anti-patterns, and decision rules grounded in the supplied examples.
   - mode: composed

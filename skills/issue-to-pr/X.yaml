@@ -1,5 +1,5 @@
 skill: issue-to-pr
-version: "0.3.0"
+version: "0.4.0"
 
 catalog:
   kind: graph
@@ -14,6 +14,8 @@ catalog:
 harness:
   files:
     - fixtures/bin/gh
+    - fixtures/bin/git
+    - fixtures/bin/scafld
   cases: []
 
 input_definitions:
@@ -41,7 +43,7 @@ input_definitions:
     type: json
     packet: runx.issue_to_pr.host_result.v1
     required: true
-    description: Tested host change plus exactly one scafld finalize result.
+    description: Tested host change, exact commit, and the workspace-scoped signed receipt produced by one scafld finalize call.
 
 runners:
   issue-to-pr:
@@ -116,7 +118,7 @@ runners:
       objective: { definition: objective }
     graph:
       name: issue-to-pr-host
-      result_from: [publish, finalize-hold, finalize-blocked]
+      result_from: [finalize-published, finalize-local, finalize-blocked]
       steps:
         - id: host-work
           inputs:
@@ -144,22 +146,101 @@ runners:
             outputs:
               host_admission: object
 
-        - id: publish
+        - id: verify-publication
           when:
             field: admit-host-result.host_admission.path
             equals: publish
-          skill: .
-          runner: publish
+          tool: external_receipt.verify
+          scopes: [receipt.read]
           context:
-            host_result: host-work.host_result.data
+            receipt_path: host-work.host_result.data.finalization.receipt_path
+            target: host-work.host_result.data.commit
+            contract_digest: host-work.host_result.data.finalization.contract_digest
+            repo_root: host-work.host_result.data.repo_root
 
-        - id: finalize-hold
+        - id: publish-pr
           when:
             field: admit-host-result.host_admission.path
-            equals: hold
+            equals: publish
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: host-work.host_result.data.publication.idempotency_key
+          scopes: [repo.write, pr.write]
+          policy:
+            provider_permission:
+              verb: write
+          inputs:
+            expected_provider: github
+            operation: pullrequest.publish
+            target: $input.repository
+            idempotency_key: $input.canonical_idempotency_key
+            result_fields: [repository, number, title, state, body, url, head, base, draft, published_commit, branch_ref]
+            input:
+              commit: $input.commit
+              title: $input.title
+              body: $input.body
+              head: $input.head
+              base: $input.base
+              draft: $input.draft
+            expected_result:
+              repository: $input.repository
+              published_commit: $input.commit
+              title: $input.title
+              body: $input.body
+              head: $input.head
+              base: $input.base
+              draft: $input.draft
+          context:
+            repository: host-work.host_result.data.repository
+            canonical_idempotency_key: host-work.host_result.data.publication.idempotency_key
+            commit: host-work.host_result.data.commit
+            title: host-work.host_result.data.publication.title
+            body: host-work.host_result.data.publication.body
+            head: host-work.host_result.data.publication.head
+            base: host-work.host_result.data.publication.base
+            draft: host-work.host_result.data.publication.draft
+
+        - id: finalize-published
+          when:
+            field: admit-host-result.host_admission.path
+            equals: publish
           context:
             host_result: host-work.host_result.data
-            host_admission: admit-host-result.host_admission
+            receipt_verification: verify-publication.external_receipt_verification.data
+            publication_result: publish-pr.provider_operation.data
+          run:
+            type: javascript
+            module: issue-to-pr.mjs
+            export: finalizeIssueToPr
+            outputs:
+              issue_to_pr_result: object
+          artifacts:
+            named_emits: { issue_to_pr_result: issue_to_pr_result }
+            packets: { issue_to_pr_result: runx.issue_to_pr.result.v1 }
+
+        - id: verify-local
+          when:
+            field: admit-host-result.host_admission.path
+            equals: finalized_local
+          tool: external_receipt.verify
+          scopes: [receipt.read]
+          context:
+            receipt_path: host-work.host_result.data.finalization.receipt_path
+            target: host-work.host_result.data.commit
+            contract_digest: host-work.host_result.data.finalization.contract_digest
+            repo_root: host-work.host_result.data.repo_root
+
+        - id: finalize-local
+          when:
+            field: admit-host-result.host_admission.path
+            equals: finalized_local
+          inputs:
+            host_admission:
+              path: finalized_local
+              errors: []
+          context:
+            host_result: host-work.host_result.data
+            receipt_verification: verify-local.external_receipt_verification.data
           run:
             type: javascript
             module: issue-to-pr.mjs
@@ -194,7 +275,7 @@ runners:
       host_result: { definition: host_result }
     graph:
       name: issue-to-pr-resume
-      result_from: [publish, finalize-hold, finalize-blocked]
+      result_from: [finalize-published, finalize-local, finalize-blocked]
       steps:
         - id: admit-host-result
           inputs:
@@ -207,23 +288,93 @@ runners:
             outputs:
               host_admission: object
 
-        - id: publish
+        - id: verify-publication
           when:
             field: admit-host-result.host_admission.path
             equals: publish
-          skill: .
-          runner: publish
+          tool: external_receipt.verify
+          scopes: [receipt.read]
           inputs:
-            host_result: $input.host_result
+            receipt_path: $input.host_result.finalization.receipt_path
+            target: $input.host_result.commit
+            contract_digest: $input.host_result.finalization.contract_digest
+            repo_root: $input.host_result.repo_root
 
-        - id: finalize-hold
+        - id: publish-pr
           when:
             field: admit-host-result.host_admission.path
-            equals: hold
+            equals: publish
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: $input.host_result.publication.idempotency_key
+          scopes: [repo.write, pr.write]
+          policy:
+            provider_permission:
+              verb: write
+          inputs:
+            expected_provider: github
+            operation: pullrequest.publish
+            target: $input.host_result.repository
+            idempotency_key: $input.host_result.publication.idempotency_key
+            result_fields: [repository, number, title, state, body, url, head, base, draft, published_commit, branch_ref]
+            input:
+              commit: $input.host_result.commit
+              title: $input.host_result.publication.title
+              body: $input.host_result.publication.body
+              head: $input.host_result.publication.head
+              base: $input.host_result.publication.base
+              draft: $input.host_result.publication.draft
+            expected_result:
+              repository: $input.host_result.repository
+              published_commit: $input.host_result.commit
+              title: $input.host_result.publication.title
+              body: $input.host_result.publication.body
+              head: $input.host_result.publication.head
+              base: $input.host_result.publication.base
+              draft: $input.host_result.publication.draft
+
+        - id: finalize-published
+          when:
+            field: admit-host-result.host_admission.path
+            equals: publish
           inputs:
             host_result: $input.host_result
           context:
-            host_admission: admit-host-result.host_admission
+            receipt_verification: verify-publication.external_receipt_verification.data
+            publication_result: publish-pr.provider_operation.data
+          run:
+            type: javascript
+            module: issue-to-pr.mjs
+            export: finalizeIssueToPr
+            outputs:
+              issue_to_pr_result: object
+          artifacts:
+            named_emits: { issue_to_pr_result: issue_to_pr_result }
+            packets: { issue_to_pr_result: runx.issue_to_pr.result.v1 }
+
+        - id: verify-local
+          when:
+            field: admit-host-result.host_admission.path
+            equals: finalized_local
+          tool: external_receipt.verify
+          scopes: [receipt.read]
+          inputs:
+            receipt_path: $input.host_result.finalization.receipt_path
+            target: $input.host_result.commit
+            contract_digest: $input.host_result.finalization.contract_digest
+            repo_root: $input.host_result.repo_root
+
+        - id: finalize-local
+          when:
+            field: admit-host-result.host_admission.path
+            equals: finalized_local
+          inputs:
+            host_result: $input.host_result
+            host_admission:
+              path: finalized_local
+              errors: []
+          context:
+            receipt_verification: verify-local.external_receipt_verification.data
           run:
             type: javascript
             module: issue-to-pr.mjs
@@ -252,6 +403,55 @@ runners:
             named_emits: { issue_to_pr_result: issue_to_pr_result }
             packets: { issue_to_pr_result: runx.issue_to_pr.result.v1 }
 
+  verify:
+    type: graph
+    inputs:
+      host_result: { definition: host_result }
+    graph:
+      name: issue-to-pr-verify
+      result_from: [verify-finalization]
+      steps:
+        - id: verify-finalization
+          tool: external_receipt.verify
+          scopes: [receipt.read]
+          inputs:
+            receipt_path: $input.host_result.finalization.receipt_path
+            target: $input.host_result.commit
+            contract_digest: $input.host_result.finalization.contract_digest
+            repo_root: $input.host_result.repo_root
+
+  finalize-local:
+    type: graph
+    inputs:
+      host_result: { definition: host_result }
+    graph:
+      name: issue-to-pr-finalize-local
+      result_from: [finalize]
+      steps:
+        - id: verify
+          skill: .
+          runner: verify
+          inputs:
+            host_result: $input.host_result
+
+        - id: finalize
+          inputs:
+            host_result: $input.host_result
+            host_admission:
+              path: finalized_local
+              errors: []
+          context:
+            receipt_verification: verify.external_receipt_verification.data
+          run:
+            type: javascript
+            module: issue-to-pr.mjs
+            export: finalizeIssueToPr
+            outputs:
+              issue_to_pr_result: object
+          artifacts:
+            named_emits: { issue_to_pr_result: issue_to_pr_result }
+            packets: { issue_to_pr_result: runx.issue_to_pr.result.v1 }
+
   publish:
     type: graph
     inputs:
@@ -260,21 +460,28 @@ runners:
       name: issue-to-pr-publish
       result_from: [finalize]
       steps:
+        - id: verify
+          skill: .
+          runner: verify
+          inputs:
+            host_result: $input.host_result
+
         - id: publish-pr
           tool: provider.mutate
           mutation: true
           idempotency_key: $input.host_result.publication.idempotency_key
-          scopes: [pr.write]
+          scopes: [repo.write, pr.write]
           policy:
             provider_permission:
               verb: write
           inputs:
             expected_provider: github
-            operation: pullrequest.open
+            operation: pullrequest.publish
             target: $input.host_result.repository
             idempotency_key: $input.host_result.publication.idempotency_key
-            result_fields: [repository, number, title, state, body, url, head, base, draft]
+            result_fields: [repository, number, title, state, body, url, head, base, draft, published_commit, branch_ref]
             input:
+              commit: $input.host_result.commit
               title: $input.host_result.publication.title
               body: $input.host_result.publication.body
               head: $input.host_result.publication.head
@@ -282,31 +489,19 @@ runners:
               draft: $input.host_result.publication.draft
             expected_result:
               repository: $input.host_result.repository
+              published_commit: $input.host_result.commit
               title: $input.host_result.publication.title
+              body: $input.host_result.publication.body
               head: $input.host_result.publication.head
               base: $input.host_result.publication.base
-
-        - id: readback-pr
-          tool: provider.read
-          scopes: [pr.read]
-          policy:
-            provider_permission:
-              verb: read
-          inputs:
-            expected_provider: github
-            operation: pullrequest.read
-            target: $input.host_result.repository
-            result_fields: [repository, number, title, state, body, url, head, base, draft]
-          context:
-            input: publish-pr.provider_operation.data.result
-            expected_result: publish-pr.provider_operation.data.result
+              draft: $input.host_result.publication.draft
 
         - id: finalize
           inputs:
             host_result: $input.host_result
           context:
+            receipt_verification: verify.external_receipt_verification.data
             publication_result: publish-pr.provider_operation.data
-            readback_result: readback-pr.provider_operation.data
           run:
             type: javascript
             module: issue-to-pr.mjs

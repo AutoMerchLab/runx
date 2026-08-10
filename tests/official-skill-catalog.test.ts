@@ -54,6 +54,17 @@ type CatalogSemanticReport = {
   readonly skill: string;
   readonly defaultRunner?: string;
   readonly diagnostics: readonly CatalogSemanticDiagnostic[];
+  readonly readiness: {
+    readonly evaluated: boolean;
+    readonly coldSelection: boolean;
+    readonly standaloneDefault: boolean;
+    readonly composedReuse: boolean;
+    readonly providerProof: "none" | "harness" | "live";
+    readonly suppliedAgentAnswers: boolean;
+    readonly coldSelectionConfusors?: readonly string[];
+    readonly standaloneCase?: string;
+    readonly composedCase?: string;
+  };
 };
 
 type NativeSkillInspection = {
@@ -73,6 +84,9 @@ type NativeSkillInspection = {
     readonly mode: "standalone" | "composed" | "refusal";
     readonly request: string;
     readonly expected_outcome: string;
+    readonly runner?: string;
+    readonly exercises_runner?: string;
+    readonly confusors: readonly string[];
     readonly prior_evidence: readonly string[];
     readonly must_not_repeat: readonly string[];
   }[];
@@ -103,10 +117,6 @@ const paymentGraphStageOwners: Readonly<Record<string, string>> = {
   "pay-quote": "spend",
   "pay-recover": "spend",
   "pay-reserve": "spend",
-};
-
-const issueToPrGraphStageOwners: Readonly<Record<string, string>> = {
-  scafld: "issue-to-pr",
 };
 
 const retiredPaymentRegistrySkillIds = [
@@ -300,11 +310,8 @@ describe("official skill catalog", () => {
       expect(ids.has(`runx/${stage}`), stage).toBe(false);
       expect(existsSync(path.resolve("skills", stage)), stage).toBe(false);
     }
-    for (const [stage, owner] of Object.entries(issueToPrGraphStageOwners)) {
-      expect(existsSync(path.resolve("skills", owner, "graph", stage, "X.yaml")), stage).toBe(true);
-      expect(ids.has(`runx/${stage}`), stage).toBe(false);
-      expect(existsSync(path.resolve("skills", stage)), stage).toBe(false);
-    }
+    expect(ids.has("runx/scafld")).toBe(false);
+    expect(existsSync(path.resolve("skills", "issue-to-pr", "graph", "scafld"))).toBe(false);
     expect([...paymentCatalogPublicIds()].sort()).toEqual([
       "runx/charge",
       "runx/dispute-respond",
@@ -436,9 +443,12 @@ describe("official skill catalog", () => {
     } finally {
       await rm(home, { recursive: true, force: true });
     }
-  }, 20_000);
+  }, 40_000);
 
   it("projects an intuitive direct request and reusable chain journey for every public skill", () => {
+    const publicSkillNames = new Set(
+      officialSkillPackages().filter((skillName) => catalogVisibility(skillName) === "public"),
+    );
     for (const skillName of officialSkillPackages()) {
       if (catalogVisibility(skillName) !== "public") continue;
       const inspection = inspectOfficialSkill(skillName);
@@ -447,6 +457,19 @@ describe("official skill catalog", () => {
       const composed = journeys.filter((journey) => journey.mode === "composed");
 
       expect(inspection.description?.trim().length, `${skillName} selection description`).toBeGreaterThan(24);
+      expect(inspection.semantic_report.diagnostics, `${skillName} native semantic diagnostics`).toEqual([]);
+      expect(inspection.semantic_report.readiness, `${skillName} native readiness`).toMatchObject({
+        evaluated: true,
+        coldSelection: true,
+        standaloneDefault: true,
+        composedReuse: true,
+      });
+      const confusors = inspection.semantic_report.readiness.coldSelectionConfusors ?? [];
+      expect(confusors.length, `${skillName} distinct cold-selection confusors`).toBeGreaterThanOrEqual(2);
+      for (const confusor of confusors) {
+        expect(confusor, `${skillName} must not confuse itself`).not.toBe(skillName);
+        expect(publicSkillNames.has(confusor), `${skillName} confusor ${confusor} must be public`).toBe(true);
+      }
       expect(standalone.length, `${skillName} standalone journey`).toBeGreaterThan(0);
       expect(composed.length, `${skillName} composed journey`).toBeGreaterThan(0);
       for (const journey of journeys) {

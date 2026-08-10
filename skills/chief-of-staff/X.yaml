@@ -1,5 +1,5 @@
 skill: chief-of-staff
-version: "0.3.1"
+version: "0.3.2"
 
 catalog:
   kind: graph
@@ -16,6 +16,7 @@ harness:
     - name: chief-of-staff-binds-actions-to-sources
       operator_journeys:
         - mode: standalone
+          confusors: [meeting-followup, ops-desk]
           request: Turn this bounded mailbox and calendar evidence into an executive action packet.
           expected_outcome: Return source-bound actions, decisions, timing, and review requirements without sending or scheduling.
         - mode: composed

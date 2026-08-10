@@ -47,6 +47,14 @@ pub struct OperatorJourneyClaim {
     pub mode: OperatorJourneyMode,
     pub request: String,
     pub expected_outcome: String,
+    /// For a complex graph harness, name the public runner the executable
+    /// journey invokes. Root skill fixtures derive this from `runner` instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exercises_runner: Option<String>,
+    /// Nearby public skill identities a cold agent must distinguish from this
+    /// journey. Selection proof is meaningless without plausible alternatives.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub confusors: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub prior_evidence: Vec<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -380,14 +388,26 @@ fn validate_operator_journey(
         }
     }
     if claim
-        .prior_evidence
+        .confusors
         .iter()
+        .chain(&claim.prior_evidence)
         .chain(&claim.must_not_repeat)
         .any(|value| value.trim().is_empty())
     {
         return Err(HarnessFixtureError::Invalid {
             field: "operator_journey".to_owned(),
-            message: "prior_evidence and must_not_repeat entries must not be empty".to_owned(),
+            message: "confusors, prior_evidence, and must_not_repeat entries must not be empty"
+                .to_owned(),
+        });
+    }
+    if claim
+        .exercises_runner
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err(HarnessFixtureError::Invalid {
+            field: "operator_journey.exercises_runner".to_owned(),
+            message: "must be a non-empty runner name when declared".to_owned(),
         });
     }
     if claim.mode == OperatorJourneyMode::Composed

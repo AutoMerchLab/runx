@@ -1,5 +1,5 @@
 skill: governed-outbound
-version: "0.3.2"
+version: "0.3.3"
 catalog:
   kind: graph
   audience: public
@@ -169,30 +169,16 @@ runners:
       operator_context:
         type: string
         required: false
-      delivery:
+      connector:
         type: object
         required: true
-        description: Provider operation descriptor whose payload contains exactly one `{{runx.redacted_content}}` placeholder.
+        description: Operator-selected provider and exact account, workspace, channel, campaign, or other bounded target; credentials remain runtime-owned.
         schema:
-          required: [provider, target, operation, readback_operation, payload, result_fields]
+          required: [provider, target]
           additionalProperties: false
           properties:
             provider: { type: string, minLength: 1, maxLength: 100 }
             target: { type: string, minLength: 1, maxLength: 2048 }
-            operation: { type: string, minLength: 1, maxLength: 100 }
-            readback_operation: { type: string, minLength: 1, maxLength: 100 }
-            payload: { type: object, additionalProperties: true }
-            expected_result: { type: object, additionalProperties: true }
-            result_fields:
-              type: array
-              minItems: 1
-              maxItems: 32
-              uniqueItems: true
-              items: { type: string, minLength: 1, maxLength: 100 }
-      idempotency_key:
-        type: string
-        required: true
-        description: Stable retry key for this exact outbound delivery.
     graph:
       name: governed-outbound-deliver
       result_from: [send]
@@ -213,17 +199,6 @@ runners:
             mode: redact
           context:
             content: fetch-source.fetch_result.data.extracted
-        - id: bind-delivery
-          inputs:
-            delivery: $input.delivery
-          context:
-            redaction: scrub-content.redaction_report.data
-          run:
-            type: javascript
-            module: governed-outbound.mjs
-            export: bindDelivery
-            outputs:
-              delivery: object
         - id: send
           when:
             field: scrub-content.redaction_report.data.decision
@@ -236,10 +211,9 @@ runners:
             principal: $input.principal
             audience: $input.channel
             operator_context: $input.operator_context
-            idempotency_key: $input.idempotency_key
+            connector: $input.connector
           context:
             content_ref: scrub-content.redaction_report.data
-            delivery: bind-delivery.delivery
 
   plan:
     type: graph

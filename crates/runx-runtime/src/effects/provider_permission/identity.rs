@@ -146,7 +146,7 @@ impl ProviderPermissionEffect {
             return Ok(resolved);
         }
         if requested == super::ProviderTransportPreference::LocalGithub {
-            return resolve_local_github(
+            return self.resolve_local_github(
                 request,
                 operation,
                 access,
@@ -169,7 +169,7 @@ impl ProviderPermissionEffect {
             );
         }
         let local_error = if provider == "github" {
-            match resolve_local_github(
+            match self.resolve_local_github(
                 request,
                 operation,
                 access,
@@ -294,6 +294,58 @@ impl ProviderPermissionEffect {
         *cached = Some((resolved.clone(), authenticated.clone()));
         Ok(authenticated)
     }
+
+    fn resolve_local_github(
+        &self,
+        request: &EffectStepRequest<'_>,
+        operation: &str,
+        access: ProviderNativeAccess,
+        target: super::local_github::ResolvedGithubTarget,
+        required_scopes: Vec<String>,
+    ) -> Result<NativeProviderResolution, RuntimeEffectError> {
+        let key = (target.host.clone(), target.repository.to_ascii_lowercase());
+        let cached = self
+            .local_github_bindings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .get(&key)
+            .cloned();
+        let binding = match cached {
+            Some(binding) => super::local_github::validate_cached_binding(
+                binding,
+                operation,
+                access,
+                &required_scopes,
+            ),
+            None => super::local_github::preflight_resolved(
+                request.env,
+                request.graph_dir,
+                operation,
+                access,
+                target,
+                &required_scopes,
+            ),
+        }
+        .map_err(|error| RuntimeEffectError::Denied {
+            family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
+            verb: match access {
+                ProviderNativeAccess::Read => runx_contracts::AuthorityVerb::Read,
+                ProviderNativeAccess::Mutate => runx_contracts::AuthorityVerb::Write,
+            },
+            message: error.to_string(),
+        })?;
+        self.local_github_bindings
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .insert(key, binding.clone());
+        Ok(NativeProviderResolution {
+            grant_id: binding.grant_id(),
+            granted_scopes: required_scopes,
+            principal_ref: binding.principal_ref(),
+            target: binding.repository.clone(),
+            transport: ProviderTransportSelection::LocalGithub(binding),
+        })
+    }
 }
 
 #[cfg(feature = "catalog")]
@@ -333,39 +385,6 @@ fn resolved_provider_target(
             local_github: Some(target),
         })
         .map_err(|error| provider_permission_policy_error(error.to_string()))
-}
-
-#[cfg(feature = "catalog")]
-fn resolve_local_github(
-    request: &EffectStepRequest<'_>,
-    operation: &str,
-    access: ProviderNativeAccess,
-    target: super::local_github::ResolvedGithubTarget,
-    required_scopes: Vec<String>,
-) -> Result<NativeProviderResolution, RuntimeEffectError> {
-    let binding = super::local_github::preflight_resolved(
-        request.env,
-        request.graph_dir,
-        operation,
-        access,
-        target,
-        &required_scopes,
-    )
-    .map_err(|error| RuntimeEffectError::Denied {
-        family: PROVIDER_PERMISSION_EFFECT_FAMILY.to_owned(),
-        verb: match access {
-            ProviderNativeAccess::Read => runx_contracts::AuthorityVerb::Read,
-            ProviderNativeAccess::Mutate => runx_contracts::AuthorityVerb::Write,
-        },
-        message: error.to_string(),
-    })?;
-    Ok(NativeProviderResolution {
-        grant_id: binding.grant_id(),
-        granted_scopes: required_scopes,
-        principal_ref: binding.principal_ref(),
-        target: binding.repository.clone(),
-        transport: ProviderTransportSelection::LocalGithub(binding),
-    })
 }
 
 #[cfg(feature = "catalog")]

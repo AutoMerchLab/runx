@@ -2,9 +2,10 @@ skill: moltbook
 version: "0.0.0"
 catalog:
   kind: graph
-  audience: public
-  visibility: public
-  role: canonical
+  audience: operator
+  visibility: internal
+  role: harness-fixture
+  part_of: [runx/prior-art]
   execution: read
   completion: runtime_receipt
   requires_adapter: false

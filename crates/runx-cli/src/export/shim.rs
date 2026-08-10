@@ -42,6 +42,7 @@ fn render_shim(
     if skill.mode == RunxExportMode::NativeInstructions {
         return render_native_instructions(target, skill, runx_bin);
     }
+    let runx_bin = display_path(runx_bin);
     let mut output = String::new();
     output.push_str("---\n");
     output.push_str(&format!("name: {}\n", yaml_plain_or_quoted(&skill.name)));
@@ -49,33 +50,41 @@ fn render_shim(
     output.push_str(&indent_block(&skill.description));
     if target == Target::Claude {
         output.push_str(&format!(
-            "allowed-tools: Bash({} *)\n",
-            shell_quote(&display_path(runx_bin))
+            "allowed-tools: Bash({} skill *), Bash({} resume *)\n",
+            shell_quote(&runx_bin),
+            shell_quote(&runx_bin),
         ));
     }
     output.push_str("---\n");
     output.push_str(&format!("# {} - governed by runx\n\n", skill.name));
     output.push_str(
-        "Run the declared runner through runx; do not bypass it by independently reproducing work that runner owns.\n",
+        "Run the declared runner through runx; do not bypass work that the runner owns. Runx governs policy, approvals, provider effects, and the signed receipt. Report an external mutation only when the result contains provider evidence.\n\n",
     );
     output.push_str(
-        "Runx governs this runner's execution, policy, approvals, and signed receipt. A planning runner seals a plan, not the downstream external action; only report delivery or mutation when a provider-specific governed runner returns provider evidence.\n\n",
-    );
-    output.push_str(
-        "Runx uses its local-development receipt identity when no explicit signer is configured. \
-If any `RUNX_RECEIPT_SIGN_*` variable is present, the complete signer tuple must be present or \
-runx fails closed. Never invent, copy, or print signing keys.\n\n",
+        "Runx uses its local-development receipt identity when no explicit signer is configured. If any `RUNX_RECEIPT_SIGN_*` variable is present, the complete signer tuple must be present or runx fails closed. Never invent, copy, or print signing keys.\n\n",
     );
     output.push_str(&render_source_manual(skill));
-    for runner in &skill.runners {
-        output.push_str(&render_runner(
+
+    if let Some(default) = skill.runners.iter().find(|runner| runner.default) {
+        output.push_str(&render_default_runner(
             command_target,
-            runner,
-            &display_path(runx_bin),
+            default,
+            &skill.package_digest,
+            &runx_bin,
         ));
     }
-    output.push('\n');
-    output.push_str(&render_continuation(&display_path(runx_bin)));
+    let alternate_runners = skill
+        .runners
+        .iter()
+        .filter(|runner| !runner.default)
+        .collect::<Vec<_>>();
+    if !alternate_runners.is_empty() {
+        output.push_str(&render_runner_index(
+            command_target,
+            &alternate_runners,
+            &runx_bin,
+        ));
+    }
     output.push_str(&format!(
         "<!-- {} source={} package-digest={} - generated, do not edit -->\n",
         target.marker(),
@@ -100,9 +109,10 @@ fn render_native_instructions(target: Target, skill: &RunxExportSkill, runx_bin:
     output.push_str("---\n");
     output.push_str(&render_source_manual(skill));
     output.push_str(&format!(
-        "<!-- {} source={} - generated, do not edit -->\n",
+        "<!-- {} source={} package-digest={} - generated, do not edit -->\n",
         target.marker(),
-        display_path(&skill.abs_dir)
+        display_path(&skill.abs_dir),
+        skill.package_digest,
     ));
     output
 }
@@ -117,29 +127,55 @@ fn render_source_manual(skill: &RunxExportSkill) -> String {
     )
 }
 
-fn render_runner(command_target: &str, runner: &RunxExportRunner, runx_bin: &str) -> String {
+fn render_default_runner(
+    command_target: &str,
+    runner: &RunxExportRunner,
+    package_digest: &str,
+    runx_bin: &str,
+) -> String {
     let mut output = String::new();
     let title = runner.name.as_deref().unwrap_or("default");
-    let default = if runner.default { " (default)" } else { "" };
-    output.push_str(&format!("## Runner `{title}`{default}\n\n"));
-    output.push_str("Inspect this exact contract from the source package:\n\n```bash\n");
+    output.push_str(&format!("## Default runner: `{title}`\n\n"));
+    output.push_str("Inspect the exact input and effect contract on demand:\n\n```bash\n");
     output.push_str(&render_inspect_command(command_target, runner, runx_bin));
-    output.push_str("\n```\n\nInput contract:\n\n```json\n");
-    let schema =
-        runx_contracts::input_contract_schema_with_examples(&runner.inputs, &runner.examples);
-    output.push_str(
-        &serde_json::to_string_pretty(&schema)
-            .unwrap_or_else(|_| "{\"type\":\"object\"}".to_owned()),
-    );
     output.push_str("\n```\n\n");
-    if !runner.examples.is_empty() {
-        output.push_str("Validated invocation example:\n\n");
-    } else {
+    if runner.examples.is_empty() {
         output.push_str("Invocation template (replace placeholders before running):\n\n");
+    } else {
+        output.push_str("Validated invocation example:\n\n");
     }
     output.push_str("```bash\n");
-    output.push_str(&render_command(command_target, runner, runx_bin));
+    output.push_str(&render_command(
+        command_target,
+        runner,
+        package_digest,
+        runx_bin,
+    ));
     output.push_str("\n```\n\n");
+    output.push_str(&render_continuation(
+        package_digest,
+        runner.execution_closure_digest.as_deref(),
+        runx_bin,
+    ));
+    output
+}
+
+fn render_runner_index(
+    command_target: &str,
+    runners: &[&RunxExportRunner],
+    runx_bin: &str,
+) -> String {
+    let mut output = String::from(
+        "## Other runners\n\nSelect a non-default runner only when the source manual calls for it. Inspect it on demand for its inputs and exact execution-closure digest:\n\n",
+    );
+    for runner in runners {
+        let name = runner.name.as_deref().unwrap_or("default");
+        output.push_str(&format!(
+            "- `{name}`: `{}`\n",
+            render_inspect_command(command_target, runner, runx_bin)
+        ));
+    }
+    output.push('\n');
     output
 }
 
@@ -161,7 +197,12 @@ fn render_inspect_command(
     command
 }
 
-fn render_command(command_target: &str, runner: &RunxExportRunner, runx_bin: &str) -> String {
+fn render_command(
+    command_target: &str,
+    runner: &RunxExportRunner,
+    package_digest: &str,
+    runx_bin: &str,
+) -> String {
     let mut command = format!(
         "{} skill {}",
         shell_quote(runx_bin),
@@ -188,47 +229,51 @@ fn render_command(command_target: &str, runner: &RunxExportRunner, runx_bin: &st
             }
         }
     }
+    lines.push(format!(
+        "  --package-digest {}",
+        shell_quote(package_digest)
+    ));
+    if let Some(closure_digest) = runner.execution_closure_digest.as_deref() {
+        lines.push(format!(
+            "  --execution-closure-digest {}",
+            shell_quote(closure_digest)
+        ));
+    }
     lines.push("  --json".to_owned());
     lines.join(" \\\n")
 }
 
-fn render_continuation(runx_bin: &str) -> String {
+fn render_continuation(
+    package_digest: &str,
+    execution_closure_digest: Option<&str>,
+    runx_bin: &str,
+) -> String {
+    let mut binding = format!(" --package-digest {}", shell_quote(package_digest));
+    if let Some(closure_digest) = execution_closure_digest {
+        binding.push_str(&format!(
+            " --execution-closure-digest {}",
+            shell_quote(closure_digest)
+        ));
+    }
     format!(
         "\
 Interpret the runx JSON result exactly:
 - `status` is lifecycle state; `outcome` says whether the promised operation completed. A sealed blocked or failed run is not success.
 - If `status` is `sealed`, surface the outcome, receipt id, result, and artifact refs.
-- If runx returns `needs_agent` or `needs_approval`, each bounded request summary includes a digest-bound `artifact_ref.path`. Read only the selected request artifact, verify its digest and `instructions_sha256`, and obey its exact output contract and `allowed_tools`.
-- Build one structured continuation object in memory. Bind every answer to the `request_digest` from its request summary:
+- If runx returns `needs_agent` or `needs_approval`, read only the selected digest-bound request artifact and obey its exact output contract and `allowed_tools`.
+- Bind every answer to its `request_digest`; relay approval requests and never fabricate human approval.
 
-```json
-{{
-  \"request_digests\": {{
-    \"<request.id>\": \"<request.request_digest>\"
-  }},
-  \"answers\": {{
-    \"<request.id>\": {{
-      \"...\": \"object matching request.invocation.envelope.output\",
-      \"closure\": {{
-        \"disposition\": \"closed\",
-        \"reason_code\": \"completed\",
-        \"summary\": \"concise outcome summary\"
-      }}
-    }}
-  }}
-}}
-```
-
-Pipe that object to the same run; do not create a manual answer file:
+Pipe the structured continuation object to the same digest-bound run; do not create a manual answer file:
 
 ```bash
-printf '%s' \"$RUNX_ANSWERS_JSON\" | {} resume \"<run_id>\" - --json
+printf '%s' \"$RUNX_ANSWERS_JSON\" | {} resume \"<run_id>\" -{} --json
 ```
 
-Repeat until sealed or until an exact operator approval/input is required. Relay approval requests; never fabricate human approval. Never place signing seeds, provider tokens, or raw credentials in the continuation object or response.
+Repeat until sealed or an exact operator approval/input is required. Never place signing seeds, provider tokens, or raw credentials in the continuation object or response.
 
 ",
-        shell_quote(runx_bin)
+        shell_quote(runx_bin),
+        binding,
     )
 }
 

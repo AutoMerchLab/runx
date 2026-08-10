@@ -560,19 +560,10 @@ fn reference_skill_journeys_execute_or_block_truthfully_without_repeating_phase_
                     "description": "Apply must deliver and preserve provider evidence."
                 }
             },
-            "delivery": {
+            "connector": {
                 "provider": "slack",
-                "target": "slack://T123/C456",
-                "operation": "channel.post",
-                "readback_operation": "channel.post.read",
-                "payload": { "channel_locator": "slack://T123/C456", "text": "Release notice" },
-                "expected_result": {
-                    "conversation_locator": "slack://T123/C456",
-                    "content_digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-                },
-                "result_fields": ["message_locator", "conversation_locator", "content_digest", "occurred_at"]
-            },
-            "idempotency_key": "send-as-release-notice-001"
+                "target": "slack://T123/C456"
+            }
         })
         .to_string(),
     )?;
@@ -765,6 +756,79 @@ fn issue_to_pr_journey_publishes_once_with_readback_and_no_secondary_work() -> T
     git(&["init", "--quiet"])?;
     git(&["remote", "add", "origin", "git@github.com:runxhq/runx.git"])?;
 
+    let commit = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+    let contract_digest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd";
+    fs::write(
+        root.join("scafld-receipt.json"),
+        serde_json::json!({
+            "body": {
+                "task_id": "issue-to-pr-integration",
+                "verdict": "pass",
+                "head_commit": commit,
+                "spec_fingerprint": contract_digest.trim_start_matches("sha256:"),
+                "open_blockers": []
+            }
+        })
+        .to_string(),
+    )?;
+
+    let fake_git = fake_bin.join("git");
+    fs::write(
+        &fake_git,
+        r#"#!/bin/sh
+set -eu
+dir=$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && pwd)
+commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+printf '%s\n' "$*" >> "$dir/git.log"
+case "$*" in
+  "-c core.fsmonitor=false remote get-url origin"|"config --get remote.origin.url")
+    printf '%s\n' 'git@github.com:runxhq/runx.git'
+    ;;
+  "rev-parse --verify ${commit}^{commit}")
+    printf '%s\n' "$commit"
+    ;;
+  "ls-remote --refs origin refs/heads/fix/442-operator-first")
+    if [ -f "$dir/pushed-ref" ]; then
+      printf '%s\t%s\n' "$commit" 'refs/heads/fix/442-operator-first'
+    fi
+    ;;
+  "push --porcelain origin ${commit}:refs/heads/fix/442-operator-first")
+    : > "$dir/pushed-ref"
+    printf '%s\n' 'To git@github.com:runxhq/runx.git'
+    ;;
+  *)
+    printf '%s\n' "unexpected git invocation: $*" >&2
+    exit 2
+    ;;
+esac
+"#,
+    )?;
+    let mut permissions = fs::metadata(&fake_git)?.permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(&fake_git, permissions)?;
+
+    let scafld = fake_bin.join("scafld");
+    fs::write(
+        &scafld,
+        r#"#!/bin/sh
+set -eu
+dir=$(CDPATH= cd -- "$(/usr/bin/dirname -- "$0")" && pwd)
+printf '%s\n' "$*" >> "$dir/scafld.log"
+case "$*" in
+  verify*" --target aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --root "*" --json")
+    printf '%s\n' '{"ok":true,"command":"verify"}'
+    ;;
+  *)
+    printf '%s\n' "unexpected scafld invocation: $*" >&2
+    exit 2
+    ;;
+esac
+"#,
+    )?;
+    let mut permissions = fs::metadata(&scafld)?.permissions();
+    permissions.set_mode(0o700);
+    fs::set_permissions(&scafld, permissions)?;
+
     let gh = fake_bin.join("gh");
     fs::write(
         &gh,
@@ -778,10 +842,18 @@ case "$*" in
     ;;
   *"--method POST repos/runxhq/runx/pulls"*)
     /bin/cat > "$dir/approved-pr-body.json"
-    printf '%s\n' '{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.com/runxhq/runx/pull/77","head":{"ref":"fix/442-operator-first"},"base":{"ref":"main"},"draft":false}'
+    : > "$dir/published-pr"
+    printf '%s\n' '{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.com/runxhq/runx/pull/77","head":{"ref":"fix/442-operator-first","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"base":{"ref":"main"},"draft":false}'
+    ;;
+  *"--method GET repos/runxhq/runx/pulls?"*)
+    if [ -f "$dir/published-pr" ]; then
+      printf '%s\n' '[{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.com/runxhq/runx/pull/77","head":{"ref":"fix/442-operator-first","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"base":{"ref":"main"},"draft":false}]'
+    else
+      printf '%s\n' '[]'
+    fi
     ;;
   *"--method GET repos/runxhq/runx/pulls/77"*)
-    printf '%s\n' '{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.com/runxhq/runx/pull/77","head":{"ref":"fix/442-operator-first"},"base":{"ref":"main"},"draft":false}'
+    printf '%s\n' '{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.com/runxhq/runx/pull/77","head":{"ref":"fix/442-operator-first","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"base":{"ref":"main"},"draft":false}'
     ;;
   *)
     printf '%s\n' "unexpected gh invocation: $*" >&2
@@ -821,7 +893,9 @@ esac
                 "status": "completed",
                 "repository": "runxhq/runx",
                 "issue_number": "442",
+                "repo_root": ".",
                 "branch": "fix/442-operator-first",
+                "commit": commit,
                 "files": ["skills/issue-to-pr/X.yaml"],
                 "tests": [{
                     "command": "cargo test -p runx-cli --test integration issue_to_pr_journey",
@@ -829,10 +903,8 @@ esac
                     "evidence": "receipt:test:issue-to-pr"
                 }],
                 "finalization": {
-                    "status": "passed",
-                    "receipt_ref": "scafld:receipt:issue-to-pr",
-                    "contract_digest": "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
-                    "invocation_count": 1
+                    "receipt_path": "scafld-receipt.json",
+                    "contract_digest": contract_digest
                 },
                 "publication": {
                     "decision": "ready",
@@ -852,6 +924,7 @@ esac
     let local_env = |command: &mut Command| {
         command
             .env("PATH", format!("{}:/usr/bin:/bin", fake_bin.display()))
+            .env("RUNX_SCAFLD_BIN", &scafld)
             .env("RUNX_PROVIDER_PERMISSION_TRANSPORT", "local:github")
             .env_remove("RUNX_PROVIDER_PERMISSION_GRANT_ID")
             .env_remove("RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES")
@@ -923,6 +996,14 @@ esac
         1,
         "PR readback must occur exactly once: {gh_log}"
     );
+    assert_eq!(
+        gh_log
+            .lines()
+            .filter(|line| line.contains("graphql"))
+            .count(),
+        2,
+        "the non-interactive approval resume must revalidate, but never multiply, GitHub identity: {gh_log}"
+    );
     assert!(
         gh_log.lines().all(|line| !line.contains("/issues/442")),
         "resume must not repeat issue discovery: {gh_log}"
@@ -932,6 +1013,31 @@ esac
     assert_eq!(approved_body["title"], "Make issue-to-PR operator-first");
     assert_eq!(approved_body["head"], "fix/442-operator-first");
     assert_eq!(approved_body["base"], "main");
+
+    let git_log = fs::read_to_string(fake_bin.join("git.log"))?;
+    assert_eq!(
+        git_log
+            .lines()
+            .filter(|line| line.starts_with("push --porcelain"))
+            .count(),
+        1,
+        "the exact tested commit must be pushed once: {git_log}"
+    );
+    assert_eq!(
+        git_log
+            .lines()
+            .filter(|line| line.starts_with("rev-parse --verify"))
+            .count(),
+        1,
+        "the exact commit must be verified once before publication: {git_log}"
+    );
+    let scafld_log = fs::read_to_string(fake_bin.join("scafld.log"))?;
+    assert_eq!(
+        scafld_log.lines().count(),
+        1,
+        "finalization must verify once"
+    );
+    assert!(scafld_log.contains(" --target aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa "));
 
     Ok(())
 }

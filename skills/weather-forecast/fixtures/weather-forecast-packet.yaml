@@ -4,6 +4,7 @@ target: ..
 runner: normalize
 operator_journeys:
   - mode: standalone
+    confusors: [nws-weather-forecast, open-meteo-weather-forecast]
     request: Give me a decision-ready forecast for tomorrow's outdoor demo at the Washington Monument.
     expected_outcome: Return a provider-neutral forecast packet with uncertainty, source provenance, and planning stop conditions.
   - mode: composed

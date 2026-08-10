@@ -3,13 +3,15 @@
   "$id": "https://schemas.runx.ai/runx/issue-to-pr/host-result/v1.json",
   "x-runx-packet-id": "runx.issue_to_pr.host_result.v1",
   "type": "object",
-  "required": ["schema", "status", "repository", "issue_number", "branch", "files", "tests", "finalization", "publication", "errors"],
+  "required": ["schema", "status", "repository", "issue_number", "repo_root", "branch", "commit", "files", "tests", "finalization", "publication", "errors"],
   "properties": {
     "schema": { "const": "runx.issue_to_pr.host_result.v1" },
     "status": { "type": "string", "enum": ["completed", "blocked", "failed"] },
     "repository": { "type": "string", "pattern": "^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$" },
     "issue_number": { "type": "string", "pattern": "^[1-9][0-9]*$" },
+    "repo_root": { "type": "string", "minLength": 1 },
     "branch": { "type": "string", "minLength": 1 },
+    "commit": { "type": "string", "pattern": "^(?:[0-9a-f]{40}|[0-9a-f]{64})$" },
     "files": { "type": "array", "items": { "type": "string", "minLength": 1 } },
     "tests": {
       "type": "array",
@@ -26,12 +28,10 @@
     },
     "finalization": {
       "type": "object",
-      "required": ["status", "receipt_ref", "contract_digest", "invocation_count"],
+      "required": ["receipt_path", "contract_digest"],
       "properties": {
-        "status": { "type": "string", "enum": ["passed", "failed"] },
-        "receipt_ref": { "type": "string" },
-        "contract_digest": { "type": "string" },
-        "invocation_count": { "type": "integer", "minimum": 0, "maximum": 1 }
+        "receipt_path": { "type": "string", "minLength": 1 },
+        "contract_digest": { "type": "string", "pattern": "^sha256:[0-9a-f]{64}$" }
       },
       "additionalProperties": false
     },

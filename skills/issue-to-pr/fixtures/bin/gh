@@ -15,10 +15,19 @@ case "$*" in
     ;;
   *"--method POST repos/runxhq/runx/pulls"*)
     /bin/cat >/dev/null
-    printf '%s\n' '{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.com/runxhq/runx/pull/77","head":{"ref":"fix/442-operator-first"},"base":{"ref":"main"},"draft":false}'
+    /bin/mkdir -p .runx
+    : > .runx/issue-to-pr-fixture-pr
+    printf '%s\n' '{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.com/runxhq/runx/pull/77","head":{"ref":"fix/442-operator-first","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"base":{"ref":"main"},"draft":false}'
+    ;;
+  *"--method GET repos/runxhq/runx/pulls?"*)
+    if [ -f .runx/issue-to-pr-fixture-pr ]; then
+      printf '%s\n' '[{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.com/runxhq/runx/pull/77","head":{"ref":"fix/442-operator-first","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"base":{"ref":"main"},"draft":false}]'
+    else
+      printf '%s\n' '[]'
+    fi
     ;;
   *"--method GET repos/runxhq/runx/pulls/77"*)
-    printf '%s\n' '{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.com/runxhq/runx/pull/77","head":{"ref":"fix/442-operator-first"},"base":{"ref":"main"},"draft":false}'
+    printf '%s\n' '{"number":77,"title":"Make issue-to-PR operator-first","state":"open","body":"Closes #442.","html_url":"https://github.com/runxhq/runx/pull/77","head":{"ref":"fix/442-operator-first","sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"},"base":{"ref":"main"},"draft":false}'
     ;;
   *)
     printf '%s\n' "unexpected fixture gh invocation: $*" >&2

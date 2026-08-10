@@ -25,6 +25,15 @@ const retiredReceiptFields = [
 
 interface ParsedRunnerManifest {
   readonly skill?: string;
+  readonly runners: Readonly<Record<string, {
+    readonly name: string;
+    readonly default: boolean;
+    readonly source: {
+      readonly type: string;
+      readonly task?: string;
+      readonly graph?: { readonly steps: readonly unknown[] };
+    };
+  }>>;
   readonly harness?: {
     readonly cases: readonly Record<string, unknown>[];
   };
@@ -73,6 +82,7 @@ async function generateSkillFixtures(
   if (declaredSkillName !== skillName || profile.skill !== skillName) {
     throw new Error(`${skillName}: product skill name drifted from SKILL.md/X.yaml`);
   }
+  const execution = fixtureExecution(profile, profilePath);
   const cases = harnessCases(profile, profilePath);
   const targetDir = path.join(fixtureRoot, skillName);
   if (!check) {
@@ -95,7 +105,7 @@ async function generateSkillFixtures(
 
   for (const entry of cases) {
     const normalizedEntry = withIntakeDecision(entry);
-    const fixture = intakeFixture(normalizedEntry, skillName);
+    const fixture = intakeFixture(normalizedEntry, skillName, execution);
     assertNoRetiredReceiptFields(fixture, `${skillName}.${normalizedEntry.name}`);
     await writeOrCheck(
       path.join(targetDir, "cases", `${normalizedEntry.name}.yaml`),
@@ -108,11 +118,15 @@ async function generateSkillFixtures(
   }
 }
 
-function intakeFixture(entry: Record<string, unknown>, skillName: string): Record<string, unknown> {
+function intakeFixture(
+  entry: Record<string, unknown>,
+  skillName: string,
+  execution: { readonly kind: "agent_task"; readonly runner: string },
+): Record<string, unknown> {
   return {
     name: entry.name,
-    kind: "agent_task",
-    runner: "issue-intake",
+    kind: execution.kind,
+    runner: execution.runner,
     inputs: entry.inputs ?? {},
     caller: entry.caller ?? {},
     expect: canonicalExpectation(entry, {
@@ -126,6 +140,31 @@ function intakeFixture(entry: Record<string, unknown>, skillName: string): Recor
       runner_kind: "agent_task",
     },
   };
+}
+
+function fixtureExecution(
+  profile: ParsedRunnerManifest,
+  sourcePath: string,
+): { readonly kind: "agent_task"; readonly runner: string } {
+  const defaults = Object.values(profile.runners).filter((runner) => runner.default);
+  const runner = defaults.length === 1
+    ? defaults[0]
+    : Object.values(profile.runners).length === 1
+      ? Object.values(profile.runners)[0]
+      : undefined;
+  if (!runner) {
+    throw new Error(`${sourcePath}: fixture generation requires one parser-selected default runner`);
+  }
+  const graphSteps = runner.source.graph?.steps;
+  if (runner.source.type === "graph" && !graphSteps) {
+    throw new Error(`${sourcePath}#${runner.name}: parser-owned graph omitted typed steps`);
+  }
+  if (runner.source.type !== "agent-task" || !runner.source.task) {
+    throw new Error(
+      `${sourcePath}#${runner.name}: generated receipt fixture requires an agent-task source`,
+    );
+  }
+  return { kind: "agent_task", runner: runner.source.task };
 }
 
 function withIntakeDecision(entry: Record<string, unknown>): Record<string, unknown> {

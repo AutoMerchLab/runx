@@ -106,6 +106,10 @@ pub use dev::{
     discover_fixture_paths, render_dev_result, run_dev_once, should_ignore_dev_watch_path,
 };
 pub use doctor::{DoctorOptions, default_doctor_options, run_doctor};
+#[cfg(feature = "cli-tool")]
+pub use effects::{
+    EXTERNAL_RECEIPT_EFFECT_FAMILY, EXTERNAL_RECEIPT_VERIFY_TOOL, ExternalReceiptEffect,
+};
 pub use effects::{
     EffectAdmission, EffectApprovalRequirement, EffectOutputRequest, EffectReceiptRequest,
     EffectReplay, EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest,

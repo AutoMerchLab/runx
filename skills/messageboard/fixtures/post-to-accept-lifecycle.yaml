@@ -3,6 +3,8 @@ kind: graph
 target: ../harness/post-to-accept.yaml
 operator_journeys:
   - mode: standalone
+    exercises_runner: post_and_append
+    confusors: [ops-desk, agency]
     request: Run this bounty from posting through acceptance with every transition recorded.
     expected_outcome: Persist the governed posting, claim, delivery, and acceptance lifecycle with exact authority and proof.
   - mode: composed
