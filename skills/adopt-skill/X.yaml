@@ -1,5 +1,5 @@
 skill: adopt-skill
-version: "0.4.0"
+version: "0.4.1"
 
 catalog:
   kind: graph
@@ -36,6 +36,23 @@ runners:
         type: string
         required: false
         description: Intended authority boundary for the profile.
+      bounds:
+        type: object
+        required: false
+        description: Deterministic caller-supplied attenuation recorded in the registry binding; the profile draft must apply these bounds exactly or the bundle is rejected.
+        schema:
+          additionalProperties: false
+          properties:
+            allowed_output_prefix:
+              type: string
+              minLength: 1
+              maxLength: 4000
+              description: Directory prefix the bound skill's writes must stay under.
+            max_acts:
+              type: integer
+              minimum: 1
+              maximum: 10000
+              description: Cap on governed acts the bound skill may take per run.
       tags:
         type: json
         required: false
@@ -54,6 +71,7 @@ runners:
             skill_path: $input.skill_path
             upstream: $input.upstream
             registry: $input.registry
+            bounds: $input.bounds
             tags: $input.tags
             publication: $input.publication
           run:
@@ -199,6 +217,7 @@ runners:
           inputs:
             objective: $input.objective
             scope_intent: $input.scope_intent
+            bounds: $input.bounds
           context:
             source_evidence: inspect-source.source_evidence.data
             upstream_skill: read-source.file_read.data.contents

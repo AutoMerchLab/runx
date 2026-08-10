@@ -141,12 +141,12 @@ evidence, not copied into the repo by default.
 | Category | Maintained packages |
 | --- | --- |
 | `authoring` | `adopt-skill`, `diagnose-skill-run`, `policy-author`, `prior-art`, `review-skill`, `skill-lab`, `work-plan` |
-| `code` | `release` |
+| `code` | `release`, `schema-guard` |
 | `content` | `brand-voice`, `content-pipeline`, `ghostwrite`, `moltbook` |
 | `data` | `data-store`, `run-history`, `sql-analyst` |
 | `growth` | `lead-enrichment`, `lead-router`, `nitrosend` |
 | `ops` | `github-sync`, `governed-outbound`, `chief-of-staff`, `issue-intake`, `issue-triage`, `messageboard`, `n8n-handoff`, `ops-desk`, `send-as`, `zapier-handoff` |
-| `payments` | `charge`, `dispute-respond`, `mock-pay`, `mock-refund`, `mpp-pay`, `mpp-refund`, `refund`, `settle-invoice`, `spend`, `stripe-pay`, `stripe-refund`, `x402-pay` |
+| `payments` | `charge`, `dispute-respond`, `mock-pay`, `mock-refund`, `mpp-pay`, `mpp-refund`, `purchase-approval`, `refund`, `settle-invoice`, `spend`, `stripe-pay`, `stripe-refund`, `x402-pay` |
 | `research` | `ecosystem-brief`, `research` |
 | `security` | `cve-audit`, `vuln-triage`, `vuln-disclosure`, `least-privilege`, `audit-receipt`, `redact-pii`, `sign-receipt`, `vault-unseal` |
 

@@ -12,8 +12,8 @@ pub(crate) struct OfficialSkillLockEntry {
 pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     OfficialSkillLockEntry {
         skill_id: "runx/adopt-skill",
-        version: "sha-fa8e094eade5",
-        digest: "77405f2985d4ca6d9e2396580f918dc270bda4f8f7eae651ba27ca5e9e736b72",
+        version: "sha-022d72addefb",
+        digest: "3ebb56f93d53f2187b87f7a558ff2705427e8f06caf2134edde4f32ff9cad136",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/agency",
@@ -261,6 +261,11 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
         digest: "bbb454fc017ecb66b6ff96913ee049c480267873948212ae30ff38e4e69fb8eb",
     },
     OfficialSkillLockEntry {
+        skill_id: "runx/purchase-approval",
+        version: "sha-81a472367b94",
+        digest: "98364a1309bba05e143c1026ff953be6ee44013f38800c44ef67f62f9d93767d",
+    },
+    OfficialSkillLockEntry {
         skill_id: "runx/redact-pii",
         version: "sha-235811758008",
         digest: "2358e19a81b07f70bdefee629290d7d132592b8b9f6491abedd44d4bf6837810",
@@ -294,6 +299,11 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
         skill_id: "runx/run-history",
         version: "sha-a05ccab17632",
         digest: "cf8e8732664dddce70f2f5aebf34bed987e497c0bf400ece72b9dd619867ef2f",
+    },
+    OfficialSkillLockEntry {
+        skill_id: "runx/schema-guard",
+        version: "sha-dcde1af949ea",
+        digest: "8cf85c86e819c47d9ff7a088a8c7b0124d2b6236a1d5ededb1def8a41bd714f9",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/send-as",

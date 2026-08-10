@@ -44,7 +44,20 @@ correcting the source or profile because no workspace mutation has occurred.
 
 `binding_bundle` contains `decision`, `binding_path`, observed source evidence, exact `files`, native inspection and harness results, rationale, blockers, and a `success_checkpoint`. Only `decision: ready` contains files.
 
-Inputs are `skill_path`, `upstream`, `registry`, optional `objective`, `scope_intent`, `tags`, and `publication`.
+Inputs are `skill_path`, `upstream`, `registry`, optional `objective`, `scope_intent`, `bounds`, `tags`, and `publication`.
+
+## Caller-supplied bounds
+
+`scope_intent` informs the profile draft; `bounds` constrains it. When the
+caller supplies `bounds` (`allowed_output_prefix`, `max_acts`, or both), Overlay
+validates the shape deterministically before any source read, the builder must
+echo the exact bounds it applied as `bounds_applied`, and deterministic code
+compares that echo field by field against the caller's declaration. A dropped,
+widened, or invented bound rejects the candidate before native validation runs.
+The accepted bounds are recorded in `binding.json` next to the harness evidence,
+so the registry artifact carries the attenuation the caller actually declared,
+not a prose intention. When no bounds are supplied, `binding.json` records
+`bounds: null` and a draft that claims bounds anyway is rejected.
 
 ## Agent task contracts
 
@@ -52,7 +65,12 @@ Inputs are `skill_path`, `upstream`, `registry`, optional `objective`, `scope_in
 
 Read `upstream_skill`, the bounded upstream SKILL.md supplied in prepared
 context. Return `profile_draft` with `decision`, `profile_document`,
-`rationale`, and `blockers`. `profile_document` is the complete exact `X.yaml`
+`rationale`, and `blockers`. When the `bounds` input is present, also return
+`bounds_applied` echoing every supplied bound exactly, and shape the profile so
+the package honors them: keep write scopes inside `allowed_output_prefix` and
+carry `max_acts` as a capped runner input where the wrapped skill takes
+repeated acts. Never invent bounds the caller did not supply.
+`profile_document` is the complete exact `X.yaml`
 text. It must define one agent-task runner with exact inputs and outputs, least
 scopes, declared environment and credentials, an explicit `allowed_tools` array,
 category, tags, and
