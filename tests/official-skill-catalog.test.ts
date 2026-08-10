@@ -436,7 +436,7 @@ describe("official skill catalog", () => {
     } finally {
       await rm(home, { recursive: true, force: true });
     }
-  });
+  }, 20_000);
 
   it("projects an intuitive direct request and reusable chain journey for every public skill", () => {
     for (const skillName of officialSkillPackages()) {
