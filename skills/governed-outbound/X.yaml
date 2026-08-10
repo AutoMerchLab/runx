@@ -1,5 +1,5 @@
 skill: governed-outbound
-version: "0.3.1"
+version: "0.3.2"
 catalog:
   kind: graph
   audience: public
@@ -36,7 +36,7 @@ harness:
         principal: account:ops-bot
         operator_context: Public incident-summary planning; provider delivery remains separate.
       caller:
-        web_responses:
+        http_responses:
           "https://fixture.runx.invalid/source":
             status: 200
             headers: { content-type: text/plain }
@@ -119,7 +119,7 @@ harness:
         channel: "#incidents"
         principal: account:ops-bot
       caller:
-        web_responses:
+        http_responses:
           "https://fixture.runx.invalid/source":
             status: 200
             headers: { content-type: text/plain }

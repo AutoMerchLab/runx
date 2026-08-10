@@ -133,14 +133,14 @@ fn rejects_receipt_setup_path_escape() {
 }
 
 #[test]
-fn admits_bounded_exact_harness_web_responses() -> Result<(), HarnessFixtureError> {
+fn admits_bounded_exact_harness_http_responses() -> Result<(), HarnessFixtureError> {
     let fixture = parse_harness_fixture(
         r#"
 name: deterministic-web
 kind: skill
 target: ..
 caller:
-  web_responses:
+  http_responses:
     "https://fixture.runx.invalid/source":
       status: 200
       headers: { content-type: text/plain }
@@ -148,8 +148,10 @@ caller:
 "#,
     )?;
 
-    let responses =
-        parse_harness_web_responses(fixture.caller.get("web_responses"), "caller.web_responses")?;
+    let responses = parse_harness_http_responses(
+        fixture.caller.get("http_responses"),
+        "caller.http_responses",
+    )?;
     let response = responses
         .get("https://fixture.runx.invalid/source")
         .expect("validated response must remain addressable by exact URL");
@@ -166,7 +168,7 @@ name: deterministic-web
 kind: skill
 target: ..
 caller:
-  web_responses:
+  http_responses:
     "file:///private/source":
       status: 200
       body: hidden
@@ -182,9 +184,30 @@ caller:
 #[test]
 fn rejects_empty_declared_harness_response_map() {
     let error = parse_harness_fixture(
-        "name: deterministic-web\nkind: skill\ntarget: ..\ncaller:\n  web_responses: {}\n",
+        "name: deterministic-web\nkind: skill\ntarget: ..\ncaller:\n  http_responses: {}\n",
     )
     .expect_err("declared response map must fail closed when empty");
+
+    assert!(
+        matches!(error, HarnessFixtureError::Invalid { field, .. } if field == "caller.http_responses")
+    );
+}
+
+#[test]
+fn rejects_retired_web_response_field_without_network_fallback() {
+    let error = parse_harness_fixture(
+        r#"
+name: deterministic-web
+kind: skill
+target: ..
+caller:
+  web_responses:
+    "https://fixture.runx.invalid/source":
+      status: 200
+      body: hello world
+"#,
+    )
+    .expect_err("retired response field must fail instead of reaching the network");
 
     assert!(
         matches!(error, HarnessFixtureError::Invalid { field, .. } if field == "caller.web_responses")

@@ -178,12 +178,12 @@ where
 {
     let fixture_path = fixture_path.as_ref();
     let fixture = load_harness_fixture(fixture_path)?;
-    let web_responses = runx_parser::harness_fixture::parse_harness_web_responses(
-        fixture.caller.get("web_responses"),
-        "caller.web_responses",
+    let http_responses = runx_parser::harness_fixture::parse_harness_http_responses(
+        fixture.caller.get("http_responses"),
+        "caller.http_responses",
     )
     .map_err(HarnessFixtureError::Parser)?;
-    options.effects = super::effects_with_harness_web_responses(&options.effects, &web_responses);
+    options.effects = super::effects_with_harness_http_responses(&options.effects, &http_responses);
     let target_path = resolve_target_path(fixture_path, &fixture.target)?;
     seed_harness_receipts(&fixture, &target_path, &options)?;
     let receipt_signature = options.receipt_signature.clone();

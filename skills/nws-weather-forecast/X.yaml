@@ -1,5 +1,5 @@
 skill: nws-weather-forecast
-version: "0.1.2"
+version: "0.1.3"
 catalog:
   kind: graph
   audience: public

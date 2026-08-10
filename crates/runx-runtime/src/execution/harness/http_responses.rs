@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use runx_parser::HarnessWebResponseFixture;
+use runx_parser::HarnessHttpResponseFixture;
 
 use crate::effects::RuntimeEffectRegistry;
 use crate::http::{RuntimeHttpHeader, RuntimeHttpResponse};
@@ -8,9 +8,9 @@ use crate::http::{RuntimeHttpHeader, RuntimeHttpResponse};
 /// Attach exact fixture bytes to a cloned execution registry. No public
 /// runtime input, environment variable, or provider configuration can create
 /// this state; only the harness front calls this function.
-pub(crate) fn effects_with_harness_web_responses(
+pub(crate) fn effects_with_harness_http_responses(
     effects: &RuntimeEffectRegistry,
-    fixtures: &BTreeMap<String, HarnessWebResponseFixture>,
+    fixtures: &BTreeMap<String, HarnessHttpResponseFixture>,
 ) -> RuntimeEffectRegistry {
     if fixtures.is_empty() {
         return effects.clone();

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::ValidationError;
 pub use crate::harness_fixture::{
-    HarnessExpectation, HarnessWebResponseFixture, OperatorJourneyClaim, OperatorJourneyMode,
+    HarnessExpectation, HarnessHttpResponseFixture, OperatorJourneyClaim, OperatorJourneyMode,
     ReceiptExpectation,
 };
 
@@ -22,6 +22,7 @@ const HARNESS_CASE_FIELDS: &[&str] = &[
     "expect",
     "operator_journeys",
 ];
+const HARNESS_CALLER_FIELDS: &[&str] = &["answers", "approvals", "http_responses"];
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HarnessCallerFixture {
@@ -30,7 +31,7 @@ pub struct HarnessCallerFixture {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub approvals: Option<BTreeMap<String, bool>>,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub web_responses: BTreeMap<String, HarnessWebResponseFixture>,
+    pub http_responses: BTreeMap<String, HarnessHttpResponseFixture>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -157,6 +158,7 @@ fn validate_harness_caller(
     value: JsonObject,
     field: &str,
 ) -> Result<HarnessCallerFixture, ValidationError> {
+    FIELDS.reject_unknown_fields(&value, field, HARNESS_CALLER_FIELDS)?;
     Ok(HarnessCallerFixture {
         answers: FIELDS.optional_object(value.get("answers"), &format!("{field}.answers"))?,
         approvals: Some(validate_bool_object(
@@ -165,9 +167,9 @@ fn validate_harness_caller(
                 .unwrap_or_default(),
             &format!("{field}.approvals"),
         )?),
-        web_responses: crate::harness_fixture::parse_harness_web_responses(
-            value.get("web_responses"),
-            &format!("{field}.web_responses"),
+        http_responses: crate::harness_fixture::parse_harness_http_responses(
+            value.get("http_responses"),
+            &format!("{field}.http_responses"),
         )
         .map_err(|error| FIELDS.validation_error(error.to_string()))?,
     })

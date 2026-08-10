@@ -46,7 +46,7 @@ pub use skill::{
     ActDeclaration, ArtifactPageFraming, ArtifactPageSource, CatalogApproval, CatalogAudience,
     CatalogCompletion, CatalogExecution, CatalogKind, CatalogMetadata, CatalogRole,
     CatalogSemanticCode, CatalogSemanticDiagnostic, CatalogSemanticReport, CatalogVisibility,
-    CredentialRequirement, HarnessCallerFixture, HarnessExpectation, HarnessWebResponseFixture,
+    CredentialRequirement, HarnessCallerFixture, HarnessExpectation, HarnessHttpResponseFixture,
     InputMode, OperatorJourneyClaim, OperatorJourneyMode, RawSkillIr, ReceiptExpectation,
     RunnerHarnessCase, RunnerHarnessManifest, SkillArtifactContract, SkillExternalAdapterManifest,
     SkillIdempotencyPolicy, SkillInput, SkillMcpServer, SkillRetryPolicy, SkillRunnerDefinition,

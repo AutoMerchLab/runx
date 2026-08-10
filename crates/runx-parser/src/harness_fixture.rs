@@ -57,7 +57,7 @@ pub struct OperatorJourneyClaim {
 /// Production skill inputs and environment never carry this contract.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct HarnessWebResponseFixture {
+pub struct HarnessHttpResponseFixture {
     pub status: u16,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub headers: BTreeMap<String, String>,
@@ -244,7 +244,16 @@ fn validate_fixture(fixture: RawHarnessFixture) -> Result<HarnessFixture, Harnes
     if let Some(runner) = &fixture.runner {
         require_non_empty(runner, "runner")?;
     }
-    parse_harness_web_responses(fixture.caller.get("web_responses"), "caller.web_responses")?;
+    if fixture.caller.contains_key("web_responses") {
+        return Err(HarnessFixtureError::Invalid {
+            field: "caller.web_responses".to_owned(),
+            message: "was renamed to caller.http_responses".to_owned(),
+        });
+    }
+    parse_harness_http_responses(
+        fixture.caller.get("http_responses"),
+        "caller.http_responses",
+    )?;
     Ok(HarnessFixture {
         name: fixture.name,
         kind: fixture.kind,
@@ -264,14 +273,14 @@ fn validate_fixture(fixture: RawHarnessFixture) -> Result<HarnessFixture, Harnes
     })
 }
 
-/// Parse the deterministic web-response lane shared by conventional and inline
+/// Parse the deterministic HTTP-response lane shared by conventional and inline
 /// harness fixtures. The caller owns exact request URLs; the runtime owns
 /// transport selection and never falls through to the network when this map is
 /// present.
-pub fn parse_harness_web_responses(
+pub fn parse_harness_http_responses(
     value: Option<&JsonValue>,
     field: &str,
-) -> Result<BTreeMap<String, HarnessWebResponseFixture>, HarnessFixtureError> {
+) -> Result<BTreeMap<String, HarnessHttpResponseFixture>, HarnessFixtureError> {
     let Some(value) = value else {
         return Ok(BTreeMap::new());
     };
@@ -279,7 +288,7 @@ pub fn parse_harness_web_responses(
         field: field.to_owned(),
         message: error.to_string(),
     })?;
-    let responses = serde_json::from_value::<BTreeMap<String, HarnessWebResponseFixture>>(encoded)
+    let responses = serde_json::from_value::<BTreeMap<String, HarnessHttpResponseFixture>>(encoded)
         .map_err(|error| HarnessFixtureError::Invalid {
             field: field.to_owned(),
             message: error.to_string(),
@@ -290,13 +299,13 @@ pub fn parse_harness_web_responses(
             message: "must contain at least one exact response when declared".to_owned(),
         });
     }
-    validate_harness_web_responses(responses, field)
+    validate_harness_http_responses(responses, field)
 }
 
-fn validate_harness_web_responses(
-    responses: BTreeMap<String, HarnessWebResponseFixture>,
+fn validate_harness_http_responses(
+    responses: BTreeMap<String, HarnessHttpResponseFixture>,
     field: &str,
-) -> Result<BTreeMap<String, HarnessWebResponseFixture>, HarnessFixtureError> {
+) -> Result<BTreeMap<String, HarnessHttpResponseFixture>, HarnessFixtureError> {
     const MAX_RESPONSES: usize = 32;
     const MAX_BODY_BYTES: usize = 1_048_576;
     const MAX_HEADERS: usize = 64;

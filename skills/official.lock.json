@@ -148,7 +148,7 @@
   },
   {
     "skill_id": "runx/governed-outbound",
-    "version": "sha-8d48aef7c5fd",
+    "version": "sha-2f2ca9650451",
     "digest": "30aa2232752613891af5ba0192e6b59ca418fe2e8e6694bda00200b4848b9322",
     "catalog_visibility": "public",
     "catalog_role": "context"
@@ -302,14 +302,14 @@
   },
   {
     "skill_id": "runx/nws-weather-forecast",
-    "version": "sha-6cea5f658dc9",
+    "version": "sha-d02c619b85b7",
     "digest": "382cdef84f660e7cfdc2dbbfd7e8382d204d1f4ee46ffa019549615f9c2f745c",
     "catalog_visibility": "public",
     "catalog_role": "branded"
   },
   {
     "skill_id": "runx/open-meteo-weather-forecast",
-    "version": "sha-35ecca01bc40",
+    "version": "sha-a8ebe46e1674",
     "digest": "041e0ec18fa4b646b46b72d34662eabbbfbc43ab5a3a65423b49b3e94e81d159",
     "catalog_visibility": "public",
     "catalog_role": "branded"
@@ -526,7 +526,7 @@
   },
   {
     "skill_id": "runx/web-fetch",
-    "version": "sha-d664c61e19ba",
+    "version": "sha-1b27e49ae761",
     "digest": "89445885a1de165c3f709e00ef7e42911a8e89f048a3bd734916452dfb56720c",
     "catalog_visibility": "public",
     "catalog_role": "canonical"

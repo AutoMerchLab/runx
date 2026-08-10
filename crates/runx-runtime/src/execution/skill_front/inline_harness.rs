@@ -173,9 +173,9 @@ fn execute_inline_harness_case(
     overrides: &SkillRunOverrides,
 ) -> InlineHarnessCaseOutcome {
     let is_graph = runner.source.source_type == runx_parser::SourceKind::Graph;
-    let effects = crate::execution::harness::effects_with_harness_web_responses(
+    let effects = crate::execution::harness::effects_with_harness_http_responses(
         context.effects,
-        &case.caller.web_responses,
+        &case.caller.http_responses,
     );
     match execute_skill_run_with_overrides(request, overrides, &effects) {
         Ok(output) => {
@@ -553,7 +553,7 @@ mod tests {
                 JsonValue::String("ready".to_owned()),
             )])),
             approvals: Some(BTreeMap::from([(approval_id.to_owned(), true)])),
-            web_responses: BTreeMap::new(),
+            http_responses: BTreeMap::new(),
         };
         let answers = seeded_answers_from_caller(&caller)
             .map_err(|error| error.to_string())?
