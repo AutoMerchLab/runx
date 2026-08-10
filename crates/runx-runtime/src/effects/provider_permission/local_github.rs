@@ -1229,6 +1229,11 @@ fn run_gh_json(
             "gh output exceeded the 1 MiB runtime bound",
         ));
     }
+    if matches!(outcome.status.code(), Some(126 | 127)) {
+        return Err(LocalGithubError::new(
+            "gh is unavailable; install GitHub CLI, run `gh auth login`, and retry",
+        ));
+    }
     if !outcome.status.success() {
         return Err(LocalGithubError::new(format!(
             "gh failed with exit status {}; verify login, repository access, and the requested operation",
@@ -2235,7 +2240,7 @@ mod tests {
         ) else {
             return Err("missing gh unexpectedly passed preflight".into());
         };
-        assert!(error.to_string().contains("gh failed"));
+        assert!(error.to_string().contains("gh is unavailable"));
 
         let timeout_fixture = FakeGh::new("runxhq/runx", true)?;
         let mut timeout_env = timeout_fixture.env();
