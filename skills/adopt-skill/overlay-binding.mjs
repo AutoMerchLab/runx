@@ -6,6 +6,7 @@ import {
   records,
   requiredRecord,
   requiredString,
+  sameBounds,
   stringValue,
   strings,
   uniqueStrings,
@@ -19,6 +20,7 @@ export function prepareBinding(inputs) {
   try {
     if (evidence.decision !== "ready") throw new Error("source evidence is not ready");
     if (draft.decision !== "ready") throw new Error("profile draft is not ready");
+    enforceBounds(evidence.bounds, draft.bounds_applied);
     const profileDocument = requiredString(draft.profile_document, "profile_draft.profile_document");
     return {
       binding_candidate: {
@@ -83,6 +85,7 @@ export function assembleBinding(inputs) {
       assertion_count: numberValue(harness.case_count),
       case_names: uniqueStrings(harness.case_names),
     },
+    bounds: Object.keys(record(evidence.bounds)).length > 0 ? evidence.bounds : null,
     publication: evidence.publication,
     tags: uniqueStrings(evidence.tags),
   };
@@ -150,6 +153,19 @@ export function finalizeBinding(inputs) {
       success_checkpoint: { milestone: "binding_blocked", description: "No binding files were released." },
     },
   };
+}
+
+function enforceBounds(bounds, applied) {
+  const declared = record(bounds);
+  if (Object.keys(declared).length === 0) {
+    if (Object.keys(record(applied)).length > 0) {
+      throw new Error("profile draft applied bounds the caller did not supply");
+    }
+    return;
+  }
+  if (!sameBounds(declared, applied)) {
+    throw new Error("profile draft did not apply the caller-supplied bounds exactly");
+  }
 }
 
 function rejectedDocuments(candidate, reason) {

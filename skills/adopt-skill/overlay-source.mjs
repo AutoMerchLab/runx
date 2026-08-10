@@ -1,5 +1,6 @@
 import {
   boundedMessage,
+  normalizedBounds,
   numberValue,
   record,
   records,
@@ -12,6 +13,10 @@ import {
 export function planSource(inputs) {
   const findings = [];
   const rawPath = stringValue(inputs.skill_path);
+  const { bounds, errors: boundsErrors } = normalizedBounds(inputs.bounds);
+  for (const message of boundsErrors) {
+    findings.push({ code: "bounds.invalid", path: "bounds", message });
+  }
   let base = "workspace";
   let path = "";
   const label = rawPath || "";
@@ -35,6 +40,7 @@ export function planSource(inputs) {
       label,
       upstream: record(inputs.upstream),
       registry: record(inputs.registry),
+      bounds,
       tags: uniqueStrings(inputs.tags),
       publication: Object.keys(record(inputs.publication)).length > 0 ? inputs.publication : { status: "not_published" },
       findings,
@@ -67,6 +73,7 @@ export function inspectSource(inputs) {
       },
       upstream,
       registry,
+      bounds: request.bounds ?? null,
       tags: uniqueStrings(request.tags),
       publication: request.publication,
     },
