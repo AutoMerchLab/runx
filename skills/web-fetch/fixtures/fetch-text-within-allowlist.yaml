@@ -15,12 +15,17 @@ operator_journeys:
       - Do not rediscover the target host or broaden the allowlist.
       - Do not fetch the same source again downstream when the digest-bound artifact is present.
 inputs:
-  url: https://www.rfc-editor.org/rfc/rfc9110.html
+  url: https://fixture.runx.invalid/rfc9110
   allowlist:
-    - www.rfc-editor.org
-    - rfc-editor.org
+    - fixture.runx.invalid
   extract: text
   max_bytes: 200000
+caller:
+  web_responses:
+    "https://fixture.runx.invalid/rfc9110":
+      status: 200
+      headers: { content-type: text/plain }
+      body: HTTP Semantics defines interoperable request and response behavior.
 expect:
   status: sealed
   receipt:

@@ -131,3 +131,62 @@ fn rejects_receipt_setup_path_escape() {
         matches!(error, HarnessFixtureError::Invalid { field, .. } if field == "setup.receipts[0]")
     );
 }
+
+#[test]
+fn admits_bounded_exact_harness_web_responses() -> Result<(), HarnessFixtureError> {
+    let fixture = parse_harness_fixture(
+        r#"
+name: deterministic-web
+kind: skill
+target: ..
+caller:
+  web_responses:
+    "https://fixture.runx.invalid/source":
+      status: 200
+      headers: { content-type: text/plain }
+      body: hello world
+"#,
+    )?;
+
+    let responses =
+        parse_harness_web_responses(fixture.caller.get("web_responses"), "caller.web_responses")?;
+    let response = responses
+        .get("https://fixture.runx.invalid/source")
+        .expect("validated response must remain addressable by exact URL");
+    assert_eq!(response.status, 200);
+    assert_eq!(response.body, "hello world");
+    Ok(())
+}
+
+#[test]
+fn rejects_non_http_harness_response_keys() {
+    let error = parse_harness_fixture(
+        r#"
+name: deterministic-web
+kind: skill
+target: ..
+caller:
+  web_responses:
+    "file:///private/source":
+      status: 200
+      body: hidden
+"#,
+    )
+    .expect_err("non-HTTP fixture response must fail");
+
+    assert!(
+        matches!(error, HarnessFixtureError::Invalid { field, .. } if field.contains("file:///private/source"))
+    );
+}
+
+#[test]
+fn rejects_empty_declared_harness_response_map() {
+    let error = parse_harness_fixture(
+        "name: deterministic-web\nkind: skill\ntarget: ..\ncaller:\n  web_responses: {}\n",
+    )
+    .expect_err("declared response map must fail closed when empty");
+
+    assert!(
+        matches!(error, HarnessFixtureError::Invalid { field, .. } if field == "caller.web_responses")
+    );
+}

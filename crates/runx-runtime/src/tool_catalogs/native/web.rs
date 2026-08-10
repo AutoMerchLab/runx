@@ -71,8 +71,14 @@ fn fetch(invocation: &NativeInvocation<'_, WebFetchInput>) -> Result<WebFetchOut
         Ok(request) => request,
         Err(result) => return decode_typed_output(TOOL, wrapped(result)),
     };
-    let transport = ReqwestHttpTransport::new()
-        .map_err(|error| invalid(format!("native HTTP transport unavailable: {error}")))?;
+    let transport = if let Some(responses) = invocation.effects.harness_http_responses() {
+        WebTransport::Harness(responses)
+    } else {
+        WebTransport::Live(
+            ReqwestHttpTransport::new()
+                .map_err(|error| invalid(format!("native HTTP transport unavailable: {error}")))?,
+        )
+    };
     let output = match fetch_redirects(
         &transport,
         request.initial_url,
@@ -191,7 +197,7 @@ enum FetchError {
 }
 
 fn fetch_redirects(
-    transport: &ReqwestHttpTransport,
+    transport: &WebTransport<'_>,
     start_url: Url,
     allowlist: &[String],
     max_bytes: usize,
@@ -223,6 +229,49 @@ fn fetch_redirects(
     Err(FetchError::Provider(
         "redirect loop did not terminate".to_owned(),
     ))
+}
+
+enum WebTransport<'a> {
+    Live(ReqwestHttpTransport),
+    Harness(&'a std::collections::BTreeMap<String, RuntimeHttpResponse>),
+}
+
+impl WebTransport<'_> {
+    fn send_bounded(
+        &self,
+        request: RuntimeHttpRequest,
+        max_bytes: usize,
+    ) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
+        match self {
+            Self::Live(transport) => transport.send_bounded(request, max_bytes),
+            Self::Harness(responses) => {
+                let response = responses.get(&request.url).cloned().ok_or_else(|| {
+                    RuntimeHttpError::Transport {
+                        message: format!(
+                            "the harness declared deterministic web responses but none matched {}",
+                            request.url
+                        ),
+                    }
+                })?;
+                Ok(bound_harness_response(response, max_bytes))
+            }
+        }
+    }
+}
+
+fn bound_harness_response(
+    mut response: RuntimeHttpResponse,
+    max_bytes: usize,
+) -> RuntimeHttpResponse {
+    if response.body_bytes <= max_bytes {
+        return response;
+    }
+    let bounded = response.body.as_bytes()[..max_bytes].to_vec();
+    response.body = String::from_utf8_lossy(&bounded).into_owned();
+    response.body_digest = runx_contracts::sha256_prefixed(&bounded);
+    response.body_bytes = bounded.len();
+    response.truncated = true;
+    response
 }
 
 fn admit_redirect(
@@ -289,5 +338,45 @@ fn invalid(message: impl Into<String>) -> RuntimeError {
     RuntimeError::SkillFailed {
         skill_name: TOOL.to_owned(),
         message: message.into(),
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::expect_used)]
+mod harness_transport_tests {
+    use std::collections::BTreeMap;
+
+    use super::{HttpMethod, RuntimeHttpRequest, RuntimeHttpResponse, WebTransport};
+
+    #[test]
+    fn declared_harness_responses_never_fall_through_to_live_network() {
+        let responses = BTreeMap::from([(
+            "https://fixture.runx.invalid/source".to_owned(),
+            RuntimeHttpResponse::new(200, "hello world"),
+        )]);
+        let transport = WebTransport::Harness(&responses);
+        let exact = transport
+            .send_bounded(
+                RuntimeHttpRequest {
+                    method: HttpMethod::Get,
+                    url: "https://fixture.runx.invalid/source".to_owned(),
+                    headers: Vec::new(),
+                    body: None,
+                },
+                1024,
+            )
+            .expect("declared response must be returned");
+        assert_eq!(exact.body, "hello world");
+
+        let missing = transport.send_bounded(
+            RuntimeHttpRequest {
+                method: HttpMethod::Get,
+                url: "https://fixture.runx.invalid/missing".to_owned(),
+                headers: Vec::new(),
+                body: None,
+            },
+            1024,
+        );
+        assert!(missing.is_err());
     }
 }

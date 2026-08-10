@@ -2,6 +2,7 @@ mod assertions;
 pub mod fixtures;
 mod json_assertions;
 pub mod runner;
+mod web_responses;
 
 pub use assertions::HarnessReplayReceipt;
 #[cfg(feature = "cli-tool")]
@@ -16,3 +17,4 @@ pub(crate) use json_assertions::assert_json_expectation;
 pub use runner::{
     HarnessReplayError, HarnessReplayOutput, run_harness_fixture, run_harness_fixture_with_adapter,
 };
+pub(crate) use web_responses::effects_with_harness_web_responses;

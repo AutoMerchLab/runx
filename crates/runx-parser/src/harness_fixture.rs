@@ -53,6 +53,17 @@ pub struct OperatorJourneyClaim {
     pub must_not_repeat: Vec<String>,
 }
 
+/// One exact HTTP response available only while the native harness executes.
+/// Production skill inputs and environment never carry this contract.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HarnessWebResponseFixture {
+    pub status: u16,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
+    pub body: String,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HarnessFixture {
     pub name: String,
@@ -233,6 +244,7 @@ fn validate_fixture(fixture: RawHarnessFixture) -> Result<HarnessFixture, Harnes
     if let Some(runner) = &fixture.runner {
         require_non_empty(runner, "runner")?;
     }
+    parse_harness_web_responses(fixture.caller.get("web_responses"), "caller.web_responses")?;
     Ok(HarnessFixture {
         name: fixture.name,
         kind: fixture.kind,
@@ -250,6 +262,96 @@ fn validate_fixture(fixture: RawHarnessFixture) -> Result<HarnessFixture, Harnes
             .collect::<Result<_, _>>()?,
         metadata: fixture.metadata,
     })
+}
+
+/// Parse the deterministic web-response lane shared by conventional and inline
+/// harness fixtures. The caller owns exact request URLs; the runtime owns
+/// transport selection and never falls through to the network when this map is
+/// present.
+pub fn parse_harness_web_responses(
+    value: Option<&JsonValue>,
+    field: &str,
+) -> Result<BTreeMap<String, HarnessWebResponseFixture>, HarnessFixtureError> {
+    let Some(value) = value else {
+        return Ok(BTreeMap::new());
+    };
+    let encoded = serde_json::to_value(value).map_err(|error| HarnessFixtureError::Invalid {
+        field: field.to_owned(),
+        message: error.to_string(),
+    })?;
+    let responses = serde_json::from_value::<BTreeMap<String, HarnessWebResponseFixture>>(encoded)
+        .map_err(|error| HarnessFixtureError::Invalid {
+            field: field.to_owned(),
+            message: error.to_string(),
+        })?;
+    if responses.is_empty() {
+        return Err(HarnessFixtureError::Invalid {
+            field: field.to_owned(),
+            message: "must contain at least one exact response when declared".to_owned(),
+        });
+    }
+    validate_harness_web_responses(responses, field)
+}
+
+fn validate_harness_web_responses(
+    responses: BTreeMap<String, HarnessWebResponseFixture>,
+    field: &str,
+) -> Result<BTreeMap<String, HarnessWebResponseFixture>, HarnessFixtureError> {
+    const MAX_RESPONSES: usize = 32;
+    const MAX_BODY_BYTES: usize = 1_048_576;
+    const MAX_HEADERS: usize = 64;
+    if responses.len() > MAX_RESPONSES {
+        return Err(HarnessFixtureError::Invalid {
+            field: field.to_owned(),
+            message: format!("must contain at most {MAX_RESPONSES} responses"),
+        });
+    }
+    for (url, response) in &responses {
+        let response_field = format!("{field}.{url}");
+        if url.len() > 2048
+            || url.chars().any(char::is_whitespace)
+            || !(url.starts_with("https://") || url.starts_with("http://"))
+        {
+            return Err(HarnessFixtureError::Invalid {
+                field: response_field,
+                message: "key must be an exact absolute HTTP(S) URL no longer than 2048 characters"
+                    .to_owned(),
+            });
+        }
+        if !(100..=599).contains(&response.status) {
+            return Err(HarnessFixtureError::Invalid {
+                field: format!("{response_field}.status"),
+                message: "must be an HTTP status from 100 through 599".to_owned(),
+            });
+        }
+        if response.headers.len() > MAX_HEADERS {
+            return Err(HarnessFixtureError::Invalid {
+                field: format!("{response_field}.headers"),
+                message: format!("must contain at most {MAX_HEADERS} headers"),
+            });
+        }
+        if response.headers.iter().any(|(name, value)| {
+            name.is_empty()
+                || name.len() > 256
+                || value.len() > 8192
+                || name.contains('\r')
+                || name.contains('\n')
+                || value.contains('\r')
+                || value.contains('\n')
+        }) {
+            return Err(HarnessFixtureError::Invalid {
+                field: format!("{response_field}.headers"),
+                message: "header names and values must be bounded single-line strings".to_owned(),
+            });
+        }
+        if response.body.len() > MAX_BODY_BYTES {
+            return Err(HarnessFixtureError::Invalid {
+                field: format!("{response_field}.body"),
+                message: format!("must be no larger than {MAX_BODY_BYTES} UTF-8 bytes"),
+            });
+        }
+    }
+    Ok(responses)
 }
 
 fn validate_operator_journey(

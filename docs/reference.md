@@ -763,6 +763,24 @@ replay fails unless every supplied answer is observable in the root or step
 output. For stateful work, use one graph fixture to prove the transition and
 durable readback; do not depend on fixture filename order.
 
+Web-reading fixtures can bind exact response bytes without turning a semantic
+test into a live-network smoke test:
+
+```yaml
+caller:
+  web_responses:
+    "https://fixture.runx.invalid/source":
+      status: 200
+      headers: { content-type: text/plain }
+      body: hello world
+```
+
+The key is the exact requested URL. When this map is present, an unmatched URL
+fails instead of reaching the network. The native `web.fetch` path still owns
+URL and redirect admission, extraction, body limits, digests, and provenance;
+only transport response bytes come from the harness. This lane is unavailable
+to skill inputs, environment configuration, and ordinary live runs.
+
 Package replay uses a disposable project-owned workspace below `.runx/harness`
 and a separate receipt store for every case, then cleans that scratch state.
 Cases therefore cannot satisfy each other through filename order or ambient

@@ -1,5 +1,5 @@
 skill: governed-outbound
-version: "0.3.0"
+version: "0.3.1"
 catalog:
   kind: graph
   audience: public
@@ -29,13 +29,18 @@ harness:
         RUNX_PROVIDER_PERMISSION_GRANT_ID: provider-read-demo
         RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: '["runx:net:allowlist"]'
       inputs:
-        url: https://example.com/
+        url: https://fixture.runx.invalid/source
         allowlist:
-          - example.com
+          - fixture.runx.invalid
         channel: "#incidents"
         principal: account:ops-bot
         operator_context: Public incident-summary planning; provider delivery remains separate.
       caller:
+        web_responses:
+          "https://fixture.runx.invalid/source":
+            status: 200
+            headers: { content-type: text/plain }
+            body: hello world
         answers:
           agent_task.redact-pii-detect.output:
             redaction_draft:
@@ -63,7 +68,7 @@ harness:
                 requires_reconfirmation: false
               content:
                 draft_ref: governed-outbound:redacted-content
-                digest: sha256:d003f90bc10db991b76e6fb480123cfce2cbb2b2784abe687fccccfa7ecacad8
+                digest: sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9
                 subject_or_title: Example Domain update
               gates:
                 preflight_required: true
@@ -73,7 +78,7 @@ harness:
               provider_actions:
                 - channel.post
               evidence_refs:
-                - sha256:d003f90bc10db991b76e6fb480123cfce2cbb2b2784abe687fccccfa7ecacad8
+                - sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9
               success_checkpoint:
                 milestone: provider_delivery_required
                 description: Provider delivery and readback remain required after this plan.
@@ -97,7 +102,7 @@ harness:
                 principal: account:ops-bot
                 audience: "#incidents"
                 redaction:
-                  digest: sha256:d003f90bc10db991b76e6fb480123cfce2cbb2b2784abe687fccccfa7ecacad8
+                  digest: sha256:b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9
                 provider_actions:
                   - channel.post
         receipt:
@@ -108,12 +113,17 @@ harness:
         RUNX_PROVIDER_PERMISSION_GRANT_ID: provider-read-hold-demo
         RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: '["runx:net:allowlist"]'
       inputs:
-        url: https://example.com/
+        url: https://fixture.runx.invalid/source
         allowlist:
-          - example.com
+          - fixture.runx.invalid
         channel: "#incidents"
         principal: account:ops-bot
       caller:
+        web_responses:
+          "https://fixture.runx.invalid/source":
+            status: 200
+            headers: { content-type: text/plain }
+            body: hello world
         answers:
           agent_task.redact-pii-detect.output:
             redaction_draft:

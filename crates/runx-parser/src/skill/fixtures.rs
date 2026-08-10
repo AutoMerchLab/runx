@@ -5,7 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::ValidationError;
 pub use crate::harness_fixture::{
-    HarnessExpectation, OperatorJourneyClaim, OperatorJourneyMode, ReceiptExpectation,
+    HarnessExpectation, HarnessWebResponseFixture, OperatorJourneyClaim, OperatorJourneyMode,
+    ReceiptExpectation,
 };
 
 use super::FIELDS;
@@ -28,6 +29,8 @@ pub struct HarnessCallerFixture {
     pub answers: Option<JsonObject>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub approvals: Option<BTreeMap<String, bool>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub web_responses: BTreeMap<String, HarnessWebResponseFixture>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -162,6 +165,11 @@ fn validate_harness_caller(
                 .unwrap_or_default(),
             &format!("{field}.approvals"),
         )?),
+        web_responses: crate::harness_fixture::parse_harness_web_responses(
+            value.get("web_responses"),
+            &format!("{field}.web_responses"),
+        )
+        .map_err(|error| FIELDS.validation_error(error.to_string()))?,
     })
 }
 

@@ -117,7 +117,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/governed-outbound",
-        version: "sha-252ddfaaf086",
+        version: "sha-8d48aef7c5fd",
         digest: "30aa2232752613891af5ba0192e6b59ca418fe2e8e6694bda00200b4848b9322",
     },
     OfficialSkillLockEntry {
@@ -387,7 +387,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/web-fetch",
-        version: "sha-2b0cd663c2b7",
+        version: "sha-d664c61e19ba",
         digest: "89445885a1de165c3f709e00ef7e42911a8e89f048a3bd734916452dfb56720c",
     },
     OfficialSkillLockEntry {

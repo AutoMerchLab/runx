@@ -19,8 +19,8 @@ pub use catalog::{
     CatalogSemanticReport, CatalogVisibility, analyze_catalog_semantics,
 };
 pub use fixtures::{
-    HarnessCallerFixture, HarnessExpectation, OperatorJourneyClaim, OperatorJourneyMode,
-    ReceiptExpectation, RunnerHarnessCase, RunnerHarnessManifest,
+    HarnessCallerFixture, HarnessExpectation, HarnessWebResponseFixture, OperatorJourneyClaim,
+    OperatorJourneyMode, ReceiptExpectation, RunnerHarnessCase, RunnerHarnessManifest,
 };
 pub use governance::validate_skill_artifact_contract;
 pub use markdown::parse_skill_markdown;
