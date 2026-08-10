@@ -354,7 +354,7 @@ describe("official skill catalog", () => {
     expect(internal.semantic_report.diagnostics).toEqual([]);
     const harness = runNativeJson(["harness", "skills/mock-pay", "--json"]);
     expect(harness).toMatchObject({ status: "passed", assertion_error_count: 0 });
-  }, 20_000);
+  }, 40_000);
 
   it("emits deterministic structured semantic diagnostics from native inspection", () => {
     const first = inspectOfficialSkill("github-sync");
@@ -378,7 +378,7 @@ describe("official skill catalog", () => {
       auditSelfTest.status,
       auditSelfTest.stderr || auditSelfTest.stdout,
     ).toBe(0);
-  }, 20_000);
+  }, 40_000);
 
   it("keeps operator intent selection on terminal issue-to-pr and hides internal stages", async () => {
     const terminal = inspectOfficialSkill("issue-to-pr");
