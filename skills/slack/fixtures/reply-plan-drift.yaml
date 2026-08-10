@@ -24,7 +24,7 @@ inputs:
       description: Digest-bound Slack reply awaits approved provider execution.
   thread_locator: slack://T123ABC/C123ABC/1750000000.000001
   text: changed
-  idempotency_key: f215e7d9-bf76-4582-84eb-9f7112583b2c
+  idempotency_key: 00000000-0000-4000-8000-000000000002
 expect:
   status: sealed
   steps: [digest, bind-plan, bind-content]

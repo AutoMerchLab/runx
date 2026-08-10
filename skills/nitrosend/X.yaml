@@ -1,5 +1,5 @@
 skill: nitrosend
-version: "0.3.0"
+version: "0.3.1"
 catalog:
   kind: skill
   audience: public
@@ -328,7 +328,7 @@ runners:
         operation: schedule
         scheduled_at: '2026-08-04T09:00:00Z'
         confirm_send_to_all: false
-        idempotency_key: campaign-42-20260804T090000Z
+        idempotency_key: campaign-campaign-001
         brand_sid: brnd_demo123
     graph:
       name: nitrosend-send-campaign

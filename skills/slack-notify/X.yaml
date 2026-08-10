@@ -1,5 +1,5 @@
 skill: slack-notify
-version: "0.4.0"
+version: "0.4.1"
 catalog:
   kind: graph
   audience: public
@@ -214,7 +214,7 @@ runners:
           validation: { status: pass, findings: [] }
         channel_locator: slack://T123/C456
         text: Release 0.8.2 is live.
-        idempotency_key: 12517f95-4b46-4f8e-87fd-3858ef0f94f2
+        idempotency_key: 00000000-0000-4000-8000-000000000001
     graph:
       name: slack-notify-deliver
       result_from: [readback]

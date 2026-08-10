@@ -1,5 +1,5 @@
 skill: google-search-console
-version: "0.1.5"
+version: "0.1.6"
 
 catalog:
   kind: graph
@@ -740,7 +740,7 @@ runners:
           external_status: not_submitted
           validation: { status: pass, findings: [] }
           plan_digest: sha256:b4fd8d22720f9a14c8143c467909f424bbe26fab7ace4594eeabf554382226fc
-        idempotency_key: 8ecb1159-cd35-4915-aec8-9466aa9f8a0d
+        idempotency_key: 00000000-0000-4000-8000-000000000001
     graph:
       name: google-search-console-submit-sitemap
       result_from: [finalize]

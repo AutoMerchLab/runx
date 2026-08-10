@@ -1,5 +1,5 @@
 skill: moltbook
-version: "0.4.0"
+version: "0.4.1"
 
 catalog:
   kind: skill
@@ -546,7 +546,7 @@ runners:
             - { source_ref: changelog_1, observed_at: "2026-07-16T10:00:00Z" }
           delivery_status: not_posted
           validation: { status: pass, findings: [] }
-        idempotency_key: 1c9a81bc-94c2-43f7-922c-a59145c7290e
+        idempotency_key: fixture-moltbook-publish-001
     graph:
       name: moltbook-publish
       result_from: [readback]

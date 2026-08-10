@@ -112,7 +112,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/google-search-console",
-        version: "sha-1c86530de5e1",
+        version: "sha-71ae1297a98f",
         digest: "58034fe89c3893b58c97cf00a1282283423545ba3c9472312846b1f8db2088a6",
     },
     OfficialSkillLockEntry {
@@ -197,7 +197,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/moltbook",
-        version: "sha-b323402db1b1",
+        version: "sha-ddab5d36e9dd",
         digest: "1295db650b43311cefa2dfe470afa6b2fa00911f474175d68d4702dd50620480",
     },
     OfficialSkillLockEntry {
@@ -222,7 +222,7 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/nitrosend",
-        version: "sha-cc0b8b228fb2",
+        version: "sha-cbb92ee3fa87",
         digest: "25c1d932035cefdac9341a4978ab9c259c4a2404f7ab8dd12cac1e4ee170bbe8",
     },
     OfficialSkillLockEntry {
@@ -317,12 +317,12 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/slack",
-        version: "sha-80ac2374272a",
+        version: "sha-c1f13af0105b",
         digest: "54c62aceb637734265165f943f3fe5f713878bf2bea42098af5bfcc27ded23ae",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/slack-notify",
-        version: "sha-11a039d3105b",
+        version: "sha-b3cc95a9e87d",
         digest: "50fcca88e86bd713474696ded4803910328fc17727ef73937463af00b8586023",
     },
     OfficialSkillLockEntry {
@@ -367,12 +367,12 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
     },
     OfficialSkillLockEntry {
         skill_id: "runx/vault-unseal",
-        version: "sha-770420a1242f",
+        version: "sha-4b16f532d854",
         digest: "8165f75a60026e399d2a1548e4e8fcf0147eeeeb0dee18b171b7a6b9b422b89e",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/vuln-disclosure",
-        version: "sha-4adbfddae260",
+        version: "sha-9c746366a31f",
         digest: "af6c7ff61d857f346c611bbffb0689f0adaaa4adbaa460b502d8266fdb41cdae",
     },
     OfficialSkillLockEntry {

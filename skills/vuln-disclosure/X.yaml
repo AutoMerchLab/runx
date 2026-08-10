@@ -1,5 +1,5 @@
 skill: vuln-disclosure
-version: "0.4.1"
+version: "0.4.2"
 
 catalog:
   kind: graph
@@ -295,7 +295,7 @@ runners:
           provider_status: not_called
           next_action: route through an approved provider publication adapter
         provider: github
-        idempotency_key: d91cf92a-b2e1-43be-9827-b470a27b01e7
+        idempotency_key: advisory-advisory-001
     graph:
       name: vuln-disclosure-publish
       result_from: [readback]
