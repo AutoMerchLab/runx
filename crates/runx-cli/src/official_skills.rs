@@ -311,6 +311,11 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
         digest: "cf8e8732664dddce70f2f5aebf34bed987e497c0bf400ece72b9dd619867ef2f",
     },
     OfficialSkillLockEntry {
+        skill_id: "runx/sbom-maker",
+        version: "sha-e94fac7aefd6",
+        digest: "35cbf71ec5334991992c968e3b31aa5a079f813a503d19e16dd0f2eff41fe200",
+    },
+    OfficialSkillLockEntry {
         skill_id: "runx/schema-guard",
         version: "sha-dcde1af949ea",
         digest: "8cf85c86e819c47d9ff7a088a8c7b0124d2b6236a1d5ededb1def8a41bd714f9",

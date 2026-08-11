@@ -148,7 +148,7 @@ evidence, not copied into the repo by default.
 | `ops` | `github-sync`, `governed-outbound`, `chief-of-staff`, `issue-intake`, `issue-triage`, `messageboard`, `n8n-handoff`, `ops-desk`, `send-as`, `zapier-handoff` |
 | `payments` | `charge`, `dispute-respond`, `mock-pay`, `mock-refund`, `mpp-pay`, `mpp-refund`, `purchase-approval`, `refund`, `settle-invoice`, `spend`, `stripe-pay`, `stripe-refund`, `x402-pay` |
 | `research` | `ecosystem-brief`, `research` |
-| `security` | `cve-audit`, `vuln-triage`, `vuln-disclosure`, `data-subject-request`, `least-privilege`, `audit-receipt`, `redact-pii`, `sign-receipt`, `vault-unseal` |
+| `security` | `cve-audit`, `sbom-maker`, `vuln-triage`, `vuln-disclosure`, `data-subject-request`, `least-privilege`, `audit-receipt`, `redact-pii`, `sign-receipt`, `vault-unseal` |
 
 Graph stages, harness fixtures, context-only packages, and provider bindings are
 not listed here unless they are meant to be run as catalog packages. Their
