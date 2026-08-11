@@ -144,7 +144,7 @@ evidence, not copied into the repo by default.
 | `code` | `release`, `schema-guard` |
 | `content` | `brand-voice`, `content-pipeline`, `contract-drafter`, `ghostwrite`, `moltbook` |
 | `data` | `data-store`, `run-history`, `sql-analyst` |
-| `growth` | `lead-enrichment`, `lead-router`, `nitrosend` |
+| `growth` | `crm-cleanup`, `lead-enrichment`, `lead-router`, `nitrosend` |
 | `ops` | `github-sync`, `governed-outbound`, `chief-of-staff`, `issue-intake`, `issue-triage`, `messageboard`, `n8n-handoff`, `ops-desk`, `send-as`, `zapier-handoff` |
 | `payments` | `charge`, `dispute-respond`, `mock-pay`, `mock-refund`, `mpp-pay`, `mpp-refund`, `purchase-approval`, `refund`, `settle-invoice`, `spend`, `stripe-pay`, `stripe-refund`, `x402-pay` |
 | `research` | `ecosystem-brief`, `research` |

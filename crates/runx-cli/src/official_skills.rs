@@ -61,6 +61,11 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
         digest: "63d51951256ec45a7962b4a7bc03dc2e39404925510938ce7839234aa118f529",
     },
     OfficialSkillLockEntry {
+        skill_id: "runx/crm-cleanup",
+        version: "sha-e2c56d35d30b",
+        digest: "709841e7bc7848204fba9ce2be4603d0746e716651f9a90a2be5976ebcc8e9be",
+    },
+    OfficialSkillLockEntry {
         skill_id: "runx/cve-audit",
         version: "sha-584ebce1db68",
         digest: "f854fc78beabc4d704dc7a3b209ac7e47bf32b1a94d7efd56ff0860d1a14dd51",
