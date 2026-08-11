@@ -82,8 +82,10 @@ readback both succeed.
    bounded target. Runx derives the normalized operations, payload, expected
    stable identity, result fields, and digest-bound idempotency key. Missing
    connector authority blocks before mutation.
-9. Apply once, then verify using the mutation result. Never re-plan or resend
-   during `verify`.
+9. Apply once, then verify using the mutation result. The provider-observed
+   mutation idempotency key must match the runtime-bound send key; the
+   independent read operation has its own operation identity. Never re-plan or
+   resend during `verify`.
 10. Return `needs_input` for missing principal, audience, content digest,
     consent basis, or provider readiness; return `refused` for gate bypass.
 

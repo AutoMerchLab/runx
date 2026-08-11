@@ -19,11 +19,12 @@ expect:
     state: sealed
     disposition: closed
     reason_code: graph_closed
-    child_receipt_count: 3
+    child_receipt_count: 4
   steps:
     - classify
     - persist-route
     - readback
+    - finalize-route
   step_outputs:
     persist-route:
       subset:
@@ -52,6 +53,14 @@ expect:
               adapter: data.sqlite
               provider: sqlite-event-store
               storage_class: sqlite
+    finalize-route:
+      subset:
+        route_persistence:
+          data:
+            schema: runx.business_ops.route_persistence.v1
+            append_status: committed
+            aggregate_id: launch-readiness
+            after_version: 1
 metadata:
   public_skill: business-ops
   source_case: route-persists-with-provider-evidence

@@ -22,7 +22,9 @@ small core shape that teams copy when they want one objective to fan out into a
 chain of skills, then replay that chain with receipts.
 
 The explicit `route_and_append` runner takes the same selected lane, appends
-its packet through `data-store`, and reads back the projection. The same graph
+its packet through `data-store`, reads back the projection, and returns one
+`route_persistence` result that distinguishes a new commit from an idempotent
+replay while preserving the selected `lane_packet`. The same graph
 can use local JSON, SQLite, Postgres, D1, Redis, or a product adapter by changing
 the `data_source_ref` binding. Its aggregate id, expected version, and
 idempotency key stay explicit because guessing them would corrupt durable

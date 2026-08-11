@@ -110,7 +110,7 @@ pub(super) fn execute_graph_skill_run(
     // resume-from-checkpoint channel.
     let seeded = overrides.seeded_answers.clone();
     let resume = request.answers_path.is_some() && seeded.is_none();
-    let answers = match &seeded {
+    let incoming_answers = match &seeded {
         Some(seeded) => seeded.clone(),
         None => match &request.answers_path {
             Some(path) => read_answers(path)?,
@@ -130,6 +130,11 @@ pub(super) fn execute_graph_skill_run(
     } else {
         None
     };
+    let mut answers = resumed_state
+        .as_ref()
+        .map(|state| state.resolution_answers.clone())
+        .unwrap_or_default();
+    answers.merge(incoming_answers)?;
     let graph_inputs = resumed_state
         .as_ref()
         .map(|state| {
@@ -150,7 +155,7 @@ pub(super) fn execute_graph_skill_run(
         )));
     }
     let graph = materialize_graph_parameter_inputs(graph, &graph_inputs);
-    let mut host = SkillRunGraphHost::with_inline(answers, inline_resolver);
+    let mut host = SkillRunGraphHost::with_inline(answers.clone(), inline_resolver);
     let mut checkpoint = if let Some(state) = resumed_state.take() {
         state.checkpoint
     } else {
@@ -201,6 +206,7 @@ pub(super) fn execute_graph_skill_run(
                             package_digest: package_digest.to_owned(),
                             execution_closure_digest: execution_closure_digest.to_owned(),
                             graph_inputs: graph_inputs.clone(),
+                            resolution_answers: answers.clone(),
                             checkpoint: completed_checkpoint,
                         },
                     )?;
@@ -231,6 +237,7 @@ pub(super) fn execute_graph_skill_run(
                         package_digest: package_digest.to_owned(),
                         execution_closure_digest: execution_closure_digest.to_owned(),
                         graph_inputs: graph_inputs.clone(),
+                        resolution_answers: answers.clone(),
                         checkpoint: next_checkpoint.clone(),
                     },
                 )?;
@@ -249,6 +256,7 @@ pub(super) fn execute_graph_skill_run(
                         package_digest: package_digest.to_owned(),
                         execution_closure_digest: execution_closure_digest.to_owned(),
                         graph_inputs: graph_inputs.clone(),
+                        resolution_answers: answers.clone(),
                         checkpoint: previous_checkpoint,
                     },
                 )?;
@@ -569,6 +577,8 @@ pub(super) struct GraphSkillRunState {
     pub(super) execution_closure_digest: String,
     #[serde(default)]
     pub(super) graph_inputs: JsonObject,
+    #[serde(default)]
+    pub(super) resolution_answers: ResolutionAnswers,
     pub(super) checkpoint: GraphCheckpoint,
 }
 
@@ -695,7 +705,7 @@ impl Host for SkillRunGraphHost {
     ) -> Result<Option<ResolutionResponse>, RuntimeError> {
         let request_id = resolution_request_id(&request).to_owned();
         if let Some(answer) = self.answers.get(&request_id) {
-            if self.answers.has_request_digest_bindings() {
+            if self.answers.requires_request_digest(&request_id) {
                 let supplied = self.answers.request_digest(&request_id).ok_or_else(|| {
                     RuntimeError::SkillFailed {
                         skill_name: "graph-resolution".to_owned(),

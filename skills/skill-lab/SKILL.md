@@ -453,7 +453,8 @@ do not compensate with more fixtures, prose padding, or a bespoke wrapper.
 
 ### `skill-lab-architecture`
 
-Return exactly one `architecture_decision` using
+Call `runx_final_result` with exactly one root field,
+`{"architecture_decision": <decision>}`. The inner decision uses
 `runx.skill.architecture_decision.v1`. Choose `build`, `extend_existing`,
 `no_skill`, or `needs_core`. Explain the operator value and the manual's
 knowledge contract: purpose, required evidence, decision logic, stop conditions,
@@ -463,8 +464,22 @@ and recovery. Assign every required behavior to exactly one real execution lane
 a domain module supplies a specific justification. Record inspected, selected,
 and genuinely missing native capabilities; use `needs_core` only for a runtime
 or security invariant or a primitive with two independent existing consumers.
+Before calling `runx_final_result`, call `runx.skill.plan` once with the exact
+`authoring_context.base_digest` and candidate `architecture_decision`. Repair
+any deterministic architecture error it returns, then submit the same validated
+decision. For every `native_capability` behavior, `reuse_ref` must be exactly one
+entry from `native_reuse.selected_capabilities`; split a behavior when it needs
+more than one capability. This prevalidation is read-only and does not replace
+the graph's native digest-binding step.
 When `package_name` is supplied, treat it as the requested package identity;
 do not silently rename the package from its target path.
+
+Inspect an existing target in one bounded pass. Use the target file list and
+repository root in `authoring_context` to read the relevant files together with
+`fs.read_bundle`; do not crawl them one at a time or reread files already
+present in context. Once the evidence is sufficient, return the declared
+architecture decision instead of spending the remaining round budget on
+optional discovery.
 
 For every `build` or `extend_existing` decision, make the identity decision
 explicit. Record the current and proposed name, choose `keep`, `rename`,
@@ -535,6 +550,11 @@ that agrees with the plan. A non-write draft has empty `writes` and `deletes`.
 A write contains the smallest complete target-relative file set, the exact
 planned deletions, a truthful summary and non-goals, and the outputs the package
 will actually produce.
+
+When source bytes are needed, read the planned target files together with
+`fs.read_bundle`. Do not spend separate rounds reopening files already supplied
+by `authoring_context` or the architecture plan; reserve the final round for the
+complete `change_draft`.
 
 When `package_name` is supplied, use it consistently in the `SKILL.md`
 frontmatter and the `X.yaml` `skill` field. The directory is a placement

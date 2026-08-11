@@ -20,7 +20,12 @@ use crate::http::{HttpMethod, RuntimeHttpHeader, RuntimeHttpRequest, RuntimeHttp
 
 const ANTHROPIC_MESSAGES_URL: &str = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
-const MAX_TOKENS: u32 = 4096;
+// Architecture and review agents can return a deeply structured packet in one
+// final tool call. A 4K ceiling can truncate that tool input before its root
+// object closes, which the loop then misreads as repeated contract failure.
+// Eight thousand tokens remains bounded while fitting the declared packets
+// shipped by the first-party catalog.
+const MAX_TOKENS: u32 = 8192;
 const MANAGED_AGENT_SKILL: &str = "managed-agent";
 
 /// A tool offered to the model: the LLM-facing tool definition the model may
@@ -263,7 +268,7 @@ mod tests {
     }
 
     #[test]
-    fn parses_tool_use_from_response() {
+    fn parses_tool_use_from_response() -> Result<(), String> {
         let stub = StubTransport {
             body: r#"{"content":[{"type":"text","text":"thinking"},{"type":"tool_use","id":"tu_1","name":"pay","input":{"amount":50}}]}"#
                 .to_owned(),
@@ -279,6 +284,13 @@ mod tests {
             "should parse the tool_use block; got: {result:?}"
         );
         let sent = stub.requests.borrow();
+        let body: WireValue = serde_json::from_str(
+            sent.first()
+                .and_then(|request| request.body.as_deref())
+                .unwrap_or_default(),
+        )
+        .map_err(|error| format!("managed-agent request body should be JSON: {error}"))?;
+        assert_eq!(body["max_tokens"], MAX_TOKENS);
         assert!(
             sent.len() == 1
                 && sent[0].body.as_deref().is_some_and(|body| {
@@ -287,6 +299,7 @@ mod tests {
             "request body should carry the model and prompt; got: {:?}",
             sent.first().and_then(|request| request.body.as_deref())
         );
+        Ok(())
     }
 
     #[test]

@@ -808,6 +808,7 @@
                           },
                           "type": "object"
                         },
+                        "output_schema": {},
                         "provenance": {
                           "items": {
                             "additionalProperties": false,
