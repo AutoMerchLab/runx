@@ -56,6 +56,11 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
         digest: "2f37f66a7062ee26e868b4be51ff5caf18657f4fba9034ca9908491e37c63675",
     },
     OfficialSkillLockEntry {
+        skill_id: "runx/contract-drafter",
+        version: "sha-99f958c38dee",
+        digest: "63d51951256ec45a7962b4a7bc03dc2e39404925510938ce7839234aa118f529",
+    },
+    OfficialSkillLockEntry {
         skill_id: "runx/cve-audit",
         version: "sha-584ebce1db68",
         digest: "f854fc78beabc4d704dc7a3b209ac7e47bf32b1a94d7efd56ff0860d1a14dd51",
@@ -64,6 +69,11 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
         skill_id: "runx/data-store",
         version: "sha-4fb1c8b6641c",
         digest: "d3d15497ed1b541d779b7286dc5bf26ddfdbd510b27abd9b65465415e98b0365",
+    },
+    OfficialSkillLockEntry {
+        skill_id: "runx/data-subject-request",
+        version: "sha-9574401fc179",
+        digest: "907896b55cf93648733f00bc6302f05e3b0fb3507614b3944ac83a037e0c330a",
     },
     OfficialSkillLockEntry {
         skill_id: "runx/deep-research",
