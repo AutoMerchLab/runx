@@ -364,6 +364,13 @@
     "catalog_role": "canonical"
   },
   {
+    "skill_id": "runx/postmortem-maker",
+    "version": "sha-cf1513790f30",
+    "digest": "95fbf25f826a020401bc4e1dc19f5fe577ad981eb2d0854a782a08891a0304cb",
+    "catalog_visibility": "public",
+    "catalog_role": "canonical"
+  },
+  {
     "skill_id": "runx/prior-art",
     "version": "sha-5edb22c541b7",
     "digest": "bbb454fc017ecb66b6ff96913ee049c480267873948212ae30ff38e4e69fb8eb",

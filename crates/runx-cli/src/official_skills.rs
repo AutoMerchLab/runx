@@ -271,6 +271,11 @@ pub(crate) const OFFICIAL_SKILLS: &[OfficialSkillLockEntry] = &[
         digest: "9c5da4bc2950eeb8b8b060a920021671272b9232d3c265f878620ffa0d1d6c6c",
     },
     OfficialSkillLockEntry {
+        skill_id: "runx/postmortem-maker",
+        version: "sha-cf1513790f30",
+        digest: "95fbf25f826a020401bc4e1dc19f5fe577ad981eb2d0854a782a08891a0304cb",
+    },
+    OfficialSkillLockEntry {
         skill_id: "runx/prior-art",
         version: "sha-5edb22c541b7",
         digest: "bbb454fc017ecb66b6ff96913ee049c480267873948212ae30ff38e4e69fb8eb",
