@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::output::OutputField;
 use crate::schema::{NonEmptyString, RunxSchema};
-use crate::{AgentExecutionRequirements, JsonObject};
+use crate::{AgentExecutionRequirements, JsonObject, JsonValue};
 use std::collections::BTreeMap;
 
 /// The artifact context entry version. Committed as `const: "1"`.
@@ -126,5 +126,10 @@ pub struct AgentContextEnvelope {
     pub execution_location: Option<ExecutionLocation>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output: Option<BTreeMap<String, OutputField>>,
+    /// Exact root JSON Schema for the final result, including any declared
+    /// packet contract. `output` remains the concise field index used by hosts;
+    /// this schema is the validator offered to managed agents.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_schema: Option<JsonValue>,
     pub trust_boundary: NonEmptyString,
 }

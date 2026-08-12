@@ -1,5 +1,5 @@
 skill: diagnose-skill-run
-version: "0.4.1"
+version: "0.4.2"
 
 catalog:
   kind: graph
@@ -205,6 +205,8 @@ runners:
               improvement_proposals: array
               next_harness_checks: array
           allowed_tools:
+            - fs.read
+          scopes:
             - fs.read
           context:
             receipt_evidence: evidence.ledger_answer_packet.data

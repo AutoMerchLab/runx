@@ -217,6 +217,8 @@ pub enum JournalProjectionError {
     InvalidTimestamp { field: &'static str, value: String },
     #[error("failed to read local run ledgers")]
     LedgerStoreUnreadable,
+    #[error("failed to read local graph run state")]
+    RunStateStoreUnreadable,
 }
 
 pub fn list_local_history(
@@ -287,10 +289,11 @@ pub fn list_local_history_with_checkpoints_and_policy(
         Err(ReceiptStoreError::MissingStore { .. }) => Vec::new(),
         Err(error) => return Err(error.into()),
     };
-    let terminal_ids = all_rows
+    let mut terminal_ids = all_rows
         .iter()
         .flat_map(|row| [row.id.clone(), row.harness_id.clone()])
         .collect::<BTreeSet<_>>();
+    terminal_ids.extend(terminal_graph_checkpoint_ids(store.root())?);
     let terminal_rows = all_rows.clone();
     let mut rows = all_rows
         .into_iter()
@@ -774,6 +777,51 @@ fn list_paused_runs(
         }
     }
     Ok(summaries)
+}
+
+fn terminal_graph_checkpoint_ids(
+    receipt_dir: &Path,
+) -> Result<BTreeSet<String>, JournalProjectionError> {
+    let runs_dir = receipt_dir.join("runs");
+    let entries = match fs::read_dir(runs_dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(BTreeSet::new()),
+        Err(_) => return Err(JournalProjectionError::RunStateStoreUnreadable),
+    };
+    let mut terminal = BTreeSet::new();
+    for entry in entries {
+        let entry = entry.map_err(|_| JournalProjectionError::RunStateStoreUnreadable)?;
+        let path = entry.path();
+        if !path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".graph-state.json"))
+        {
+            continue;
+        }
+        let raw = fs::read_to_string(path)
+            .map_err(|_| JournalProjectionError::RunStateStoreUnreadable)?;
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&raw) else {
+            // A malformed state must not make a paused run disappear. The
+            // actual resume path will reject it with the state-specific error.
+            continue;
+        };
+        if value.get("schema").and_then(serde_json::Value::as_str)
+            != Some("runx.graph_skill_state.v1")
+        {
+            continue;
+        }
+        let Some(run_id) = value.get("run_id").and_then(serde_json::Value::as_str) else {
+            continue;
+        };
+        let status = value
+            .pointer("/checkpoint/state/status")
+            .and_then(serde_json::Value::as_str);
+        if matches!(status, Some("succeeded" | "failed" | "blocked")) {
+            terminal.insert(run_id.to_owned());
+        }
+    }
+    Ok(terminal)
 }
 
 fn paused_run_from_checkpoint(checkpoint: &PausedRunCheckpoint) -> PausedRunSummary {

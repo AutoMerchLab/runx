@@ -1,5 +1,5 @@
 skill: sourcey
-version: "0.1.5"
+version: "0.1.6"
 
 catalog:
   kind: skill
@@ -68,6 +68,10 @@ runners:
             - git.current_branch
             - git.diff_name_only
             - cli.capture_help
+          scopes:
+            - fs.read
+            - git.read
+            - cli.read
           artifacts:
             named_emits:
               discovery_report: discovery_report
@@ -96,6 +100,9 @@ runners:
           allowed_tools:
             - fs.read
             - cli.capture_help
+          scopes:
+            - fs.read
+            - cli.read
           context:
             discovery_report: discover.discovery_report.data
           artifacts:
@@ -137,6 +144,8 @@ runners:
               evaluation_report: object
           allowed_tools:
             - fs.read
+          scopes:
+            - fs.read
           context:
             discovery_report: discover.discovery_report.data
             doc_bundle: author.doc_bundle.data
@@ -155,6 +164,8 @@ runners:
             outputs:
               revision_bundle: object
           allowed_tools:
+            - fs.read
+          scopes:
             - fs.read
           context:
             discovery_report: discover.discovery_report.data

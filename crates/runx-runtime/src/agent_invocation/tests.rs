@@ -6,7 +6,7 @@ use runx_contracts::{
     EnvironmentRequirements, ExecutionCredentialRequirement, ExecutionRequirements, JsonObject,
     JsonValue, ProvenanceEntry, sha256_prefixed,
 };
-use runx_parser::{SkillSource, SourceKind};
+use runx_parser::{SkillArtifactContract, SkillSource, SourceKind};
 
 use super::profiles::{BUNDLED_VOICE_PROFILE_CONTENT, bundled_profile};
 use super::{AgentActInvocationSourceType, build_agent_act_invocation};
@@ -117,6 +117,146 @@ fn agent_invocation_pins_voice_and_output_contracts() -> Result<(), Box<dyn std:
         resolved.envelope.output.as_ref().map(BTreeMap::len),
         Some(1)
     );
+    Ok(())
+}
+
+#[test]
+fn agent_invocation_hydrates_the_exact_declared_packet_schema()
+-> Result<(), Box<dyn std::error::Error>> {
+    let skill = temp_skill("Produce one bounded, evidence-backed plan.")?;
+    fs::create_dir_all(skill.path().join("packets"))?;
+    fs::write(
+        skill.path().join("packets/plan.schema.json"),
+        r#"{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-runx-packet-id": "runx.test.agent-plan.v1",
+  "type": "object",
+  "required": ["decision"],
+  "properties": {"decision": {"type": "string"}},
+  "additionalProperties": false
+}"#,
+    )?;
+    let mut request = invocation(skill.path().to_path_buf(), Some(outputs()));
+    request.artifacts = Some(SkillArtifactContract {
+        emits: None,
+        named_emits: Some(BTreeMap::from([("plan".to_owned(), "plan".to_owned())])),
+        packets: Some(BTreeMap::from([(
+            "plan".to_owned(),
+            "runx.test.agent-plan.v1".to_owned(),
+        )])),
+        wrap_as: None,
+        packet: None,
+    });
+
+    let resolved = build_agent_act_invocation(&request, AgentActInvocationSourceType::Agent)?;
+    let output_schema = resolved
+        .envelope
+        .output_schema
+        .as_ref()
+        .ok_or("exact agent output schema is missing")?;
+    assert_eq!(
+        output_schema
+            .as_object()
+            .and_then(|schema| schema.get("type"))
+            .and_then(JsonValue::as_str),
+        Some("object")
+    );
+    assert!(
+        output_schema
+            .as_object()
+            .is_some_and(|schema| !schema.contains_key("allOf"))
+    );
+    let validator =
+        jsonschema::draft202012::options().build(&serde_json::to_value(output_schema)?)?;
+    let invalid = JsonValue::Object(BTreeMap::from([(
+        "plan".to_owned(),
+        JsonValue::Object(BTreeMap::new()),
+    )]));
+    let valid = JsonValue::Object(BTreeMap::from([(
+        "plan".to_owned(),
+        JsonValue::Object(BTreeMap::from([(
+            "decision".to_owned(),
+            JsonValue::String("ready".to_owned()),
+        )])),
+    )]));
+
+    assert!(validator.validate(&serde_json::to_value(invalid)?).is_err());
+    let valid = serde_json::to_value(valid)?;
+    validator
+        .validate(&valid)
+        .map_err(|error| error.to_string())?;
+    Ok(())
+}
+
+#[test]
+fn agent_invocation_applies_a_wrapped_packet_to_the_complete_result()
+-> Result<(), Box<dyn std::error::Error>> {
+    let skill = temp_skill("Produce one bounded, evidence-backed plan.")?;
+    fs::create_dir_all(skill.path().join("packets"))?;
+    fs::write(
+        skill.path().join("packets/complete.schema.json"),
+        r#"{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "x-runx-packet-id": "runx.test.complete-agent-result.v1",
+  "type": "object",
+  "required": ["plan"],
+  "properties": {
+    "plan": {
+      "type": "object",
+      "required": ["decision"],
+      "properties": {"decision": {"type": "string"}},
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}"#,
+    )?;
+    let mut request = invocation(skill.path().to_path_buf(), Some(outputs()));
+    request.artifacts = Some(SkillArtifactContract {
+        emits: None,
+        named_emits: None,
+        packets: None,
+        wrap_as: Some("complete_result".to_owned()),
+        packet: Some("runx.test.complete-agent-result.v1".to_owned()),
+    });
+
+    let resolved = build_agent_act_invocation(&request, AgentActInvocationSourceType::Agent)?;
+    let output_schema = resolved
+        .envelope
+        .output_schema
+        .as_ref()
+        .ok_or("exact agent output schema is missing")?;
+    assert_eq!(
+        output_schema
+            .as_object()
+            .and_then(|schema| schema.get("type"))
+            .and_then(JsonValue::as_str),
+        Some("object")
+    );
+    assert!(
+        output_schema
+            .as_object()
+            .is_some_and(|schema| !schema.contains_key("allOf"))
+    );
+    let validator =
+        jsonschema::draft202012::options().build(&serde_json::to_value(output_schema)?)?;
+    let invalid = JsonValue::Object(BTreeMap::from([(
+        "plan".to_owned(),
+        JsonValue::Object(BTreeMap::new()),
+    )]));
+    let valid = JsonValue::Object(BTreeMap::from([(
+        "plan".to_owned(),
+        JsonValue::Object(BTreeMap::from([(
+            "decision".to_owned(),
+            JsonValue::String("ready".to_owned()),
+        )])),
+    )]));
+
+    assert!(validator.validate(&serde_json::to_value(invalid)?).is_err());
+    let valid = serde_json::to_value(valid)?;
+    validator
+        .validate(&valid)
+        .map_err(|error| error.to_string())?;
     Ok(())
 }
 

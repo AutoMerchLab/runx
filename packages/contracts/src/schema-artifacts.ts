@@ -942,6 +942,7 @@ export const runxSchemaArtifacts = {
                             },
                             "type": "object"
                           },
+                          "output_schema": {},
                           "provenance": {
                             "items": {
                               "additionalProperties": false,
@@ -6778,6 +6779,7 @@ export const runxSchemaArtifacts = {
             },
             "type": "object"
           },
+          "output_schema": {},
           "provenance": {
             "items": {
               "additionalProperties": false,
@@ -7474,6 +7476,7 @@ export const runxSchemaArtifacts = {
         },
         "type": "object"
       },
+      "output_schema": {},
       "provenance": {
         "items": {
           "additionalProperties": false,
@@ -24519,6 +24522,7 @@ export const runxSchemaArtifacts = {
                         },
                         "type": "object"
                       },
+                      "output_schema": {},
                       "provenance": {
                         "items": {
                           "additionalProperties": false,
@@ -63290,6 +63294,7 @@ export const runxSchemaArtifacts = {
                     },
                     "type": "object"
                   },
+                  "output_schema": {},
                   "provenance": {
                     "items": {
                       "additionalProperties": false,

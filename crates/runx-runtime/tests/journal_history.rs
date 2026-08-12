@@ -436,6 +436,37 @@ fn history_does_not_double_list_paused_ledger_with_terminal_receipt()
 }
 
 #[test]
+fn terminal_graph_checkpoint_supersedes_a_stale_resolution_ledger()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = TestDir::new()?;
+    let workspace = temp.path().join("workspace");
+    let project_runx_dir = workspace.join(".runx");
+    let store = LocalReceiptStore::new(project_runx_dir.join("receipts"));
+    let run_id = "run_spend_completed";
+    write_paused_ledger(store.root(), run_id, "spend", "2026-05-18T01:00:00.000Z")?;
+    let runs_dir = store.root().join("runs");
+    fs::create_dir_all(&runs_dir)?;
+    fs::write(
+        runs_dir.join(format!("{run_id}.graph-state.json")),
+        serde_json::to_vec(&json!({
+            "schema": "runx.graph_skill_state.v1",
+            "run_id": run_id,
+            "checkpoint": {"state": {"status": "succeeded"}}
+        }))?,
+    )?;
+
+    let history = list_local_history(
+        &store,
+        &workspace,
+        &project_runx_dir,
+        &HistoryFilter::default(),
+    )?;
+
+    assert!(history.pending_runs.is_empty());
+    Ok(())
+}
+
+#[test]
 fn journal_history_limit_bounds_receipts_and_pending_runs_together()
 -> Result<(), Box<dyn std::error::Error>> {
     let temp = TestDir::new()?;

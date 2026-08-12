@@ -52,7 +52,7 @@ exceptions = [
   { name = "ring", version = "=0.17.14", allow = ["ISC"] },
   { name = "rustls-webpki", version = "=0.103.13", allow = ["ISC"] },
   { name = "untrusted", version = "=0.9.0", allow = ["ISC"] },
-  { name = "webpki-root-certs", version = "=1.0.8", allow = ["CDLA-Permissive-2.0"] },
+  { name = "webpki-root-certs", version = "=1.0.9", allow = ["CDLA-Permissive-2.0"] },
 ]
 
 [sources]

@@ -1,5 +1,5 @@
 skill: business-ops
-version: "0.2.0"
+version: "0.2.1"
 
 catalog:
   kind: graph
@@ -151,7 +151,7 @@ runners:
       operator_context: { definition: operator_context }
     graph:
       name: business-ops-route-and-append
-      result_from: [persist-route, readback]
+      result_from: [finalize-route]
       steps:
         - id: classify
           skill: ./graph/ops-lane
@@ -178,3 +178,34 @@ runners:
             data_source_ref: "$input.data_source_ref"
             resource: "$input.resource"
             aggregate_id: "$input.aggregate_id"
+        - id: finalize-route
+          context:
+            lane_packet: classify.lane_packet.data
+            append_result: persist-route.data_operation_result.data
+            projection_result: readback.data_operation_result.data
+          run:
+            type: javascript
+            module: business-ops.mjs
+            export: finalizeDurableRoute
+            outputs:
+              lane_packet: object
+              route_persistence:
+                type: object
+                schema:
+                  required: [schema, aggregate_id, append_status, before_version, after_version, idempotency_key, projection, provider_evidence]
+                  additionalProperties: false
+                  properties:
+                    schema: { const: runx.business_ops.route_persistence.v1 }
+                    aggregate_id: { type: string, minLength: 1 }
+                    append_status: { type: string, enum: [committed, idempotent_replay] }
+                    before_version: { type: integer, minimum: 0 }
+                    after_version: { type: integer, minimum: 0 }
+                    idempotency_key: { type: string, minLength: 1 }
+                    projection: { type: object, additionalProperties: true }
+                    provider_evidence: { type: object, additionalProperties: true }
+          artifacts:
+            named_emits:
+              lane_packet: lane_packet
+              route_persistence: route_persistence
+            packets:
+              route_persistence: runx.business_ops.route_persistence.v1

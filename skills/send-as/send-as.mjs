@@ -123,8 +123,11 @@ export function finalizeSend(inputs) {
   if (text(applied.audience_ref) !== text(plan.audience?.ref)) {
     errors.push("provider result audience does not match the approved plan");
   }
-  if (!text(apply.idempotency_key) || text(readback.idempotency_key) !== text(apply.idempotency_key)) {
-    errors.push("idempotency binding changed across apply and readback");
+  if (!text(apply.idempotency_key) || text(applied.idempotency_key) !== text(apply.idempotency_key)) {
+    errors.push("provider mutation did not preserve the runtime idempotency binding");
+  }
+  if (text(observed.idempotency_key) !== text(apply.idempotency_key)) {
+    errors.push("provider readback did not observe the original mutation idempotency binding");
   }
 
   const complete = errors.length === 0;

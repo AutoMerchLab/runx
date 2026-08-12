@@ -16,6 +16,12 @@ boundary for policy evidence: the receipt proves which inputs were inspected,
 which lawful basis was named, which scope was allowed or refused, and which
 durable verdict was appended.
 
+## Composes
+
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
+- `data-store#append_event`
+
 ## Procedure
 
 1. Native `data.digest` binds the exact request packet and policy.

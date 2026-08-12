@@ -5,6 +5,8 @@ import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { validateRunnerManifestYaml } from "./lib/native-parser.mjs";
+
 const schema = "runx.core_skill_operator_value_audit.v1";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const allowedArchetypes = new Set([
@@ -53,6 +55,7 @@ function buildReport(options) {
   const official = readOfficialLock();
   const review = readProductReview();
   const catalog = readNativeCatalog(runx);
+  const toolCatalog = readNativeToolCatalog(runx);
   const findings = validateCoverage({ official, review, catalog });
   const entries = [];
   let rewrittenManualCount = 0;
@@ -73,6 +76,7 @@ function buildReport(options) {
       findings.push(`${name}: native inspection returned name ${inspection.name ?? "<missing>"}`);
     }
     findings.push(...validateSemanticReport(name, inspection.semantic_report));
+    findings.push(...validateAgentToolScopes(name, toolCatalog));
     semanticDiagnosticCount += Array.isArray(inspection.semantic_report?.diagnostics)
       ? inspection.semantic_report.diagnostics.length
       : 0;
@@ -140,7 +144,7 @@ function buildReport(options) {
     });
   }
 
-  const maximumNativeProcesses = official.length + 1;
+  const maximumNativeProcesses = official.length + 2;
   if (nativeProcessCount > maximumNativeProcesses) {
     findings.push(
       `native audit launched ${nativeProcessCount} processes; expected at most ${maximumNativeProcesses}`,
@@ -259,6 +263,54 @@ function readNativeCatalog(runx) {
   return topLevel;
 }
 
+function readNativeToolCatalog(runx) {
+  const output = runJson(runx, ["list", "tools", "--ok-only", "--json"]);
+  if (output.schema !== "runx.list.v1" || !Array.isArray(output.items)) {
+    throw new Error("native tool catalog returned an unsupported envelope");
+  }
+  return new Map(output.items.flatMap((item) => {
+    if (typeof item?.name !== "string" || !Array.isArray(item.scopes)) return [];
+    return [[item.name, new Set(item.scopes)]];
+  }));
+}
+
+function validateAgentToolScopes(name, toolCatalog) {
+  const source = readFileSync(path.join(root, "skills", name, "X.yaml"), "utf8");
+  const profile = validateRunnerManifestYaml(source);
+  const findings = [];
+  for (const [runnerName, runner] of Object.entries(profile.runners ?? {})) {
+    findings.push(...missingAgentToolScopes(
+      `${name}#${runnerName}`,
+      runner.allowedTools,
+      runner.scopes,
+      toolCatalog,
+    ));
+    for (const step of runner.source?.graph?.steps ?? []) {
+      findings.push(...missingAgentToolScopes(
+        `${name}#${runnerName}.${step.id ?? "<unknown-step>"}`,
+        step.allowedTools,
+        step.scopes,
+        toolCatalog,
+      ));
+    }
+  }
+  return findings;
+}
+
+function missingAgentToolScopes(label, allowedTools, declaredScopes, toolCatalog) {
+  if (!Array.isArray(allowedTools) || allowedTools.length === 0) return [];
+  const declared = new Set(Array.isArray(declaredScopes) ? declaredScopes : []);
+  const missing = new Set();
+  for (const tool of allowedTools) {
+    for (const scope of toolCatalog.get(tool) ?? []) {
+      if (!declared.has(scope)) missing.add(scope);
+    }
+  }
+  return missing.size === 0
+    ? []
+    : [`${label}: allowed agent tools require undeclared scopes ${[...missing].sort().join(", ")}`];
+}
+
 function inspectSkill(runx, name) {
   const args = ["skill", "inspect", `skills/${name}`];
   args.push("--json");
@@ -325,6 +377,7 @@ function validateInspectionClaims({
     );
   }
   findings.push(...validateOperatorJourneys(name, record, inspection));
+  findings.push(...validatePublicInvocationReadiness(name, record, inspection, runnerInspections));
   const closure = inspection.execution_closure;
   if (!hasCanonicalExecutionClosure(closure)) {
     findings.push(`${name}: native inspection omitted the canonical execution closure`);
@@ -350,6 +403,32 @@ function validateInspectionClaims({
     if (!hasCanonicalExecutionClosure(runnerInspection.execution_closure)) {
       findings.push(`${name}#${expectedRunner}: native inspection omitted the execution closure`);
     }
+  }
+  return findings;
+}
+
+function validatePublicInvocationReadiness(name, record, inspection, runnerInspections) {
+  if (record.catalog_visibility !== "public") return [];
+  const findings = [];
+  const readiness = inspection.semantic_report?.readiness;
+  if (readiness?.evaluated !== true) {
+    findings.push(`${name}: public skill has no evaluated native readiness report`);
+  }
+  if (readiness?.coldSelection !== true || readiness?.standaloneDefault !== true) {
+    findings.push(`${name}: public skill is not verified for direct agent invocation`);
+  }
+  if (readiness?.composedReuse !== true) {
+    findings.push(`${name}: public skill is not verified for composed Runx invocation`);
+  }
+  const defaultRunner = inspection.semantic_report?.defaultRunner;
+  const defaultInspection = runnerInspections.find(
+    (entry) => entry.runner?.name === defaultRunner,
+  );
+  const examples = defaultInspection?.runner?.input_schema?.examples;
+  if (!Array.isArray(examples) || examples.length === 0) {
+    findings.push(`${name}#${defaultRunner ?? "<missing>"}: agent default has no copy-valid invocation example`);
+  } else if (Buffer.byteLength(JSON.stringify(examples[0]), "utf8") > 4096) {
+    findings.push(`${name}#${defaultRunner}: agent default invocation example exceeds 4096 bytes`);
   }
   return findings;
 }
@@ -641,6 +720,28 @@ function parseOptions(args) {
 }
 
 function runSelfTests() {
+  const toolCatalog = new Map([
+    ["fs.read", new Set(["fs.read"])],
+    ["git.status", new Set(["git.read"])],
+  ]);
+  assert(
+    missingAgentToolScopes(
+      "alpha#default.inspect",
+      ["fs.read", "git.status"],
+      ["fs.read"],
+      toolCatalog,
+    )[0]?.includes("git.read"),
+    "agent tool scopes must be declared before managed execution",
+  );
+  assert(
+    missingAgentToolScopes(
+      "alpha#default.inspect",
+      ["fs.read", "git.status"],
+      ["fs.read", "git.read"],
+      toolCatalog,
+    ).length === 0,
+    "complete agent tool scopes must pass",
+  );
   const table = [
     "# Review",
     "",
@@ -677,7 +778,7 @@ function runSelfTests() {
     status: "ok",
     name: "alpha",
     runners: ["default"],
-    runner: { name: "default" },
+    runner: { name: "default", input_schema: { examples: [{ objective: "fixture" }] } },
     catalog: { visibility: "public", role: "canonical" },
     execution_closure: {
       summary: "tool:data.read",
@@ -693,6 +794,17 @@ function runSelfTests() {
       skill: "alpha",
       defaultRunner: "default",
       diagnostics: [],
+      readiness: {
+        evaluated: true,
+        coldSelection: true,
+        standaloneDefault: true,
+        composedReuse: true,
+        providerProof: "none",
+        suppliedAgentAnswers: false,
+        coldSelectionConfusors: ["extract", "issue-intake", "research"],
+        standaloneCase: "standalone",
+        composedCase: "composed",
+      },
     },
     operator_journeys: [
       {
@@ -758,6 +870,24 @@ function runSelfTests() {
       runnerInspections: [inspection],
     }).length === 0,
     "matching catalog and execution claims must pass",
+  );
+  assert(
+    validatePublicInvocationReadiness(
+      "alpha",
+      official[0],
+      {
+        ...inspection,
+        semantic_report: {
+          ...inspection.semantic_report,
+          readiness: {
+            ...inspection.semantic_report.readiness,
+            standaloneDefault: false,
+          },
+        },
+      },
+      [inspection],
+    ).some((finding) => finding.includes("not verified for direct agent invocation")),
+    "unverified direct invocation must fail the core-skill audit",
   );
   const missingJourney = {
     ...inspection,

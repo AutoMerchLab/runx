@@ -1,5 +1,5 @@
 skill: send-as
-version: "0.3.0"
+version: "0.3.1"
 
 catalog:
   kind: graph
@@ -242,6 +242,7 @@ runners:
               principal_ref: $input.apply_result.result.principal_ref
               audience_ref: $input.apply_result.result.audience_ref
               content_digest: $input.apply_result.result.content_digest
+              idempotency_key: $input.apply_result.idempotency_key
 
         - id: finalize
           inputs:

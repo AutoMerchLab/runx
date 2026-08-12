@@ -9,6 +9,8 @@ use serde_json::Value;
 
 type TestResult<T = ()> = Result<T, Box<dyn std::error::Error>>;
 
+mod complex_flows;
+
 #[test]
 fn skill_author_journey_discovers_harnesses_runs_verifies_and_reads_history() -> TestResult {
     let root = crate::support::temp_root("runx-operator-author-journey");

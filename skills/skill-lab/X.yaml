@@ -1,5 +1,5 @@
 skill: skill-lab
-version: "0.9.1"
+version: "0.9.4"
 
 catalog:
   kind: graph
@@ -167,8 +167,12 @@ runners:
             outputs:
               architecture_decision: object
           allowed_tools:
-            - fs.read
+            - fs.read_bundle
             - git.status
+            - runx.skill.plan
+          scopes:
+            - fs.read
+            - git.read
           context:
             authoring_context: inspect.authoring_context.data
           inputs:
@@ -238,8 +242,12 @@ runners:
             outputs:
               architecture_decision: object
           allowed_tools:
-            - fs.read
+            - fs.read_bundle
             - git.status
+            - runx.skill.plan
+          scopes:
+            - fs.read
+            - git.read
           context:
             authoring_context: inspect.authoring_context.data
           inputs:
@@ -267,8 +275,12 @@ runners:
             outputs:
               change_draft: object
           allowed_tools:
-            - fs.read
+            - fs.read_bundle
             - git.status
+            - runx.skill.plan
+          scopes:
+            - fs.read
+            - git.read
           context:
             authoring_context: inspect.authoring_context.data
             architecture_plan: plan.architecture_plan.data
@@ -365,8 +377,12 @@ runners:
             outputs:
               architecture_decision: object
           allowed_tools:
-            - fs.read
+            - fs.read_bundle
+            - runx.skill.plan
             - git.status
+          scopes:
+            - fs.read
+            - git.read
           context:
             authoring_context: inspect.authoring_context.data
           inputs:
@@ -397,8 +413,11 @@ runners:
             outputs:
               change_draft: object
           allowed_tools:
-            - fs.read
+            - fs.read_bundle
             - git.status
+          scopes:
+            - fs.read
+            - git.read
           context:
             authoring_context: inspect.authoring_context.data
             architecture_plan: plan.architecture_plan.data
@@ -485,6 +504,8 @@ runners:
             outputs:
               architecture_decision: object
           allowed_tools:
+            - fs.read_bundle
+          scopes:
             - fs.read
           context:
             authoring_context: inspect.authoring_context.data
@@ -513,6 +534,8 @@ runners:
             outputs:
               change_draft: object
           allowed_tools:
+            - fs.read_bundle
+          scopes:
             - fs.read
           context:
             authoring_context: inspect.authoring_context.data

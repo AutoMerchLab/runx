@@ -87,7 +87,7 @@ fn envelope(
         &request.env,
     )?;
     let manual = load_skill_instructions(&request.skill_directory)?;
-    let output = request
+    let raw_output = request
         .source
         .outputs
         .as_ref()
@@ -98,6 +98,13 @@ fn envelope(
                 "agent-mediated runners must declare at least one output",
             )
         })?;
+    let output = output_schema_fields(raw_output)?;
+    let output_schema = crate::packet_schemas::agent_output_contract_schema(
+        &output,
+        request.artifacts.as_ref(),
+        &request.skill_directory,
+        &request.env,
+    )?;
     Ok(AgentContextEnvelope {
         run_id: request
             .env
@@ -126,7 +133,8 @@ fn envelope(
         context: None,
         voice_profile: Some(profiles::resolve_voice_profile(request)?),
         execution_location: Some(execution_location(&request.skill_directory, &request.env)),
-        output: Some(output_schema_fields(output)?),
+        output: Some(output),
+        output_schema: Some(output_schema),
         trust_boundary: TRUST_BOUNDARY.into(),
     })
 }
