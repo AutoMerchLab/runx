@@ -172,12 +172,12 @@ fn run_read(
             registry_url,
             ..
         } => read_registry_skill(
-            &FileRegistryStore::new(registry_path),
+            &FileRegistryStore::new(registry_path.clone()),
             &plan.subject,
             plan.version.as_deref(),
             registry_url.as_deref(),
         )?
-        .ok_or_else(|| not_found(&plan.subject))?,
+        .ok_or_else(|| not_found_local(&plan.subject, &registry_path))?,
     };
     let human = output::render_read(source, &plan.subject, &skill);
     output::write_output(
@@ -216,14 +216,14 @@ fn run_resolve(
             ..
         } => output::RemoteOrLocalResolution::Local(Box::new(
             resolve_registry_skill(
-                &FileRegistryStore::new(registry_path),
+                &FileRegistryStore::new(registry_path.clone()),
                 &plan.subject,
                 RegistryResolveOptions {
                     version: plan.version,
                     registry_url,
                 },
             )?
-            .ok_or_else(|| not_found(&plan.subject))?,
+            .ok_or_else(|| not_found_local(&plan.subject, &registry_path))?,
         )),
     };
     let human = output::render_resolve(source, &plan.subject, &resolution);
@@ -403,14 +403,14 @@ pub(crate) fn install_candidate(
             ..
         } => {
             let resolution = resolve_registry_skill(
-                &FileRegistryStore::new(registry_path),
+                &FileRegistryStore::new(registry_path.clone()),
                 &plan.subject,
                 RegistryResolveOptions {
                     version: plan.version.clone(),
                     registry_url,
                 },
             )?
-            .ok_or_else(|| not_found(&plan.subject))?;
+            .ok_or_else(|| not_found_local(&plan.subject, &registry_path))?;
             Ok((
                 candidate_from_resolution(&plan.subject, resolution, source_authority),
                 None,
@@ -586,6 +586,16 @@ fn internal_error(message: impl Into<String>) -> RegistryCliError {
 fn not_found(registry_ref: &str) -> RegistryCliError {
     RegistryCliError {
         message: format!("registry skill not found: {registry_ref}"),
+        exit_code: 1,
+    }
+}
+
+fn not_found_local(registry_ref: &str, registry_path: &Path) -> RegistryCliError {
+    RegistryCliError {
+        message: format!(
+            "registry skill not found: {registry_ref} in the local registry at {}; for the hosted catalog pass --registry https://api.runx.ai",
+            registry_path.display()
+        ),
         exit_code: 1,
     }
 }

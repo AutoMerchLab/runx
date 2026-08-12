@@ -11,6 +11,7 @@ use runx_contracts::tools::{
 
 use super::error::ToolCatalogError;
 use super::search::{FixtureTool, fixture_catalog_allowed, fixture_tool};
+use crate::path_util::display_path;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolInspectOptions {
@@ -294,8 +295,4 @@ fn push_existing_dirs(roots: &mut Vec<PathBuf>, candidates: impl IntoIterator<It
             roots.push(candidate);
         }
     }
-}
-
-fn display_path(path: &Path) -> String {
-    path.to_string_lossy().replace('\\', "/")
 }

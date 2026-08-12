@@ -353,7 +353,17 @@ fn build_http_client(config: TransportConfig) -> Result<reqwest::Client, String>
         .gzip(true)
         .brotli(true)
         .deflate(true)
-        .zstd(true);
+        .zstd(true)
+        // Verify against the compiled-in Mozilla root program instead of the
+        // host trust store. The governed front then has one deterministic
+        // trust surface everywhere it runs; a sandbox with no system CA
+        // bundle (hosted publish harness) behaves exactly like a developer
+        // laptop.
+        .tls_certs_only(
+            webpki_root_certs::TLS_SERVER_ROOT_CERTS
+                .iter()
+                .filter_map(|der| reqwest::Certificate::from_der(der).ok()),
+        );
     let builder = if config.allow_private_networks {
         builder
     } else {

@@ -2519,6 +2519,7 @@ dependencies = [
  "tower-service",
  "url",
  "wait-timeout",
+ "webpki-root-certs",
  "win32job",
  "zeroize",
 ]
