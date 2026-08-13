@@ -786,12 +786,21 @@ fn build_domain_act_frame(
     let legitimacy = resolve(act.legitimacy_from.as_deref(), act.legitimacy.as_deref())
         .unwrap_or_else(|| "Held the declared authority for this act".to_owned());
 
-    // The single model-authored field: the human reason text.
+    // The human reason text. `reason_from_input` seals the calling operator's own
+    // line from a trusted input (the operator holds the context and voice);
+    // `reason_from` reads a declared step's authored output. The parser holds the
+    // two mutually exclusive.
     let reason = act
-        .reason_from
+        .reason_from_input
         .as_deref()
-        .and_then(|key| reason_source.as_object().and_then(|object| object.get(key)))
+        .and_then(|key| inputs.get(key))
         .and_then(JsonValue::as_str)
+        .or_else(|| {
+            act.reason_from
+                .as_deref()
+                .and_then(|key| reason_source.as_object().and_then(|object| object.get(key)))
+                .and_then(JsonValue::as_str)
+        })
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map_or_else(|| purpose.clone(), str::to_owned);
@@ -1101,6 +1110,59 @@ fn contract_json_value(value: &impl serde::Serialize) -> Result<JsonValue, Skill
 
 fn invalid(message: impl Into<String>) -> SkillRunError {
     SkillRunError::Invalid(message.into())
+}
+
+#[cfg(test)]
+mod domain_act_frame_tests {
+    use super::*;
+
+    fn act(value: serde_json::Value) -> ActDeclaration {
+        serde_json::from_value(value).expect("act declaration")
+    }
+
+    fn inputs(value: serde_json::Value) -> JsonObject {
+        serde_json::from_value(value).expect("input object")
+    }
+
+    #[test]
+    fn operator_reason_input_seals_the_operator_line() {
+        let frame = build_domain_act_frame(
+            &act(serde_json::json!({
+                "purpose_from": "act_purpose",
+                "reason_from_input": "line",
+            })),
+            &inputs(serde_json::json!({
+                "act_purpose": "settle the accepted claim",
+                "line": "Paid @worker for the accepted delivery on #120.",
+            })),
+            &JsonValue::Null,
+            None,
+            Vec::new(),
+        )
+        .expect("frame");
+        assert_eq!(
+            frame.summary.as_str(),
+            "Paid @worker for the accepted delivery on #120."
+        );
+    }
+
+    #[test]
+    fn absent_operator_line_falls_back_to_purpose() {
+        let frame = build_domain_act_frame(
+            &act(serde_json::json!({
+                "purpose_from": "act_purpose",
+                "reason_from_input": "line",
+            })),
+            &inputs(serde_json::json!({
+                "act_purpose": "settle the accepted claim",
+            })),
+            &JsonValue::Null,
+            None,
+            Vec::new(),
+        )
+        .expect("frame");
+        assert_eq!(frame.summary.as_str(), "settle the accepted claim");
+    }
 }
 
 #[cfg(test)]

@@ -471,7 +471,20 @@ fn validate_act_declaration(
         .and_then(serde_json::from_value::<ActDeclaration>)
         .map_err(|error| FIELDS.validation_error(format!("source.act is malformed: {error}")))?;
     validate_act_authority_coherence(&act)?;
+    validate_act_reason_coherence(&act)?;
     Ok(Some(act))
+}
+
+/// Reject incoherent reason declarations: the operator-authored path
+/// (`reason_from_input`) and the step-authored path (`reason_step`/`reason_from`)
+/// are mutually exclusive; the sealed reason has exactly one author.
+fn validate_act_reason_coherence(act: &ActDeclaration) -> Result<(), ValidationError> {
+    if act.reason_from_input.is_some() && (act.reason_step.is_some() || act.reason_from.is_some()) {
+        return Err(FIELDS.validation_error(
+            "source.act.reason_from_input (operator-authored) is mutually exclusive with the step-authored reason_step / reason_from keys.",
+        ));
+    }
+    Ok(())
 }
 
 /// Reject incoherent authority declarations: the compute path (`mint_authority`)
@@ -735,6 +748,34 @@ mod tests {
         let message = act_err(json!({
             "mint_authority": {"source": "static_scopes"},
             "authority_term_from": "member_authority",
+        }));
+        assert!(message.contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn operator_reason_input_validates() {
+        let act = validate_act_declaration(Some(&act_value(json!({
+            "reason_from_input": "line",
+        }))))
+        .expect("valid act")
+        .expect("present act");
+        assert_eq!(act.reason_from_input.as_deref(), Some("line"));
+    }
+
+    #[test]
+    fn operator_reason_input_conflicts_with_reason_step() {
+        let message = act_err(json!({
+            "reason_from_input": "line",
+            "reason_step": "voice",
+        }));
+        assert!(message.contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn operator_reason_input_conflicts_with_reason_from() {
+        let message = act_err(json!({
+            "reason_from_input": "line",
+            "reason_from": "line",
         }));
         assert!(message.contains("mutually exclusive"));
     }
