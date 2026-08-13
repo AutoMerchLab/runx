@@ -184,7 +184,6 @@ const fn definition(
         },
         admission: CapabilityAdmission::ReusedBy(&[
             "operator-inbox",
-            "messageboard",
             "business-ops",
         ]),
         fields,

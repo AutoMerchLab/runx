@@ -9,7 +9,7 @@ are selected by bindings.
 
 ## Shape
 
-- A **domain skill** owns product meaning: messageboard transitions, review
+- A **domain skill** owns product meaning: board transitions, review
   states, CRM records, approval inboxes, support tickets, ledgers, and so on.
 - A **data source** declares resources addressed by exact typed operations:
   append event, read events, read projection, and list stream heads.
@@ -65,7 +65,7 @@ ref, so independent sources do not collide and stateful skills need no separate
 database setup. A configured source can instead route to a conforming external
 provider such as `data.redis`. Domain skills never branch on provider type: if
 a graph needs another supported backend, change the binding or pass a different
-`data_source_ref`; do not put messageboard, CRM, or operator semantics into the
+`data_source_ref`; do not put board, CRM, or operator semantics into the
 storage implementation.
 
 Adapter binding is authority-bearing configuration. It may name a credential
@@ -168,7 +168,7 @@ Adapters may include provider evidence, but not credentials or raw secrets.
 When an event carries an explicit `type`, adapters use it as `event_type`.
 When a domain skill emits the generic runx effect packet shape instead, adapters
 derive `event_type` from `effect_family.operation`, for example
-`messageboard.accept`. If neither field exists, the event remains
+`operator_inbox.disposition`. If neither field exists, the event remains
 `data.event`.
 
 ## Provider Rules
@@ -212,33 +212,39 @@ The typed proof records source, backup, and result digests. A current database
 returns an idempotent `current` proof; an unknown or partial schema remains
 byte-identical and no backup is created.
 
-## Messageboard Example
+## Domain Example
 
-The messageboard skill decides whether `posting.claimed` is allowed and emits a
-domain transition packet. A graph then calls `data-store.append_event` with the
-packet. The data adapter appends it to `board_events` only if the current stream
-version matches `expected_version`. A later turn reads events or a projection to
-resume.
+A domain skill decides whether a transition is allowed and emits a domain
+transition packet. A graph then calls `data-store.append_event` with the
+packet. The data adapter appends it to the declared resource only if the
+current stream version matches `expected_version`. A later turn reads events or
+a projection to resume.
 
-No messageboard enum belongs in runx core. The data plane stores and proves the
-transition. The messageboard skill and its app-specific reducer own the meaning.
+No domain enum belongs in runx core. The data plane stores and proves the
+transition. The domain skill and its app-specific reducer own the meaning.
 
-### Dogfood A Stateful Messageboard
+### Dogfood A Stateful Inbox Journal
 
-This is the current end-to-end local proof. It uses the public `messageboard`
+This is the current end-to-end local proof. It uses the public `operator-inbox`
 skill, the public `data-store` skill, and a logical source binding. The
-messageboard graph does not know whether the storage backend is SQLite or Redis.
+operator-inbox graphs do not know whether the storage backend is SQLite or
+Redis: each runner plans a deterministic transition packet, appends it through
+`data-store`, and no model runs anywhere in the turn.
 
 For SQLite, bind the source to a local database:
 
 ```json
 {
   "data_sources": {
-    "tenant://dogfood/sqlite/board-1": {
+    "tenant://dogfood/sqlite/inbox-1": {
       "adapter": "data.sqlite",
-      "database_path": ".runx/data/board-1.sqlite",
+      "database_path": ".runx/data/inbox-1.sqlite",
       "resources": {
-        "board_events": {
+        "operator_inbox_scans": {
+          "kind": "event_stream",
+          "partition_key": "aggregate_id"
+        },
+        "operator_inbox_actions": {
           "kind": "event_stream",
           "partition_key": "aggregate_id"
         }
@@ -248,17 +254,21 @@ For SQLite, bind the source to a local database:
 }
 ```
 
-For Redis, keep the same logical resource and change only the binding:
+For Redis, keep the same logical resources and change only the binding:
 
 ```json
 {
   "data_sources": {
-    "tenant://dogfood/redis/board-1": {
+    "tenant://dogfood/redis/inbox-1": {
       "adapter": "data.redis",
       "endpoint": "redis://127.0.0.1:6379/0",
-      "key_prefix": "runx:dogfood:board-1",
+      "key_prefix": "runx:dogfood:inbox-1",
       "resources": {
-        "board_events": {
+        "operator_inbox_scans": {
+          "kind": "event_stream",
+          "partition_key": "aggregate_id"
+        },
+        "operator_inbox_actions": {
           "kind": "event_stream",
           "partition_key": "aggregate_id"
         }
@@ -268,134 +278,28 @@ For Redis, keep the same logical resource and change only the binding:
 }
 ```
 
-Run the posting transition:
+Record a scan page:
 
 ```bash
 RUNX_DATA_SOURCES=.runx/data-sources.json \
-runx skill skills/messageboard post_and_append \
+runx skill skills/operator-inbox record_scan_page \
   -R .runx/receipts \
-  -i data_source_ref=tenant://dogfood/sqlite/board-1 \
-  -i resource=board_events \
-  -i aggregate_id=board-1 \
+  -i data_source_ref=tenant://dogfood/sqlite/inbox-1 \
   --input-json expected_version=0 \
-  -i idempotency_key=board-1:post:v1 \
-  -i actor_kid=vendor-demo \
-  -i title='prove persistent messageboard storage' \
-  -i deliverable='append, claim, deliver, and accept one posting across separate runx runs' \
-  --input-json amount_minor=2500 \
-  -i currency=USD \
-  --input-json funding_evidence='{"hold_ref":"mock:hold:board-1"}' \
+  -i observed_at=2026-07-14T00:00:00.000Z \
+  --input-json scan='{"scan_id":"scan-demo-1","provider":"demo","query_digest":"sha256:1111111111111111111111111111111111111111111111111111111111111111","page_index":1,"status":"complete","started_at":"2026-07-13T23:59:00.000Z"}' \
+  --input-json messages='[]' \
   -j
 ```
 
-By default the command returns `needs_agent` with exit code `2`, a `run_id`,
-and a request id such as
-`agent_task.messageboard-post.output`. That is a resumable state, not a failed
-data write. Configured model credentials do not change this behavior. Answer it
-by writing an answers file and resuming the same run:
-
-```json
-{
-  "answers": {
-    "agent_task.messageboard-post.output": {
-      "effect_family": "messageboard",
-      "operation": "post",
-      "actor_kid": "vendor-demo",
-      "posting": {
-        "id": "board-1",
-        "title": "prove persistent messageboard storage",
-        "deliverable": "append, claim, deliver, and accept one posting across separate runx runs",
-        "amount_minor": 2500,
-        "currency": "USD",
-        "status": "screening"
-      },
-      "funding": {
-        "funded_badge": true,
-        "evidence_ref": "mock:hold:board-1"
-      },
-      "clocks": {
-        "claim_fuse_ms": 1800000,
-        "delivery_deadline_ms": 86400000,
-        "acceptance_window_ms": 43200000
-      },
-      "screening_notes": ["Verify funding hold before approval."],
-      "stop_conditions": []
-    }
-  }
-}
-```
-
-```bash
-RUNX_DATA_SOURCES=.runx/data-sources.json \
-runx resume <run-id> answers.json \
-  -R .runx/receipts \
-  -j
-```
-
-Repeat the same start/resume shape for:
-
-- `claim_and_append` with `expected_version=1`
-- `deliver_and_append` with `expected_version=2`
-- `accept_and_append` with `expected_version=3`
-
-For a single posting stream, only these inputs change between transitions:
-
-```bash
-# claim the posting that was appended at version 1
-RUNX_DATA_SOURCES=.runx/data-sources.json \
-runx skill skills/messageboard claim_and_append \
-  -R .runx/receipts \
-  -i data_source_ref=tenant://dogfood/sqlite/board-1 \
-  -i resource=board_events \
-  -i aggregate_id=board-1 \
-  --input-json expected_version=1 \
-  -i idempotency_key=board-1:claim:worker-demo:v1 \
-  -i actor_kid=worker-demo \
-  --input-json posting='{"id":"board-1","status":"approved","title":"prove persistent messageboard storage","amount_minor":2500,"currency":"USD"}' \
-  -i idempotency_seed=worker-demo-board-1 \
-  -j
-
-# deliver against the active claim at version 2
-RUNX_DATA_SOURCES=.runx/data-sources.json \
-runx skill skills/messageboard deliver_and_append \
-  -R .runx/receipts \
-  -i data_source_ref=tenant://dogfood/sqlite/board-1 \
-  -i resource=board_events \
-  -i aggregate_id=board-1 \
-  --input-json expected_version=2 \
-  -i idempotency_key=board-1:deliver:worker-demo:v1 \
-  -i actor_kid=worker-demo \
-  --input-json claim='{"posting_id":"board-1","claimant_kid":"worker-demo","status":"active","delivery_due_at":"2026-06-13T00:00:00Z"}' \
-  --input-json delivery_evidence='{"artifact_ref":"git:commit:abc123","verifier_command":"./verify.sh"}' \
-  -j
-
-# accept the delivered work at version 3
-RUNX_DATA_SOURCES=.runx/data-sources.json \
-runx skill skills/messageboard accept_and_append \
-  -R .runx/receipts \
-  -i data_source_ref=tenant://dogfood/sqlite/board-1 \
-  -i resource=board_events \
-  -i aggregate_id=board-1 \
-  --input-json expected_version=3 \
-  -i idempotency_key=board-1:accept:vendor-demo:v1 \
-  -i actor_kid=vendor-demo \
-  --input-json delivery='{"posting_id":"board-1","claimant_kid":"worker-demo","delivery_ref":"delivery:board-1","artifact_ref":"git:commit:abc123"}' \
-  --input-json acceptance_evidence='{"verifier_result":"passed"}' \
-  -j
-```
-
-To run an in-process model loop, opt in for that invocation with
-`--managed-agent` and optionally set a 1-32 round cap with
-`--managed-agent-rounds` (default 4). Provider configuration only makes the
-resolver available; it is not consent. Without explicit opt-in, each command
-returns `needs_agent`; resume it with the matching answer packet for
-`agent_task.messageboard-claim.output`,
-`agent_task.messageboard-deliver.output`, or
-`agent_task.messageboard-accept.output`. Each answer must include
-`effect_family: "messageboard"` and the runner operation (`claim`, `deliver`, or
-`accept`) so the data adapter can derive useful event labels. The checked-in
-`skills/messageboard/fixtures/*-and-append-sqlite.yaml` files show the exact
-answer shapes.
+The run seals in one pass: the `plan` step derives the transition packet and
+its idempotency key deterministically, and `append` lands it on
+`operator_inbox_scans` only if the stream is still at `expected_version`.
+`record_action_observation` and `record_disposition` follow the same
+start-and-seal shape against `operator_inbox_actions`, advancing
+`expected_version` per aggregate as the stream grows. The checked-in
+`skills/operator-inbox/fixtures/record-*.yaml` files show the exact input
+shapes.
 
 Then read the stream:
 
@@ -403,18 +307,17 @@ Then read the stream:
 RUNX_DATA_SOURCES=.runx/data-sources.json \
 runx skill skills/data-store read_events \
   -R .runx/receipts \
-  -i data_source_ref=tenant://dogfood/sqlite/board-1 \
-  -i resource=board_events \
-  -i aggregate_id=board-1 \
+  -i data_source_ref=tenant://dogfood/sqlite/inbox-1 \
+  -i resource=operator_inbox_scans \
+  -i aggregate_id=sha256:1111111111111111111111111111111111111111111111111111111111111111 \
   --input-json limit=10 \
   -j
 ```
 
-The dogfood pass should return four ordered events:
-`messageboard.post`, `messageboard.claim`, `messageboard.deliver`, and
-`messageboard.accept`. Switching the `data_source_ref` from the SQLite binding
-to the Redis binding exercises the same skill graph against Redis. No graph
-edit, provider branch, or messageboard-specific storage code is required.
+The readback labels each event from its packet, for example
+`operator_inbox.scan_page`. Switching the `data_source_ref` from the SQLite
+binding to the Redis binding exercises the same skill graphs against Redis. No
+graph edit, provider branch, or inbox-specific storage code is required.
 
 ## Security Gates
 
@@ -453,9 +356,9 @@ not a duplicate domain skill.
 The public skills intentionally compose the data plane instead of embedding
 storage semantics:
 
-- `messageboard.post_and_append`, `claim_and_append`, `deliver_and_append`, and
-  `accept_and_append` decide a board transition, append the packet through
-  `data-store`, and read back the projection.
+- `operator-inbox.record_scan_page`, `record_action_observation`, and
+  `record_disposition` plan an inbox transition deterministically and append
+  the packet through `data-store`.
 - `ops-desk.operate_from_projection` reads a projection before asking the
   operator agent to propose next actions.
 - `business-ops.route_and_append` classifies one business signal and persists
