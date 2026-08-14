@@ -1,19 +1,25 @@
+use std::fs;
 use std::io::{self, Write};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use runx_contracts::{ClosureDisposition, JsonObject, JsonValue};
+use runx_contracts::{ClosureDisposition, JsonObject, JsonValue, sha256_prefixed};
+
+const MAX_COMPACT_OUTPUT_BYTES: usize = 16 * 1024;
+const MAX_COMPACT_SUMMARY_CHARS: usize = 512;
 
 pub(super) fn write_skill_output(
     value: &JsonValue,
     json: bool,
     exit_code: ExitCode,
     resume: ResumeHint<'_>,
+    project_runx_dir: &Path,
+    diagnostics: bool,
 ) -> ExitCode {
     if !json {
         return write_text_with_exit(value, exit_code, resume);
     }
-    write_json_with_exit(value, exit_code)
+    write_json_with_exit(value, exit_code, project_runx_dir, diagnostics)
 }
 
 #[derive(Clone, Copy)]
@@ -25,7 +31,10 @@ pub(super) struct ResumeHint<'a> {
 pub(super) fn skill_result_exit_code(value: &JsonValue) -> ExitCode {
     match value {
         JsonValue::Object(object)
-            if object.get("status").and_then(JsonValue::as_str) == Some("needs_agent") =>
+            if matches!(
+                object.get("status").and_then(JsonValue::as_str),
+                Some("needs_agent" | "needs_approval")
+            ) =>
         {
             ExitCode::from(2)
         }
@@ -57,8 +66,13 @@ fn closure_disposition_exit_code(disposition: ClosureDisposition) -> ExitCode {
     }
 }
 
-fn write_json_with_exit(value: &JsonValue, exit_code: ExitCode) -> ExitCode {
-    match serialize_json_output(value) {
+fn write_json_with_exit(
+    value: &JsonValue,
+    exit_code: ExitCode,
+    project_runx_dir: &Path,
+    diagnostics: bool,
+) -> ExitCode {
+    match serialize_json_output(value, project_runx_dir, diagnostics) {
         Ok(json) => {
             let mut stdout = io::stdout().lock();
             let result = stdout
@@ -79,33 +93,472 @@ fn write_json_with_exit(value: &JsonValue, exit_code: ExitCode) -> ExitCode {
     }
 }
 
-fn serialize_json_output(value: &JsonValue) -> Result<String, serde_json::Error> {
-    serde_json::to_string(&project_json_output(value))
+fn serialize_json_output(
+    value: &JsonValue,
+    project_runx_dir: &Path,
+    diagnostics: bool,
+) -> Result<String, String> {
+    let output = project_json_output(value, project_runx_dir, diagnostics)?;
+    serde_json::to_string(&output).map_err(|error| error.to_string())
 }
 
-fn project_json_output(value: &JsonValue) -> JsonValue {
-    let mut output = value.clone();
-    let JsonValue::Object(object) = &mut output else {
-        return output;
-    };
-    let Some(result) = object.get("result").and_then(JsonValue::as_object).cloned() else {
-        return output;
+fn project_json_output(
+    value: &JsonValue,
+    project_runx_dir: &Path,
+    diagnostics: bool,
+) -> Result<JsonValue, String> {
+    let JsonValue::Object(mut object) = value.clone() else {
+        return Ok(value.clone());
     };
 
-    let mut remove_context = false;
-    if let Some(JsonValue::Object(context)) = object.get_mut("context") {
-        if let Some(JsonValue::Object(step_outputs)) = context.get_mut("step_outputs") {
-            step_outputs.retain(|_, value| value.as_object() != Some(&result));
-            if step_outputs.is_empty() {
-                context.remove("step_outputs");
+    object.insert(
+        "outcome".to_owned(),
+        JsonValue::String(semantic_outcome(&object).to_owned()),
+    );
+    normalize_pending_status(&mut object);
+    if diagnostics {
+        return Ok(JsonValue::Object(object));
+    }
+
+    let run_id = object_string(&object, "run_id")
+        .unwrap_or("unbound-run")
+        .to_owned();
+    let mut diagnostic_payload = JsonObject::new();
+    for key in [
+        "context",
+        "trace",
+        "execution",
+        "receipt",
+        "credential_delivery_observations",
+    ] {
+        if let Some(value) = object.remove(key) {
+            diagnostic_payload.insert(key.to_owned(), value);
+        }
+    }
+    if !diagnostic_payload.is_empty() {
+        let reference = persist_json_artifact(
+            project_runx_dir,
+            &run_id,
+            "diagnostics",
+            "execution",
+            &JsonValue::Object(diagnostic_payload),
+        )?;
+        object.insert("diagnostics_ref".to_owned(), reference.clone());
+        append_artifact_refs(&mut object, vec![reference]);
+    }
+    if let Some(requests) = object
+        .get("requests")
+        .and_then(JsonValue::as_array)
+        .cloned()
+    {
+        let mut request_summaries = Vec::with_capacity(requests.len());
+        let mut refs = Vec::with_capacity(requests.len());
+        for request in &requests {
+            let reference = persist_json_artifact(
+                project_runx_dir,
+                &run_id,
+                "requests",
+                request_id(request).unwrap_or("request"),
+                request,
+            )?;
+            refs.push(reference.clone());
+            request_summaries.push(compact_request(request, reference));
+        }
+        object.insert("requests".to_owned(), JsonValue::Array(request_summaries));
+        append_artifact_refs(&mut object, refs);
+    }
+    insert_next_command(&mut object);
+
+    if serialized_len(&JsonValue::Object(object.clone()))? <= MAX_COMPACT_OUTPUT_BYTES {
+        return Ok(JsonValue::Object(object));
+    }
+
+    let result_reference = if let Some(result) = object.get("result").cloned() {
+        let reference =
+            persist_json_artifact(project_runx_dir, &run_id, "results", "result", &result)?;
+        let schema = result_schema(&result).to_owned();
+        object.insert(
+            "result".to_owned(),
+            JsonValue::Object(JsonObject::from([
+                ("schema".to_owned(), JsonValue::String(schema)),
+                ("artifact_ref".to_owned(), reference.clone()),
+            ])),
+        );
+        append_artifact_refs(&mut object, vec![reference.clone()]);
+        Some(reference)
+    } else {
+        None
+    };
+
+    if serialized_len(&JsonValue::Object(object.clone()))? <= MAX_COMPACT_OUTPUT_BYTES {
+        return Ok(JsonValue::Object(object));
+    }
+
+    let request_set_reference = object
+        .get("requests")
+        .filter(|value| {
+            value
+                .as_array()
+                .is_some_and(|requests| !requests.is_empty())
+        })
+        .cloned()
+        .map(|requests| {
+            persist_json_artifact(
+                project_runx_dir,
+                &run_id,
+                "requests",
+                "request-set",
+                &requests,
+            )
+        })
+        .transpose()?;
+    if let Some(reference) = &request_set_reference {
+        object.insert("requests".to_owned(), JsonValue::Array(Vec::new()));
+        object.insert("request_set_ref".to_owned(), reference.clone());
+    }
+
+    if serialized_len(&JsonValue::Object(object.clone()))? <= MAX_COMPACT_OUTPUT_BYTES {
+        return Ok(JsonValue::Object(object));
+    }
+
+    let full_output_reference = persist_json_artifact(
+        project_runx_dir,
+        &run_id,
+        "diagnostics",
+        "full-output",
+        value,
+    )?;
+    let mut minimal = compact_identity(&object);
+    if let Some(result) = object.get("result") {
+        minimal.insert("result".to_owned(), result.clone());
+    } else if let Some(reference) = result_reference {
+        minimal.insert(
+            "result".to_owned(),
+            JsonValue::Object(JsonObject::from([("artifact_ref".to_owned(), reference)])),
+        );
+    }
+    minimal.insert("requests".to_owned(), JsonValue::Array(Vec::new()));
+    if let Some(reference) = request_set_reference {
+        minimal.insert("request_set_ref".to_owned(), reference);
+    }
+    if let Some(next) = object.get("next") {
+        minimal.insert("next".to_owned(), next.clone());
+    }
+    minimal.insert(
+        "artifact_refs".to_owned(),
+        JsonValue::Array(vec![full_output_reference]),
+    );
+    let minimal = JsonValue::Object(minimal);
+    if serialized_len(&minimal)? > MAX_COMPACT_OUTPUT_BYTES {
+        return Err("compact skill result exceeded the 16 KiB envelope bound".to_owned());
+    }
+    Ok(minimal)
+}
+
+fn semantic_outcome(object: &JsonObject) -> &'static str {
+    if let Some(trace_status) = object
+        .get("trace")
+        .and_then(JsonValue::as_object)
+        .and_then(|trace| object_string(trace, "status"))
+    {
+        match trace_status {
+            "failed" | "killed" | "timed_out" => return "failed",
+            "blocked" | "declined" | "superseded" => return "blocked",
+            _ => {}
+        }
+    }
+    if let Some(disposition) = object
+        .get("closure")
+        .and_then(JsonValue::as_object)
+        .and_then(|closure| object_string(closure, "disposition"))
+    {
+        return match disposition {
+            "closed" => "completed",
+            "deferred" => "deferred",
+            "blocked" | "declined" | "superseded" => "blocked",
+            "failed" | "killed" | "timed_out" => "failed",
+            _ => "failed",
+        };
+    }
+    match object_string(object, "status") {
+        Some("needs_agent" | "needs_approval") => "deferred",
+        Some("sealed") => "completed",
+        _ => "failed",
+    }
+}
+
+fn normalize_pending_status(object: &mut JsonObject) {
+    if object_string(object, "status") != Some("needs_agent") {
+        return;
+    }
+    let Some(requests) = object.get("requests").and_then(JsonValue::as_array) else {
+        return;
+    };
+    if !requests.is_empty()
+        && requests.iter().all(|request| {
+            request
+                .as_object()
+                .and_then(|request| object_string(request, "kind"))
+                == Some("approval")
+        })
+    {
+        object.insert(
+            "status".to_owned(),
+            JsonValue::String("needs_approval".to_owned()),
+        );
+    }
+}
+
+fn display_status(object: &JsonObject) -> &str {
+    let status = object_string(object, "status").unwrap_or("unknown");
+    if status == "needs_agent"
+        && object
+            .get("requests")
+            .and_then(JsonValue::as_array)
+            .is_some_and(|requests| {
+                !requests.is_empty()
+                    && requests.iter().all(|request| {
+                        request
+                            .as_object()
+                            .and_then(|request| object_string(request, "kind"))
+                            == Some("approval")
+                    })
+            })
+    {
+        "needs_approval"
+    } else {
+        status
+    }
+}
+
+fn compact_request(request: &JsonValue, artifact_ref: JsonValue) -> JsonValue {
+    let mut summary = JsonObject::new();
+    if let Ok(bytes) = serde_json::to_vec(request) {
+        summary.insert(
+            "request_digest".to_owned(),
+            JsonValue::String(sha256_prefixed(&bytes)),
+        );
+    }
+    if let Some(id) = request_id(request) {
+        summary.insert("id".to_owned(), JsonValue::String(id.to_owned()));
+    }
+    if let Some(kind) = request
+        .as_object()
+        .and_then(|request| object_string(request, "kind"))
+    {
+        summary.insert("kind".to_owned(), JsonValue::String(kind.to_owned()));
+    }
+    if let Some(envelope) = request
+        .as_object()
+        .and_then(|request| request.get("invocation"))
+        .and_then(JsonValue::as_object)
+        .and_then(|invocation| invocation.get("envelope"))
+        .and_then(JsonValue::as_object)
+    {
+        if let Some(output) = envelope.get("output") {
+            if let Ok(bytes) = serde_json::to_vec(output) {
+                summary.insert(
+                    "output_digest".to_owned(),
+                    JsonValue::String(sha256_prefixed(&bytes)),
+                );
+            }
+            if let Some(schema) = output
+                .as_object()
+                .and_then(|output| object_string(output, "schema"))
+            {
+                summary.insert(
+                    "output_schema".to_owned(),
+                    JsonValue::String(schema.to_owned()),
+                );
             }
         }
-        remove_context = context.is_empty();
+        if let Some(allowed_tools) = envelope.get("allowed_tools") {
+            summary.insert("allowed_tools".to_owned(), allowed_tools.clone());
+        }
     }
-    if remove_context {
-        object.remove("context");
+    summary.insert("artifact_ref".to_owned(), artifact_ref);
+    JsonValue::Object(summary)
+}
+
+fn insert_next_command(object: &mut JsonObject) {
+    if !matches!(
+        object_string(object, "status"),
+        Some("needs_agent" | "needs_approval")
+    ) {
+        object.insert("next".to_owned(), JsonValue::Null);
+        return;
     }
-    output
+    if let Some(run_id) = object_string(object, "run_id") {
+        object.insert(
+            "next".to_owned(),
+            JsonValue::String(format!(
+                "runx resume {} - --json",
+                crate::resume::shell_token(run_id)
+            )),
+        );
+    }
+}
+
+fn request_id(request: &JsonValue) -> Option<&str> {
+    request
+        .as_object()
+        .and_then(|request| object_string(request, "id"))
+}
+
+fn result_schema(result: &JsonValue) -> &str {
+    result
+        .as_object()
+        .and_then(|result| {
+            object_string(result, "packet").or_else(|| object_string(result, "schema"))
+        })
+        .unwrap_or("runx.untyped_result.v1")
+}
+
+fn append_artifact_refs(object: &mut JsonObject, refs: Vec<JsonValue>) {
+    let entry = object
+        .entry("artifact_refs".to_owned())
+        .or_insert_with(|| JsonValue::Array(Vec::new()));
+    if let JsonValue::Array(existing) = entry {
+        existing.extend(refs);
+    }
+}
+
+fn persist_json_artifact(
+    project_runx_dir: &Path,
+    run_id: &str,
+    kind: &str,
+    label: &str,
+    value: &JsonValue,
+) -> Result<JsonValue, String> {
+    let bytes = serde_json::to_vec(value).map_err(|error| error.to_string())?;
+    let digest = sha256_prefixed(&bytes);
+    let digest_label = digest.strip_prefix("sha256:").unwrap_or(&digest);
+    let directory = project_runx_dir
+        .join("artifacts")
+        .join("skill-runs")
+        .join(safe_path_segment(run_id))
+        .join(kind);
+    fs::create_dir_all(&directory)
+        .map_err(|error| format!("creating {}: {error}", directory.display()))?;
+    let path = directory.join(format!(
+        "{}-{}.json",
+        safe_path_segment(label),
+        digest_label
+    ));
+    if !path.exists() {
+        write_atomic(&path, &bytes)?;
+    }
+    Ok(JsonValue::Object(JsonObject::from([
+        (
+            "schema".to_owned(),
+            JsonValue::String("runx.project_artifact_ref.v1".to_owned()),
+        ),
+        (
+            "ref".to_owned(),
+            JsonValue::String(format!("runx:project-artifact:{digest}")),
+        ),
+        ("digest".to_owned(), JsonValue::String(digest)),
+        (
+            "bytes".to_owned(),
+            JsonValue::Number(runx_contracts::JsonNumber::U64(bytes.len() as u64)),
+        ),
+        (
+            "media_type".to_owned(),
+            JsonValue::String("application/json".to_owned()),
+        ),
+        (
+            "path".to_owned(),
+            JsonValue::String(path.to_string_lossy().into_owned()),
+        ),
+    ])))
+}
+
+fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let mut temporary = PathBuf::from(path);
+    temporary.set_extension(format!("json.tmp-{}", std::process::id()));
+    fs::write(&temporary, bytes)
+        .map_err(|error| format!("writing {}: {error}", temporary.display()))?;
+    match fs::rename(&temporary, path) {
+        Ok(()) => Ok(()),
+        Err(_error) if path.exists() => {
+            let _ = fs::remove_file(&temporary);
+            Ok(())
+        }
+        Err(error) => {
+            let _ = fs::remove_file(&temporary);
+            Err(format!("committing {}: {error}", path.display()))
+        }
+    }
+}
+
+fn safe_path_segment(value: &str) -> String {
+    let value = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>();
+    if value.is_empty() {
+        "item".to_owned()
+    } else {
+        value
+    }
+}
+
+fn compact_identity(object: &JsonObject) -> JsonObject {
+    let mut minimal = JsonObject::new();
+    for key in [
+        "schema",
+        "status",
+        "outcome",
+        "skill_name",
+        "runner",
+        "run_id",
+        "receipt_id",
+    ] {
+        if let Some(value) = object.get(key) {
+            minimal.insert(key.to_owned(), compact_scalar(value));
+        }
+    }
+    if let Some(JsonValue::Object(closure)) = object.get("closure") {
+        let mut compact = JsonObject::new();
+        for key in ["disposition", "reason_code", "summary"] {
+            if let Some(value) = closure.get(key) {
+                compact.insert(key.to_owned(), compact_scalar(value));
+            }
+        }
+        minimal.insert("closure".to_owned(), JsonValue::Object(compact));
+    }
+    minimal
+}
+
+fn compact_scalar(value: &JsonValue) -> JsonValue {
+    match value {
+        JsonValue::String(value) => JsonValue::String(truncate_chars(value)),
+        value => value.clone(),
+    }
+}
+
+fn truncate_chars(value: &str) -> String {
+    if value.chars().count() <= MAX_COMPACT_SUMMARY_CHARS {
+        return value.to_owned();
+    }
+    let mut truncated = value
+        .chars()
+        .take(MAX_COMPACT_SUMMARY_CHARS.saturating_sub(1))
+        .collect::<String>();
+    truncated.push('…');
+    truncated
+}
+
+fn serialized_len(value: &JsonValue) -> Result<usize, String> {
+    serde_json::to_vec(value)
+        .map(|bytes| bytes.len())
+        .map_err(|error| error.to_string())
 }
 
 fn write_text_with_exit(
@@ -130,11 +583,8 @@ fn write_skill_text(
         let text = serde_json::to_string(value).unwrap_or_else(|_| "null".to_owned());
         return writeln!(writer, "{text}");
     };
-    writeln!(
-        writer,
-        "status: {}",
-        object_string(object, "status").unwrap_or("unknown")
-    )?;
+    writeln!(writer, "status: {}", display_status(object))?;
+    writeln!(writer, "outcome: {}", semantic_outcome(object))?;
     if let Some(skill_name) = object_string(object, "skill_name") {
         writeln!(writer, "skill: {skill_name}")?;
     }
@@ -286,7 +736,8 @@ mod tests {
     };
 
     #[test]
-    fn json_output_is_compact_and_omits_result_duplicates() {
+    fn json_output_is_compact_and_omits_diagnostic_context()
+    -> Result<(), Box<dyn std::error::Error>> {
         let result = JsonValue::Object(JsonObject::from([
             ("message".to_owned(), JsonValue::String("ready".to_owned())),
             (
@@ -321,10 +772,18 @@ mod tests {
             ),
         ]));
 
-        assert_eq!(
-            serialize_json_output(&value).expect("serialize JSON output"),
-            r#"{"context":{"step_outputs":{"matching_subset":{"message":"ready"},"prior":{"evidence":"kept"}}},"result":{"message":"ready","status":"complete"}}"#
-        );
+        let serialized = serialize_json_output(&value, Path::new(".runx"), false)?;
+        let projected: serde_json::Value = serde_json::from_str(&serialized)?;
+
+        assert!(projected.get("context").is_none());
+        assert_eq!(projected["outcome"], "failed");
+        assert_eq!(projected["result"]["message"], "ready");
+        assert_eq!(projected["next"], serde_json::Value::Null);
+
+        let diagnostic = serialize_json_output(&value, Path::new(".runx"), true)?;
+        let diagnostic: serde_json::Value = serde_json::from_str(&diagnostic)?;
+        assert!(diagnostic.get("context").is_some());
+        Ok(())
     }
 
     #[test]

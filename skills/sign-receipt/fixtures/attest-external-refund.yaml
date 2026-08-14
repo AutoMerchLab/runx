@@ -2,6 +2,20 @@ name: attest-external-refund
 kind: skill
 target: ..
 runner: sign-receipt
+operator_journeys:
+  - mode: standalone
+    confusors: [audit-receipt, ledger]
+    request: Seal an auditable attestation for this manual provider refund without claiming Runx verified the refund itself.
+    expected_outcome: Return a signed Runx receipt that binds the exact claim to opaque evidence references and states the external proof boundary truthfully.
+  - mode: composed
+    request: Preserve this already-completed manual refund as typed evidence for the downstream dispute and reconciliation chain.
+    expected_outcome: Return a reusable attestation packet and receipt without reissuing the refund or fetching the provider evidence again.
+    prior_evidence:
+      - provider refund reference and digest
+      - console approval reference and digest
+    must_not_repeat:
+      - the external refund operation
+      - collection of the supplied evidence
 inputs:
   action: Issued a goodwill refund in the provider console for order ORD-7741.
   principal: ops:jordan

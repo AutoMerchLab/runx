@@ -1,6 +1,6 @@
 use super::{
-    SkillExecutionContext, SkillRunError, SkillSealContext, SkillSourceAdapter, generated_run_id,
-    invalid, sealed_output,
+    SkillExecutionContext, SkillOutputDiagnostics, SkillRunError, SkillSealContext,
+    SkillSourceAdapter, generated_run_id, invalid, sealed_output,
 };
 
 use std::collections::BTreeMap;
@@ -161,7 +161,13 @@ pub(super) fn execute_adapter_skill_run(
         )?;
     write_skill_receipt(request, workspace, receipts, &receipt)?;
     Ok(JsonValue::Object(sealed_output(
-        manifest, &run_id, &output, &payload, None, None, &receipt,
+        manifest,
+        &runner.name,
+        &run_id,
+        &output,
+        &payload,
+        SkillOutputDiagnostics::default(),
+        &receipt,
     )))
 }
 

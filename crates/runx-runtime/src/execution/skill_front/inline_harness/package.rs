@@ -5,7 +5,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::RuntimeError;
 use crate::effects::RuntimeEffectRegistry;
-use crate::execution::harness::HarnessFixtureKind;
+use crate::execution::harness::{
+    HarnessExpectedStatus, HarnessFixtureKind, HarnessReplayError, load_harness_fixture,
+};
 use crate::execution::runner::RuntimeOptions;
 use crate::execution::skill_front::{PackageHarnessReport, SkillRunError, SkillSourceAdapter};
 use crate::receipts::paths::{RUNX_CWD_ENV, RUNX_RECEIPT_DIR_ENV};
@@ -24,7 +26,11 @@ pub(crate) fn run_package_harness_with_effects(
 ) -> Result<PackageHarnessReport, SkillRunError> {
     let loaded = crate::load_validated_skill_package(skill_path)?;
     let workspace = crate::WorkspaceEnv::from_admitted(env.clone()).map_err(RuntimeError::from)?;
-    let base_env = workspace.env().clone();
+    let mut base_env = workspace.env().clone();
+    crate::execution::harness::isolate_harness_environment(
+        &mut base_env,
+        loaded.package.profiles.values(),
+    );
     let harness = PackageHarnessEnvironment::prepare(
         base_env,
         workspace.cwd(),
@@ -82,12 +88,44 @@ fn replay_conventional_fixtures(
                 report.case_names.push(output.fixture.name);
                 report.receipt_ids.push(output.receipt.id.to_string());
             }
-            Err(error) => report
-                .assertion_errors
-                .push(format!("{}: {error}", fixture_path.display())),
+            Err(error) => {
+                if let Some((name, is_graph)) = expected_authority_denial(&fixture_path, &error) {
+                    if is_graph {
+                        report.graph_case_count += 1;
+                    }
+                    report.case_names.push(name);
+                } else {
+                    report
+                        .assertion_errors
+                        .push(format!("{}: {error}", fixture_path.display()));
+                }
+            }
         }
     }
     Ok(())
+}
+
+/// Conventional graph fixtures execute below the skill front so they can
+/// expose step receipts and output assertions. That path returns a native
+/// authority denial directly instead of the skill front's sealed terminal
+/// envelope. Admit only that exact refusal when the fixture explicitly expects
+/// `policy_denied`; never let a broad `failure` expectation hide parser,
+/// harness, or runtime-invariant defects.
+fn expected_authority_denial(
+    fixture_path: &Path,
+    error: &HarnessReplayError,
+) -> Option<(String, bool)> {
+    if !matches!(
+        error,
+        HarnessReplayError::Runtime(RuntimeError::AuthorityDenied { .. })
+    ) {
+        return None;
+    }
+    let fixture = load_harness_fixture(fixture_path).ok()?;
+    (fixture.expect.status == Some(HarnessExpectedStatus::PolicyDenied)).then(|| {
+        let is_graph = matches!(fixture.kind, HarnessFixtureKind::Graph);
+        (fixture.name, is_graph)
+    })
 }
 
 fn persist_fixture_receipts(
@@ -151,7 +189,7 @@ impl PackageHarnessEnvironment {
             .map(Path::to_path_buf)
             .or_else(|| env.get(RUNX_RECEIPT_DIR_ENV).map(PathBuf::from));
         let receipt_dir = configured_receipt_dir.map_or_else(
-            || operator_workspace.join(".runx").join("receipts"),
+            || operator_workspace.join(".runx").join("harness-receipts"),
             |path| {
                 if path.is_absolute() {
                     path
@@ -167,6 +205,10 @@ impl PackageHarnessEnvironment {
         env.insert(
             RUNX_CWD_ENV.to_owned(),
             workspace.to_string_lossy().into_owned(),
+        );
+        env.insert(
+            "RUNX_HOME".to_owned(),
+            scratch_root.join("home").to_string_lossy().into_owned(),
         );
         Ok(Self {
             env,
@@ -202,6 +244,7 @@ impl PackageHarnessEnvironment {
             self.stage_file(
                 &format!("packets/{}", schema.file_name),
                 schema.source.as_bytes(),
+                false,
             )?;
         }
         let Some(harness) = loaded
@@ -227,12 +270,17 @@ impl PackageHarnessEnvironment {
                     ),
                 }
             })?;
-            self.stage_file(declared, contents)?;
+            self.stage_file(declared, contents, is_declared_harness_executable(declared))?;
         }
         Ok(())
     }
 
-    fn stage_file(&self, relative: &str, contents: &[u8]) -> Result<(), SkillRunError> {
+    fn stage_file(
+        &self,
+        relative: &str,
+        contents: &[u8],
+        executable: bool,
+    ) -> Result<(), SkillRunError> {
         let destination = self.workspace.join(relative);
         if let Some(parent) = destination.parent() {
             fs::create_dir_all(parent).map_err(|source| {
@@ -248,6 +296,24 @@ impl PackageHarnessEnvironment {
                 source,
             )
         })?;
+        #[cfg(unix)]
+        if executable {
+            use std::os::unix::fs::PermissionsExt;
+
+            fs::set_permissions(&destination, fs::Permissions::from_mode(0o700)).map_err(
+                |source| {
+                    RuntimeError::io(
+                        format!(
+                            "marking harness support file executable {}",
+                            destination.display()
+                        ),
+                        source,
+                    )
+                },
+            )?;
+        }
+        #[cfg(not(unix))]
+        let _ = executable;
         Ok(())
     }
 
@@ -260,6 +326,13 @@ impl PackageHarnessEnvironment {
             .join("fixture-receipts")
             .join(index.to_string())
     }
+}
+
+fn is_declared_harness_executable(relative: &str) -> bool {
+    let mut segments = relative.split('/');
+    matches!(segments.next(), Some("fixtures"))
+        && matches!(segments.next(), Some("bin"))
+        && segments.next().is_some()
 }
 
 fn unique_scratch_root(operator_workspace: &Path) -> PathBuf {
@@ -315,9 +388,12 @@ mod tests {
     use std::path::PathBuf;
     use std::time::{SystemTime, UNIX_EPOCH};
 
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+
     use super::{
         PackageHarnessEnvironment, PackageHarnessReport, RUNX_CWD_ENV, RUNX_RECEIPT_DIR_ENV,
-        finalize_report, run_package_harness_with_effects,
+        expected_authority_denial, finalize_report, run_package_harness_with_effects,
     };
 
     #[test]
@@ -371,10 +447,49 @@ runners:
             &crate::RuntimeEffectRegistry::default(),
         )?;
 
-        assert_eq!(report.status, "passed");
+        assert_eq!(report.status, "passed", "{report:?}");
         assert_eq!(report.case_names, ["refuses-missing-filesystem-scope"]);
         assert!(report.assertion_errors.is_empty());
         fs::remove_dir_all(operator_workspace)?;
+        Ok(())
+    }
+
+    #[test]
+    fn conventional_harness_admits_only_explicit_authority_denial()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let root = unique_test_root("conventional-authority-denial")?;
+        fs::create_dir_all(&root)?;
+        let fixture_path = root.join("denied.yaml");
+        fs::write(
+            &fixture_path,
+            r#"name: provider-read-is-denied
+kind: skill
+target: ..
+inputs: {}
+expect:
+  status: policy_denied
+"#,
+        )?;
+        let denial = crate::execution::harness::HarnessReplayError::Runtime(
+            crate::RuntimeError::AuthorityDenied {
+                verb: runx_contracts::AuthorityVerb::Read,
+                step_id: "provider-read".to_owned(),
+                reason: "no admitted grant".to_owned(),
+            },
+        );
+        assert_eq!(
+            expected_authority_denial(&fixture_path, &denial),
+            Some(("provider-read-is-denied".to_owned(), false))
+        );
+
+        let unrelated = crate::execution::harness::HarnessReplayError::Runtime(
+            crate::RuntimeError::SkillFailed {
+                skill_name: "provider-read".to_owned(),
+                message: "unexpected adapter defect".to_owned(),
+            },
+        );
+        assert_eq!(expected_authority_denial(&fixture_path, &unrelated), None);
+        fs::remove_dir_all(root)?;
         Ok(())
     }
 
@@ -413,14 +528,14 @@ runners:
         assert_eq!(harness.workspace, workspace);
         assert_eq!(
             harness.receipt_dir,
-            operator_workspace.join(".runx").join("receipts")
+            operator_workspace.join(".runx").join("harness-receipts")
         );
         assert_eq!(
             harness.env.get(RUNX_RECEIPT_DIR_ENV),
             Some(
                 &operator_workspace
                     .join(".runx")
-                    .join("receipts")
+                    .join("harness-receipts")
                     .to_string_lossy()
                     .into_owned()
             )
@@ -570,6 +685,63 @@ runners:
             "declared"
         );
         assert!(!harness.workspace.join("fixtures/undeclared.txt").exists());
+        drop(harness);
+        fs::remove_dir_all(operator_workspace)?;
+        Ok(())
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn package_harness_marks_declared_fixture_bin_files_executable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let operator_workspace = unique_test_root("staged-executable")?;
+        let skill_dir = operator_workspace.join("skills/demo");
+        fs::create_dir_all(skill_dir.join("fixtures/bin"))?;
+        fs::write(
+            skill_dir.join("SKILL.md"),
+            "---\nname: demo\ndescription: Harness executable fixture.\n---\n\n# Demo\n",
+        )?;
+        fs::write(
+            skill_dir.join("X.yaml"),
+            r#"skill: demo
+version: "0.1.0"
+harness:
+  files:
+    - fixtures/bin/demo-command
+  cases: []
+runners:
+  inspect:
+    default: true
+    type: graph
+    graph:
+      name: demo
+      result_from:
+        - digest
+      steps:
+        - id: digest
+          tool: data.digest
+          inputs:
+            value: demo
+"#,
+        )?;
+        fs::write(
+            skill_dir.join("fixtures/bin/demo-command"),
+            "#!/bin/sh\nexit 0\n",
+        )?;
+        let loaded = crate::load_validated_skill_package(&skill_dir)?;
+        let harness = PackageHarnessEnvironment::prepare(
+            BTreeMap::new(),
+            &operator_workspace,
+            &skill_dir,
+            None,
+        )?;
+
+        harness.stage_declared_files(&loaded)?;
+
+        let mode = fs::metadata(harness.workspace.join("fixtures/bin/demo-command"))?
+            .permissions()
+            .mode();
+        assert_ne!(mode & 0o111, 0);
         drop(harness);
         fs::remove_dir_all(operator_workspace)?;
         Ok(())

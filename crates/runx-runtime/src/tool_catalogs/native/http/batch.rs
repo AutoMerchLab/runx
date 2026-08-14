@@ -9,7 +9,7 @@ use super::request::{RequestExecution, execute_one};
 use super::resolution::{allowed_hosts, estimated_size, json_u64, method, required_string};
 use super::{BatchMode, MAX_HTTP_OUTPUT_BYTES, MAX_REQUESTS, invalid};
 use crate::RuntimeError;
-use crate::http::ReqwestHttpTransport;
+use crate::http::NativeHttpTransport;
 
 struct BatchAccumulator {
     seen_ids: BTreeSet<String>,
@@ -107,7 +107,7 @@ pub(super) fn execute_batch(
     let allowed_hosts = admitted_hosts(invocation, &auth)?;
     let requests = admit_requests(&invocation.inputs.requests, mode)?;
     let stop_on_error = invocation.inputs.stop_on_error;
-    let transport = ReqwestHttpTransport::new()
+    let transport = NativeHttpTransport::new(invocation.harness_http_responses())
         .map_err(|error| invalid(format!("native HTTP transport unavailable: {error}")))?;
     let mut batch = BatchAccumulator::new();
 

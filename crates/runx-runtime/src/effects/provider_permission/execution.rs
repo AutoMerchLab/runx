@@ -4,10 +4,12 @@ use super::readback::{
     ProviderReadbackContract, complete_provider_effect, project_provider_tool_readback,
     provider_expected_result, provider_operation_access, provider_result_fields,
 };
-use super::recovery::{persist_provider_attempt, persist_provider_unknown};
+use super::recovery::{
+    persist_provider_attempt, persist_provider_readback, persist_provider_unknown,
+};
 use super::{
     PROVIDER_PERMISSION_EFFECT_FAMILY, ProviderNativeAccess, ProviderPermissionAdmission,
-    ProviderPermissionEffect,
+    ProviderPermissionEffect, identity::ProviderTransportSelection,
 };
 use crate::{
     EffectToolRequest, HostedApiEnvironment, ProviderEffectAttempt, ProviderOperationRequest,
@@ -21,56 +23,66 @@ pub(super) fn invoke_provider_tool(
     access: ProviderNativeAccess,
 ) -> Result<JsonValue, RuntimeError> {
     let input = admit_provider_tool_invocation(&request, access)?;
-    let transport = effect
-        .http_transport(hosted_private_network_allowed(false, request.env))
-        .map_err(|error| provider_tool_error(request.tool_ref, error.to_string()))?;
-    let resolved = HostedApiEnvironment::resolve(None, None, request.env, request.skill_directory)
-        .map_err(|error| provider_tool_error(request.tool_ref, error.to_string()))?;
-    let environment = effect
-        .authenticated_environment(&resolved, transport.as_ref())
-        .map_err(|error| provider_tool_error(request.tool_ref, error.to_string()))?;
-    let authenticated_principal_ref = format!("runx:principal:{}", environment.principal_id());
-    if input.attempt.resolved().authority().principal_ref() != authenticated_principal_ref {
-        return Err(provider_tool_error(
-            request.tool_ref,
-            "authenticated provider principal does not match the admitted effect authority",
-        ));
-    }
     let attempt = input.attempt.clone();
+    if access == ProviderNativeAccess::Mutate
+        && input.admission.recovery.as_ref().is_some_and(|recovery| {
+            recovery.previous_attempt().is_some() && recovery.cached_readback().is_none()
+        })
+        && matches!(&input.transport, ProviderTransportSelection::LocalGithub(_))
+        && !super::local_github::mutation_is_replay_safe(&input.operation)
+            .map_err(|error| provider_tool_error(request.tool_ref, error.to_string()))?
+    {
+        return Err(RuntimeError::ProviderEffectUnknown {
+            plan_digest: attempt.resolved().plan_digest().to_owned(),
+            idempotency_key: attempt.idempotency_key().to_owned(),
+            reason: "local GitHub mutation has an unknown prior outcome and cannot be repeated safely; inspect the provider result before resuming"
+                .to_owned(),
+        });
+    }
     if access == ProviderNativeAccess::Mutate {
         persist_provider_attempt(&input.admission, &attempt)
             .map_err(|error| RuntimeError::effect_state("persisting provider attempt", error))?;
     }
-    let readback = invoke_provider_operation(
-        transport.as_ref(),
-        &environment,
-        &ProviderOperationRequest {
-            grant_id: input.grant_id.clone(),
-            operation: input.operation.clone(),
-            target: input.target.clone(),
-            scopes: input.admission.required_scopes.clone(),
-            input: input.payload,
-            expected_access: Some(provider_operation_access(access)),
-        },
-    );
-    let result = readback
-        .map_err(|error| provider_tool_error(request.tool_ref, error.to_string()))
-        .and_then(|readback| {
-            let finality = complete_provider_effect(request.tool_ref, attempt.clone(), &readback)?;
-            project_provider_tool_readback(
-                request.tool_ref,
-                readback,
-                ProviderReadbackContract {
-                    expected_provider: input.expected_provider,
-                    grant_id: input.grant_id,
-                    access,
-                    principal_id: environment.principal_id(),
-                    expected_result: input.expected_result,
-                    result_fields: input.result_fields,
-                    finality,
-                },
+    let readback = cached_provider_readback(&input).map_or_else(
+        || match &input.transport {
+            ProviderTransportSelection::Hosted => {
+                invoke_hosted_provider(effect, &request, access, &input)
+            }
+            ProviderTransportSelection::LocalGithub(binding) => super::local_github::invoke(
+                request.env,
+                request.skill_directory,
+                binding,
+                &input.operation,
+                access,
+                &input.payload,
             )
-        });
+            .map(|readback| (readback, binding.principal_ref(), "local_github"))
+            .map_err(|error| provider_tool_error(request.tool_ref, error.to_string())),
+        },
+        Ok,
+    );
+    let result = readback.and_then(|readback| {
+        let finality = complete_provider_effect(request.tool_ref, attempt.clone(), &readback.0)?;
+        if access == ProviderNativeAccess::Mutate {
+            persist_provider_readback(&input.admission, &attempt, &readback.0).map_err(
+                |error| RuntimeError::effect_state("persisting provider readback", error),
+            )?;
+        }
+        project_provider_tool_readback(
+            request.tool_ref,
+            readback.0,
+            ProviderReadbackContract {
+                expected_provider: input.expected_provider,
+                grant_id: input.grant_id,
+                access,
+                principal_ref: readback.1,
+                transport: readback.2,
+                expected_result: input.expected_result,
+                result_fields: input.result_fields,
+                finality,
+            },
+        )
+    });
     result.map_err(|error| {
         if access == ProviderNativeAccess::Read {
             return error;
@@ -92,6 +104,68 @@ pub(super) fn invoke_provider_tool(
     })
 }
 
+fn cached_provider_readback(
+    input: &ProviderToolInvocation,
+) -> Option<(JsonObject, String, &'static str)> {
+    let readback = input
+        .admission
+        .recovery
+        .as_ref()?
+        .cached_readback()?
+        .clone();
+    let transport = match &input.transport {
+        ProviderTransportSelection::Hosted => "runx_connect",
+        ProviderTransportSelection::LocalGithub(_) => "local_github",
+    };
+    Some((
+        readback,
+        input
+            .attempt
+            .resolved()
+            .authority()
+            .principal_ref()
+            .to_owned(),
+        transport,
+    ))
+}
+
+fn invoke_hosted_provider(
+    effect: &ProviderPermissionEffect,
+    request: &EffectToolRequest<'_>,
+    access: ProviderNativeAccess,
+    input: &ProviderToolInvocation,
+) -> Result<(JsonObject, String, &'static str), RuntimeError> {
+    let transport = effect
+        .http_transport(hosted_private_network_allowed(false, request.env))
+        .map_err(|error| provider_tool_error(request.tool_ref, error.to_string()))?;
+    let resolved = HostedApiEnvironment::resolve(None, None, request.env, request.skill_directory)
+        .map_err(|error| provider_tool_error(request.tool_ref, error.to_string()))?;
+    let environment = effect
+        .authenticated_environment(&resolved, transport.as_ref())
+        .map_err(|error| provider_tool_error(request.tool_ref, error.to_string()))?;
+    let principal_ref = format!("runx:principal:{}", environment.principal_id());
+    if input.attempt.resolved().authority().principal_ref() != principal_ref {
+        return Err(provider_tool_error(
+            request.tool_ref,
+            "authenticated provider principal does not match the admitted effect authority",
+        ));
+    }
+    invoke_provider_operation(
+        transport.as_ref(),
+        &environment,
+        &ProviderOperationRequest {
+            grant_id: input.grant_id.clone(),
+            operation: input.operation.clone(),
+            target: input.target.clone(),
+            scopes: input.admission.required_scopes.clone(),
+            input: input.payload.clone(),
+            expected_access: Some(provider_operation_access(access)),
+        },
+    )
+    .map(|readback| (readback, principal_ref, "runx_connect"))
+    .map_err(|error| provider_tool_error(request.tool_ref, error.to_string()))
+}
+
 #[cfg(feature = "catalog")]
 pub(super) struct ProviderToolInvocation {
     expected_provider: String,
@@ -103,6 +177,7 @@ pub(super) struct ProviderToolInvocation {
     result_fields: Option<Vec<String>>,
     attempt: ProviderEffectAttempt,
     admission: ProviderPermissionAdmission,
+    transport: ProviderTransportSelection,
 }
 
 #[cfg(feature = "catalog")]
@@ -120,7 +195,15 @@ pub(super) fn admit_provider_tool_invocation(
         )
     })?;
     let operation = required_provider_tool_string(request, "operation")?;
-    let target = required_provider_tool_string(request, "target")?;
+    if operation != attempt.resolved().intent().operation()
+        || expected_provider != attempt.resolved().intent().provider()
+    {
+        return Err(provider_tool_error(
+            request.tool_ref,
+            "provider operation or provider identity changed after admission",
+        ));
+    }
+    let target = attempt.resolved().intent().target();
     let mut payload = request
         .inputs
         .get("input")
@@ -138,6 +221,7 @@ pub(super) fn admit_provider_tool_invocation(
         result_fields: provider_result_fields(request)?,
         attempt,
         admission: context.clone(),
+        transport: context.transport.clone(),
     })
 }
 

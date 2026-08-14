@@ -23,6 +23,6 @@
   "policy_fixture": "fixtures/operational-policy/provider-like.json",
   "runtime_fixtures": [
     "fixtures/runtime/skills/issue-intake/cases/bounded-docs-fix.yaml",
-    "fixtures/runtime/skills/issue-to-pr/cases/issue-to-pr-reaches-fix-boundary.yaml"
+    "skills/issue-to-pr/fixtures/composed-pr-flow.yaml"
   ]
 }

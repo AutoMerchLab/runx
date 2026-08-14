@@ -39,6 +39,7 @@
     "official-lock:check": "node scripts/generate-official-lock.mjs --check",
     "official-lock:generate": "node scripts/generate-official-lock.mjs",
     "core-skills:audit": "node scripts/audit-core-skills.mjs --check --json",
+    "codex-export:check": "node scripts/check-codex-export.mjs",
     "core-skills:composes:generate": "node scripts/audit-core-skills.mjs --write-composes",
     "catalog:check": "node scripts/check-skill-version-drift.mjs && node scripts/check-skill-version-drift.mjs --self-test && node scripts/harness-sweep.mjs --self-test",
     "commands:check-drift": "node scripts/check-command-drift.mjs",
@@ -102,9 +103,9 @@
     "@runxhq/extension-sdk": "workspace:^0.1.0",
     "@runxhq/contracts": "workspace:^0.3.0",
     "@runxhq/host-adapters": "workspace:^0.1.1",
-    "@types/node": "^26.0.1",
-    "tsx": "^4.22.4",
+    "@types/node": "^26.2.0",
+    "tsx": "^4.23.12",
     "typescript": "^6.0.3",
-    "vitest": "^4.1.9"
+    "vitest": "^4.1.10"
   }
 }

@@ -23,6 +23,8 @@ mod contract;
 #[cfg(feature = "catalog")]
 mod execution;
 mod identity;
+#[cfg(any(feature = "catalog", test))]
+mod local_github;
 mod policy;
 #[cfg(feature = "catalog")]
 mod readback;
@@ -44,10 +46,104 @@ use policy::{
 pub const PROVIDER_PERMISSION_EFFECT_FAMILY: &str = "provider_permission";
 pub const PROVIDER_READ_TOOL: &str = "provider.read";
 pub const PROVIDER_MUTATE_TOOL: &str = "provider.mutate";
+/// Host-injected provider grant identity. Together with granted scopes and the
+/// principal reference, this selects hosted execution. A complete triplet
+/// cannot coexist with an explicit local transport binding.
 pub const PROVIDER_PERMISSION_GRANT_ID_ENV: &str = "RUNX_PROVIDER_PERMISSION_GRANT_ID";
 pub const PROVIDER_PERMISSION_GRANTED_SCOPES_ENV: &str = "RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES";
 pub const PROVIDER_PERMISSION_PRINCIPAL_REF_ENV: &str = "RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF";
+/// Explicit provider transport preference. The environment overrides the
+/// project binding; either source conflicts fail closed when a complete
+/// host-injected hosted-grant triplet requests a different transport.
+pub const PROVIDER_PERMISSION_TRANSPORT_ENV: &str = "RUNX_PROVIDER_PERMISSION_TRANSPORT";
 
+#[cfg(feature = "catalog")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct LocalProviderTransportReadiness {
+    pub transport: &'static str,
+    pub host: String,
+    pub target: String,
+    pub principal_ref: String,
+    pub grant_ref: String,
+}
+
+#[cfg(feature = "catalog")]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ProviderTransportPreference {
+    Auto,
+    LocalGithub,
+    Hosted(Option<String>),
+}
+
+#[cfg(feature = "catalog")]
+pub fn resolve_provider_transport_preference(
+    env: &std::collections::BTreeMap<String, String>,
+    cwd: &std::path::Path,
+    provider: &str,
+) -> Result<ProviderTransportPreference, String> {
+    let workspace = crate::config::resolve_runx_workspace_base(env, cwd);
+    let project_binding = crate::load_project_bindings(&workspace)
+        .map_err(|error| error.to_string())?
+        .bindings
+        .get(&format!("provider-transport:{provider}"))
+        .cloned();
+    let value = env
+        .get(PROVIDER_PERMISSION_TRANSPORT_ENV)
+        .map(String::as_str)
+        .or(project_binding.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    match value {
+        None | Some("auto") => Ok(ProviderTransportPreference::Auto),
+        Some("local") | Some("local:github") if provider == "github" => {
+            Ok(ProviderTransportPreference::LocalGithub)
+        }
+        Some("hosted") | Some("runx-connect") => Ok(ProviderTransportPreference::Hosted(None)),
+        Some(value) if value.starts_with("hosted:") => {
+            let grant = value.trim_start_matches("hosted:").trim();
+            if !crate::path_util::is_safe_url_path_identifier(grant) {
+                return Err(
+                    "hosted provider transport binding requires a valid grant id".to_owned(),
+                );
+            }
+            Ok(ProviderTransportPreference::Hosted(Some(grant.to_owned())))
+        }
+        Some(value) => Err(format!(
+            "unsupported provider transport binding {value:?}; use auto, local:github, hosted, or hosted:<grant-id>"
+        )),
+    }
+}
+
+#[cfg(feature = "catalog")]
+pub fn preflight_local_provider_transport(
+    env: &std::collections::BTreeMap<String, String>,
+    cwd: &std::path::Path,
+    provider: &str,
+    operation: &str,
+    access: &str,
+    target: &str,
+    scopes: &[String],
+) -> Result<Option<LocalProviderTransportReadiness>, String> {
+    if provider != "github" {
+        return Ok(None);
+    }
+    let access = match access {
+        "read" => ProviderNativeAccess::Read,
+        "mutate" => ProviderNativeAccess::Mutate,
+        value => return Err(format!("unsupported provider access {value:?}")),
+    };
+    let binding = local_github::preflight(env, cwd, operation, access, target, scopes)
+        .map_err(|error| error.to_string())?;
+    Ok(Some(LocalProviderTransportReadiness {
+        transport: "local_github",
+        host: binding.host.clone(),
+        target: binding.repository.clone(),
+        principal_ref: binding.principal_ref(),
+        grant_ref: format!("runx:grant:{}", binding.grant_id()),
+    }))
+}
+
+#[derive(Default)]
 pub struct ProviderPermissionEffect {
     #[cfg(feature = "catalog")]
     http_transport: Option<Arc<dyn RuntimeHttpTransport + Send + Sync>>,
@@ -56,19 +152,9 @@ pub struct ProviderPermissionEffect {
         Mutex<Option<(HostedApiEnvironment, AuthenticatedHostedApiEnvironment)>>,
     #[cfg(feature = "catalog")]
     hosted_grants: Mutex<Option<(HostedApiEnvironment, Vec<HostedProviderGrant>)>>,
-}
-
-impl Default for ProviderPermissionEffect {
-    fn default() -> Self {
-        Self {
-            #[cfg(feature = "catalog")]
-            http_transport: None,
-            #[cfg(feature = "catalog")]
-            authenticated_environment: Mutex::new(None),
-            #[cfg(feature = "catalog")]
-            hosted_grants: Mutex::new(None),
-        }
-    }
+    #[cfg(feature = "catalog")]
+    local_github_bindings:
+        Mutex<std::collections::BTreeMap<(String, String), local_github::LocalGithubBinding>>,
 }
 
 impl std::fmt::Debug for ProviderPermissionEffect {
@@ -119,11 +205,13 @@ impl ProviderPermissionEffect {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct ProviderPermissionAdmission {
     pub grant_id: String,
     pub required_scopes: Vec<String>,
     pub granted_scopes: Vec<String>,
+    #[cfg(feature = "catalog")]
+    transport: identity::ProviderTransportSelection,
     provider_effect: Option<ProviderEffectResolved>,
     attempt: Option<super::ProviderEffectAttempt>,
     recovery: Option<recovery::ProviderRecoveryContext>,
@@ -268,7 +356,17 @@ fn build_provider_admission(
     let provider_effect = native_access
         .zip(resolution)
         .map(|(access, resolved)| {
-            resolved_provider_effect(request, &plan, access, &resolved.principal_ref)
+            #[cfg(feature = "catalog")]
+            let resolved_target = Some(resolved.target.as_str());
+            #[cfg(not(feature = "catalog"))]
+            let resolved_target = None;
+            resolved_provider_effect(
+                request,
+                &plan,
+                access,
+                &resolved.principal_ref,
+                resolved_target,
+            )
         })
         .transpose()?;
     let recovery = recovery::provider_recovery_context(request, provider_effect.as_ref())?;
@@ -280,6 +378,10 @@ fn build_provider_admission(
             grant_id: plan.grant_id,
             required_scopes: plan.required_scopes,
             granted_scopes: plan.granted_scopes,
+            #[cfg(feature = "catalog")]
+            transport: resolution
+                .map(|resolution| resolution.transport.clone())
+                .unwrap_or(identity::ProviderTransportSelection::Hosted),
             provider_effect,
             attempt: None,
             recovery,
@@ -287,7 +389,7 @@ fn build_provider_admission(
     ))
 }
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum ProviderNativeAccess {
     Read,
     Mutate,

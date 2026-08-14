@@ -2,6 +2,19 @@ name: prepare-disclosure-outbox
 kind: skill
 target: ..
 runner: vuln-disclosure
+operator_journeys:
+  - mode: standalone
+    confusors: [vuln-triage, cve-audit]
+    request: Prepare this verified vulnerability for coordinated GitHub Security Advisory publication.
+    expected_outcome: Return an exact evidence-bound advisory and publication handoff without claiming publication.
+  - mode: composed
+    request: Continue disclosure from this completed vulnerability triage and remediation packet.
+    expected_outcome: Reuse advisory identity, evidence, coordination, and remediation state without repeating triage or publishing twice.
+    prior_evidence:
+      - The advisory packet, target, coordination status, and remediation status supplied in the fixture.
+    must_not_repeat:
+      - Do not rerun vulnerability triage.
+      - Do not publish or retry publication without exact approval and readback.
 inputs:
   channel: github_security_advisory
   target:

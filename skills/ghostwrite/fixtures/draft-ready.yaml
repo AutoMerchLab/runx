@@ -2,6 +2,19 @@ name: ghostwrite-draft-binds-evidence
 kind: skill
 target: ..
 runner: draft
+operator_journeys:
+  - mode: standalone
+    confusors: [content-pipeline, brand-voice]
+    request: Ghostwrite an operator brief from this evidence pack and objective.
+    expected_outcome: Return publication-ready draft copy whose claims and caveats remain bound to supplied evidence.
+  - mode: composed
+    request: Turn this completed research brief into an operator-facing draft.
+    expected_outcome: Reuse the research brief and evidence log without repeating research or inventing claims.
+    prior_evidence:
+      - The research brief and evidence log supplied in the fixture.
+    must_not_repeat:
+      - Do not rerun research.
+      - Do not replace or expand claims beyond the supplied evidence.
 inputs:
   objective: Explain the strongest Runx architecture signal.
   audience: operators

@@ -1,0 +1,23 @@
+name: twitter-default-requires-account-binding
+kind: skill
+target: ..
+operator_journeys:
+  - mode: standalone
+    confusors: [moltbook, ecosystem-brief]
+    request: Read the bounded current snapshot for this X account.
+    expected_outcome: Use the live account read runner by default and return bounded provider evidence through an explicitly supplied tenant credential binding.
+env:
+  TWITTER_USER_AUTH: '{"consumer_key":"harness-consumer","consumer_secret":"harness-secret","access_token":"harness-access","access_secret":"harness-access-secret"}'
+inputs:
+  query: snapshot
+  auth: user
+  max_items: 200
+caller:
+  http_responses:
+    "https://api.x.com/2/users/me?user.fields=created_at%2Cdescription%2Cpublic_metrics":
+      status: 200
+      headers: { content-type: application/json, x-rate-limit-remaining: "99", x-rate-limit-reset: "1800000000" }
+      body: '{"data":{"id":"42","username":"runx","name":"Runx","created_at":"2026-01-01T00:00:00Z","description":"Governed runtime for agent skills","public_metrics":{"followers_count":100,"following_count":20,"tweet_count":50,"listed_count":3}}}'
+expect:
+  status: sealed
+metadata: { public_skill: twitter, source_case: direct-default-preflight, source: skills-fixture }

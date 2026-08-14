@@ -32,7 +32,7 @@ Skills that run a standing mandate, route work, or operate a project workspace.
 | `knowledge-router/` | Route a question or source event to the right knowledge source. |
 | `issue-intake/` | Turn a noisy inbound request into a bounded intake artifact. |
 | `issue-triage/` | Discover, analyze, and draft high-signal issue-thread responses. |
-| `issue-to-pr/` | Govern a scafld-backed issue-to-PR lane with native scafld receipts. |
+| `issue-to-pr/` | Implement and test an issue with normal host tools, finalize once, and optionally publish a governed PR. |
 
 ## Governance & Audit
 
@@ -43,10 +43,9 @@ Skills that enforce policy, audit receipts, or review skill quality.
 | `audit-receipt/` | Audit a sealed runx receipt for governance, comparing the authority chain to the evidence. |
 | `run-history/` | Produce a read-only report over runx's own run history, summarizing sealed runs. |
 | `review-skill/` | Inspect, safely test, and assess a skill package for capability, trust, and operator risk. |
-| `review-receipt/` | Review receipts and harness failures to propose bounded skill improvements. |
+| `diagnose-skill-run/` | Diagnose failed skill runs from receipts and harness evidence, then propose bounded improvements. |
 | `least-privilege/` | Compare granted scopes against the scopes a subject actually used. |
 | `sign-receipt/` | Prepare an evidence-bound attestation of an off-runtime act. |
-| `reflect-digest/` | Aggregate projected reflect knowledge into bounded skill improvement proposals. |
 
 ## Content & Research
 
@@ -69,24 +68,15 @@ Skills that enforce policy, audit receipts, or review skill quality.
 | `cve-audit/` | Audit exact npm dependency versions against OSV and emit reproducible, independently verified CVE evidence. |
 | `vuln-triage/` | Assess vulnerability risk and produce remediation guidance and an advisory draft. |
 | `vuln-disclosure/` | Publish a governed, human-approved security advisory from triaged risk. |
-| `pr-review-note/` | Govern a GitHub PR review-note lane over MCP. |
+| `github-pr-comment/` | Post one exact approved GitHub PR comment with retry safety and readback. |
 | `redact-pii/` | Scrub personal data out of content before it crosses a trust boundary. |
 | `vault-unseal/` | Plan a scoped, time-bounded unseal of a secret under explicit policy. |
 | `governed-outbound/` | Gather an external source, scrub personal data, and publish governed output. |
 
 ## Payments & Settlement
 
-Skills that model, charge, pay, or refund through payment providers. The `mock-*` lanes are deterministic test lanes; the `stripe-*` and `mpp-*` lanes run against live or sandbox providers.
-
-### Mock Lanes (Test Only)
-
-| Directory | Purpose |
-|---|---|
-| `mock-charge/` | Model provider-side charge verification through the deterministic mock graph. |
-| `mock-pay/` | Run the deterministic mock payment graph from quote to sealed settlement. |
-| `mock-refund/` | Model a same-family mock refund against a sealed charge receipt. |
-
-### Provider Lanes
+Public payment capabilities. Internal mock and rail packages are implementation
+paths, not alternative operator choices.
 
 | Directory | Purpose |
 |---|---|
@@ -94,12 +84,7 @@ Skills that model, charge, pay, or refund through payment providers. The `mock-*
 | `spend/` | Execute one governed outbound payment across a selected runtime. |
 | `refund/` | Govern one refund linked to a sealed original charge receipt. |
 | `settle-invoice/` | Settle a known, approved invoice under a spend-bounded grant. |
-| `stripe-charge/` | Model provider-side charge verification through the Stripe settlement graph. |
 | `stripe-pay/` | Execute a governed Stripe Shared Payment Token spend by delegation. |
-| `stripe-refund/` | Model a same-family Stripe refund against a sealed charge receipt. |
-| `mpp-charge/` | Model provider-side charge verification through the MPP settlement graph. |
-| `mpp-pay/` | Run the MPP payment graph from quote to sealed settlement proof. |
-| `mpp-refund/` | Model a same-family MPP refund against a sealed charge receipt. |
 | `x402-pay/` | Execute a governed x402 payment by delegating to the canonical x402 runtime. |
 
 ## Data & Infrastructure
@@ -107,7 +92,7 @@ Skills that model, charge, pay, or refund through payment providers. The `mock-*
 | Directory | Purpose |
 |---|---|
 | `data-store/` | Govern provider-agnostic data reads and state transitions through a receipt. |
-| `github-sync/` | Plan a scoped pull or push of GitHub issues, threads, or PRs. |
+| `github-sync/` | Read or execute a scoped pull or push of GitHub issues, threads, or PRs. |
 | `chief-of-staff/` | Convert mailbox and calendar context into a reviewable execution plan. |
 | `n8n-handoff/` | Validate a runx execution context and hand off a governed payload to n8n. |
 | `zapier-handoff/` | Validate a runx execution context and hand off a governed payload to Zapier. |
@@ -135,7 +120,7 @@ Skills that model, charge, pay, or refund through payment providers. The `mock-*
 | Directory | Purpose |
 |---|---|
 | `skill-lab/` | Design, build, improve, and add validated harness coverage to Runx skills. |
-| `overlay/` | Wrap a borrowed Anthropic SKILL.md under a governed runx overlay. |
+| `adopt-skill/` | Adopt a pinned third-party SKILL.md as a governed native Runx binding bundle. |
 | `moltbook/` | Scan for posting opportunities and prepare governed Moltbook entries. |
 
 ## SQL & Structured Data
@@ -163,4 +148,9 @@ Refer to the ["Add A Project Operator Skill Only When"](./operator-skills.md) se
 
 ## Mock vs. Live Lanes
 
-Skills prefixed with `mock-` are deterministic test lanes that model the same payment graph as their live counterparts without touching real providers. They share the same receipt format and evidence structure. Use mock lanes for dogfooding, harness testing, and CI verification. Provider lanes (`stripe-*`, `mpp-*`, `x402-pay`) run against real or sandbox payment providers under governed spend caps.
+The internal packages `mock-charge`, `mock-pay`, `mock-refund`, `mpp-charge`,
+`mpp-pay`, `mpp-refund`, `stripe-charge`, and `stripe-refund` are deterministic
+or rail-specific runtime paths. `reflect-digest` is internal skill-improvement
+plumbing. They remain executable by exact graph reference and visible in
+receipts, but are excluded from ordinary operator discovery. Public skills own
+the terminal capability and select these paths explicitly.

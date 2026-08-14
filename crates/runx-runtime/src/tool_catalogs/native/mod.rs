@@ -131,6 +131,21 @@ pub(super) struct NativeInvocation<'a, I: ?Sized = JsonObject> {
     pub effects: &'a RuntimeEffectRegistry,
 }
 
+impl<I: ?Sized> NativeInvocation<'_, I> {
+    fn harness_http_responses(
+        &self,
+    ) -> Option<&BTreeMap<String, crate::http::RuntimeHttpResponse>> {
+        #[cfg(feature = "catalog")]
+        {
+            self.effects.harness_http_responses()
+        }
+        #[cfg(not(feature = "catalog"))]
+        {
+            None
+        }
+    }
+}
+
 #[cfg(feature = "catalog")]
 pub(crate) struct NativeToolInvocation<'a> {
     pub tool_ref: &'a str,

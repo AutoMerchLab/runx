@@ -1,6 +1,20 @@
 name: action-lifecycle-persists-disposition
 kind: graph
 target: ../harness/action-lifecycle.yaml
+operator_journeys:
+  - mode: standalone
+    exercises_runner: list_actions
+    confusors: [ops-desk, chief-of-staff]
+    request: Record, inspect, and disposition this operator action in the local Runx inbox.
+    expected_outcome: Persist a provider-neutral action lifecycle and return the final local disposition with replayable evidence.
+  - mode: composed
+    request: Add this bounded provider observation to the operator queue and record the supplied disposition.
+    expected_outcome: Reuse the observation and action identity across lifecycle steps without duplicating the queue item.
+    prior_evidence:
+      - The bounded action observation and stable identity used by the fixture graph.
+    must_not_repeat:
+      - Do not refetch the provider item.
+      - Do not create another action after the stable identity is persisted.
 env:
   RUNX_DATA_SOURCES: '{"data_sources":{"local://runx/operator-inbox/action-lifecycle":{"adapter":"data.sqlite","database_path":".runx/data/operator-inbox-action-lifecycle.sqlite","resources":{"operator_inbox_actions":{"kind":"event_stream","partition_key":"aggregate_id"}}}}}'
 expect:

@@ -87,6 +87,7 @@ impl ProcessStdin {
 }
 
 #[derive(Debug)]
+#[cfg_attr(test, allow(dead_code))]
 pub(crate) struct ProcessOutcome {
     pub(crate) status: ExitStatus,
     pub(crate) timed_out: bool,

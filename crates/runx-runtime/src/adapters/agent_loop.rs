@@ -22,7 +22,9 @@
 // one cohesive unit; splitting them would scatter the single source of truth for
 // the tool-use protocol.
 
-use runx_contracts::JsonValue;
+use std::collections::BTreeMap;
+
+use runx_contracts::{JsonValue, OutputField, validate_output_value};
 
 use super::agent::{AgentExecutionTelemetry, AgentResolution, AgentToolExecutionTrace};
 use crate::RuntimeError;
@@ -148,6 +150,12 @@ pub struct AgentLoopConfig {
     /// separate from `max_rounds` so a blip never costs a legitimate tool round.
     pub max_empty_turn_resamples: u32,
     pub final_result_tool: String,
+    /// The exact semantic output contract presented to the model and enforced
+    /// before the loop accepts a final-result tool call. `None` is the canonical
+    /// open-object contract, not an opt-out from validation.
+    pub final_result_output: Option<BTreeMap<String, OutputField>>,
+    /// Exact root schema when packet contracts refine or wrap the field map.
+    pub final_result_schema: Option<JsonValue>,
 }
 
 fn tool_result_content(output: &InvocationOutput, is_error: bool) -> String {
@@ -264,6 +272,23 @@ where
         let mut results = Vec::with_capacity(uses.len());
         for use_ in &uses {
             if use_.name == config.final_result_tool {
+                if let Err(error) = validate_final_result(config, &use_.input) {
+                    tool_executions.push(AgentToolExecutionTrace {
+                        tool: config.final_result_tool.clone(),
+                        status: "failure".to_owned(),
+                        receipt_id: None,
+                        resolution_kind: Some("output_contract_failed".to_owned()),
+                    });
+                    results.push(AgentToolResult {
+                        tool_use_id: use_.id.clone(),
+                        content: format!(
+                            "Final result does not match the declared output contract at {error}. {}",
+                            final_result_repair_hint(config.final_result_output.as_ref())
+                        ),
+                        is_error: true,
+                    });
+                    continue;
+                }
                 let telemetry = AgentExecutionTelemetry {
                     rounds: Some(u64::from(round)),
                     model_calls: Some(u64::from(model_calls)),
@@ -351,11 +376,38 @@ where
     ))
 }
 
+fn final_result_repair_hint(output: Option<&BTreeMap<String, OutputField>>) -> String {
+    let Some(output) = output.filter(|fields| !fields.is_empty()) else {
+        return "Submit one JSON object as the tool input.".to_owned();
+    };
+    let fields = output.keys().cloned().collect::<Vec<_>>().join(", ");
+    format!(
+        "The tool input root must contain exactly these declared fields: [{fields}]. Do not submit a field's inner value as the root object."
+    )
+}
+
+fn validate_final_result(config: &AgentLoopConfig, value: &JsonValue) -> Result<(), String> {
+    let Some(schema) = config.final_result_schema.as_ref() else {
+        return validate_output_value(config.final_result_output.as_ref(), value)
+            .map_err(|error| error.to_string());
+    };
+    let schema = serde_json::to_value(schema)
+        .map_err(|error| format!("$: exact output schema could not be serialized: {error}"))?;
+    let validator = jsonschema::draft202012::options()
+        .build(&schema)
+        .map_err(|error| format!("$: exact output schema is invalid: {error}"))?;
+    let instance = serde_json::to_value(value)
+        .map_err(|error| format!("$: final result could not be serialized: {error}"))?;
+    validator
+        .validate(&instance)
+        .map_err(|error| error.to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::adapter::InvocationOutput;
-    use runx_contracts::{JsonObject, JsonValue};
+    use runx_contracts::{JsonObject, JsonValue, OutputField, OutputType};
 
     const FINAL: &str = "runx_final_result";
 
@@ -363,6 +415,13 @@ mod tests {
         let value =
             serde_json::from_str(stdout).unwrap_or_else(|_| JsonValue::String(stdout.to_owned()));
         InvocationOutput::runtime_success(value, 0, JsonObject::new())
+    }
+
+    fn done_payload() -> JsonValue {
+        JsonValue::Object(JsonObject::from([(
+            "status".to_owned(),
+            JsonValue::String("done".to_owned()),
+        )]))
     }
 
     struct OkExecutor;
@@ -395,7 +454,7 @@ mod tests {
                 Ok(vec![AgentToolUse {
                     id: "f".to_owned(),
                     name: FINAL.to_owned(),
-                    input: JsonValue::String("done".to_owned()),
+                    input: done_payload(),
                 }])
             } else {
                 Ok(vec![AgentToolUse {
@@ -413,6 +472,8 @@ mod tests {
             max_rounds: 8,
             max_empty_turn_resamples: 3,
             final_result_tool: FINAL.to_owned(),
+            final_result_output: None,
+            final_result_schema: None,
         };
         let result = run_agent_loop(
             &config,
@@ -424,13 +485,96 @@ mod tests {
             matches!(
                 &result,
                 Ok(resolution)
-                    if matches!(resolution.response.payload, JsonValue::String(ref s) if s == "done")
+                    if resolution.response.payload == done_payload()
                     && resolution.telemetry.as_ref().and_then(|t| t.tool_calls) == Some(1)
                     && resolution.telemetry.as_ref().and_then(|t| t.rounds) == Some(2)
                     && resolution.telemetry.as_ref().and_then(|t| t.model_calls) == Some(2)
             ),
             "loop should execute the tool then finalize; got: {result:?}"
         );
+    }
+
+    #[test]
+    fn loop_returns_invalid_final_result_to_model_for_contract_repair() -> Result<(), String> {
+        struct BareThenWrapped {
+            calls: std::cell::Cell<u32>,
+            saw_contract_error: std::cell::Cell<bool>,
+        }
+        impl ModelCaller for BareThenWrapped {
+            fn next_tool_uses(
+                &self,
+                transcript: &[AgentTurn],
+            ) -> Result<Vec<AgentToolUse>, RuntimeError> {
+                let call = self.calls.get();
+                self.calls.set(call + 1);
+                if call > 0 {
+                    self.saw_contract_error.set(transcript.iter().any(|turn| {
+                        matches!(turn, AgentTurn::ToolResults(results)
+                            if results.iter().any(|result|
+                                result.is_error
+                                    && result.content.contains("declared output contract")))
+                    }));
+                }
+                let architecture = JsonValue::Object(JsonObject::from([(
+                    "schema".to_owned(),
+                    JsonValue::String("runx.skill.architecture_decision.v1".to_owned()),
+                )]));
+                let input = if call == 0 {
+                    architecture
+                } else {
+                    JsonValue::Object(JsonObject::from([(
+                        "architecture_decision".to_owned(),
+                        architecture,
+                    )]))
+                };
+                Ok(vec![AgentToolUse {
+                    id: format!("final-{call}"),
+                    name: FINAL.to_owned(),
+                    input,
+                }])
+            }
+        }
+
+        let model = BareThenWrapped {
+            calls: std::cell::Cell::new(0),
+            saw_contract_error: std::cell::Cell::new(false),
+        };
+        let config = AgentLoopConfig {
+            max_rounds: 2,
+            max_empty_turn_resamples: 0,
+            final_result_tool: FINAL.to_owned(),
+            final_result_output: Some(BTreeMap::from([(
+                "architecture_decision".to_owned(),
+                OutputField::Type(OutputType::Object),
+            )])),
+            final_result_schema: None,
+        };
+        let resolution = run_agent_loop(&config, &model, &OkExecutor, "design".to_owned())
+            .map_err(|error| error.to_string())?;
+
+        assert!(model.saw_contract_error.get());
+        assert_eq!(
+            resolution.response.payload,
+            JsonValue::Object(JsonObject::from([(
+                "architecture_decision".to_owned(),
+                JsonValue::Object(JsonObject::from([(
+                    "schema".to_owned(),
+                    JsonValue::String("runx.skill.architecture_decision.v1".to_owned()),
+                )])),
+            )]))
+        );
+        let telemetry = resolution
+            .telemetry
+            .as_ref()
+            .ok_or_else(|| "managed-agent telemetry missing".to_owned())?;
+        assert_eq!(telemetry.rounds, Some(2));
+        let final_attempts = telemetry.tool_executions.as_deref().unwrap_or_default();
+        assert!(final_attempts.iter().any(|attempt| {
+            attempt.tool == FINAL
+                && attempt.status == "failure"
+                && attempt.resolution_kind.as_deref() == Some("output_contract_failed")
+        }));
+        Ok(())
     }
 
     #[test]
@@ -452,6 +596,8 @@ mod tests {
             max_rounds: 3,
             max_empty_turn_resamples: 3,
             final_result_tool: FINAL.to_owned(),
+            final_result_output: None,
+            final_result_schema: None,
         };
         let result = run_agent_loop(&config, &NeverFinal, &OkExecutor, "go".to_owned());
         assert!(
@@ -486,6 +632,8 @@ mod tests {
             max_rounds: 3,
             max_empty_turn_resamples: 3,
             final_result_tool: FINAL.to_owned(),
+            final_result_output: None,
+            final_result_schema: None,
         };
         let result = run_agent_loop(&config, &Silent, &OkExecutor, "go".to_owned());
         assert!(
@@ -526,7 +674,7 @@ mod tests {
                     Ok(vec![AgentToolUse {
                         id: "f".to_owned(),
                         name: FINAL.to_owned(),
-                        input: JsonValue::String("done".to_owned()),
+                        input: done_payload(),
                     }])
                 } else {
                     Ok(vec![AgentToolUse {
@@ -541,6 +689,8 @@ mod tests {
             max_rounds: 8,
             max_empty_turn_resamples: 3,
             final_result_tool: FINAL.to_owned(),
+            final_result_output: None,
+            final_result_schema: None,
         };
         let result = run_agent_loop(
             &config,
@@ -554,7 +704,7 @@ mod tests {
             matches!(
                 &result,
                 Ok(resolution)
-                    if matches!(resolution.response.payload, JsonValue::String(ref s) if s == "done")
+                    if resolution.response.payload == done_payload()
                     && resolution.telemetry.as_ref().and_then(|t| t.rounds) == Some(2)
                     && resolution.telemetry.as_ref().and_then(|t| t.model_calls) == Some(3)
             ),
@@ -596,6 +746,8 @@ mod tests {
             max_rounds: 8,
             max_empty_turn_resamples: 3,
             final_result_tool: FINAL.to_owned(),
+            final_result_output: None,
+            final_result_schema: None,
         };
         let result = run_agent_loop(&config, &ScriptedModel, &executor, "go".to_owned());
         assert_eq!(
@@ -637,6 +789,8 @@ mod tests {
             max_rounds: 3,
             max_empty_turn_resamples: 3,
             final_result_tool: FINAL.to_owned(),
+            final_result_output: None,
+            final_result_schema: None,
         };
 
         let result = run_agent_loop(
@@ -701,6 +855,8 @@ mod tests {
                 max_rounds: 2,
                 max_empty_turn_resamples: 0,
                 final_result_tool: FINAL.to_owned(),
+                final_result_output: None,
+                final_result_schema: None,
             },
             &UnknownToolModel,
             &PayOnlyExecutor,
@@ -746,6 +902,8 @@ mod tests {
             max_rounds: 8,
             max_empty_turn_resamples: 3,
             final_result_tool: FINAL.to_owned(),
+            final_result_output: None,
+            final_result_schema: None,
         };
         let resolution = run_agent_loop(&config, &ScriptedModel, &FailingExecutor, "go".to_owned())
             .map_err(|error| format!("a failing tool should not abort the loop: {error}"))?;
@@ -791,10 +949,15 @@ mod tests {
                 2 => "pay",
                 _ => FINAL,
             };
+            let input = if name == FINAL {
+                done_payload()
+            } else {
+                JsonValue::Null
+            };
             Ok(vec![AgentToolUse {
                 id: format!("c{executed}"),
                 name: name.to_owned(),
-                input: JsonValue::Null,
+                input,
             }])
         }
     }
@@ -808,6 +971,8 @@ mod tests {
             max_rounds: 8,
             max_empty_turn_resamples: 3,
             final_result_tool: FINAL.to_owned(),
+            final_result_output: None,
+            final_result_schema: None,
         };
         let resolution = run_agent_loop(&config, &DistinctThenRepeat, &OkExecutor, "go".to_owned())
             .map_err(|error| format!("should finalize after three calls: {error}"))?;

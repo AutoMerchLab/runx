@@ -46,7 +46,6 @@ mod registry_client;
 mod registry_install;
 mod skill_author_runtime_fixtures;
 mod skill_issue_intake;
-mod skill_issue_to_pr;
 mod skill_manual_context;
 mod skill_run;
 mod support;

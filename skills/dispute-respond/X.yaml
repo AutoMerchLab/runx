@@ -1,5 +1,5 @@
 skill: dispute-respond
-version: "0.4.1"
+version: "0.5.1"
 
 catalog:
   kind: graph
@@ -53,8 +53,51 @@ input_definitions:
           summary: { type: string, minLength: 1, maxLength: 1000 }
 
 runners:
-  respond:
+  file-response:
     default: true
+    type: graph
+    inputs:
+      dispute_event:
+        definition: dispute_event
+      original_receipt_id:
+        type: string
+        required: true
+        description: Exact Runx receipt id for the original charge.
+        schema: { minLength: 1, maxLength: 256, pattern: '^\S+$' }
+      prior_refund_receipt_ids:
+        definition: receipt_ids
+      evidence_refs:
+        definition: evidence_refs
+      operator_posture:
+        type: string
+        required: false
+        schema: { enum: [accept, contest, refund_already_sent, needs_more_evidence, operator_review] }
+    graph:
+      name: dispute-respond-file-response
+      result_from: [respond, file]
+      steps:
+        - id: respond
+          skill: .
+          runner: respond
+          inputs:
+            dispute_event: $input.dispute_event
+            original_receipt_id: $input.original_receipt_id
+            prior_refund_receipt_ids: $input.prior_refund_receipt_ids
+            evidence_refs: $input.evidence_refs
+            operator_posture: $input.operator_posture
+        - id: file
+          when:
+            field: respond.dispute_packet.data.decision
+            equals: ready_for_review
+          skill: .
+          runner: file
+          inputs:
+            provider: $input.dispute_event.provider
+            idempotency_key: $input.dispute_event.dispute_id
+          context:
+            dispute_packet: respond.dispute_packet.data
+
+  respond:
     type: graph
     inputs:
       dispute_event:

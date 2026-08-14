@@ -1228,6 +1228,20 @@ pub(super) fn enforce_guards(
         if let Some(expected) = &gate.equals
             && value != expected
         {
+            if expected == &JsonValue::Bool(true)
+                && value == &JsonValue::Bool(false)
+                && gate.field.ends_with(".approval_decision.data.approved")
+            {
+                return Err(crate::RuntimeError::AuthorityDenied {
+                    verb: if step.mutating {
+                        runx_contracts::AuthorityVerb::Write
+                    } else {
+                        runx_contracts::AuthorityVerb::Execute
+                    },
+                    step_id: step.id.clone(),
+                    reason: format!("approval guard '{}' was denied", gate.field),
+                });
+            }
             return Err(RuntimeError::GraphBlocked {
                 step_id: step.id.clone(),
                 reason: format!("guard '{}' expected {}", gate.field, display_json(expected)),

@@ -1,6 +1,6 @@
 ---
 name: reflect-digest
-description: Read durable reflect projections, group repeated signals by skill, and emit validated handoffs to skill-lab improve when the evidence clears configured floors.
+description: Internal reflection stage that groups durable run signals by skill and emits validated handoffs to skill-lab improve when evidence clears configured floors. Use diagnose-skill-run, run-history, or skill-lab directly instead.
 runx:
   category: authoring
 ---

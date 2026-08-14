@@ -504,5 +504,6 @@
     "permissions"
   ],
   "type": "object",
+  "x-runx-packet": true,
   "x-runx-schema": "runx.operational_policy.v1"
 }

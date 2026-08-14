@@ -26,5 +26,5 @@ pub(super) fn canonicalize(path: &Path, context: &str) -> Result<PathBuf, RunxEx
 }
 
 pub(super) fn display_path(path: &Path) -> String {
-    path.to_string_lossy().into_owned()
+    crate::path_util::display_path(path)
 }

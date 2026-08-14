@@ -2,6 +2,19 @@ name: agency-open-case
 kind: skill
 target: ..
 runner: open
+operator_journeys:
+  - mode: standalone
+    confusors: [ops-desk, chief-of-staff]
+    request: Open a governed agency case to keep the API documentation accurate.
+    expected_outcome: Persist one bounded case with its mandate, roster, signal, and limits ready for controlled turns.
+  - mode: composed
+    request: Open the agency case from this docs-drift signal and approved roster.
+    expected_outcome: Reuse the supplied signal, mandate, roster, and limits without rediscovery and persist one resumable case.
+    prior_evidence:
+      - The docs-drift signal, agency mandate, approved roster, and operating limits supplied in the fixture.
+    must_not_repeat:
+      - Do not rediscover the drift signal.
+      - Do not rebuild or broaden the approved roster and limits.
 env:
   RUNX_DATA_SOURCES: '{"data_sources":{"tenant://agency/sqlite-cases":{"adapter":"data.sqlite","database_path":".runx/data/agency-open.sqlite","resources":{"agency_cases":{"kind":"event_stream","partition_key":"aggregate_id"}}}}}'
 inputs:

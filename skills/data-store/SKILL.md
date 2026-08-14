@@ -34,6 +34,10 @@ binding change, not a rewrite of the domain skill.
 
 Each runner calls one exact native operation: `data.append_event`,
 `data.read_events`, `data.read_projection`, or `data.list_stream_heads`.
+Direct invocation defaults to `append_and_readback`, so a requested durable
+transition is not reported complete until the resulting projection has been
+read. Graph callers that already know the operation select the narrower named
+runner and reuse its typed result.
 Unbound `local://...` refs default to native durable SQLite under
 `.runx/data/local-sources/`, with one source-scoped database file per logical
 ref. There is no generic router tool, JSON fixture store, or provider selector
@@ -88,7 +92,9 @@ the domain skill.
    tenant source; let the project binding choose the adapter. Do not put raw
    database URLs, provider credentials, or SQL in the skill input.
 3. Select one exact operation: append event, read events, read projection, or
-   list stream heads. Do not synthesize raw provider commands.
+   list stream heads. Direct writes use the default append-and-readback path;
+   composed graphs select the exact named runner. Do not synthesize raw
+   provider commands.
 4. Check authority. Reads need the narrow resource/query scope; writes need the
    transition scope, idempotency key, and expected version unless the operation
    is explicitly append-only without concurrency.

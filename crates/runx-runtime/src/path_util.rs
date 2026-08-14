@@ -37,16 +37,38 @@ pub(crate) fn project_path(root: &Path, path: &Path) -> String {
 }
 
 pub(crate) fn display_path(path: &Path) -> String {
-    path.components()
-        .filter_map(|component| match component {
-            Component::Prefix(prefix) => Some(prefix.as_os_str().to_string_lossy().into_owned()),
-            Component::RootDir => Some(String::new()),
-            Component::Normal(segment) => Some(segment.to_string_lossy().into_owned()),
-            Component::CurDir => None,
-            Component::ParentDir => Some("..".to_owned()),
-        })
-        .collect::<Vec<_>>()
-        .join("/")
+    // Rendered by component so a Windows drive prefix contributes exactly one
+    // separator: `C:\x` must render as `C:/x`, never `C://x`.
+    let mut rendered = String::new();
+    let mut needs_separator = false;
+    for component in path.components() {
+        match component {
+            Component::Prefix(prefix) => {
+                rendered.push_str(&prefix.as_os_str().to_string_lossy());
+                needs_separator = false;
+            }
+            Component::RootDir => {
+                rendered.push('/');
+                needs_separator = false;
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                if needs_separator {
+                    rendered.push('/');
+                }
+                rendered.push_str("..");
+                needs_separator = true;
+            }
+            Component::Normal(segment) => {
+                if needs_separator {
+                    rendered.push('/');
+                }
+                rendered.push_str(&segment.to_string_lossy());
+                needs_separator = true;
+            }
+        }
+    }
+    rendered
 }
 
 pub(crate) fn lexical_normalize(path: &Path) -> PathBuf {
@@ -77,6 +99,15 @@ pub(crate) fn lexical_normalize(path: &Path) -> PathBuf {
     normalized
 }
 
+pub(crate) fn is_safe_url_path_identifier(value: &str) -> bool {
+    let value = value.trim();
+    !value.is_empty()
+        && value.len() <= 200
+        && !value
+            .chars()
+            .any(|character| character.is_control() || matches!(character, '/' | '?' | '#'))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -85,6 +116,24 @@ mod tests {
     fn lexical_normalize_preserves_current_directory() {
         assert_eq!(lexical_normalize(Path::new(".")), PathBuf::from("."));
         assert_eq!(lexical_normalize(Path::new("skill/..")), PathBuf::from("."));
+    }
+
+    #[test]
+    fn display_path_renders_posix_shapes() {
+        assert_eq!(display_path(Path::new("/a/b")), "/a/b");
+        assert_eq!(display_path(Path::new("a/b")), "a/b");
+        assert_eq!(display_path(Path::new("../a")), "../a");
+        assert_eq!(display_path(Path::new("/")), "/");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_display_path_keeps_single_separator_after_drive() {
+        assert_eq!(
+            display_path(Path::new("C:\\runx-repro\\demo")),
+            "C:/runx-repro/demo"
+        );
+        assert_eq!(display_path(Path::new("C:\\")), "C:/");
     }
 
     #[test]

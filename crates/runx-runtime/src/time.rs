@@ -2,7 +2,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Deterministic fixture timestamp for harness/parity/oracle callers that must
 /// keep receipt content stable. Live runtime paths should call [`now_iso8601`].
-#[cfg(feature = "cli-tool")]
 pub(crate) const DEFAULT_CREATED_AT: &str = "2026-05-18T00:00:00Z";
 
 pub(crate) fn now_iso8601() -> String {

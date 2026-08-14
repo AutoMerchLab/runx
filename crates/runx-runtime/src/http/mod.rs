@@ -4,6 +4,8 @@
 mod types;
 
 #[cfg(feature = "async-http")]
+use std::collections::BTreeMap;
+#[cfg(feature = "async-http")]
 use std::error::Error as StdError;
 #[cfg(feature = "async-http")]
 use std::fmt;
@@ -195,6 +197,145 @@ impl ReqwestHttpTransport {
     }
 }
 
+/// Runtime-owned transport selection for native HTTP capabilities. Exact
+/// fixture responses can enter only through the private harness registry;
+/// ordinary executions always construct the live guarded transport.
+#[cfg(feature = "async-http")]
+pub(crate) enum NativeHttpTransport<'a> {
+    Live(ReqwestHttpTransport),
+    Harness(&'a BTreeMap<String, RuntimeHttpResponse>),
+}
+
+#[cfg(feature = "async-http")]
+impl<'a> NativeHttpTransport<'a> {
+    pub(crate) fn new(
+        harness_responses: Option<&'a BTreeMap<String, RuntimeHttpResponse>>,
+    ) -> Result<Self, RuntimeHttpError> {
+        match harness_responses {
+            Some(responses) => Ok(Self::Harness(responses)),
+            None => Ok(Self::Live(ReqwestHttpTransport::new()?)),
+        }
+    }
+
+    pub(crate) fn send_bounded(
+        &self,
+        request: RuntimeHttpRequest,
+        response_limit: usize,
+    ) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
+        match self {
+            Self::Live(transport) => transport.send_bounded(request, response_limit),
+            Self::Harness(responses) => Ok(bound_harness_response(
+                exact_harness_response(responses, &request, false)?,
+                response_limit,
+            )),
+        }
+    }
+}
+
+#[cfg(feature = "async-http")]
+impl RuntimeHttpTransport for NativeHttpTransport<'_> {
+    fn send(&self, request: RuntimeHttpRequest) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
+        match self {
+            Self::Live(transport) => transport.send(request),
+            Self::Harness(responses) => exact_harness_response(responses, &request, false),
+        }
+    }
+
+    fn send_limited(
+        &self,
+        request: RuntimeHttpRequest,
+        response_limit: usize,
+    ) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
+        match self {
+            Self::Live(transport) => transport.send_limited(request, response_limit),
+            Self::Harness(responses) => enforce_harness_response_limit(
+                exact_harness_response(responses, &request, false)?,
+                response_limit,
+            ),
+        }
+    }
+
+    fn send_idempotent(
+        &self,
+        request: RuntimeHttpRequest,
+    ) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
+        match self {
+            Self::Live(transport) => transport.send_idempotent(request),
+            Self::Harness(responses) => exact_harness_response(responses, &request, true),
+        }
+    }
+
+    fn send_idempotent_limited(
+        &self,
+        request: RuntimeHttpRequest,
+        response_limit: usize,
+    ) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
+        match self {
+            Self::Live(transport) => transport.send_idempotent_limited(request, response_limit),
+            Self::Harness(responses) => enforce_harness_response_limit(
+                exact_harness_response(responses, &request, true)?,
+                response_limit,
+            ),
+        }
+    }
+}
+
+#[cfg(feature = "async-http")]
+fn exact_harness_response(
+    responses: &BTreeMap<String, RuntimeHttpResponse>,
+    request: &RuntimeHttpRequest,
+    admit_idempotent_query: bool,
+) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
+    if request.method != HttpMethod::Get
+        && !(admit_idempotent_query && request.method == HttpMethod::Post)
+    {
+        return Err(RuntimeHttpError::Transport {
+            message: format!(
+                "deterministic harness HTTP responses admit GET reads and idempotent POST queries only, not {}",
+                request.method.as_str()
+            ),
+        });
+    }
+    responses
+        .get(&request.url)
+        .cloned()
+        .ok_or_else(|| RuntimeHttpError::Transport {
+            message: format!(
+                "the harness declared deterministic HTTP responses but none matched {}",
+                request.url
+            ),
+        })
+}
+
+#[cfg(feature = "async-http")]
+fn enforce_harness_response_limit(
+    response: RuntimeHttpResponse,
+    response_limit: usize,
+) -> Result<RuntimeHttpResponse, RuntimeHttpError> {
+    if response.body_bytes > response_limit {
+        return Err(RuntimeHttpError::ResponseBodyTooLarge {
+            limit: response_limit,
+        });
+    }
+    Ok(response)
+}
+
+#[cfg(feature = "async-http")]
+fn bound_harness_response(
+    mut response: RuntimeHttpResponse,
+    response_limit: usize,
+) -> RuntimeHttpResponse {
+    if response.body_bytes <= response_limit {
+        return response;
+    }
+    let bounded = response.body.as_bytes()[..response_limit].to_vec();
+    response.body = String::from_utf8_lossy(&bounded).into_owned();
+    response.body_digest = runx_contracts::sha256_prefixed(&bounded);
+    response.body_bytes = bounded.len();
+    response.truncated = true;
+    response
+}
+
 #[cfg(feature = "async-http")]
 fn build_http_client(config: TransportConfig) -> Result<reqwest::Client, String> {
     // reqwest is built with `rustls-no-provider`, so the process needs a
@@ -212,7 +353,17 @@ fn build_http_client(config: TransportConfig) -> Result<reqwest::Client, String>
         .gzip(true)
         .brotli(true)
         .deflate(true)
-        .zstd(true);
+        .zstd(true)
+        // Verify against the compiled-in Mozilla root program instead of the
+        // host trust store. The governed front then has one deterministic
+        // trust surface everywhere it runs; a sandbox with no system CA
+        // bundle (hosted publish harness) behaves exactly like a developer
+        // laptop.
+        .tls_certs_only(
+            webpki_root_certs::TLS_SERVER_ROOT_CERTS
+                .iter()
+                .filter_map(|der| reqwest::Certificate::from_der(der).ok()),
+        );
     let builder = if config.allow_private_networks {
         builder
     } else {
@@ -811,6 +962,8 @@ fn is_header_token_byte(byte: u8) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "async-http")]
+    use std::collections::BTreeMap;
     use std::io;
     #[cfg(feature = "async-http")]
     use std::io::{Read, Write};
@@ -822,11 +975,13 @@ mod tests {
     use std::time::Duration;
 
     #[cfg(feature = "async-http")]
+    use super::RuntimeHttpResponse;
+    #[cfg(feature = "async-http")]
     use super::RuntimeHttpTransport;
     #[cfg(feature = "async-http")]
     use super::{
-        GuardedDnsResolver, ReqwestHttpTransport, STANDARD_HTTP_RESPONSE_BYTES, TransportProfile,
-        block_on_http, http_runtime,
+        GuardedDnsResolver, NativeHttpTransport, ReqwestHttpTransport,
+        STANDARD_HTTP_RESPONSE_BYTES, TransportProfile, block_on_http, http_runtime,
     };
     use super::{HttpMethod, RuntimeHttpError, RuntimeHttpHeader, RuntimeHttpRequest};
     #[cfg(feature = "async-http")]
@@ -855,6 +1010,53 @@ mod tests {
         #[cfg(feature = "async-http")]
         #[error("server thread panicked")]
         ServerThread,
+    }
+
+    #[cfg(feature = "async-http")]
+    #[test]
+    fn harness_http_transport_is_exact_bounded_and_never_falls_through()
+    -> Result<(), RuntimeHttpTestError> {
+        let url = "https://fixture.runx.invalid/source";
+        let responses =
+            BTreeMap::from([(url.to_owned(), RuntimeHttpResponse::new(200, "hello world"))]);
+        let transport = NativeHttpTransport::new(Some(&responses))?;
+
+        let exact = transport.send_bounded(
+            RuntimeHttpRequest {
+                method: HttpMethod::Get,
+                url: url.to_owned(),
+                headers: Vec::new(),
+                body: None,
+            },
+            5,
+        )?;
+        assert_eq!(exact.body, "hello");
+        assert!(exact.truncated);
+
+        let missing = transport.send(RuntimeHttpRequest {
+            method: HttpMethod::Get,
+            url: "https://fixture.runx.invalid/missing".to_owned(),
+            headers: Vec::new(),
+            body: None,
+        });
+        assert!(matches!(missing, Err(RuntimeHttpError::Transport { .. })));
+
+        let mutation = transport.send(RuntimeHttpRequest {
+            method: HttpMethod::Post,
+            url: url.to_owned(),
+            headers: Vec::new(),
+            body: Some("{}".to_owned()),
+        });
+        assert!(matches!(mutation, Err(RuntimeHttpError::Transport { .. })));
+
+        let query = transport.send_idempotent(RuntimeHttpRequest {
+            method: HttpMethod::Post,
+            url: url.to_owned(),
+            headers: Vec::new(),
+            body: Some("{}".to_owned()),
+        })?;
+        assert_eq!(query.body, "hello world");
+        Ok(())
     }
 
     #[test]

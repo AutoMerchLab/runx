@@ -1,5 +1,5 @@
 skill: spend
-version: "0.3.2"
+version: "0.4.0"
 catalog:
   kind: graph
   audience: operator
@@ -39,6 +39,11 @@ input_definitions:
     required: true
     description: Configured opaque rail profile reference.
     schema: { minLength: 1, maxLength: 512, pattern: '^\S+$' }
+  rail:
+    type: string
+    required: true
+    description: Real configured settlement rail selected for the default operation.
+    schema: { enum: [mpp, stripe-spt] }
   payment_admission:
     type: object
     required: false
@@ -51,6 +56,61 @@ input_definitions:
     description: Stable caller-owned material shared across quote, reservation, and provider execution.
     schema: { minLength: 1, maxLength: 256 }
 runners:
+  spend:
+    default: true
+    type: graph
+    inputs:
+      payment_signal: { definition: payment_signal }
+      parent_payment_authority: { definition: parent_payment_authority }
+      rail: { definition: rail }
+      rail_profile_ref: { definition: rail_profile_ref }
+      payment_admission: { definition: payment_admission }
+      realm: { definition: realm }
+      idempotency_seed: { definition: idempotency_seed }
+    graph:
+      name: spend
+      result_from: [mpp, stripe-spt]
+      steps:
+        - id: select-mpp
+          tool: data.compare
+          inputs:
+            actual: $input.rail
+            expected: mpp
+
+        - id: mpp
+          when:
+            field: select-mpp.comparison.data.equal
+            equals: true
+          skill: .
+          runner: mpp
+          inputs:
+            payment_signal: $input.payment_signal
+            parent_payment_authority: $input.parent_payment_authority
+            rail_profile_ref: $input.rail_profile_ref
+            payment_admission: $input.payment_admission
+            realm: $input.realm
+            idempotency_seed: $input.idempotency_seed
+
+        - id: select-stripe-spt
+          tool: data.compare
+          inputs:
+            actual: $input.rail
+            expected: stripe-spt
+
+        - id: stripe-spt
+          when:
+            field: select-stripe-spt.comparison.data.equal
+            equals: true
+          skill: .
+          runner: stripe-spt
+          inputs:
+            payment_signal: $input.payment_signal
+            parent_payment_authority: $input.parent_payment_authority
+            rail_profile_ref: $input.rail_profile_ref
+            payment_admission: $input.payment_admission
+            realm: $input.realm
+            idempotency_seed: $input.idempotency_seed
+
   plan:
     default: false
     type: graph
@@ -121,7 +181,7 @@ runners:
             wrap_as: payment_quote_packet
             packet: runx.payment.quote.v1
   mock:
-    default: true
+    default: false
     type: graph
     inputs:
       payment_signal:

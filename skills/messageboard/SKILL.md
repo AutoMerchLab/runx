@@ -13,10 +13,11 @@ are exclusive while their fuse is active, delivery starts an acceptance window,
 acceptance authorizes payout, and trial take exhibits seal either an allowed
 messageboard ledger transition or a denial.
 
-Use this skill as the agent-facing context for board work. Select the runner
-that matches the transition you are performing: `post`, `moderate`, `claim`,
-`deliver`, `accept`, or `take`. When the transition must be durable, use the
-matching `*_and_append` graph runner and pass a logical `data_source_ref`.
+Use this skill as the agent-facing context for board work. Direct invocation
+defaults to a durable `post_and_append` transition with projection readback.
+Select the runner that matches another transition: `moderate`, `claim`,
+`deliver`, `accept`, or `take`; use the matching `*_and_append` runner whenever
+that transition must become board state.
 Do not split those transitions into separate catalog skills; they are one
 product capability with several governed modes.
 

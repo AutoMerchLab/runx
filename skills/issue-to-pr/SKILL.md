@@ -1,283 +1,103 @@
 ---
 name: issue-to-pr
-description: Govern a scafld-backed issue-to-PR lane with native scafld review and handoff surfaces.
+description: Implement one bounded repository issue with normal host tools, prove the tested change through one scafld finalize wall, and optionally publish an approved pull request with provider readback.
 runx:
   category: code
 ---
 
 # Issue to PR
 
-Drive one bounded thread-driven change through the scafld 2.4-compatible
-lifecycle and package the result as a provider-agnostic draft pull-request
-packet.
+Turn one issue into a tested change and, when authorized, a verified pull
+request. Use the repository's normal development workflow. Runx owns evidence
+continuity and the consequential publication boundary; it does not replace the
+host agent's editor, shell, Git, tests, or repository judgment.
 
-The graph separates cognition from mutation. Agent phases author the scafld
-markdown spec and the bounded repo change bundle. Deterministic `fs.write` and
-`fs.apply_bundle` phases are the only places files are written to disk. scafld
-owns the workflow kernel: `plan`, `validate`, `approve`, `build_to_review`,
-`status`, `review`, `complete`, and `handoff`. runx owns the explicit authoring
-boundaries, deterministic writes, receipts, and final outbox packaging.
+## Direct operator flow
 
-Branch creation and provider PR mutation are outside scafld. The caller or
-adapter prepares the branch, then passes the intended branch into this lane.
-The lane records that branch in the draft PR packet, and the GitHub adapter
-fails closed if the workspace checkout does not match it. The final
-`issue-to-pr-push-outbox` step is the only provider push boundary.
+1. Resolve the repository from an explicit `owner/name` or the current
+   checkout's `origin`. Never infer the target from an available grant.
+2. Use the already-authenticated local `gh` and Git paths for inspection.
+   Hosted Connect is a compatible fallback or explicit operator binding, not
+   the default reason to leave local tooling.
+3. Run one preflight before work: issue identity, repository permission, branch
+   state, required tools, requested outcome, and publication authority.
+4. Investigate, edit, and test with the host agent's ordinary tools. Do not
+   manufacture Runx answer files between normal coding steps.
+5. Call `scafld finalize` exactly once after the change and tests are ready.
+   Preserve its workspace-scoped receipt path, exact target commit, and
+   contract digest in `host_result`. Runx verifies that receipt with scafld;
+   host-authored status strings are not proof.
+6. If PR publication is not authorized, return the tested/finalized result and
+   stop. Do not silently downgrade the work to a plan.
+7. If publication is authorized, pass the exact `host_result` to `publish`.
+   Runx approves one `pullrequest.publish` mutation. That boundary publishes
+   the exact commit to the requested branch, recovers by reading existing
+   remote state, and independently reads the PR back. Notifications, feeds,
+   issue comments, and documentation sync are optional downstream skills.
 
-## Lifecycle
+## Reuse in chains
 
-The graph runs:
+- `from-evidence` accepts `runx.issue_to_pr.issue_evidence.v1` and skips GitHub
+  discovery and issue read.
+- `resume` accepts both prior issue evidence and a completed
+  `runx.issue_to_pr.host_result.v1`; it does not repeat host work or finalize.
+- `verify` verifies the signed scafld receipt against the exact commit and
+  contract without publishing anything.
+- `finalize-local` verifies the completed host result and returns it without a
+  remote mutation.
+- `publish` verifies the completed host result, publishes its exact Git ref,
+  and creates or recovers the approved PR with readback.
+- Preserve the same idempotency key across pause, retry, and resume. An
+  uncertain PR creation never gets a new key.
 
-`scafld plan` -> read the CLI-owned draft -> complete its markdown body ->
-write spec -> read spec -> validate -> approve -> read approved spec -> read declared files -> author fix bundle ->
-write fix bundle -> build to review -> status -> read current branch -> review
--> complete -> final status -> handoff -> package draft PR outbox -> adapter
-push.
+## Host work contract
 
-There are no translation projection steps. `scafld handoff` is the human handoff
-surface, `build_to_review` drives bounded native `scafld build` advances until
-the task is review-ready, and `scafld review` is the native review boundary.
+The `issue-to-pr-host-work` act performs normal repository work and returns:
 
-## Thread Story
+```yaml
+host_result:
+  schema: runx.issue_to_pr.host_result.v1
+  status: completed | blocked | failed
+  repository: owner/name
+  issue_number: string
+  repo_root: workspace-relative-or-absolute-path
+  branch: string
+  commit: full-git-object-id
+  files: [relative/path]
+  tests:
+    - command: string
+      status: passed | failed
+      evidence: string
+  finalization:
+    receipt_path: workspace-relative-path
+    contract_digest: sha256:...
+  publication:
+    decision: hold | ready
+    title: string
+    body: string
+    head: string
+    base: string
+    draft: boolean
+    idempotency_key: string
+  errors: [string]
+```
 
-The lane should leave one coherent source-thread story, not a stream of every
-internal event. The durable milestones are:
+Do not claim `completed` without a real edit/test outcome and one successful
+finalize result. Do not claim `published` from a branch push, API
+acknowledgement, or draft packet; only independent PR readback closes that
+state.
 
-- source signal and the bounded request
-- accountable decision that a PR is justified
-- scafld spec approval and declared scope
-- build and validation result
-- adversarial review result
-- draft PR publication
-- human merge gate
-- final provider outcome when observed
+## Stop conditions
 
-Comments and PR bodies should summarize those gates with enough evidence for a
-reviewer to act. They must not publish raw local paths, secrets, full command
-dumps, or duplicate retry comments. User-facing labels should use plain terms
-such as spec authoring, fix authoring, review, and human merge gate.
-
-
-## Spec Authoring Contract
-
-The `issue-to-pr-author-spec` boundary must emit a full scafld
-2.4-compatible markdown document, not YAML and not a reduced project brief.
-`scafld plan` is the sole owner of lifecycle front matter. The graph reads that
-exact draft and supplies it as `planned_spec_contents`; the author must preserve
-the complete front-matter block exactly and complete only the markdown body.
-It must never synthesize, normalize, repair, or reorder lifecycle fields.
-Keep the CLI-created top-level title; add the required sections beneath it.
-
-It must also emit `context_files`, a deduplicated array of at most sixteen
-concrete repo-relative paths whose current contents are needed to implement the
-spec. This is bounded authoring evidence, not a projection of scafld state.
-Include the relevant files from `repo_snapshot.recommended_files`, the smallest
-production targets, and targeted tests when they exist. Native
-`fs.read_bundle` hydrates this list; no Runx tool parses the spec Markdown or
-guesses file ownership from prose.
-
-The body must include the standard scafld 2 sections: Current State, Summary,
-Context, Objectives, Scope, Dependencies, Assumptions, Touchpoints, Risks,
-Acceptance, at least one Phase section, Rollback, Review, Self Eval,
-Deviations, Metadata, Origin, Harden Rounds, and Planning Log.
-
-`scafld validate` is the only schema gate after the deterministic write. If the
-author changes the CLI-owned header, validation must fail rather than a Runx
-tool guessing how to repair it.
-
-All changed-file declarations must use concrete repo-relative paths in
-backticks under Context / Files impacted and Phase / Changes. Do not declare
-scafld-managed control-plane artifacts under `.scafld/specs`,
-`.scafld/reviews`, `.scafld/runs`, or old `.ai` governance paths as repo-change
-scope.
-
-Documentation and process requests still need a concrete repo file. Prefer
-existing docs surfaces supplied by `repo_snapshot.existing_files` or
-`repo_context`, and declare at least one non-governance repo file for an
-approved `issue-to-pr` lane. Do not leave the repo-change scope empty after the
-decision layer has approved a PR.
-
-Validation commands must run against the current workspace state after the fix
-bundle is written. Do not depend on git history ranges such as `HEAD~1` or
-merge-base comparisons. Validation commands, when present, must be direct
-repo-local checks such as test, lint, build, or file-content commands. Never use
-runx runtime internals or `graph/scafld/tools/scafld-cli.mjs` as a validation command;
-scafld is already the lifecycle runner around the task.
-
-For any code change, the approved spec must declare at least one targeted
-test/spec file in the changed-file scope and include at least one executable
-validation command that exercises that target. This applies even when the source
-thread does not explicitly request coverage; code PRs are not publishable from
-this lane without targeted test/spec scope or grounded scafld validation
-evidence. If the source thread asks for tests, specs, regression coverage,
-focused coverage, or request/service coverage, the targeted coverage requirement
-cannot be softened to a generic smoke check. If no existing test/spec path is
-declared but the repository layout makes a conventional path inferable, declare
-that new test/spec file. If no grounded test/spec path or command can be
-inferred from the repo snapshot, stop with a missing-evidence reason instead of
-publishing a code-only PR.
-
-Preserve source-thread context in the spec's Summary, Origin, and Planning Log
-so later PR packaging can explain why the lane ran and what evidence justified
-the mutation. Return the exact written document as `spec_contents` and the
-bounded evidence paths as `context_files`.
-
-## Fix Authoring Contract
-
-The `issue-to-pr-apply-fix` boundary must emit a bounded `fix_bundle` with
-`files: [{ path, contents }]` for every repo file needed to satisfy the approved
-spec. For documentation or process changes, the approved spec, source thread,
-repo snapshot, repo context, and declared file contents are sufficient when they
-identify a narrow edit.
-
-When `repo_snapshot.recommended_files` contains concrete repo-relative files,
-treat those files as actionable target evidence even if the generated spec is
-worded conservatively. Read the recommended file and the nearest relevant test
-or spec before blocking. If the source thread includes a runtime exception,
-backtrace, failing command, or named behavior and the recommended file exists,
-prefer the smallest conventional fix plus targeted regression coverage over an
-empty bundle.
-
-For any production code change, `fix_bundle.files` must include the smallest
-production fix and a targeted test/spec file, even when the source request does
-not explicitly ask for coverage. Do not publish a code-only fix bundle from this
-lane. If the approved spec, source thread, or acceptance criteria asks for
-tests, specs, regression coverage, focused coverage, or request/service
-coverage, the targeted test/spec file must directly cover that requested
-behavior. If no test file exists, create the narrow conventional test file when
-the repository structure makes that path inferable; otherwise block with the
-missing path and evidence reason.
-
-If a declared file has `exists: false` and the approved spec intentionally
-creates it, write the new file when the desired contents are inferable from the
-spec and thread. Do not block solely because the file has no prior contents.
-
-Return `fix_bundle.status: blocked` with `files: []` only when no concrete
-repo-relative target is declared, a required existing file cannot be read, or
-the requested behavior cannot be inferred after inspecting the supplied target
-files. The blocked reason must name the missing evidence and path because an
-empty file bundle is a terminal policy denial before `write-fix`.
-
-## Inputs
-
-- `task_id`: scafld task id.
-- `thread_title`: canonical title and default spec title.
-- `thread_body`: full thread body or request text when available.
-- `thread_locator`: canonical locator for the bounded thread.
-- `thread`: portable thread for the current signal surface.
-- `outbox_entry`: existing pull-request outbox entry when refreshing a draft.
-- `harness`: optional `runx.harness.v1` packet for the governed run boundary.
-- `signal`: optional `runx.signal.v1` packet. Preserve source references,
-  fingerprint, authenticity, and evidence references as stateful context
-  instead of reparsing source-thread prose.
-- `decision`: optional `runx.decision.v1` packet. Preserve the accountable
-  selection rationale, selected act, and closure when the caller already made
-  the lane decision.
-- `target_repo`: intended repository slug for PR packaging.
-- `operational_policy`: optional `runx.operational_policy.v1` packet used to
-  admit the source, target repo, runner, and source-thread route before PR
-  packaging.
-- `source_id`: optional operational policy source id.
-- `runner_id`: optional operational policy runner id.
-- `repo_snapshot`: compact structured snapshot of the target repo.
-- `repo_snapshot_path`: optional path to a fuller repo snapshot artifact.
-- `repo_context`: textual summary of repo shape and validation hooks.
-- `size`: scafld size, default `small`.
-- `risk`: scafld risk, default `low`.
-- `base`: base ref for PR packaging, default `main`.
-- `fixture`: workspace root containing `.scafld`.
-- `scafld_bin`: explicit scafld executable path.
-- `provider`, `provider_command`, `provider_binary`, `model`: optional native
-  scafld review provider overrides.
-
-## Structured Output
-
-On success, the lane emits:
-
-- `draft_pull_request`: provider-agnostic PR draft state derived from scafld
-  handoff, build, review, completion, status, and current git branch.
-- `outbox_entry`: a `pull_request` outbox entry suitable for adapter push.
-- `push`: adapter push result plus refreshed `thread` when the adapter supports
-  push.
-- Story metadata suitable for one source-thread reviewer update that summarizes
-  the lifecycle gates and points at the human merge decision.
-
-## Agent task contracts
-
-### `issue-to-pr-author-spec`
-
-Complete the draft created by scafld plan as a scafld 2.4-compatible markdown spec.
-Use thread_title, thread_body, thread_locator, thread, outbox_entry, target_repo, repo_snapshot,
-repo_snapshot_path, and repo_context to keep the spec grounded in the actual request and
-repository. Treat planned_spec_contents as the exact scafld-owned source document: preserve its
-entire front-matter block byte-for-byte, do not add, remove, reorder, normalize, or repair any
-lifecycle field. Preserve the CLI-created top-level title and complete the markdown body below it. The body must include Current State, Summary, Context,
-Objectives, Scope, Dependencies, Assumptions, Touchpoints, Risks, Acceptance, at least one Phase
-section, Rollback, Review, Self Eval, Deviations, Metadata, Origin, Harden Rounds, and Planning
-Log. Declare changed repo files in Context / Files impacted and Phase / Changes using concrete
-repo-relative paths in backticks. Do not declare scafld-managed control-plane artifacts under
-.scafld/specs, .scafld/reviews, .scafld/runs, or old .ai governance paths as repo-change scope.
-Validation commands must be executable in the current workspace after the fix bundle is written.
-Do not depend on git history ranges such as HEAD~1. When validation commands are included, use
-direct repo-local checks such as tests, lint, build, or file-content commands. Do not use runx
-runtime internals or graph/scafld/tools/scafld-cli.mjs as validation commands; scafld is already the
-lifecycle runner around this graph. For any code change, declare at least one targeted test/spec
-file in Files impacted and Phase / Changes and include at least one executable validation
-command that exercises that target. Do this even when the source thread does not explicitly
-request coverage; code PRs are not publishable from this lane without either targeted test/spec
-scope or grounded scafld validation evidence. When the source thread or acceptance criteria asks
-for tests, specs, regression coverage, focused coverage, or request/service coverage, this
-coverage requirement is mandatory and cannot be softened to a generic smoke check. If no
-existing test/spec path is declared but the repository layout makes a conventional path
-inferable, declare that new test/spec file. If no grounded test/spec path or command can be
-inferred from the repo snapshot, stop with a missing-evidence reason instead of publishing a
-code-only PR. If a required file path cannot be grounded from the thread or repository evidence,
-keep the scope narrow and state the assumption instead of inventing a file. When the approved
-lane is documentation or process work, prefer existing documentation surfaces from
-repo_snapshot.existing_files or repo_context, and declare at least one non-governance repo file;
-issue-to-pr is a PR lane, so an approved spec must not leave the repo-change scope empty.
-Preserve source-thread context in Summary, Origin, and Planning Log so the eventual reviewer
-story can explain why this lane ran and what evidence justified mutation. Return context_files as
-a deduplicated array of at most sixteen concrete repo-relative files needed to implement the
-approved scope. Include relevant repo_snapshot.recommended_files, production targets, and
-targeted tests. The list is bounded read context, not scafld lifecycle state; do not include
-governance artifacts or infer paths not grounded in repository evidence.
-
-### `issue-to-pr-apply-fix`
-
-Produce the bounded fix bundle described by the approved scafld 2 markdown spec. Use
-repo_snapshot, repo_snapshot_path, repo_context, approved spec contents, current thread context,
-and declared_file_context. Review declared_file_context.files and
-declared_file_context.missing before deciding what to edit. This is the native
-`fs.read_bundle` result with `{ repo_root, file_count, total_bytes, files, missing }`;
-each present file has `{ path, contents, bytes, truncated, content_digest }`. Treat present
-contents as already read source evidence, and use the allowed `fs.read` tool when the approved
-spec requires another grounded file. `fix_bundle.files` must be an
-array of { path, contents } entries covering every repo file needed to satisfy the approved
-spec. For documentation or process changes, the approved spec, thread, repo_snapshot,
-repo_context, and current declared file contents are sufficient when they identify a narrow
-edit; do not return an empty bundle when one scoped docs edit is possible. For any existing
-file, contents must be the complete current file with the smallest necessary edit applied;
-preserve unrelated sections, headings, prose, tables, links, setup instructions, and ordering
-exactly. Never replace an existing file with only the new section or a shortened summary. If a
-declared file list is sparse but repo_snapshot.recommended_files contains concrete repo-relative
-files, treat those recommended files as actionable target evidence. Read the recommended file
-and the nearest relevant test or spec before blocking. When the source thread includes a runtime
-exception, backtrace, failing command, or named behavior and a recommended file exists, prefer
-the smallest conventional fix plus targeted regression coverage over an empty bundle. For any
-production code change, fix_bundle.files must include both the smallest production fix and a
-targeted test/spec file, even when the source request does not explicitly ask for coverage. Do
-not publish a code-only fix bundle from this lane. When the approved spec, source thread, or
-acceptance criteria asks for tests, specs, regression coverage, focused coverage, or
-request/service coverage, the targeted test/spec file must directly cover that requested
-behavior. If no test file exists, create the narrow conventional test file when the repository
-structure makes that path inferable; otherwise block with the missing path and evidence reason.
-If no fix is possible after inspecting the target paths, the blocked reason must name the exact
-path and missing evidence. If a declared file has exists: false and the approved spec
-intentionally creates it, write the new file when the desired contents are inferable from the
-spec and thread. Do not widen scope. Do not hand-edit scafld lifecycle files. Return
-fix_bundle.status: blocked with a reason and an empty files array only when no concrete
-repo-relative target is declared, a required existing file cannot be read, or the requested
-behavior cannot be inferred after inspecting the supplied target files without inventing
-requirements; name the missing evidence and path in the reason because an empty bundle is a
-terminal policy denial.
+- Wrong or ambiguous repository: stop with one target-resolution blocker.
+- Missing local auth and no compatible hosted grant: return the exact `gh auth
+  login` or `runx connect` handoff; do not cycle through unrelated skills.
+- Dirty or conflicting branch state: stop before mutation and preserve the
+  evidence already gathered.
+- Failed tests or failed/stale finalize: return blocked or failed, never
+  succeeded.
+- Missing publication approval: retain the tested finalized change locally and
+  stop before PR creation.
+- Provider failure after approval: preserve the approval, idempotency key,
+  finalization evidence, and mutation recovery state. Resume at publication;
+  do not repeat issue discovery, coding, tests, or finalize.

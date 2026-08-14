@@ -82,6 +82,7 @@ impl<T> AnthropicAgentResolver<T> {
 fn tool_definitions<'a>(
     tool_names: impl Iterator<Item = &'a str>,
     output: Option<&BTreeMap<String, OutputField>>,
+    output_schema: Option<&JsonValue>,
     env: &BTreeMap<String, String>,
     skill_directory: &std::path::Path,
     effects: &RuntimeEffectRegistry,
@@ -111,7 +112,9 @@ fn tool_definitions<'a>(
     tools.push(AgentToolDefinition {
         name: FINAL_RESULT_TOOL.to_owned(),
         description: "Submit the final structured payload for this runx agent act.".to_owned(),
-        input_schema: output_value_schema(output),
+        input_schema: output_schema
+            .cloned()
+            .unwrap_or_else(|| output_value_schema(output)),
     });
     Ok(tools)
 }
@@ -150,6 +153,7 @@ struct AgentPromptContext<'a> {
     voice_profile: &'a Option<runx_contracts::ProfileFile>,
     execution_location: &'a Option<runx_contracts::ExecutionLocation>,
     output: &'a Option<BTreeMap<String, OutputField>>,
+    output_schema: &'a Option<JsonValue>,
     trust_boundary: &'a runx_contracts::schema::NonEmptyString,
 }
 
@@ -170,6 +174,7 @@ impl<'a> From<&'a AgentContextEnvelope> for AgentPromptContext<'a> {
             voice_profile: &envelope.voice_profile,
             execution_location: &envelope.execution_location,
             output: &envelope.output,
+            output_schema: &envelope.output_schema,
             trust_boundary: &envelope.trust_boundary,
         }
     }
@@ -186,6 +191,7 @@ impl<T: RuntimeHttpTransport + Clone> AgentResolver for AnthropicAgentResolver<T
         let tools = tool_definitions(
             envelope.allowed_tools.iter().map(|name| name.as_str()),
             envelope.output.as_ref(),
+            envelope.output_schema.as_ref(),
             &self.env,
             &self.skill_directory,
             &self.effects,
@@ -214,6 +220,8 @@ impl<T: RuntimeHttpTransport + Clone> AgentResolver for AnthropicAgentResolver<T
             max_rounds: self.max_rounds,
             max_empty_turn_resamples: MAX_EMPTY_TURN_RESAMPLES,
             final_result_tool: FINAL_RESULT_TOOL.to_owned(),
+            final_result_output: envelope.output.clone(),
+            final_result_schema: envelope.output_schema.clone(),
         };
         run_agent_loop(&config, &model, &executor, prompt).map_err(|error| {
             AgentResolverError::bounded_failure(
@@ -238,6 +246,7 @@ mod tests {
     fn tool_definitions_include_allowed_and_final_result() -> Result<(), AgentResolverError> {
         let tools = tool_definitions(
             ["fs.read", "git.status"].into_iter(),
+            None,
             None,
             &BTreeMap::new(),
             std::path::Path::new("."),
@@ -278,6 +287,7 @@ mod tests {
         let tools = tool_definitions(
             [].into_iter(),
             Some(&outputs),
+            None,
             &BTreeMap::new(),
             std::path::Path::new("."),
             &RuntimeEffectRegistry::default(),
@@ -404,6 +414,7 @@ mod tests {
             voice_profile: None,
             execution_location: None,
             output: None,
+            output_schema: None,
             trust_boundary: non_empty("runtime-governed"),
         }
     }

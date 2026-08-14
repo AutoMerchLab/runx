@@ -1,5 +1,5 @@
 skill: n8n-handoff
-version: "0.1.6"
+version: "0.2.0"
 catalog:
   kind: graph
   audience: operator
@@ -7,15 +7,8 @@ catalog:
   role: context
   execution: execute
   completion: provider_readback
-  requires_adapter: false
+  requires_adapter: true
   approval: required
-credentials:
-  n8n:
-    provider: n8n
-    auth:
-      bearer:
-        delivery:
-          env: N8N_WEBHOOK_TOKEN
 input_definitions:
   event_id:
     type: string
@@ -61,6 +54,18 @@ input_definitions:
 harness:
   cases:
     - name: n8n-handoff-preflight-ready
+      operator_journeys:
+        - mode: standalone
+          request: Hand this governed Runx payload to the configured n8n workflow.
+          expected_outcome: Validate context, bind scoped auth and idempotency, and return the exact provider-neutral webhook handoff contract.
+        - mode: composed
+          request: Continue this completed Runx operation into the selected n8n workflow.
+          expected_outcome: Reuse the supplied run context and payload without rebuilding upstream results or duplicating webhook delivery.
+          prior_evidence:
+            - The validated Runx execution context, payload, workflow target, and idempotency key supplied in the fixture.
+          must_not_repeat:
+            - Do not rerun the upstream Runx operation.
+            - Do not deliver the webhook again after stable receipt evidence exists.
       runner: preflight
       inputs:
         event_id: evt_n8n_demo_001
@@ -138,7 +143,6 @@ runners:
   send:
     default: true
     type: graph
-    credential: n8n
     inputs:
       webhook_host:
         definition: webhook_host
@@ -165,7 +169,7 @@ runners:
         payload: { hello: workflow }
     graph:
       name: n8n-handoff-send
-      result_from: [post-to-n8n]
+      result_from: [readback]
       steps:
         - id: build-handoff-context
           tool: control.prepare_handoff
@@ -178,44 +182,39 @@ runners:
             payload: $input.payload
             source: $input.source
             receiver: $input.receiver
-            request:
-              id: n8n-handoff
-              url: https://{webhook_host}/webhook/{workflow_slug}
-              path:
-                webhook_host: $input.webhook_host
-                workflow_slug: $input.workflow_slug
-
-        - id: approve-handoff
-          run:
-            type: approval
-          inputs:
-            gate_id: n8n-handoff.send.approval
-            reason: Approve the exact native-prepared webhook request and delivery envelope.
-          context:
-            handoff_context: build-handoff-context.handoff_context.data
-          artifacts:
-            wrap_as: approval_decision
-            packet: runx.approval.decision.v1
-
-        - id: post-to-n8n
-          tool: http.execute
+        - id: invoke
+          tool: provider.mutate
           mutation: true
           idempotency_key: $input.event_id
-          scopes:
-            - orchestrator.n8n.workflow.invoke
-            - net:http
+          scopes: [orchestrator.n8n.workflow.invoke]
+          policy:
+            provider_permission: { verb: write }
           inputs:
-            allowed_hosts:
-              - $input.webhook_host
-            auth:
-              type: bearer
-              secret_env: N8N_WEBHOOK_TOKEN
-            stop_on_error: true
+            expected_provider: n8n
+            operation: workflow.invoke
+            target: $input.webhook_host
+            idempotency_key: $input.event_id
+            result_fields: [event_id, invocation_ref, status, idempotency_key]
+            expected_result: { event_id: $input.event_id, status: accepted }
+            input:
+              workflow_slug: $input.workflow_slug
           context:
-            requests: build-handoff-context.handoff_context.data.requests
+            handoff_context: build-handoff-context.handoff_context.data
 
-      policy:
-        guards:
-          - step: post-to-n8n
-            field: approve-handoff.approval_decision.data.approved
-            equals: true
+        - id: readback
+          tool: provider.read
+          scopes: [orchestrator.n8n.workflow.read]
+          policy:
+            provider_permission: { verb: read }
+          inputs:
+            expected_provider: n8n
+            operation: workflow.invocation.read
+            target: $input.webhook_host
+            result_fields: [event_id, invocation_ref, status, idempotency_key]
+            expected_result:
+              event_id: $input.event_id
+              invocation_ref: $input.invoke_result.invocation_ref
+              status: accepted
+              idempotency_key: $input.invoke_result.idempotency_key
+          context:
+            invoke_result: invoke.provider_operation.data.result

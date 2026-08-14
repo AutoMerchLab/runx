@@ -1,3 +1,4 @@
+use std::cell::OnceCell;
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
@@ -22,15 +23,17 @@ pub(super) fn inspect(
 }
 
 struct ProviderReadinessSources<'a> {
+    env: &'a BTreeMap<String, String>,
+    cwd: &'a Path,
     explicit_grant: Option<&'a str>,
     explicit_scopes: Option<Vec<String>>,
     explicit_principal: bool,
-    hosted_grants: Option<Result<Vec<runx_runtime::HostedProviderGrant>, String>>,
+    hosted_grants: OnceCell<Result<Vec<runx_runtime::HostedProviderGrant>, String>>,
 }
 
 fn provider_readiness_sources<'a>(
     env: &'a BTreeMap<String, String>,
-    cwd: &Path,
+    cwd: &'a Path,
 ) -> ProviderReadinessSources<'a> {
     let explicit_grant = env
         .get(runx_runtime::PROVIDER_PERMISSION_GRANT_ID_ENV)
@@ -46,16 +49,24 @@ fn provider_readiness_sources<'a>(
     let explicit_principal = env
         .get(runx_runtime::PROVIDER_PERMISSION_PRINCIPAL_REF_ENV)
         .is_some_and(|value| !value.trim().is_empty());
-    let hosted_grants = match decoded_scopes {
-        Some(Err(error)) => Some(Err(error.to_string())),
-        _ if explicit_grant.is_some() && explicit_scopes.is_some() && explicit_principal => None,
-        _ => Some(load_hosted_provider_grants(env, cwd)),
-    };
+    let hosted_grants = OnceCell::new();
+    if let Some(Err(error)) = decoded_scopes {
+        let _ = hosted_grants.set(Err(error.to_string()));
+    }
     ProviderReadinessSources {
+        env,
+        cwd,
         explicit_grant,
         explicit_scopes,
         explicit_principal,
         hosted_grants,
+    }
+}
+
+impl ProviderReadinessSources<'_> {
+    fn hosted_grants(&self) -> &Result<Vec<runx_runtime::HostedProviderGrant>, String> {
+        self.hosted_grants
+            .get_or_init(|| load_hosted_provider_grants(self.env, self.cwd))
     }
 }
 
@@ -80,12 +91,7 @@ fn inspect_provider_requirements(
             (Some(grant_id), Some(granted_scopes), true) => {
                 inspect_explicit_provider_grant(grant_id, granted_scopes, &scopes)
             }
-            _ => inspect_hosted_result(
-                sources.hosted_grants.as_ref(),
-                provider,
-                &scopes,
-                sources.explicit_grant,
-            ),
+            _ => inspect_selected_provider_transport(requirement, sources, provider, &scopes),
         };
         overall = less_ready_status(overall, resolution.status);
         if resolution.status == "needs_provider_grant" && provider != "unknown" {
@@ -100,6 +106,16 @@ fn inspect_provider_requirements(
         );
         if let Some(grant_ref) = resolution.grant_ref {
             detail.insert("grant_ref".to_owned(), JsonValue::String(grant_ref));
+        }
+        for (field, value) in [
+            ("transport", resolution.transport),
+            ("principal_ref", resolution.principal_ref),
+            ("target", resolution.target),
+            ("host", resolution.host),
+        ] {
+            if let Some(value) = value {
+                detail.insert(field.to_owned(), JsonValue::String(value));
+            }
         }
         if let Some(reason) = resolution.reason {
             detail.insert("reason".to_owned(), JsonValue::String(reason));
@@ -182,6 +198,115 @@ struct ProviderReadinessResolution {
     status: &'static str,
     grant_ref: Option<String>,
     reason: Option<String>,
+    transport: Option<String>,
+    principal_ref: Option<String>,
+    target: Option<String>,
+    host: Option<String>,
+}
+
+fn inspect_selected_provider_transport(
+    requirement: &JsonObject,
+    sources: &ProviderReadinessSources<'_>,
+    provider: &str,
+    scopes: &[String],
+) -> ProviderReadinessResolution {
+    let preference = match runx_runtime::resolve_provider_transport_preference(
+        sources.env,
+        sources.cwd,
+        provider,
+    ) {
+        Ok(preference) => preference,
+        Err(error) => return provider_resolution("provider_readiness_unknown", None, Some(error)),
+    };
+    match preference {
+        runx_runtime::ProviderTransportPreference::LocalGithub => {
+            inspect_local_provider(requirement, sources, provider, scopes).unwrap_or_else(|error| {
+                provider_resolution("needs_local_provider", None, Some(error))
+            })
+        }
+        runx_runtime::ProviderTransportPreference::Hosted(grant) => inspect_hosted_result(
+            sources.hosted_grants(),
+            provider,
+            scopes,
+            grant.as_deref().or(sources.explicit_grant),
+        ),
+        runx_runtime::ProviderTransportPreference::Auto => {
+            let local_error = match inspect_local_provider(requirement, sources, provider, scopes) {
+                Ok(resolution) => return resolution,
+                Err(error) => Some(error),
+            };
+            let mut hosted = inspect_hosted_result(
+                sources.hosted_grants(),
+                provider,
+                scopes,
+                sources.explicit_grant,
+            );
+            if hosted.status != "ready"
+                && let Some(local_error) = local_error
+            {
+                hosted.reason = Some(match hosted.reason {
+                    Some(hosted_error) => format!(
+                        "local transport unavailable ({local_error}); hosted transport unavailable ({hosted_error})"
+                    ),
+                    None => format!("local transport unavailable ({local_error})"),
+                });
+            }
+            hosted
+        }
+    }
+}
+
+fn inspect_local_provider(
+    requirement: &JsonObject,
+    sources: &ProviderReadinessSources<'_>,
+    provider: &str,
+    scopes: &[String],
+) -> Result<ProviderReadinessResolution, String> {
+    let operation = object_string(requirement, "operation")
+        .ok_or_else(|| "provider operation is not statically preflightable".to_owned())?;
+    let access = object_string(requirement, "access").unwrap_or("read");
+    let target = object_string(requirement, "target")
+        .filter(|target| !target.starts_with('$'))
+        .unwrap_or(".");
+    let Some(readiness) = runx_runtime::preflight_local_provider_transport(
+        sources.env,
+        sources.cwd,
+        provider,
+        operation,
+        access,
+        target,
+        scopes,
+    )?
+    else {
+        return Err(format!(
+            "no compatible local {provider} driver is registered"
+        ));
+    };
+    Ok(ProviderReadinessResolution {
+        status: "ready",
+        grant_ref: Some(readiness.grant_ref),
+        reason: None,
+        transport: Some(readiness.transport.to_owned()),
+        principal_ref: Some(readiness.principal_ref),
+        target: Some(readiness.target),
+        host: Some(readiness.host),
+    })
+}
+
+fn provider_resolution(
+    status: &'static str,
+    grant_ref: Option<String>,
+    reason: Option<String>,
+) -> ProviderReadinessResolution {
+    ProviderReadinessResolution {
+        status,
+        grant_ref,
+        reason,
+        transport: None,
+        principal_ref: None,
+        target: None,
+        host: None,
+    }
 }
 
 fn load_hosted_provider_grants(
@@ -202,23 +327,14 @@ fn load_hosted_provider_grants(
 }
 
 fn inspect_hosted_result(
-    grants: Option<&Result<Vec<runx_runtime::HostedProviderGrant>, String>>,
+    grants: &Result<Vec<runx_runtime::HostedProviderGrant>, String>,
     provider: &str,
     scopes: &[String],
     explicit_grant: Option<&str>,
 ) -> ProviderReadinessResolution {
     match grants {
-        Some(Ok(grants)) => inspect_hosted_provider_grant(grants, provider, scopes, explicit_grant),
-        Some(Err(error)) => ProviderReadinessResolution {
-            status: "provider_readiness_unknown",
-            grant_ref: None,
-            reason: Some(error.clone()),
-        },
-        None => ProviderReadinessResolution {
-            status: "provider_readiness_unknown",
-            grant_ref: None,
-            reason: Some("provider grant resolution was not available".to_owned()),
-        },
+        Ok(grants) => inspect_hosted_provider_grant(grants, provider, scopes, explicit_grant),
+        Err(error) => provider_resolution("provider_readiness_unknown", None, Some(error.clone())),
     }
 }
 
@@ -233,20 +349,19 @@ fn inspect_explicit_provider_grant(
         .cloned()
         .collect::<Vec<_>>();
     if missing.is_empty() {
-        return ProviderReadinessResolution {
-            status: "ready",
-            grant_ref: Some(format!("runx:grant:{grant_id}")),
-            reason: None,
-        };
+        let mut resolution =
+            provider_resolution("ready", Some(format!("runx:grant:{grant_id}")), None);
+        resolution.transport = Some("runx_connect".to_owned());
+        return resolution;
     }
-    ProviderReadinessResolution {
-        status: "needs_provider_grant",
-        grant_ref: Some(format!("runx:grant:{grant_id}")),
-        reason: Some(format!(
+    provider_resolution(
+        "needs_provider_grant",
+        Some(format!("runx:grant:{grant_id}")),
+        Some(format!(
             "configured provider grant is missing scopes [{}]",
             missing.join(", ")
         )),
-    }
+    )
 }
 
 fn inspect_hosted_provider_grant(
@@ -267,27 +382,31 @@ fn inspect_hosted_provider_grant(
         })
         .collect::<Vec<_>>();
     match candidates.as_slice() {
-        [grant] => ProviderReadinessResolution {
-            status: "ready",
-            grant_ref: Some(format!("runx:grant:{}", grant.grant_id)),
-            reason: None,
-        },
-        [] => ProviderReadinessResolution {
-            status: "needs_provider_grant",
-            grant_ref: explicit_grant.map(|grant| format!("runx:grant:{grant}")),
-            reason: Some(format!(
+        [grant] => {
+            let mut resolution = provider_resolution(
+                "ready",
+                Some(format!("runx:grant:{}", grant.grant_id)),
+                None,
+            );
+            resolution.transport = Some("runx_connect".to_owned());
+            resolution
+        }
+        [] => provider_resolution(
+            "needs_provider_grant",
+            explicit_grant.map(|grant| format!("runx:grant:{grant}")),
+            Some(format!(
                 "no active Runx Connect grant authorizes {provider} scopes [{}]",
                 required_scopes.join(", ")
             )),
-        },
-        _ => ProviderReadinessResolution {
-            status: "needs_provider_grant_selection",
-            grant_ref: None,
-            reason: Some(format!(
+        ),
+        _ => provider_resolution(
+            "needs_provider_grant_selection",
+            None,
+            Some(format!(
                 "multiple active Runx Connect grants authorize {provider} scopes [{}]",
                 required_scopes.join(", ")
             )),
-        },
+        ),
     }
 }
 
@@ -296,7 +415,7 @@ fn less_ready_status(current: &'static str, candidate: &'static str) -> &'static
         "ready" => 0,
         "provider_readiness_unknown" => 1,
         "needs_provider_grant" => 2,
-        "needs_provider_grant_selection" => 3,
+        "needs_local_provider" | "needs_provider_grant_selection" => 3,
         _ => 4,
     };
     if rank(candidate) > rank(current) {

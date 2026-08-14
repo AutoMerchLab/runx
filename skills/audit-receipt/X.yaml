@@ -1,5 +1,5 @@
 skill: audit-receipt
-version: "0.3.3"
+version: "0.3.4"
 catalog:
   kind: graph
   audience: operator

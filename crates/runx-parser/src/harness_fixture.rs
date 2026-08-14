@@ -33,6 +33,84 @@ pub enum HarnessExpectedStatus {
     Escalated,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OperatorJourneyMode {
+    Standalone,
+    Composed,
+    Refusal,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct OperatorJourneyClaim {
+    pub mode: OperatorJourneyMode,
+    pub request: String,
+    pub expected_outcome: String,
+    /// For a complex graph harness, name the public runner the executable
+    /// journey invokes. Root skill fixtures derive this from `runner` instead.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub exercises_runner: Option<String>,
+    /// Nearby public skill identities a cold agent must distinguish from this
+    /// journey. Selection proof is meaningless without plausible alternatives.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub confusors: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub prior_evidence: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub must_not_repeat: Vec<String>,
+}
+
+/// One exact HTTP response available only while the native harness executes.
+/// Production skill inputs and environment never carry this contract.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HarnessHttpResponseFixture {
+    pub status: u16,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub headers: BTreeMap<String, String>,
+    pub body: String,
+}
+
+/// One hosted-provider grant exposed only to deterministic harness execution.
+/// This is authority-shaped test evidence, not a production credential or a
+/// public runner input.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HarnessProviderGrantFixture {
+    pub grant_id: String,
+    pub provider: String,
+    pub scopes: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum HarnessProviderAccess {
+    Read,
+    Mutate,
+}
+
+/// One exact provider operation and readback result admitted by the harness.
+/// The runtime still performs its normal authentication, grant selection,
+/// approval, operation validation, finality, and receipt transitions.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HarnessProviderOperationFixture {
+    pub grant_id: String,
+    pub operation: String,
+    pub target: String,
+    pub access: HarnessProviderAccess,
+    pub result: JsonValue,
+}
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct HarnessProviderResponsesFixture {
+    pub principal_id: String,
+    pub grants: Vec<HarnessProviderGrantFixture>,
+    pub operations: Vec<HarnessProviderOperationFixture>,
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HarnessFixture {
     pub name: String,
@@ -44,6 +122,7 @@ pub struct HarnessFixture {
     pub env: BTreeMap<String, String>,
     pub caller: JsonObject,
     pub expect: HarnessExpectation,
+    pub operator_journeys: Vec<OperatorJourneyClaim>,
     pub metadata: JsonObject,
 }
 
@@ -106,6 +185,8 @@ struct RawHarnessFixture {
     #[serde(default)]
     expect: RawHarnessExpectation,
     #[serde(default)]
+    operator_journeys: Vec<OperatorJourneyClaim>,
+    #[serde(default)]
     metadata: JsonObject,
 }
 
@@ -167,6 +248,20 @@ pub fn parse_harness_fixture(contents: &str) -> Result<HarnessFixture, HarnessFi
     validate_fixture(parse_yaml_document::<RawHarnessFixture>(contents)?)
 }
 
+pub(crate) fn parse_operator_journey(
+    value: JsonObject,
+) -> Result<OperatorJourneyClaim, HarnessFixtureError> {
+    let value = serde_json::to_value(value).map_err(|error| HarnessFixtureError::Invalid {
+        field: "operator_journey".to_owned(),
+        message: error.to_string(),
+    })?;
+    let claim = serde_json::from_value(value).map_err(|error| HarnessFixtureError::Invalid {
+        field: "operator_journey".to_owned(),
+        message: error.to_string(),
+    })?;
+    validate_operator_journey(claim)
+}
+
 /// Validate an inline runner-harness expectation through the same contract as
 /// a conventional fixture. Inline `X.yaml` cases and standalone fixture files
 /// must not acquire parallel expectation vocabularies.
@@ -196,6 +291,20 @@ fn validate_fixture(fixture: RawHarnessFixture) -> Result<HarnessFixture, Harnes
     if let Some(runner) = &fixture.runner {
         require_non_empty(runner, "runner")?;
     }
+    if fixture.caller.contains_key("web_responses") {
+        return Err(HarnessFixtureError::Invalid {
+            field: "caller.web_responses".to_owned(),
+            message: "was renamed to caller.http_responses".to_owned(),
+        });
+    }
+    parse_harness_http_responses(
+        fixture.caller.get("http_responses"),
+        "caller.http_responses",
+    )?;
+    parse_harness_provider_responses(
+        fixture.caller.get("provider_responses"),
+        "caller.provider_responses",
+    )?;
     Ok(HarnessFixture {
         name: fixture.name,
         kind: fixture.kind,
@@ -206,8 +315,257 @@ fn validate_fixture(fixture: RawHarnessFixture) -> Result<HarnessFixture, Harnes
         env: fixture.env,
         caller: fixture.caller,
         expect: validate_expectation(fixture.expect)?,
+        operator_journeys: fixture
+            .operator_journeys
+            .into_iter()
+            .map(validate_operator_journey)
+            .collect::<Result<_, _>>()?,
         metadata: fixture.metadata,
     })
+}
+
+/// Parse the deterministic hosted-provider lane used by conventional harness
+/// fixtures. The compact fixture describes authority and readback; the runtime
+/// owns the wire protocol and every governance transition around it.
+pub fn parse_harness_provider_responses(
+    value: Option<&JsonValue>,
+    field: &str,
+) -> Result<Option<HarnessProviderResponsesFixture>, HarnessFixtureError> {
+    let Some(value) = value else {
+        return Ok(None);
+    };
+    let encoded = serde_json::to_value(value).map_err(|error| HarnessFixtureError::Invalid {
+        field: field.to_owned(),
+        message: error.to_string(),
+    })?;
+    let fixture =
+        serde_json::from_value::<HarnessProviderResponsesFixture>(encoded).map_err(|error| {
+            HarnessFixtureError::Invalid {
+                field: field.to_owned(),
+                message: error.to_string(),
+            }
+        })?;
+    validate_harness_provider_responses(fixture, field).map(Some)
+}
+
+fn validate_harness_provider_responses(
+    fixture: HarnessProviderResponsesFixture,
+    field: &str,
+) -> Result<HarnessProviderResponsesFixture, HarnessFixtureError> {
+    use std::collections::BTreeSet;
+
+    const MAX_GRANTS: usize = 16;
+    const MAX_OPERATIONS: usize = 32;
+    if fixture.principal_id.trim().is_empty() || fixture.principal_id.len() > 256 {
+        return Err(HarnessFixtureError::Invalid {
+            field: format!("{field}.principal_id"),
+            message: "must be a non-empty principal id no longer than 256 characters".to_owned(),
+        });
+    }
+    if fixture.grants.is_empty() || fixture.grants.len() > MAX_GRANTS {
+        return Err(HarnessFixtureError::Invalid {
+            field: format!("{field}.grants"),
+            message: format!("must contain between 1 and {MAX_GRANTS} grants"),
+        });
+    }
+    if fixture.operations.is_empty() || fixture.operations.len() > MAX_OPERATIONS {
+        return Err(HarnessFixtureError::Invalid {
+            field: format!("{field}.operations"),
+            message: format!("must contain between 1 and {MAX_OPERATIONS} operations"),
+        });
+    }
+    let mut grant_ids = BTreeSet::new();
+    for (index, grant) in fixture.grants.iter().enumerate() {
+        let grant_field = format!("{field}.grants[{index}]");
+        if grant.grant_id.trim().is_empty()
+            || grant.provider.trim().is_empty()
+            || grant.scopes.is_empty()
+            || grant.scopes.iter().any(|scope| scope.trim().is_empty())
+        {
+            return Err(HarnessFixtureError::Invalid {
+                field: grant_field,
+                message: "grant_id, provider, and every declared scope must be non-empty"
+                    .to_owned(),
+            });
+        }
+        if !grant_ids.insert(grant.grant_id.as_str()) {
+            return Err(HarnessFixtureError::Invalid {
+                field: grant_field,
+                message: format!("duplicates grant id {:?}", grant.grant_id),
+            });
+        }
+    }
+    let mut operations = BTreeSet::new();
+    for (index, operation) in fixture.operations.iter().enumerate() {
+        let operation_field = format!("{field}.operations[{index}]");
+        if !grant_ids.contains(operation.grant_id.as_str()) {
+            return Err(HarnessFixtureError::Invalid {
+                field: format!("{operation_field}.grant_id"),
+                message: "must reference a declared harness grant".to_owned(),
+            });
+        }
+        if operation.operation.trim().is_empty() || operation.target.trim().is_empty() {
+            return Err(HarnessFixtureError::Invalid {
+                field: operation_field,
+                message: "operation and target must be non-empty".to_owned(),
+            });
+        }
+        let identity = (
+            operation.grant_id.as_str(),
+            operation.operation.as_str(),
+            operation.target.as_str(),
+            operation.access,
+        );
+        if !operations.insert(identity) {
+            return Err(HarnessFixtureError::Invalid {
+                field: operation_field,
+                message: "duplicates an earlier grant, operation, target, and access tuple"
+                    .to_owned(),
+            });
+        }
+    }
+    Ok(fixture)
+}
+
+/// Parse the deterministic HTTP-response lane shared by conventional and inline
+/// harness fixtures. The caller owns exact request URLs; the runtime owns
+/// transport selection and never falls through to the network when this map is
+/// present.
+pub fn parse_harness_http_responses(
+    value: Option<&JsonValue>,
+    field: &str,
+) -> Result<BTreeMap<String, HarnessHttpResponseFixture>, HarnessFixtureError> {
+    let Some(value) = value else {
+        return Ok(BTreeMap::new());
+    };
+    let encoded = serde_json::to_value(value).map_err(|error| HarnessFixtureError::Invalid {
+        field: field.to_owned(),
+        message: error.to_string(),
+    })?;
+    let responses = serde_json::from_value::<BTreeMap<String, HarnessHttpResponseFixture>>(encoded)
+        .map_err(|error| HarnessFixtureError::Invalid {
+            field: field.to_owned(),
+            message: error.to_string(),
+        })?;
+    if responses.is_empty() {
+        return Err(HarnessFixtureError::Invalid {
+            field: field.to_owned(),
+            message: "must contain at least one exact response when declared".to_owned(),
+        });
+    }
+    validate_harness_http_responses(responses, field)
+}
+
+fn validate_harness_http_responses(
+    responses: BTreeMap<String, HarnessHttpResponseFixture>,
+    field: &str,
+) -> Result<BTreeMap<String, HarnessHttpResponseFixture>, HarnessFixtureError> {
+    const MAX_RESPONSES: usize = 32;
+    const MAX_BODY_BYTES: usize = 1_048_576;
+    const MAX_HEADERS: usize = 64;
+    if responses.len() > MAX_RESPONSES {
+        return Err(HarnessFixtureError::Invalid {
+            field: field.to_owned(),
+            message: format!("must contain at most {MAX_RESPONSES} responses"),
+        });
+    }
+    for (url, response) in &responses {
+        let response_field = format!("{field}.{url}");
+        if url.len() > 2048
+            || url.chars().any(char::is_whitespace)
+            || !(url.starts_with("https://") || url.starts_with("http://"))
+        {
+            return Err(HarnessFixtureError::Invalid {
+                field: response_field,
+                message: "key must be an exact absolute HTTP(S) URL no longer than 2048 characters"
+                    .to_owned(),
+            });
+        }
+        if !(100..=599).contains(&response.status) {
+            return Err(HarnessFixtureError::Invalid {
+                field: format!("{response_field}.status"),
+                message: "must be an HTTP status from 100 through 599".to_owned(),
+            });
+        }
+        if response.headers.len() > MAX_HEADERS {
+            return Err(HarnessFixtureError::Invalid {
+                field: format!("{response_field}.headers"),
+                message: format!("must contain at most {MAX_HEADERS} headers"),
+            });
+        }
+        if response.headers.iter().any(|(name, value)| {
+            name.is_empty()
+                || name.len() > 256
+                || value.len() > 8192
+                || name.contains('\r')
+                || name.contains('\n')
+                || value.contains('\r')
+                || value.contains('\n')
+        }) {
+            return Err(HarnessFixtureError::Invalid {
+                field: format!("{response_field}.headers"),
+                message: "header names and values must be bounded single-line strings".to_owned(),
+            });
+        }
+        if response.body.len() > MAX_BODY_BYTES {
+            return Err(HarnessFixtureError::Invalid {
+                field: format!("{response_field}.body"),
+                message: format!("must be no larger than {MAX_BODY_BYTES} UTF-8 bytes"),
+            });
+        }
+    }
+    Ok(responses)
+}
+
+fn validate_operator_journey(
+    claim: OperatorJourneyClaim,
+) -> Result<OperatorJourneyClaim, HarnessFixtureError> {
+    for (field, value) in [
+        ("operator_journey.request", claim.request.as_str()),
+        (
+            "operator_journey.expected_outcome",
+            claim.expected_outcome.as_str(),
+        ),
+    ] {
+        if value.trim().is_empty() {
+            return Err(HarnessFixtureError::Required {
+                field: field.to_owned(),
+            });
+        }
+    }
+    if claim
+        .confusors
+        .iter()
+        .chain(&claim.prior_evidence)
+        .chain(&claim.must_not_repeat)
+        .any(|value| value.trim().is_empty())
+    {
+        return Err(HarnessFixtureError::Invalid {
+            field: "operator_journey".to_owned(),
+            message: "confusors, prior_evidence, and must_not_repeat entries must not be empty"
+                .to_owned(),
+        });
+    }
+    if claim
+        .exercises_runner
+        .as_deref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return Err(HarnessFixtureError::Invalid {
+            field: "operator_journey.exercises_runner".to_owned(),
+            message: "must be a non-empty runner name when declared".to_owned(),
+        });
+    }
+    if claim.mode == OperatorJourneyMode::Composed
+        && (claim.prior_evidence.is_empty() || claim.must_not_repeat.is_empty())
+    {
+        return Err(HarnessFixtureError::Invalid {
+            field: "operator_journey".to_owned(),
+            message: "composed journeys require prior_evidence and must_not_repeat assertions"
+                .to_owned(),
+        });
+    }
+    Ok(claim)
 }
 
 fn validate_setup(setup: HarnessSetup) -> Result<HarnessSetup, HarnessFixtureError> {

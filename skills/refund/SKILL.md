@@ -1,22 +1,22 @@
 ---
 name: refund
-description: Prepare a sealed-receipt-linked refund handoff under bounded authority without claiming money moved.
+description: Execute a sealed-receipt-linked refund through a configured adapter with bounded authority, approval, idempotency, and provider readback.
 runx:
   category: payments
 ---
 
 # Refund
 
-Prepare one refund against a real, sealed provider charge without losing the
+Execute one refund against a real, sealed provider charge without losing the
 lineage that makes a reversal auditable. A refund is not a negative spend and it
 is not justified by an order id alone: the plan must link the original money
 movement, provider proof, prior refunds, selected rail, payer, amount, and
 single-use refund authority.
 
-The current public skill plans only. It does not approve, reserve, execute, or
-recover a provider refund and always reports `money_moved: false`. A matching
-provider adapter must perform the reversal and return stable readback before a
-receipt can say the refund settled.
+The default builds the verified plan for a real `mpp` or `stripe` family,
+performs one approved provider reversal, and requires stable readback before a
+receipt can say the refund settled. The named family runners remain explicit
+plan surfaces; `mock` is never selected by default.
 
 ## When to use it
 

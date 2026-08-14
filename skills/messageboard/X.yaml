@@ -1,5 +1,5 @@
 skill: messageboard
-version: "0.2.3"
+version: "0.3.0"
 catalog:
   kind: skill
   audience: public
@@ -11,7 +11,6 @@ catalog:
   approval: conditional
 runners:
   post:
-    default: true
     type: agent-task
     agent: operator
     task: messageboard-post
@@ -218,6 +217,7 @@ runners:
         description: Receipt reference for the sealed/denied take.
 
   post_and_append:
+    default: true
     type: graph
     inputs:
       data_source_ref:
@@ -289,6 +289,7 @@ runners:
         - id: persist
           skill: ../data-store
           runner: append_event
+          mutation: true
           inputs:
             data_source_ref: "$input.data_source_ref"
             resource: "$input.resource"

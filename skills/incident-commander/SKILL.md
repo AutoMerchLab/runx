@@ -11,10 +11,18 @@ to a Runx `agency` case. It checks the folded case and fixed roster, asks the
 canonical `ops-desk` skill for one bounded decision, then enforces the incident
 rules before returning `incident_turn`.
 
-The result is local judgment. This skill does not append an agency event, acquire
-a case lease, send a message, call a provider, or close external state. The
-agency driver remains responsible for the expected-version append and for
-binding this run's sealed receipt to the case stream.
+The result is one bounded, receipt-backed command turn: an exact dispatch,
+approval escalation, verified resolution from a supplied member receipt, or
+actionable blocker. This skill does not append an agency event, acquire a case
+lease, send a message, call a provider, or close external state. The agency
+driver remains responsible for the expected-version append and for binding
+this run's sealed receipt to the case stream.
+
+## Composes
+
+<!-- Generated from the native execution closure; run pnpm core-skills:composes:generate. -->
+
+- `ops-desk#advance`
 
 ## Required context
 

@@ -3,9 +3,10 @@ version: "0.1.0"
 
 catalog:
   kind: skill
-  audience: public
-  visibility: public
-  role: canonical
+  audience: system
+  visibility: internal
+  role: harness-fixture
+  part_of: [cli-parity]
 
 harness:
   cases:

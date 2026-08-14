@@ -2,6 +2,19 @@ name: taste-profile-binds-preferences
 kind: skill
 target: ..
 runner: profile
+operator_journeys:
+  - mode: standalone
+    confusors: [brand-voice, ghostwrite]
+    request: Build a product-UI taste profile from these likes and dislikes.
+    expected_outcome: Return scoped design preferences, anti-patterns, and decision rules grounded in the supplied examples.
+  - mode: composed
+    request: Turn these collected preference examples into reusable design context.
+    expected_outcome: Preserve the supplied evidence and return a profile downstream UI work can consume without re-eliciting taste.
+    prior_evidence:
+      - The liked and disliked design examples supplied in the fixture.
+    must_not_repeat:
+      - Do not ask for preferences already present in the evidence.
+      - Do not invent aesthetic rules unsupported by the examples.
 inputs:
   subject: runx maintainer
   surface: developer-tool product UI

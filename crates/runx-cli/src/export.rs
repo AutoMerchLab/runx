@@ -135,6 +135,7 @@ pub fn run_export_command(
         root: &root,
         refs: &plan.refs,
         official_roots: official_skill_roots(env, cwd, &runx_bin),
+        execution_env: Some(env),
     })?;
     let skill_dir = target_skill_dir(plan.target, plan.project, cwd, env);
     let files = shim::plan_files(
@@ -146,6 +147,7 @@ pub fn run_export_command(
         &runx_bin,
     );
     managed::validate_write_targets(plan.target, &files, &root, plan.refs.is_empty())?;
+    let warnings = managed::managed_drift_warnings(plan.target, &files)?;
     managed::write_files(&files)?;
     let pruned = if plan.refs.is_empty() {
         managed::prune_managed_files(plan.target, &skill_dir, &files, &root)?
@@ -161,7 +163,7 @@ pub fn run_export_command(
         None
     };
 
-    Ok(export_report(plan, &files, pruned, rules_file))
+    Ok(export_report(plan, &files, pruned, rules_file, warnings))
 }
 
 fn exported_runx_binary(env: &BTreeMap<String, String>) -> Result<PathBuf, ExportError> {
@@ -245,6 +247,7 @@ fn export_report(
     files: &[GeneratedFile],
     pruned: Vec<String>,
     rules_file: Option<PathBuf>,
+    warnings: Vec<String>,
 ) -> ExportReport {
     ExportReport {
         target: plan.target.as_str().to_owned(),
@@ -264,7 +267,7 @@ fn export_report(
             .collect(),
         pruned,
         rules_file: rules_file.map(|path| display_path(&path)),
-        warnings: Vec::new(),
+        warnings,
     }
 }
 

@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use crate::analyze_package_catalog_semantics;
 use runx_contracts::sha256_prefixed;
 
 use super::path::validate_source_paths;
@@ -31,6 +32,7 @@ pub fn validate_skill_package(
     let profiles = validate_profiles(&source)?;
     validate_package_identity(&skill, profiles.get("X.yaml"))?;
     let harness_fixtures = validate_harness_fixtures(&source)?;
+    validate_catalog_semantics(&skill.name, profiles.get("X.yaml"), &harness_fixtures)?;
     let mut references = collect_package_references(&profiles, &source)?;
     let harness_fixture_files =
         collect_harness_fixture_references(&harness_fixtures, &source, &mut references)?;
@@ -85,6 +87,44 @@ pub fn validate_skill_package(
         context_skill_refs,
         source,
     })
+}
+
+fn validate_catalog_semantics(
+    skill_name: &str,
+    manifest: Option<&crate::SkillRunnerManifest>,
+    fixtures: &BTreeMap<String, crate::harness_fixture::HarnessFixture>,
+) -> Result<(), SkillPackageError> {
+    let Some(manifest) = manifest else {
+        return Ok(());
+    };
+    if manifest
+        .catalog
+        .as_ref()
+        .is_none_or(|catalog| catalog.visibility != crate::CatalogVisibility::Public)
+    {
+        return Ok(());
+    }
+    let report = analyze_package_catalog_semantics(skill_name, manifest, fixtures);
+    if report.diagnostics.is_empty() {
+        return Ok(());
+    }
+    let corrections = report
+        .diagnostics
+        .iter()
+        .map(|diagnostic| {
+            format!(
+                "{} on runner {:?}: {}",
+                diagnostic.code.as_str(),
+                diagnostic.runner,
+                diagnostic.required_correction
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("; ");
+    Err(SkillPackageError::invalid(
+        "X.yaml.catalog",
+        format!("catalog semantic enforcement rejected the package: {corrections}"),
+    ))
 }
 
 fn package_digest(files: &BTreeMap<String, Vec<u8>>) -> String {

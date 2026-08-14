@@ -1,5 +1,5 @@
 skill: organic-growth
-version: "0.1.1"
+version: "0.1.3"
 
 catalog:
   kind: graph
@@ -14,6 +14,19 @@ catalog:
 harness:
   cases:
     - name: produces-cross-source-priorities-with-bound-evidence
+      operator_journeys:
+        - mode: standalone
+          confusors: [google-search-console, google-analytics]
+          request: Prioritize SEO and answer-engine growth work from this bounded search, analytics, site, and market evidence.
+          expected_outcome: Return evidence-bound priorities, actions, and a measurement plan without guaranteed-ranking claims.
+        - mode: composed
+          request: Continue growth planning from these completed Search Console, analytics, and site evidence packets.
+          expected_outcome: Reuse normalized source packets without rerunning analytics or search acquisition.
+          prior_evidence:
+            - The bounded search, analytics, site, and market packets supplied in the fixture.
+          must_not_repeat:
+            - Do not query Google or crawl the site again.
+            - Do not renormalize evidence already supplied by connector skills.
       inputs:
         objective: Improve qualified organic acquisition for the Runx guides.
         site_url: https://example.com/

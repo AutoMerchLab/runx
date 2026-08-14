@@ -80,27 +80,38 @@ fn native_capability_refuses_undeclared_owned_scope() -> Result<(), Box<dyn std:
 }
 
 #[test]
-fn native_filesystem_containment_rejects_caller_selected_absolute_roots()
--> Result<(), Box<dyn std::error::Error>> {
+fn native_filesystem_reads_from_explicit_absolute_roots() -> Result<(), Box<dyn std::error::Error>>
+{
     let workspace = tempfile::tempdir()?;
+    let external = tempfile::tempdir()?;
+    std::fs::write(
+        external.path().join("operator-context.txt"),
+        "bounded context",
+    )?;
     let output = invoke(
         "fs.read",
         JsonObject::from([
-            ("repo_root".to_owned(), JsonValue::String("/".to_owned())),
+            (
+                "repo_root".to_owned(),
+                JsonValue::String(external.path().to_string_lossy().into_owned()),
+            ),
             (
                 "path".to_owned(),
-                JsonValue::String("etc/passwd".to_owned()),
+                JsonValue::String("operator-context.txt".to_owned()),
             ),
         ]),
         workspace.path(),
         CredentialDelivery::none(),
     )?;
 
-    assert_eq!(output.status, InvocationStatus::Failure);
-    assert!(
+    assert_eq!(output.status, InvocationStatus::Success);
+    assert_eq!(
         output
-            .failure_message()
-            .is_some_and(|message| message.contains("must be relative to the runtime workspace"))
+            .value
+            .as_object()
+            .and_then(|value| value.get("contents"))
+            .and_then(JsonValue::as_str),
+        Some("bounded context")
     );
     Ok(())
 }

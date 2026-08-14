@@ -1,5 +1,5 @@
 skill: issue-intake
-version: "0.1.3"
+version: "0.1.5"
 catalog:
   kind: skill
   audience: public
@@ -12,6 +12,19 @@ catalog:
 harness:
   cases:
     - name: bounded-docs-fix
+      operator_journeys:
+        - mode: standalone
+          confusors: [issue-triage, work-plan]
+          request: Turn this noisy documentation bug report into a bounded intake artifact.
+          expected_outcome: Return the normalized request, evidence gaps, mutation posture, and explicit next Runx lane.
+        - mode: composed
+          request: Normalize this inbound issue signal for downstream planning.
+          expected_outcome: Preserve the supplied source signal and return a reusable intake artifact without performing triage or implementation.
+          prior_evidence:
+            - The inbound request and source evidence supplied in the fixture.
+          must_not_repeat:
+            - Do not fetch or reinterpret the source signal after it is bound into intake.
+            - Do not perform downstream triage or work planning inside intake.
       inputs:
         thread_title: README should point users to issue-to-pr
         thread_body: The public docs should present issue-to-pr as the canonical command.

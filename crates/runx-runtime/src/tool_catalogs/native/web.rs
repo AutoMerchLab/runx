@@ -24,7 +24,7 @@ use super::NativeInvocation;
 use super::capability::decode_typed_output;
 use crate::RuntimeError;
 use crate::http::{
-    HttpMethod, ReqwestHttpTransport, RuntimeHttpError, RuntimeHttpHeader, RuntimeHttpRequest,
+    HttpMethod, NativeHttpTransport, RuntimeHttpError, RuntimeHttpHeader, RuntimeHttpRequest,
     RuntimeHttpResponse, STANDARD_HTTP_RESPONSE_BYTES,
 };
 
@@ -71,7 +71,7 @@ fn fetch(invocation: &NativeInvocation<'_, WebFetchInput>) -> Result<WebFetchOut
         Ok(request) => request,
         Err(result) => return decode_typed_output(TOOL, wrapped(result)),
     };
-    let transport = ReqwestHttpTransport::new()
+    let transport = NativeHttpTransport::new(invocation.harness_http_responses())
         .map_err(|error| invalid(format!("native HTTP transport unavailable: {error}")))?;
     let output = match fetch_redirects(
         &transport,
@@ -191,7 +191,7 @@ enum FetchError {
 }
 
 fn fetch_redirects(
-    transport: &ReqwestHttpTransport,
+    transport: &NativeHttpTransport<'_>,
     start_url: Url,
     allowlist: &[String],
     max_bytes: usize,

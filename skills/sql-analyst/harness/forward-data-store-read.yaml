@@ -14,7 +14,6 @@ steps:
         payload: { qualified_trials: 12 }
   - id: analyze
     skill: ..
-    runner: analyst
     inputs:
       question: Inspect the declared launch summary projection.
       dialect: sqlite
@@ -32,10 +31,3 @@ steps:
         data_source_ref: local://runx/sql-analyst/forward-read
         resource: analysis_snapshots
         aggregate_id: launch-summary
-  - id: read
-    skill: ../../data-store
-    runner: read_projection
-    context:
-      data_source_ref: analyze.sql_analysis_plan.data.execution.handoff.inputs.data_source_ref
-      resource: analyze.sql_analysis_plan.data.execution.handoff.inputs.resource
-      aggregate_id: analyze.sql_analysis_plan.data.execution.handoff.inputs.aggregate_id

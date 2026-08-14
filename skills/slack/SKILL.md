@@ -1,6 +1,6 @@
 ---
 name: slack
-description: Read bounded Slack search and thread evidence, plan an exact reply, and deliver an approved reply through Runx Connect with stable-message readback.
+description: Read bounded Slack search and thread evidence, plan an exact reply, and deliver an approved reply through any compatible Slack binding with stable-message readback.
 runx:
   category: ops
 ---
@@ -13,12 +13,12 @@ Slack mechanics that an agent should not have to reconstruct: bounded message
 search, bounded thread hydration, digest-bound reply planning, explicit
 approval, idempotent delivery, and exact-message readback.
 
-Cloud has one narrow role in this flow. It retains the OAuth credential,
-resolves the operator's grant, and executes a fixed Slack driver operation.
-The skill, its procedure, approval point, retry identity, and completion rule
-remain in Runx OSS. Any queue, team-specific routing rule, or durable action
-state belongs in a higher-level operator skill and normally composes
-`operator-inbox`.
+The operator-selected provider binding has one narrow role in this flow: retain
+credential custody and execute a fixed Slack operation. It may be local,
+self-hosted, third-party, or Runx-hosted. The skill, its procedure, approval
+point, retry identity, and completion rule remain in Runx OSS. Any queue,
+team-specific routing rule, or durable action state belongs in a higher-level
+operator skill and normally composes `operator-inbox`.
 
 ## Composes
 
@@ -34,7 +34,7 @@ The exact fields are:
 
 - `author_external_id`: one Slack member id string, such as `U123ABC`
 - `mentions_connected_subject`: a boolean selecting messages that mention the
-  member bound to the Connect grant
+  member bound to the selected provider account
 - `keywords`: one keyword-mode search phrase string, not an array and not raw
   Slack search syntax
 - `after` and `before`: ISO-8601 timestamp strings, with `after` earlier than
@@ -61,8 +61,8 @@ the provider boundary.
 `read_link` accepts one exact Slack archive permalink and reads the same bounded
 thread page. Use it when an operator pastes a normal
 `https://workspace.slack.com/archives/channel/message` link and therefore does
-not have the workspace id required by a canonical locator. Cloud validates the
-permalink, binds it to the OAuth connection's verified workspace identity, and
+not have the workspace id required by a canonical locator. The provider binding
+validates the permalink, binds it to the authenticated workspace identity, and
 returns the canonical `slack://workspace/channel/timestamp` locator. A reply
 permalink's `thread_ts` identifies the root; Slack's redundant `cid` must match
 the path channel. This runner requires only `thread.read`, never a search grant.
@@ -96,13 +96,12 @@ approval, idempotency, readback, or queue logic.
 
 ## Authority and privacy
 
-Reads resolve a Slack Connect grant for `messages.search`, `thread.read`, or
-`file.read` and
-do not ask for human approval. Reply delivery requires both `thread.reply` and
+Reads resolve a compatible Slack binding for `messages.search`, `thread.read`,
+or `file.read` and do not ask for human approval. Reply delivery requires both `thread.reply` and
 `thread.reply.read`; the mutation stops at an explicit approval bound to the
 unchanged plan and content digest. Runx supplies the idempotency key once, and
-Cloud verifies the registered operation and its read/mutate class against the
-server-side grant and OAuth binding.
+the selected transport verifies the registered operation and its read/mutate
+class against the bound provider authority.
 
 The skill never receives a Slack token, constructs HTTP, or stores a raw
 provider envelope. Search and thread outputs contain bounded previews because
@@ -112,7 +111,8 @@ timestamps, and a content digest; they do not echo the delivered message.
 ## Stop conditions
 
 - Refuse a missing, ambiguous, revoked, wrong-provider, or insufficient-scope
-  Connect grant. Never fall back to a token, webhook, browser, or Cloud script.
+  Slack binding. Never fall back to a token, webhook, browser, or
+  provider-specific script.
 - Stop when a search has no structural selector, uses an unsupported modifier,
   or asks for more than one bounded page per turn.
 - Stop when an attachment is not an image, exceeds 5 MiB, belongs to another

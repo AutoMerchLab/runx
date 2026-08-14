@@ -1,12 +1,12 @@
 skill: issue-triage
-version: "0.3.1"
+version: "0.4.0"
 
 catalog:
   kind: graph
   audience: public
   visibility: public
   role: canonical
-  execution: execute
+  execution: read
   completion: provider_readback
   requires_adapter: true
   approval: none
@@ -304,25 +304,76 @@ runners:
             packets:
               issue_triage_packet: runx.issue.triage.v1
 
-  mcp-read:
+  post:
     type: graph
     inputs:
-      repository: { definition: repository }
-      issue_number: { definition: issue_number }
-    examples:
-      - repository: runxhq/runx
-        issue_number: '241'
+      issue_triage_packet:
+        type: json
+        packet: runx.issue.triage.v1
+        required: true
+        description: Exact draft-ready packet emitted by provider-respond or respond.
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for this exact issue comment.
     graph:
-      name: issue-triage-mcp-read
-      result_from: [read_issue]
+      name: issue-triage-post
+      result_from: [readback]
       steps:
-        - id: read_issue
-          skill: ../../examples/github-mcp-hero/read-issue
-          scopes: [repo.read]
+        - id: validate
+          tool: data.compare
+          inputs:
+            actual:
+              decision: $input.issue_triage_packet.decision
+              validation: $input.issue_triage_packet.validation.status
+              delivery_status: $input.issue_triage_packet.delivery_status
+              channel: $input.issue_triage_packet.response_draft.channel
+            expected:
+              decision: draft_ready
+              validation: pass
+              delivery_status: not_sent
+              channel: github_issue_comment
+        - id: digest-comment
+          when: { field: validate.comparison.data.equal, equals: true }
+          tool: data.digest
+          inputs:
+            value: $input.issue_triage_packet.response_draft.body
+        - id: post-comment
+          when: { field: validate.comparison.data.equal, equals: true }
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: $input.idempotency_key
+          scopes: [issue.comment]
           policy:
             provider_permission:
-              grant_id: github-mcp-issue-triage-read
-              verb: read
+              verb: write
           inputs:
-            repository: $input.repository
-            issue_number: $input.issue_number
+            operation: issue.comment
+            target: $input.issue_triage_packet.issue_profile.repository
+            expected_provider: github
+            idempotency_key: $input.idempotency_key
+            result_fields: [comment_locator, repository, number, content_digest]
+            expected_result:
+              repository: $input.issue_triage_packet.issue_profile.repository
+              number: $input.issue_triage_packet.issue_profile.number
+              content_digest: $input.content_digest
+            input:
+              repository: $input.issue_triage_packet.issue_profile.repository
+              issue_number: $input.issue_triage_packet.issue_profile.number
+              body: $input.issue_triage_packet.response_draft.body
+          context:
+            content_digest: digest-comment.digest_result.data.digest
+        - id: readback
+          when: { field: validate.comparison.data.equal, equals: true }
+          tool: provider.read
+          scopes: [issue.comment.read]
+          policy:
+            provider_permission: { verb: read }
+          inputs:
+            operation: issue.comment.read
+            target: $input.issue_triage_packet.issue_profile.repository
+            expected_provider: github
+            result_fields: [comment_locator, repository, number, content_digest]
+          context:
+            input: post-comment.provider_operation.data.result
+            expected_result: post-comment.provider_operation.data.result

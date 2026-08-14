@@ -1,6 +1,20 @@
 name: release-exact-command-readback
 kind: graph
 target: ../harness/release-fixture.graph.yaml
+operator_journeys:
+  - mode: standalone
+    exercises_runner: release
+    confusors: [issue-to-pr, sourcey]
+    request: Release version 1.2.3 through this project-owned exact command profile and verify it.
+    expected_outcome: Prepare notes, obtain exact approval, execute once, and return independent release readback.
+  - mode: composed
+    request: Publish the already prepared 1.2.3 release and verify finality.
+    expected_outcome: Reuse the supplied release notes and project command profile without rebuilding or retesting the release payload.
+    prior_evidence:
+      - The prepared release-note packet and exact project command profile used by the fixture graph.
+    must_not_repeat:
+      - Do not regenerate approved release notes.
+      - Do not execute the publish command after readback proves the version exists.
 caller:
   answers:
     agent_task.release-notes.output:

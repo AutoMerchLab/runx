@@ -2025,5 +2025,6 @@
     "closure"
   ],
   "type": "object",
+  "x-runx-packet": true,
   "x-runx-schema": "runx.decision.v1"
 }

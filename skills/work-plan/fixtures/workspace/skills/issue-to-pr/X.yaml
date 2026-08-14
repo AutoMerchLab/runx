@@ -2,9 +2,10 @@ skill: issue-to-pr
 version: "0.0.0"
 catalog:
   kind: graph
-  audience: public
-  visibility: public
-  role: canonical
+  audience: operator
+  visibility: internal
+  role: harness-fixture
+  part_of: [runx/work-plan]
   execution: execute
   completion: runtime_receipt
   requires_adapter: false
@@ -12,12 +13,8 @@ catalog:
 runners:
   execute:
     default: true
-    type: graph
-    graph:
-      name: issue-to-pr-fixture
-      result_from: [digest]
-      steps:
-        - id: digest
-          tool: data.digest
-          inputs:
-            value: issue-to-pr-fixture
+    type: agent-task
+    agent: builder
+    task: issue-to-pr-fixture
+    outputs:
+      result: object

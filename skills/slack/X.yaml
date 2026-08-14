@@ -1,5 +1,5 @@
 skill: slack
-version: "0.2.5"
+version: "0.2.7"
 
 catalog:
   kind: graph
@@ -276,7 +276,7 @@ runners:
             description: Digest-bound Slack reply awaits approved provider execution.
         thread_locator: slack://T123ABC/C123ABC/1750000000.000001
         text: I’ll verify this now.
-        idempotency_key: 178d473e-8431-4d15-8de6-e29227bfa90d
+        idempotency_key: 00000000-0000-4000-8000-000000000001
     graph:
       name: slack-deliver-reply
       result_from: [readback]

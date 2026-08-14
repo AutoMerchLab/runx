@@ -1,5 +1,5 @@
 skill: slack-notify
-version: "0.3.2"
+version: "0.4.1"
 catalog:
   kind: graph
   audience: public
@@ -27,8 +27,53 @@ input_definitions:
         - required: [message]
         - required: [content_ref, digest]
 runners:
-  plan:
+  notify:
     default: true
+    type: graph
+    inputs:
+      channel_locator:
+        type: string
+        required: true
+        description: Exact slack://workspace/channel destination.
+      text:
+        type: string
+        required: true
+        description: Exact Slack message to bind, approve, post, and read back.
+      principal:
+        type: string
+        required: true
+        description: Principal the notification is posted as.
+      provider_context:
+        type: json
+        required: false
+      idempotency_key:
+        type: string
+        required: true
+        description: Stable retry key for this exact notification.
+    graph:
+      name: slack-notify
+      result_from: [deliver]
+      steps:
+        - id: plan
+          skill: .
+          runner: plan
+          inputs:
+            channel: $input.channel_locator
+            content:
+              message: $input.text
+            principal: $input.principal
+            provider_context: $input.provider_context
+        - id: deliver
+          skill: .
+          runner: deliver
+          inputs:
+            channel_locator: $input.channel_locator
+            text: $input.text
+            idempotency_key: $input.idempotency_key
+          context:
+            notification_plan: plan.notify_plan.data
+
+  plan:
     type: graph
     inputs:
       channel:
@@ -169,7 +214,7 @@ runners:
           validation: { status: pass, findings: [] }
         channel_locator: slack://T123/C456
         text: Release 0.8.2 is live.
-        idempotency_key: 12517f95-4b46-4f8e-87fd-3858ef0f94f2
+        idempotency_key: 00000000-0000-4000-8000-000000000001
     graph:
       name: slack-notify-deliver
       result_from: [readback]

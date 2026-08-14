@@ -2,6 +2,19 @@ name: ledger-answer-with-chain-proof
 kind: skill
 target: ..
 runner: read
+operator_journeys:
+  - mode: standalone
+    confusors: [run-history, audit-receipt]
+    request: Which spend runs sealed for the ops principal in this ledger slice?
+    expected_outcome: Return the matched receipts and a deterministic verification result for their chain.
+  - mode: composed
+    request: Answer the audit question from these already bounded receipt rows.
+    expected_outcome: Reuse supplied ledger evidence without querying unrelated history or hydrating full run contexts.
+    prior_evidence:
+      - The bounded receipt rows, filter, and audit question supplied in the fixture.
+    must_not_repeat:
+      - Do not query the wider receipt store.
+      - Do not re-run or hydrate the matched operations.
 inputs:
   question: Which spend runs sealed for the ops principal in the supplied ledger slice?
   filter:

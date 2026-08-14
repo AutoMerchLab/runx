@@ -48,6 +48,7 @@ pub struct SkillPlan {
     pub expected_package_digest: Option<String>,
     pub expected_execution_closure_digest: Option<String>,
     pub json: bool,
+    pub diagnostics: bool,
     pub non_interactive: bool,
     /// Internal command authorization for composite CLI commands such as
     /// `runx new`. User-supplied `runx skill` invocations cannot set this.
@@ -71,6 +72,8 @@ pub enum SkillAction {
 pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv) -> ExitCode {
     let cwd = workspace.cwd().to_path_buf();
     let env = workspace.env().clone();
+    let workspace_base = runx_runtime::resolve_runx_workspace_base(&env, &cwd);
+    let project_runx_dir = runx_runtime::resolve_project_runx_dir(&env, &workspace_base);
     let mut resolved = match resolve_skill_ref_details(
         &plan.skill_path,
         &cwd,
@@ -250,7 +253,14 @@ pub fn run_native_skill_with_workspace(plan: SkillPlan, workspace: &WorkspaceEnv
         Ok(mut result) => {
             attach_registry_provenance(&mut result.output, &resolved);
             let exit_code = skill_result_exit_code(&result.output);
-            write_skill_output(&result.output, plan.json, exit_code, resume)
+            write_skill_output(
+                &result.output,
+                plan.json,
+                exit_code,
+                resume,
+                &project_runx_dir,
+                plan.diagnostics,
+            )
         }
         Err(error) => write_orchestrator_failure(
             &error,
@@ -488,7 +498,7 @@ fn write_inspection_text(value: &JsonValue) -> ExitCode {
         {
             out.push_str(&format!(
                 "resume: {}\n",
-                object_string(resume, "command").unwrap_or("runx resume <run-id> answers.json")
+                object_string(resume, "command").unwrap_or("runx resume <run-id> -")
             ));
         }
         out.push_str("run: runx skill <skill> [runner]\n");

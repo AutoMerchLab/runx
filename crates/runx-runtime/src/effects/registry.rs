@@ -18,6 +18,9 @@ mod catalog;
 #[derive(Clone)]
 pub struct RuntimeEffectRegistry {
     families: BTreeMap<&'static str, Arc<dyn RuntimeEffect>>,
+    /// Exact response bytes admitted by the harness front. This state has no
+    /// environment or skill-input loader and is absent from every live registry.
+    harness_http_responses: Option<Arc<BTreeMap<String, crate::http::RuntimeHttpResponse>>>,
 }
 
 impl RuntimeEffectRegistry {
@@ -25,7 +28,23 @@ impl RuntimeEffectRegistry {
     pub fn empty() -> Self {
         Self {
             families: BTreeMap::new(),
+            harness_http_responses: None,
         }
+    }
+
+    pub(crate) fn with_harness_http_responses(
+        mut self,
+        responses: BTreeMap<String, crate::http::RuntimeHttpResponse>,
+    ) -> Self {
+        self.harness_http_responses = Some(Arc::new(responses));
+        self
+    }
+
+    #[cfg(feature = "catalog")]
+    pub(crate) fn harness_http_responses(
+        &self,
+    ) -> Option<&BTreeMap<String, crate::http::RuntimeHttpResponse>> {
+        self.harness_http_responses.as_deref()
     }
 
     pub fn with_effect<T>(effect: T) -> Result<Self, RuntimeEffectError>
@@ -72,6 +91,19 @@ impl RuntimeEffectRegistry {
         }
         self.families.insert(family, Arc::new(effect));
         Ok(())
+    }
+
+    /// Replace one effect family while preserving every unrelated runtime
+    /// effect. This is crate-private because only isolated runtime assembly
+    /// (currently the deterministic harness) may alter an already-wired
+    /// registry.
+    #[cfg(feature = "catalog")]
+    pub(crate) fn replace_effect<T>(&mut self, effect: T) -> Result<(), RuntimeEffectError>
+    where
+        T: RuntimeEffect + 'static,
+    {
+        self.families.remove(effect.family());
+        self.register_effect(effect)
     }
 
     pub(crate) fn find_replay(
@@ -249,6 +281,13 @@ impl fmt::Debug for RuntimeEffectRegistry {
         formatter
             .debug_struct("RuntimeEffectRegistry")
             .field("families", &families)
+            .field(
+                "harness_http_response_count",
+                &self
+                    .harness_http_responses
+                    .as_ref()
+                    .map_or(0, |responses| responses.len()),
+            )
             .finish()
     }
 }

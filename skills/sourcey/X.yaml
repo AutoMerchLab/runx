@@ -1,5 +1,5 @@
 skill: sourcey
-version: "0.1.4"
+version: "0.1.6"
 
 catalog:
   kind: skill
@@ -18,12 +18,14 @@ runners:
     inputs:
       project:
         type: string
-        required: true
-        description: "Project root containing Sourcey inputs."
+        required: false
+        default: .
+        description: "Project root containing Sourcey inputs; defaults to the current workspace."
       repo_root:
         type: string
         required: false
-        description: "Optional alias for the project root when Sourcey is composed inside a parent graph."
+        default: .
+        description: "Filesystem write root; defaults to the current workspace. Chains targeting another project should pass both project and repo_root explicitly."
       homepage_url:
         type: string
         required: false
@@ -66,6 +68,10 @@ runners:
             - git.current_branch
             - git.diff_name_only
             - cli.capture_help
+          scopes:
+            - fs.read
+            - git.read
+            - cli.read
           artifacts:
             named_emits:
               discovery_report: discovery_report
@@ -94,6 +100,9 @@ runners:
           allowed_tools:
             - fs.read
             - cli.capture_help
+          scopes:
+            - fs.read
+            - cli.read
           context:
             discovery_report: discover.discovery_report.data
           artifacts:
@@ -135,6 +144,8 @@ runners:
               evaluation_report: object
           allowed_tools:
             - fs.read
+          scopes:
+            - fs.read
           context:
             discovery_report: discover.discovery_report.data
             doc_bundle: author.doc_bundle.data
@@ -153,6 +164,8 @@ runners:
             outputs:
               revision_bundle: object
           allowed_tools:
+            - fs.read
+          scopes:
             - fs.read
           context:
             discovery_report: discover.discovery_report.data

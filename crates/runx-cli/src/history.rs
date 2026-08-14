@@ -197,6 +197,13 @@ fn parse_history_args(args: &[OsString]) -> Result<ParsedHistoryArgs, HistoryCli
                 parsed.detail = true;
                 index += 1;
             }
+            "--include-harness" => {
+                if inline_value.is_some() {
+                    return Err(invalid_args("--include-harness does not take a value"));
+                }
+                parsed.filter.include_harness = true;
+                index += 1;
+            }
             "--receipt-dir" => {
                 let (value, next_index) =
                     cli_args::flag_value(args, index, flag, inline_value, "history")
@@ -288,6 +295,7 @@ fn has_non_query_filters(filter: &HistoryFilter) -> bool {
         || filter.since.is_some()
         || filter.until.is_some()
         || filter.limit.is_some()
+        || filter.include_harness
 }
 
 fn render_history(
@@ -302,7 +310,7 @@ fn render_history(
                 "\n  No receipts matched {query}.\n  Try runx history to see every local run.\n\n"
             );
         }
-        return "\n  No receipts yet. Try a run first:\n  runx skill <skill-dir> --json\n  runx harness <fixture.yaml> --json\n\n"
+        return "\n  No receipts yet. Try a live run first:\n  runx skill <skill-dir> --json\n\n"
             .to_owned();
     }
     let mut lines = Vec::new();
@@ -358,10 +366,10 @@ fn push_pending_run_lines(
             });
         lines.push(format!("     next  {resume_command}"));
     } else {
-        lines.push(format!(
-            "     next  write answers.json, then resume the pending run with runx resume {} answers.json",
-            pending.id
-        ));
+        lines.push(
+            "     next  this legacy pending run lacks a resumable skill binding; rerun the original skill"
+                .to_owned(),
+        );
     }
 }
 
@@ -386,9 +394,10 @@ fn history_next_line(history: &runx_runtime::journal::LocalHistoryProjection) ->
         .iter()
         .any(|run| run.resume_skill_ref.is_some())
     {
-        "  next  write answers.json, then rerun one of the commands above".to_owned()
+        "  next  pipe one answers object into one of the commands above".to_owned()
     } else {
-        "  next  write answers.json, then rerun the original skill with the shown run id".to_owned()
+        "  next  rerun the original skill; these legacy pending runs lack resume bindings"
+            .to_owned()
     }
 }
 
@@ -554,7 +563,7 @@ mod tests {
         assert!(
             result
                 .output
-                .contains("next  runx resume gx_needs_agent_oracle answers.json")
+                .contains("next  runx resume gx_needs_agent_oracle -")
         );
         assert!(
             result
@@ -564,7 +573,7 @@ mod tests {
         assert!(
             result
                 .output
-                .contains("write answers.json, then rerun one of the commands above")
+                .contains("pipe one answers object into one of the commands above")
         );
         Ok(())
     }
@@ -584,7 +593,7 @@ mod tests {
         assert!(
             result
                 .output
-                .contains("next  runx resume gx_needs_agent_oracle answers.json")
+                .contains("next  runx resume gx_needs_agent_oracle -")
         );
         assert!(
             !result.output.contains("--receipt-dir"),
@@ -614,13 +623,8 @@ mod tests {
         .map_err(|error| io::Error::other(error.to_string()))?;
 
         assert!(!result.output.contains("runx skill sourcey"));
-        assert!(
-            result
-                .output
-                .contains("runx resume gx_needs_agent_oracle answers.json"),
-            "history output should give non-fabricated continuation guidance:\n{}",
-            result.output
-        );
+        assert!(!result.output.contains("runx resume"));
+        assert!(result.output.contains("lacks a resumable skill binding"));
         Ok(())
     }
 

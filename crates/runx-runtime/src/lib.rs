@@ -90,8 +90,9 @@ pub use credential_resolver::{
     CredentialBindingsFile, CredentialProfileSummary, ResolvedSkillCredential,
     SkillCredentialContext, SkillCredentialError, SkillCredentialRequest,
     SkillCredentialResolution, SkillCredentialSource, bind_project_credential,
-    list_local_credential_profiles, load_project_bindings, remove_local_credential_profile,
-    resolve_skill_credential, resolve_skill_credential_for_path, set_local_credential_profile,
+    bind_project_provider_transport, list_local_credential_profiles, load_project_bindings,
+    remove_local_credential_profile, resolve_skill_credential, resolve_skill_credential_for_path,
+    set_local_credential_profile,
 };
 pub use credentials::{
     CredentialDelivery, CredentialDeliveryError, CredentialDeliveryProfile, CredentialMaterialRole,
@@ -105,6 +106,10 @@ pub use dev::{
     discover_fixture_paths, render_dev_result, run_dev_once, should_ignore_dev_watch_path,
 };
 pub use doctor::{DoctorOptions, default_doctor_options, run_doctor};
+#[cfg(feature = "catalog")]
+pub use effects::{
+    EXTERNAL_RECEIPT_EFFECT_FAMILY, EXTERNAL_RECEIPT_VERIFY_TOOL, ExternalReceiptEffect,
+};
 pub use effects::{
     EffectAdmission, EffectApprovalRequirement, EffectOutputRequest, EffectReceiptRequest,
     EffectReplay, EffectReplayOutputRequest, EffectReplayReceiptRequest, EffectStepRequest,
@@ -118,6 +123,12 @@ pub use effects::{
     ProviderEffectUnknown, ProviderPermissionAdmission, ProviderPermissionEffect,
     ProviderScopeTransportError, RuntimeEffect, RuntimeEffectError, RuntimeEffectRegistry,
     decode_provider_scopes_env, encode_provider_scopes_env, insert_effect_verification_ref,
+};
+#[cfg(feature = "catalog")]
+pub use effects::{
+    LocalProviderTransportReadiness, PROVIDER_PERMISSION_TRANSPORT_ENV,
+    ProviderTransportPreference, preflight_local_provider_transport,
+    resolve_provider_transport_preference,
 };
 pub use error::RuntimeError;
 pub use harness::{

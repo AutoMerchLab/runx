@@ -411,7 +411,7 @@ mod production_recovery {
                 .and_then(JsonValue::as_object)
                 .is_some_and(JsonObject::is_empty)
         );
-        assert_eq!(host.requests.len(), 2);
+        assert_eq!(host.requests.len(), 1);
         Ok(())
     }
 

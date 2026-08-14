@@ -1,5 +1,5 @@
 skill: incident-commander
-version: "0.2.0"
+version: "0.3.0"
 
 catalog:
   kind: graph
@@ -8,8 +8,8 @@ catalog:
   role: context
   execution: plan
   completion: runtime_receipt
-  requires_adapter: true
-  approval: conditional
+  requires_adapter: false
+  approval: none
 
 policy:
   side_effects: none

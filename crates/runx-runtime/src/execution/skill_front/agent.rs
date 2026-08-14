@@ -1,7 +1,8 @@
 use super::{
-    SkillExecutionContext, SkillRunError, SkillSealContext, agent_invocation_source_type,
-    agent_request, answer_disposition, contract_json_value, domain_act_frame, generated_run_id,
-    identifier_segment, invalid, needs_agent_output, read_answer, sealed_output,
+    SkillExecutionContext, SkillOutputDiagnostics, SkillRunError, SkillSealContext,
+    agent_invocation_source_type, agent_request, answer_disposition, contract_json_value,
+    domain_act_frame, generated_run_id, identifier_segment, invalid, needs_agent_output,
+    read_answer, sealed_output,
 };
 
 use runx_contracts::{ClosureDisposition, JsonObject, JsonValue};
@@ -58,6 +59,7 @@ pub(super) fn execute_agent_skill_run(
         run_id.clone(),
     );
     let resolution_request = agent_request(&invocation, source_type)?;
+    let resolution_request_value = contract_json_value(&resolution_request)?;
 
     // Seeded answers (inline, single pass) take priority over the file-based
     // resume channel; absent both, the run yields to the public agent loop.
@@ -68,20 +70,10 @@ pub(super) fn execute_agent_skill_run(
     let (answer, governed_effect): (JsonValue, Option<JsonValue>) = match seeded_answer {
         Some(answer) => (answer, None),
         None => match &request.answers_path {
-            Some(answers_path) => match read_answer(answers_path, &request_id) {
-                Ok(answer) => (answer, None),
-                Err(error) => {
-                    return seal_agent_failure(
-                        context,
-                        &run_id,
-                        AgentFailure::contract(
-                            "agent_answer_read_failed",
-                            "agent answer could not be read",
-                            &error,
-                        ),
-                    );
-                }
-            },
+            Some(answers_path) => (
+                read_answer(answers_path, &request_id, &resolution_request_value)?,
+                None,
+            ),
             None => {
                 match try_inline_agent_resolution(&invocation, &request.managed_agent, effects)? {
                     #[cfg(feature = "agent")]
@@ -93,35 +85,24 @@ pub(super) fn execute_agent_skill_run(
                     InlineAgentOutcome::HostDrives => {
                         write_paused_agent_checkpoint(context, &run_id, &request_id)?;
                         return Ok(JsonValue::Object(needs_agent_output(
+                            context.manifest,
+                            &context.runner.name,
                             &run_id,
                             &request_id,
-                            contract_json_value(&resolution_request)?,
+                            resolution_request_value.clone(),
                         )));
                     }
                 }
             }
         },
     };
-    let verification_metadata = match verified_agent_metadata_with_artifacts(
+    let verification_metadata = verified_agent_metadata_with_artifacts(
         &resolution_request,
         &answer,
         runner.artifacts.as_ref(),
         &invocation.skill_directory,
         workspace.env(),
-    ) {
-        Ok(metadata) => metadata,
-        Err(error) => {
-            return seal_agent_failure(
-                context,
-                &run_id,
-                AgentFailure::contract(
-                    "agent_answer_contract_invalid",
-                    "agent answer did not satisfy its declared output contract",
-                    &error,
-                ),
-            );
-        }
-    };
+    )?;
     let claim_payload = match &resolution_request {
         runx_contracts::ResolutionRequest::AgentAct { .. } => {
             agent_output_contract_payload(&answer)
@@ -140,20 +121,7 @@ pub(super) fn execute_agent_skill_run(
             );
         }
     };
-    let disposition = match answer_disposition(&answer) {
-        Ok(disposition) => disposition,
-        Err(error) => {
-            return seal_agent_failure(
-                context,
-                &run_id,
-                AgentFailure::contract(
-                    "agent_answer_disposition_invalid",
-                    "agent answer declared an invalid closure disposition",
-                    &error,
-                ),
-            );
-        }
-    };
+    let disposition = answer_disposition(&answer)?;
     let receipt = match domain_act_frame(&invocation, &answer, governed_effect.as_ref()) {
         Some(mut frame) => {
             frame.artifact_refs.extend(
@@ -187,11 +155,11 @@ pub(super) fn execute_agent_skill_run(
 
     Ok(JsonValue::Object(sealed_output(
         manifest,
+        &runner.name,
         &run_id,
         &agent_skill_output(answer.clone(), &receipt, verification_metadata),
         &answer,
-        None,
-        None,
+        SkillOutputDiagnostics::default(),
         &receipt,
     )))
 }
@@ -403,11 +371,11 @@ fn seal_agent_failure(
     )?;
     Ok(JsonValue::Object(sealed_output(
         context.manifest,
+        &context.runner.name,
         run_id,
         &output,
         &failure.payload,
-        None,
-        None,
+        SkillOutputDiagnostics::default(),
         &receipt,
     )))
 }

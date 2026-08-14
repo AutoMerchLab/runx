@@ -27,7 +27,10 @@ fn exports_public_skills_to_claude_global_with_absolute_delegation()
     assert_eq!(report.exported.len(), 1);
     assert_eq!(report.exported[0].skill, "visible");
     let shim = fixture.read_home_file(".claude/skills/visible/SKILL.md")?;
-    assert!(shim.contains("allowed-tools: Bash(/opt/runx/bin/runx skill *)"));
+    assert!(shim.contains(
+        "allowed-tools: Bash(/opt/runx/bin/runx skill *), Bash(/opt/runx/bin/runx resume *)"
+    ));
+    assert!(!shim.contains("allowed-tools: Bash(/opt/runx/bin/runx *)"));
     assert!(shim.contains("/opt/runx/bin/runx skill"));
     assert!(
         shim.contains(
@@ -62,7 +65,7 @@ fn exports_claude_project_scope_with_project_relative_skill_ref()
 
     let shim = fixture.read_project_file(".claude/skills/visible/SKILL.md")?;
     assert!(shim.contains("/opt/runx/bin/runx skill skills/visible"));
-    assert!(shim.contains("--objective \"<objective>\""));
+    assert!(shim.contains(r#"--input-json objective '"fixture"'"#));
     assert!(!shim.contains(&format!(
         "runx skill {}",
         fixture.project.to_str().unwrap_or_default()
@@ -71,11 +74,11 @@ fn exports_claude_project_scope_with_project_relative_skill_ref()
 }
 
 #[test]
-fn explicit_ref_exports_internal_skill() -> Result<(), Box<dyn std::error::Error>> {
+fn explicit_ref_rejects_internal_skill() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = ExportFixture::new("runx-export-explicit-internal")?;
     fixture.write_skill("hidden", Some("internal"))?;
 
-    let report = run_export_command(
+    let error = match run_export_command(
         &ExportPlan {
             target: Target::Claude,
             refs: vec!["hidden".to_owned()],
@@ -84,11 +87,17 @@ fn explicit_ref_exports_internal_skill() -> Result<(), Box<dyn std::error::Error
         },
         &fixture.project,
         &fixture.env,
-    )?;
+    ) {
+        Ok(_) => return Err("internal skills were exported into agent discovery".into()),
+        Err(error) => error,
+    };
 
-    assert_eq!(report.exported.len(), 1);
-    assert_eq!(report.exported[0].skill, "hidden");
-    assert!(fixture.home.join(".claude/skills/hidden/SKILL.md").exists());
+    assert!(
+        error
+            .to_string()
+            .contains("cannot export hidden as an agent skill")
+    );
+    assert!(!fixture.home.join(".claude/skills/hidden/SKILL.md").exists());
     Ok(())
 }
 
@@ -127,14 +136,15 @@ fn codex_global_writes_shim_and_idempotent_permission_block()
     let shim = fixture.read_home_file(".codex/skills/visible/SKILL.md")?;
     assert!(shim.contains("name: visible"));
     assert!(!shim.contains("allowed-tools"));
-    assert!(shim.contains("--objective \"<objective>\""));
+    assert!(shim.contains(r#"--input-json objective '"fixture"'"#));
     assert!(shim.contains("local-development receipt identity"));
     assert!(shim.contains("complete signer tuple"));
-    assert!(shim.contains("If runx returns `status` `needs_agent`"));
-    assert!(shim.contains("request.invocation.envelope"));
+    assert!(shim.contains("If runx returns `needs_agent` or `needs_approval`"));
+    assert!(shim.contains("digest-bound request artifact"));
     assert!(shim.contains("allowed_tools"));
-    assert!(shim.contains("\"answers\""));
-    assert!(shim.contains("resume \"<run_id>\" \"<answers.json>\""));
+    assert!(shim.contains("request_digest"));
+    assert!(shim.contains("resume \"<run_id>\" - --package-digest sha256:"));
+    assert!(shim.contains("--execution-closure-digest sha256:"));
     assert!(shim.contains("runx-export:codex"));
     let rules = fixture.read_home_file(".codex/rules/default.rules")?;
     assert!(rules.contains("# existing approval"));
@@ -260,7 +270,7 @@ fn codex_global_initializes_missing_codex_home() -> Result<(), Box<dyn std::erro
 fn exports_default_runner_inputs_when_skill_frontmatter_has_none()
 -> Result<(), Box<dyn std::error::Error>> {
     let fixture = ExportFixture::new("runx-export-runner-inputs")?;
-    fixture.write_skill_with_runner_inputs("send-as")?;
+    fixture.write_skill_with_runner_inputs("work-plan")?;
 
     run_export_command(
         &ExportPlan {
@@ -273,23 +283,54 @@ fn exports_default_runner_inputs_when_skill_frontmatter_has_none()
         &fixture.env,
     )?;
 
-    let shim = fixture.read_home_file(".codex/skills/send-as/SKILL.md")?;
-    assert!(shim.contains("--objective \"<objective>\""));
-    assert!(shim.contains("--principal \"<principal>\""));
-    assert!(shim.contains("\"objective\": {"));
-    assert!(shim.contains("\"provider_context\": {"));
-    assert!(shim.contains("\"required\": ["));
+    let shim = fixture.read_home_file(".codex/skills/work-plan/SKILL.md")?;
+    assert!(shim.contains(r#"--input-json objective '"fixture"'"#));
+    assert!(shim.contains(r#"--input-json principal '"fixture"'"#));
+    assert!(!shim.contains("\"input_schema\""));
+    assert!(!shim.contains("\"required\": ["));
     assert!(shim.contains("skill inspect"));
-    assert!(shim.contains("A planning runner seals a plan, not the downstream external action"));
+    assert!(
+        shim.contains(
+            "Report an external mutation only when the result contains provider evidence"
+        )
+    );
+    assert!(shim.contains("--package-digest sha256:"));
+    assert!(shim.contains("--execution-closure-digest sha256:"));
     assert!(!shim.contains("Do not perform the work yourself"));
     Ok(())
 }
 
 #[test]
-fn exports_multi_runner_skill_without_default_with_explicit_selection()
--> Result<(), Box<dyn std::error::Error>> {
+fn omits_multi_runner_skill_without_default() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = ExportFixture::new("runx-export-multi-runner-selection")?;
     fixture.write_multi_runner_skill_without_default("frantic-operator")?;
+
+    let report = run_export_command(
+        &ExportPlan {
+            target: Target::Codex,
+            refs: Vec::new(),
+            project: false,
+            json: false,
+        },
+        &fixture.project,
+        &fixture.env,
+    )?;
+
+    assert!(report.exported.is_empty());
+    assert!(
+        !fixture
+            .home
+            .join(".codex/skills/frantic-operator/SKILL.md")
+            .exists()
+    );
+    Ok(())
+}
+
+#[test]
+fn generated_shims_are_compact_digest_bound_and_detect_drift()
+-> Result<(), Box<dyn std::error::Error>> {
+    let fixture = ExportFixture::new("runx-export-digest-bound")?;
+    fixture.write_skill("visible", None)?;
 
     run_export_command(
         &ExportPlan {
@@ -302,22 +343,79 @@ fn exports_multi_runner_skill_without_default_with_explicit_selection()
         &fixture.env,
     )?;
 
-    let shim = fixture.read_home_file(".codex/skills/frantic-operator/SKILL.md")?;
-    assert!(shim.contains("## Runner `payments`"));
-    assert!(shim.contains("## Runner `payout_preflight`"));
-    assert!(shim.contains("skill inspect"));
-    assert!(shim.contains("frantic-operator payments --json"));
-    assert!(shim.contains("frantic-operator payout_preflight"));
-    assert!(shim.contains("--claim \"<claim>\""));
-    assert!(!shim.contains("\n+  --json"));
-    assert!(shim.contains("package-digest=sha256:"));
+    let shim = fixture.read_home_file(".codex/skills/visible/SKILL.md")?;
+    assert!(
+        shim.len() < 16 * 1024,
+        "compact shim was {} bytes",
+        shim.len()
+    );
+    assert_eq!(shim.matches("--package-digest sha256:").count(), 2);
+    assert_eq!(
+        shim.matches("--execution-closure-digest sha256:").count(),
+        2
+    );
+    assert!(!shim.contains("Input contract:"));
+
+    let package_digest = flag_value(&shim, "--package-digest")?;
+    let closure_digest = flag_value(&shim, "--execution-closure-digest")?;
+    let manual = fixture.project.join("skills/visible/SKILL.md");
+    fs::write(
+        &manual,
+        "---\nname: visible\ndescription: Export visible through runx after a source change.\n---\n# visible\n\nChanged instructions.\n",
+    )?;
+
+    let output = crate::support::unsigned_runx_command_at(&fixture.project)
+        .args([
+            "skill",
+            fixture
+                .project
+                .join("skills/visible")
+                .to_str()
+                .ok_or("skill path")?,
+            "default",
+            "--objective",
+            "prove stale export refusal",
+            "--package-digest",
+            package_digest,
+            "--execution-closure-digest",
+            closure_digest,
+            "--json",
+        ])
+        .output()?;
+    assert!(!output.status.success());
+    let error = format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(error.contains("package digest mismatch"), "{error}");
+
+    let report = run_export_command(
+        &ExportPlan {
+            target: Target::Codex,
+            refs: Vec::new(),
+            project: false,
+            json: false,
+        },
+        &fixture.project,
+        &fixture.env,
+    )?;
+    assert_eq!(report.warnings.len(), 1);
+    assert!(report.warnings[0].contains("replaced stale managed export"));
     Ok(())
+}
+
+fn flag_value<'a>(contents: &'a str, flag: &str) -> Result<&'a str, Box<dyn std::error::Error>> {
+    contents
+        .split_once(&format!("{flag} "))
+        .and_then(|(_, suffix)| suffix.split_whitespace().next())
+        .ok_or_else(|| format!("missing {flag} in generated shim").into())
 }
 
 #[test]
 fn explicit_ref_exports_official_source_skill() -> Result<(), Box<dyn std::error::Error>> {
     let fixture = ExportFixture::new("runx-export-official-ref")?;
-    let official_root = fixture.write_official_skill_with_runner_inputs("send-as")?;
+    let official_root = fixture.write_official_skill_with_runner_inputs("work-plan")?;
     let mut env = fixture.env.clone();
     env.insert(
         "RUNX_OFFICIAL_SKILLS_SOURCE_DIR".to_owned(),
@@ -327,7 +425,7 @@ fn explicit_ref_exports_official_source_skill() -> Result<(), Box<dyn std::error
     let report = run_export_command(
         &ExportPlan {
             target: Target::Codex,
-            refs: vec!["send-as".to_owned()],
+            refs: vec!["work-plan".to_owned()],
             project: false,
             json: false,
         },
@@ -336,11 +434,11 @@ fn explicit_ref_exports_official_source_skill() -> Result<(), Box<dyn std::error
     )?;
 
     assert_eq!(report.exported.len(), 1);
-    assert_eq!(report.exported[0].skill, "send-as");
-    let shim = fixture.read_home_file(".codex/skills/send-as/SKILL.md")?;
+    assert_eq!(report.exported[0].skill, "work-plan");
+    let shim = fixture.read_home_file(".codex/skills/work-plan/SKILL.md")?;
     assert!(shim.contains("skill "));
-    assert!(shim.contains("/official-skills/send-as"));
-    assert!(shim.contains("--objective \"<objective>\""));
+    assert!(shim.contains("/official-skills/work-plan"));
+    assert!(shim.contains(r#"--input-json objective '"fixture"'"#));
     Ok(())
 }
 
@@ -667,6 +765,7 @@ impl ExportFixture {
         visibility: Option<&str>,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let dir = self.project.join("skills").join(name);
+        let harness = readiness_harness("default", &[input_name]);
         fs::create_dir_all(&dir)?;
         fs::write(
             dir.join("SKILL.md"),
@@ -677,7 +776,7 @@ impl ExportFixture {
         fs::write(
             dir.join("X.yaml"),
             format!(
-                "skill: {name}\ncatalog:\n  kind: skill\n  audience: public\n  visibility: {}\n  role: context\nrunners:\n  default:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: {name}\n    inputs:\n      {input_name}:\n        type: string\n        required: true\n        description: Work to perform.\n",
+                "skill: {name}\ncatalog:\n  kind: skill\n  audience: public\n  visibility: {}\n  role: context\n{harness}runners:\n  default:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: {name}\n    inputs:\n      {input_name}:\n        type: string\n        required: true\n        description: Work to perform.\n",
                 visibility.unwrap_or("public")
             ),
         )?;
@@ -717,6 +816,7 @@ impl ExportFixture {
     ) -> Result<(), Box<dyn std::error::Error>> {
         let declared_name = format!("{owner}/{name}");
         let dir = self.project.join("skills").join(owner).join(name);
+        let harness = readiness_harness("default", &["objective"]);
         fs::create_dir_all(&dir)?;
         fs::write(
             dir.join("SKILL.md"),
@@ -727,7 +827,7 @@ impl ExportFixture {
         fs::write(
             dir.join("X.yaml"),
             format!(
-                "skill: {declared_name}\ncatalog:\n  kind: skill\n  audience: operator\n  visibility: public\n  role: canonical\nrunners:\n  default:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: {name}\n    inputs:\n      objective:\n        type: string\n        required: true\n        description: Work to perform.\n"
+                "skill: {declared_name}\ncatalog:\n  kind: skill\n  audience: operator\n  visibility: public\n  role: canonical\n{harness}runners:\n  default:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: {name}\n    inputs:\n      objective:\n        type: string\n        required: true\n        description: Work to perform.\n"
             ),
         )?;
         Ok(())
@@ -746,6 +846,7 @@ impl ExportFixture {
         dir: &Path,
         name: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
+        let harness = readiness_harness("plan", &["objective", "principal"]);
         fs::create_dir_all(dir)?;
         fs::write(
             dir.join("SKILL.md"),
@@ -754,7 +855,7 @@ impl ExportFixture {
         fs::write(
             dir.join("X.yaml"),
             format!(
-                "skill: {name}\ncatalog:\n  kind: skill\n  audience: public\n  visibility: public\n  role: canonical\nrunners:\n  plan:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: {name}\n    inputs:\n      objective:\n        type: string\n        required: true\n        description: Bounded send objective.\n      principal:\n        type: string\n        required: true\n        description: Principal represented by the send.\n      provider_context:\n        type: json\n        required: false\n        description: Provider readiness.\n"
+                "skill: {name}\ncatalog:\n  kind: skill\n  audience: public\n  visibility: public\n  role: canonical\n{harness}runners:\n  plan:\n    default: true\n    type: agent-task\n    agent: reviewer\n    task: {name}\n    inputs:\n      objective:\n        type: string\n        required: true\n        description: Bounded send objective.\n      principal:\n        type: string\n        required: true\n        description: Principal represented by the send.\n      provider_context:\n        type: json\n        required: false\n        description: Provider readiness.\n"
             ),
         )?;
         Ok(())
@@ -767,6 +868,16 @@ impl ExportFixture {
     fn read_project_file(&self, relative: &str) -> Result<String, Box<dyn std::error::Error>> {
         Ok(fs::read_to_string(self.project.join(relative))?)
     }
+}
+
+fn readiness_harness(runner: &str, inputs: &[&str]) -> String {
+    let inputs = inputs
+        .iter()
+        .map(|input| format!("        \"{input}\": fixture\n"))
+        .collect::<String>();
+    format!(
+        "harness:\n  cases:\n    - name: export-operator-journeys\n      runner: {runner}\n      operator_journeys:\n        - mode: standalone\n          confusors: [research, issue-intake, extract]\n          request: Run the advertised default operation from a cold selection.\n          expected_outcome: Return the promised bounded result.\n        - mode: composed\n          request: Continue from a prior bounded result.\n          expected_outcome: Reuse supplied evidence without repeating completed work.\n          prior_evidence:\n            - A typed result supplied by the prior step.\n          must_not_repeat:\n            - Do not repeat prior discovery.\n      inputs:\n{inputs}      expect:\n        status: sealed\n"
+    )
 }
 
 impl Drop for ExportFixture {

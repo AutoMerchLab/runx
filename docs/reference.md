@@ -559,7 +559,7 @@ or import uncompiled TypeScript.
 The official catalog is explicit about why each package is public:
 
 - canonical governed skills: `charge`, `dispute-respond`,
-  `skill-lab`, `review-skill`, `least-privilege`, `overlay`,
+  `skill-lab`, `review-skill`, `least-privilege`, `adopt-skill`,
   `policy-author`, `audit-receipt`, `refund`, `ops-desk`, `send-as`, `spend`,
   `weather-forecast`
 - branded provider skills: `nitrosend`, `nws-weather-forecast`, `stripe-pay`,
@@ -762,6 +762,26 @@ Supplied `caller.answers` are semantic oracles, not inert model stubs. Native
 replay fails unless every supplied answer is observable in the root or step
 output. For stateful work, use one graph fixture to prove the transition and
 durable readback; do not depend on fixture filename order.
+
+Native HTTP-read fixtures can bind exact response bytes without turning a semantic
+test into a live-network smoke test:
+
+```yaml
+caller:
+  http_responses:
+    "https://fixture.runx.invalid/source":
+      status: 200
+      headers: { content-type: text/plain }
+      body: hello world
+```
+
+The key is the exact requested URL. When this map is present, an unmatched URL
+or a non-GET request fails instead of reaching the network. Native `web.fetch`
+and `http.read` still own their real URL and host admission, request
+preparation, extraction or JSON projection, response limits, digests,
+redaction, and provenance; only transport response bytes come from the harness.
+This lane is unavailable to skill inputs, environment configuration, and
+ordinary live runs.
 
 Package replay uses a disposable project-owned workspace below `.runx/harness`
 and a separate receipt store for every case, then cleans that scratch state.

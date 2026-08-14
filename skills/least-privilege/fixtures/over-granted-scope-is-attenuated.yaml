@@ -2,6 +2,19 @@ name: over-granted-scope-is-attenuated
 kind: skill
 target: ..
 runner: audit
+operator_journeys:
+  - mode: standalone
+    confusors: [audit-receipt, policy-author]
+    request: Determine the narrowest grant supported by these receipt-backed authority observations.
+    expected_outcome: Verify the cited receipts and return a least-privilege scope proposal with unsupported scopes removed.
+  - mode: composed
+    request: Attenuate this grant from the supplied authority-usage summary and receipt IDs.
+    expected_outcome: Reuse verified usage evidence without rerunning provider operations or widening the observed scope set.
+    prior_evidence:
+      - The normalized authority usage, granted scopes, and cited receipt rows supplied in the fixture.
+    must_not_repeat:
+      - Do not replay the operations that exercised authority.
+      - Do not infer scope use not present in verified receipts.
 inputs:
   subject: growth/lifecycle-campaign-send
   granted_scopes:

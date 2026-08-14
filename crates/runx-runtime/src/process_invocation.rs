@@ -93,7 +93,7 @@ impl Drop for PreparedProcessInvocation {
     }
 }
 
-#[cfg(feature = "cli-tool")]
+#[cfg(any(feature = "cli-tool", test))]
 pub(crate) fn process_base_environment(
     base_env: &BTreeMap<String, String>,
 ) -> Result<BTreeMap<String, String>, RuntimeError> {

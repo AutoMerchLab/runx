@@ -1,5 +1,5 @@
 skill: prior-art
-version: "0.2.2"
+version: "0.2.5"
 catalog:
   kind: graph
   audience: builder
@@ -15,6 +15,19 @@ harness:
     - fixtures/workspace/skills/moltbook/X.yaml
   cases:
     - name: prior-art-recommends-catalog-reuse
+      operator_journeys:
+        - mode: standalone
+          confusors: [research, knowledge-router]
+          request: Inspect prior art for this design before I create anything new.
+          expected_outcome: Return bounded citation-backed findings and a reuse, amend, new-work, or stop recommendation.
+        - mode: composed
+          request: Continue this design decision from the supplied repository and catalog evidence.
+          expected_outcome: Reuse the bounded source set and return a prior-art recommendation without broad repository rediscovery.
+          prior_evidence:
+            - The explicit source paths, objective, and catalog evidence supplied in the fixture.
+          must_not_repeat:
+            - Do not enumerate or grep the whole repository again.
+            - Do not reacquire catalog evidence already included in the bounded source set.
       inputs:
         objective: Add a Moltbook opportunity scan to an existing governed pipeline.
         repo_root: fixtures/workspace
@@ -232,6 +245,8 @@ runners:
           context:
             evidence_index: index.evidence_index.data
           allowed_tools:
+            - fs.read
+          scopes:
             - fs.read
           artifacts:
             named_emits:

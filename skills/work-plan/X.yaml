@@ -1,5 +1,5 @@
 skill: work-plan
-version: "0.2.2"
+version: "0.2.4"
 catalog:
   kind: graph
   audience: builder
@@ -15,6 +15,19 @@ harness:
     - fixtures/workspace/skills/issue-to-pr/X.yaml
   cases:
     - name: work-plan-ready-from-issue-intake
+      operator_journeys:
+        - mode: standalone
+          confusors: [issue-intake, prior-art]
+          request: Turn this bounded issue intake into a dependency-safe Runx work plan.
+          expected_outcome: Return a validated execution plan with evidence preservation, mutation boundaries, and explicit owners.
+        - mode: composed
+          request: Continue planning from this completed issue-intake artifact.
+          expected_outcome: Reuse the intake change set and evidence without re-triaging the issue or rediscovering its target.
+          prior_evidence:
+            - The typed issue-intake artifact and bounded change set supplied in the fixture.
+          must_not_repeat:
+            - Do not repeat issue intake or triage.
+            - Do not reacquire target evidence already carried by the intake packet.
       inputs:
         objective: Roll out abandoned cart recovery across api and app.
         project_context: Example product workspace

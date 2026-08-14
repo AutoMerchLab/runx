@@ -13,8 +13,9 @@ back to runx:
 
 - **Claude** gets one `SKILL.md` shim per skill under `~/.claude/skills/<name>/`
   (or `./.claude/skills/` with `--project`). Each shim declares `allowed-tools`
-  locked to the runx binary and carries the exact `runx skill ... --json`
-  command with typed inputs.
+  locked to the runx binary and carries a package- and execution-closure-bound
+  `runx skill ... --json` command. The exact runner schema stays inspectable on
+  demand instead of being copied into every agent context.
 - **Codex** gets the same per-skill shims under `~/.codex/skills/<name>/` plus an
   idempotent managed allow block in `~/.codex/rules/default.rules`. Project-scope
   Codex export is deliberately refused until Codex project paths are stable.
@@ -35,10 +36,11 @@ runx export claude                          # current workspace's public skills 
 runx export claude --project                # -> ./.claude/skills (checked into a repo)
 runx export claude weather-forecast spend   # only the named skills
 runx export codex                           # ~/.codex/skills plus managed rules
+pnpm codex-export:check                     # verify the active managed Codex surface
 ```
 
-Add `--json` for machine-readable output. Only public skills export; hidden and
-builder-surface skills are skipped.
+Add `--json` for machine-readable output. Only public skills export; internal
+runtime paths and harness fixtures are skipped.
 
 A full export must run from a skill workspace containing a root `SKILL.md` or
 `skills/`. It synchronizes that workspace's managed catalog and removes only
@@ -49,34 +51,48 @@ updates those shims without removing any other managed skills.
 
 ## What A Claude Shim Looks Like
 
-`runx export claude` writes a shim like this for the `spend` skill:
+`runx export claude` writes a compact shim whose important structure looks like
+this for the `spend` skill:
 
 ````markdown
 ---
 name: spend
 description: Execute one governed outbound payment, with quote, reservation, approval, rail evidence, and receipt-before-success.
-allowed-tools: Bash(/path/to/runx skill *)
+allowed-tools: Bash(/path/to/runx skill *), Bash(/path/to/runx resume *)
 ---
 # spend - governed by runx
 
 Run the declared runner through runx; do not bypass it by independently reproducing work that runner owns.
 
+<!-- runx-source-manual-begin digest=sha256:<manual> package-digest=sha256:<package> bytes=<n> -->
+<the exact canonical SKILL.md body>
+<!-- runx-source-manual-end -->
+
+## Default runner: `spend`
+
+Inspect the exact input and effect contract on demand:
+
 ```bash
-/path/to/runx skill /path/to/skills/spend \
-  --parent_payment_authority "<...>" \
-  --payment_signal "<...>" \
-  --rail_profile_ref "<...>" \
+/path/to/runx skill inspect /path/to/skills/spend spend --json
+```
+
+```bash
+/path/to/runx skill /path/to/skills/spend spend \
+  <validated inputs> \
+  --package-digest sha256:<package> \
+  --execution-closure-digest sha256:<closure> \
   --json
 ```
 
 Then surface the returned receipt id, status, and artifact ids.
 
-<!-- runx-export:claude source=/path/to/skills/spend - generated, do not edit -->
+<!-- runx-export:claude source=/path/to/skills/spend package-digest=sha256:<package> - generated, do not edit -->
 ````
 
 For Claude, the `allowed-tools` line limits the shim to the runx binary. Codex
-uses the generated rules block. Runx remains the authority boundary on both
-surfaces.
+uses the generated rules block. Run and resume commands carry both exact
+digests, so edited package bytes or a changed execution closure fail before
+execution. Runx remains the authority boundary on both surfaces.
 
 ## Requirements
 
@@ -96,7 +112,9 @@ surfaces.
 Rerun `runx export` after you add, rename, or remove skills; the shims are
 generated, so do not hand-edit them. If a shim's source skill moves, the stale
 shim fails closed and instructs you to rerun the export, so a renamed skill
-never silently runs the wrong thing.
+never silently runs the wrong thing. A full export also replaces digest-stale
+Runx-managed shims from the same source workspace and prunes only obsolete
+entries bearing that workspace's managed marker.
 
 ## Portability
 

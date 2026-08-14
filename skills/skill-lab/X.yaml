@@ -1,5 +1,5 @@
 skill: skill-lab
-version: "0.8.9"
+version: "0.9.4"
 
 catalog:
   kind: graph
@@ -25,6 +25,33 @@ harness:
             architecture_decision:
               schema: runx.skill.architecture_decision.v1
               disposition: extend_existing
+              identity:
+                current_name: release
+                proposed_name: release
+                action: keep
+                visibility: public
+                rationale: Release is the canonical operation and already owns release-note preparation.
+              direct_use:
+                trigger_requests:
+                  - Prepare reviewable release notes from this bounded change set.
+                non_trigger_requests:
+                  - Publish this release now.
+                default_outcome: Produce reviewable release notes without claiming publication.
+                routine_host_work:
+                  - Inspect the supplied release change set.
+                runx_boundary: Bind the source evidence and release-note result for reuse by the release lane.
+                terminal_result: A reviewable release-note artifact.
+                blocker_behavior: Stop once and name the missing release evidence.
+                native_escape: Return the bounded change evidence so the host can continue drafting directly.
+              chain_use:
+                accepted_inputs:
+                  - A bounded release change set or prior change-evidence packet.
+                result: A reusable release-note artifact for the canonical release lane.
+                reused_evidence:
+                  - The supplied release change set.
+                reused_effects: []
+                must_not_repeat:
+                  - Do not rediscover or reclassify the supplied release changes.
               objective: Add governed release-note preparation to the canonical release skill.
               operator_value: Keep release preparation in one discoverable operator lane.
               knowledge_contract:
@@ -69,9 +96,15 @@ harness:
                 - Preserve the release skill's distinction between preparation and execution.
               deletions: []
               proof_plan:
-                - name: release-notes-harness
-                  kind: harness
-                  expected: Notes remain reviewable and separate from publication.
+                - name: release-notes-selection
+                  kind: selection_trial
+                  expected: Release-note preparation selects release while a publication-only request does not select this runner.
+                - name: release-notes-standalone
+                  kind: standalone_operator_journey
+                  expected: A direct change set produces reviewable notes without claiming publication.
+                - name: release-notes-composed
+                  kind: composed_operator_journey
+                  expected: Prior change evidence is reused by the release lane without rediscovery.
       expect:
         status: sealed
         receipt:
@@ -134,8 +167,12 @@ runners:
             outputs:
               architecture_decision: object
           allowed_tools:
-            - fs.read
+            - fs.read_bundle
             - git.status
+            - runx.skill.plan
+          scopes:
+            - fs.read
+            - git.read
           context:
             authoring_context: inspect.authoring_context.data
           inputs:
@@ -205,8 +242,12 @@ runners:
             outputs:
               architecture_decision: object
           allowed_tools:
-            - fs.read
+            - fs.read_bundle
             - git.status
+            - runx.skill.plan
+          scopes:
+            - fs.read
+            - git.read
           context:
             authoring_context: inspect.authoring_context.data
           inputs:
@@ -234,8 +275,12 @@ runners:
             outputs:
               change_draft: object
           allowed_tools:
-            - fs.read
+            - fs.read_bundle
             - git.status
+            - runx.skill.plan
+          scopes:
+            - fs.read
+            - git.read
           context:
             authoring_context: inspect.authoring_context.data
             architecture_plan: plan.architecture_plan.data
@@ -304,7 +349,7 @@ runners:
       failure_packet:
         type: json
         required: false
-        description: Stable runx.review.receipt.v1 failure packet from review-receipt.
+        description: Stable runx.review.receipt.v1 failure packet from diagnose-skill-run.
     examples:
       - objective: Make every public runner callable from inspection without source-diving.
         repo_root: .
@@ -332,8 +377,12 @@ runners:
             outputs:
               architecture_decision: object
           allowed_tools:
-            - fs.read
+            - fs.read_bundle
+            - runx.skill.plan
             - git.status
+          scopes:
+            - fs.read
+            - git.read
           context:
             authoring_context: inspect.authoring_context.data
           inputs:
@@ -364,8 +413,11 @@ runners:
             outputs:
               change_draft: object
           allowed_tools:
-            - fs.read
+            - fs.read_bundle
             - git.status
+          scopes:
+            - fs.read
+            - git.read
           context:
             authoring_context: inspect.authoring_context.data
             architecture_plan: plan.architecture_plan.data
@@ -452,6 +504,8 @@ runners:
             outputs:
               architecture_decision: object
           allowed_tools:
+            - fs.read_bundle
+          scopes:
             - fs.read
           context:
             authoring_context: inspect.authoring_context.data
@@ -480,6 +534,8 @@ runners:
             outputs:
               change_draft: object
           allowed_tools:
+            - fs.read_bundle
+          scopes:
             - fs.read
           context:
             authoring_context: inspect.authoring_context.data

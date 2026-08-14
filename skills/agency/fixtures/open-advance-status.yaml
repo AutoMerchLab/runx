@@ -1,6 +1,12 @@
 name: agency-open-advance-status-journey
 kind: graph
 target: ../harness/open-advance-status.yaml
+operator_journeys:
+  - mode: standalone
+    exercises_runner: advance
+    confusors: [ops-desk, chief-of-staff]
+    request: Advance this open governed agency case by one bounded turn.
+    expected_outcome: Read the existing case once, dispatch the next scoped action, append one turn, and return the new durable case state.
 env:
   RUNX_DATA_SOURCES: '{"data_sources":{"tenant://agency/journey-cases":{"adapter":"data.sqlite","database_path":".runx/data/agency-journey.sqlite","resources":{"agency_cases":{"kind":"event_stream","partition_key":"aggregate_id"}}}}}'
 caller:

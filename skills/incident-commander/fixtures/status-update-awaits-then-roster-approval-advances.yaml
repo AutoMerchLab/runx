@@ -2,6 +2,19 @@ name: approved-send-prepares-provider-neutral-handoff
 kind: skill
 target: ..
 runner: advance
+operator_journeys:
+  - mode: standalone
+    confusors: [ops-desk, agency]
+    request: Advance this SEV-2 incident and prepare the approved status update handoff.
+    expected_outcome: Return the next incident action with roster authority, approval state, and send handoff explicit.
+  - mode: composed
+    request: Continue incident response from this current case state and approved roster decision.
+    expected_outcome: Reuse incident state and completed approvals without replaying earlier turns or sending twice.
+    prior_evidence:
+      - The incident case state, driver identity, objective, and roster approval supplied in the fixture.
+    must_not_repeat:
+      - Do not rerun completed incident turns.
+      - Do not request an approval already recorded in case state.
 inputs:
   case_id: inc-sev2-checkout
   driver_id: driver-primary

@@ -3,7 +3,8 @@ use std::collections::BTreeSet;
 use runx_contracts::schema::NonEmptyString;
 use runx_contracts::{
     SkillArchitectureDecision, SkillArchitectureDisposition, SkillChangeBundle,
-    SkillChangeDecision, SkillExecutionLane, SkillPackageMetrics,
+    SkillChangeDecision, SkillExecutionLane, SkillIdentityAction, SkillPackageMetrics,
+    SkillPackageVisibility, SkillProofKind,
 };
 
 use super::{RuntimeError, architecture_digest, invalid_skill_change};
@@ -135,9 +136,127 @@ pub(super) fn validate_architecture_decision(
     architecture: &SkillArchitectureDecision,
 ) -> Result<(), RuntimeError> {
     validate_architecture_completeness(architecture)?;
+    validate_operator_contract(architecture)?;
     let selected = selected_capabilities(architecture)?;
     validate_behavior_lanes(architecture, &selected)?;
     validate_provider_boundary(architecture)
+}
+
+fn validate_operator_contract(
+    architecture: &SkillArchitectureDecision,
+) -> Result<(), RuntimeError> {
+    let implements_package = matches!(
+        architecture.disposition,
+        SkillArchitectureDisposition::Build | SkillArchitectureDisposition::ExtendExisting
+    );
+    if !implements_package {
+        if architecture.identity.is_some()
+            || architecture.direct_use.is_some()
+            || architecture.chain_use.is_some()
+        {
+            return Err(invalid_skill_change(
+                "no_skill and needs_core architectures must not invent a package identity or operator contract",
+            ));
+        }
+        return Ok(());
+    }
+
+    let identity = architecture.identity.as_ref().ok_or_else(|| {
+        invalid_skill_change("build and extension architectures require an identity decision")
+    })?;
+    validate_identity_decision(architecture.disposition, identity)?;
+
+    match identity.visibility {
+        SkillPackageVisibility::Public => {
+            let direct = architecture.direct_use.as_ref().ok_or_else(|| {
+                invalid_skill_change("public architectures require a direct_use contract")
+            })?;
+            let chain = architecture.chain_use.as_ref().ok_or_else(|| {
+                invalid_skill_change("public architectures require a chain_use contract")
+            })?;
+            if direct.trigger_requests.is_empty() || direct.non_trigger_requests.is_empty() {
+                return Err(invalid_skill_change(
+                    "public direct_use requires at least one trigger request and one non-trigger request",
+                ));
+            }
+            if chain.accepted_inputs.is_empty() || chain.must_not_repeat.is_empty() {
+                return Err(invalid_skill_change(
+                    "public chain_use requires accepted inputs and work that must not repeat",
+                ));
+            }
+            validate_operator_proofs(architecture)?;
+        }
+        SkillPackageVisibility::Internal => {
+            if architecture.direct_use.is_some() {
+                return Err(invalid_skill_change(
+                    "internal architectures must not declare a public direct_use trigger contract",
+                ));
+            }
+            if identity.action == SkillIdentityAction::Internalize
+                && architecture.chain_use.is_none()
+            {
+                return Err(invalid_skill_change(
+                    "internalized architectures require a chain_use contract for their runtime owner",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_identity_decision(
+    disposition: SkillArchitectureDisposition,
+    identity: &runx_contracts::SkillIdentityDecision,
+) -> Result<(), RuntimeError> {
+    let current = identity.current_name.as_ref().map(NonEmptyString::as_str);
+    let proposed = identity.proposed_name.as_ref().map(NonEmptyString::as_str);
+    match (disposition, identity.action, current, proposed) {
+        (SkillArchitectureDisposition::Build, SkillIdentityAction::Create, None, Some(_)) => {}
+        (
+            SkillArchitectureDisposition::ExtendExisting,
+            SkillIdentityAction::Keep | SkillIdentityAction::Internalize,
+            Some(current),
+            Some(proposed),
+        ) if current == proposed => {}
+        (
+            SkillArchitectureDisposition::ExtendExisting,
+            SkillIdentityAction::Rename,
+            Some(current),
+            Some(proposed),
+        ) if current != proposed => {}
+        _ => {
+            return Err(invalid_skill_change(
+                "identity action, current_name, and proposed_name conflict with the architecture disposition",
+            ));
+        }
+    }
+    if identity.action == SkillIdentityAction::Internalize
+        && identity.visibility != SkillPackageVisibility::Internal
+    {
+        return Err(invalid_skill_change(
+            "an internalize identity decision must select internal visibility",
+        ));
+    }
+    Ok(())
+}
+
+fn validate_operator_proofs(architecture: &SkillArchitectureDecision) -> Result<(), RuntimeError> {
+    let kinds = architecture
+        .proof_plan
+        .iter()
+        .map(|proof| proof.kind)
+        .collect::<BTreeSet<_>>();
+    let required = [
+        SkillProofKind::SelectionTrial,
+        SkillProofKind::StandaloneOperatorJourney,
+        SkillProofKind::ComposedOperatorJourney,
+    ];
+    if required.iter().all(|kind| kinds.contains(kind)) {
+        return Ok(());
+    }
+    Err(invalid_skill_change(
+        "public architectures require selection_trial, standalone_operator_journey, and composed_operator_journey proofs",
+    ))
 }
 
 fn validate_architecture_completeness(

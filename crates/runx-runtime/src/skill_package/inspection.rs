@@ -13,7 +13,7 @@ pub(crate) use execution_closure::LocalExecutionClosure;
 use execution_closure::inspect_execution_closures;
 #[cfg(feature = "cli-tool")]
 use execution_closure::inspect_local_execution_closure;
-use runner::{catalog_capabilities, fixture_examples, inspect_runner};
+use runner::{catalog_capabilities, fixture_examples, fixture_operator_journeys, inspect_runner};
 use thiserror::Error;
 
 use crate::RuntimeError;
@@ -83,7 +83,7 @@ pub(crate) fn inspect_loaded_skill_package(
     selected_runner: Option<&str>,
 ) -> Result<JsonValue, SkillInspectionError> {
     let loaded = Arc::new(loaded);
-    let mut output = base_inspection(&loaded);
+    let mut output = base_inspection(&loaded)?;
     let manifest = loaded.manifest();
     let runner = match (manifest, selected_runner) {
         (Some(manifest), Some(name)) => Some(manifest.runners.get(name).ok_or_else(|| {
@@ -116,6 +116,8 @@ pub(crate) fn inspect_loaded_skill_package(
                     .runners
                     .values()
                     .map(|runner| {
+                        let examples =
+                            super::effective_runner_examples(&loaded.package, manifest, runner);
                         let closure =
                             execution_closures
                                 .get(&runner.name)
@@ -124,7 +126,10 @@ pub(crate) fn inspect_loaded_skill_package(
                                     runner: runner.name.clone(),
                                 })?;
                         Ok(JsonValue::Object(JsonObject::from([
-                            ("runner".to_owned(), inspect_runner(manifest, runner)?),
+                            (
+                                "runner".to_owned(),
+                                inspect_runner(manifest, runner, &examples)?,
+                            ),
                             ("execution_closure".to_owned(), closure),
                         ])))
                     })
@@ -202,7 +207,7 @@ pub(crate) fn inspect_loaded_local_execution_closure(
     inspect_local_execution_closure(Arc::new(loaded.clone()), env)
 }
 
-fn base_inspection(loaded: &LoadedSkillPackage) -> JsonObject {
+fn base_inspection(loaded: &LoadedSkillPackage) -> Result<JsonObject, SkillInspectionError> {
     let package = &loaded.package;
     let mut output = JsonObject::from([
         (
@@ -243,6 +248,23 @@ fn base_inspection(loaded: &LoadedSkillPackage) -> JsonObject {
         if let Some(catalog) = manifest.catalog.as_ref() {
             output.insert("catalog".to_owned(), inspect_catalog(catalog));
         }
+        let semantic_report = runx_parser::analyze_package_catalog_semantics(
+            &package.skill.name,
+            manifest,
+            &package.harness_fixtures,
+        );
+        let encoded =
+            serde_json::to_vec(&semantic_report).map_err(|source| SkillInspectionError::Json {
+                context: "serializing catalog semantic report",
+                source,
+            })?;
+        output.insert(
+            "semantic_report".to_owned(),
+            serde_json::from_slice(&encoded).map_err(|source| SkillInspectionError::Json {
+                context: "projecting catalog semantic report",
+                source,
+            })?,
+        );
         output.insert(
             "runners".to_owned(),
             JsonValue::Array(
@@ -254,10 +276,15 @@ fn base_inspection(loaded: &LoadedSkillPackage) -> JsonObject {
                     .collect(),
             ),
         );
+        output.insert(
+            "operator_journeys".to_owned(),
+            JsonValue::Array(fixture_operator_journeys(package, manifest)),
+        );
     } else {
         output.insert("runners".to_owned(), JsonValue::Array(Vec::new()));
+        output.insert("operator_journeys".to_owned(), JsonValue::Array(Vec::new()));
     }
-    output
+    Ok(output)
 }
 
 fn append_runner_inspection(
@@ -267,7 +294,11 @@ fn append_runner_inspection(
     runner: &SkillRunnerDefinition,
     execution_closure: JsonValue,
 ) -> Result<(), SkillInspectionError> {
-    output.insert("runner".to_owned(), inspect_runner(manifest, runner)?);
+    let examples = super::effective_runner_examples(&loaded.package, manifest, runner);
+    output.insert(
+        "runner".to_owned(),
+        inspect_runner(manifest, runner, &examples)?,
+    );
     output.insert("execution_closure".to_owned(), execution_closure);
     output.insert(
         "readiness".to_owned(),
@@ -335,6 +366,43 @@ fn inspect_catalog(catalog: &CatalogMetadata) -> JsonValue {
         output.insert(
             "runtime_path".to_owned(),
             JsonValue::String(runtime_path.clone()),
+        );
+    }
+    if !catalog.part_of.is_empty() {
+        output.insert(
+            "part_of".to_owned(),
+            JsonValue::Array(
+                catalog
+                    .part_of
+                    .iter()
+                    .cloned()
+                    .map(JsonValue::String)
+                    .collect(),
+            ),
+        );
+    }
+    if let Some(execution) = catalog.execution {
+        output.insert(
+            "execution".to_owned(),
+            JsonValue::String(execution.as_str().to_owned()),
+        );
+    }
+    if let Some(completion) = catalog.completion {
+        output.insert(
+            "completion".to_owned(),
+            JsonValue::String(completion.as_str().to_owned()),
+        );
+    }
+    if let Some(requires_adapter) = catalog.requires_adapter {
+        output.insert(
+            "requires_adapter".to_owned(),
+            JsonValue::Bool(requires_adapter),
+        );
+    }
+    if let Some(approval) = catalog.approval {
+        output.insert(
+            "approval".to_owned(),
+            JsonValue::String(approval.as_str().to_owned()),
         );
     }
     JsonValue::Object(output)

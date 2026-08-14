@@ -1,8 +1,9 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::fs;
 use std::path::Path;
 
 use runx_contracts::{JsonObject, JsonValue};
+use serde::{Deserialize, Serialize};
 
 use super::{SkillRunError, invalid};
 use crate::RuntimeError;
@@ -10,10 +11,13 @@ use crate::RuntimeError;
 /// Resolution values retain their authority lane instead of flattening every
 /// caller-supplied value into an agent answer. Approval provenance is needed
 /// both by live resume files and by inline harness cases.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Deserialize, Serialize)]
 pub(crate) struct ResolutionAnswers {
     values: JsonObject,
     human_approvals: BTreeSet<String>,
+    request_digests: BTreeMap<String, String>,
+    #[serde(default)]
+    digest_bound_requests: BTreeSet<String>,
 }
 
 impl ResolutionAnswers {
@@ -21,6 +25,8 @@ impl ResolutionAnswers {
         Self {
             values,
             human_approvals: BTreeSet::new(),
+            request_digests: BTreeMap::new(),
+            digest_bound_requests: BTreeSet::new(),
         }
     }
 
@@ -52,6 +58,59 @@ impl ResolutionAnswers {
     pub(super) fn is_human_approval(&self, request_id: &str) -> bool {
         self.human_approvals.contains(request_id)
     }
+
+    pub(super) fn request_digest(&self, request_id: &str) -> Option<&str> {
+        self.request_digests.get(request_id).map(String::as_str)
+    }
+
+    pub(super) fn requires_request_digest(&self, request_id: &str) -> bool {
+        self.digest_bound_requests.contains(request_id)
+    }
+
+    /// Carry validated resolutions across graph pauses. Nested graphs restart
+    /// from their owning outer step, so later continuations must retain the
+    /// earlier answers without asking the operator to repeat completed gates.
+    /// Conflicts fail closed, including attempts to change an answer's actor
+    /// lane or its request-digest binding.
+    pub(super) fn merge(&mut self, incoming: Self) -> Result<(), SkillRunError> {
+        for (request_id, value) in incoming.values {
+            let had_existing = self.values.contains_key(&request_id);
+            if let Some(existing) = self.values.get(&request_id) {
+                if existing != &value {
+                    return Err(invalid(format!(
+                        "continuation changed the recorded resolution for {request_id}"
+                    )));
+                }
+            } else {
+                self.values.insert(request_id.clone(), value);
+            }
+
+            let existing_is_human = self.human_approvals.contains(&request_id);
+            let incoming_is_human = incoming.human_approvals.contains(&request_id);
+            if had_existing && existing_is_human != incoming_is_human {
+                return Err(invalid(format!(
+                    "continuation changed the recorded authority lane for {request_id}"
+                )));
+            }
+            if incoming_is_human {
+                self.human_approvals.insert(request_id);
+            }
+        }
+        for (request_id, digest) in incoming.request_digests {
+            if let Some(existing) = self.request_digests.get(&request_id) {
+                if existing != &digest {
+                    return Err(invalid(format!(
+                        "continuation changed the request digest binding for {request_id}"
+                    )));
+                }
+            } else {
+                self.request_digests.insert(request_id, digest);
+            }
+        }
+        self.digest_bound_requests
+            .extend(incoming.digest_bound_requests);
+        Ok(())
+    }
 }
 
 pub(super) fn read_answers(path: &Path) -> Result<ResolutionAnswers, SkillRunError> {
@@ -67,13 +126,15 @@ pub(super) fn read_answers(path: &Path) -> Result<ResolutionAnswers, SkillRunErr
 }
 
 fn normalize_answers(mut object: JsonObject) -> Result<ResolutionAnswers, SkillRunError> {
-    let nested_shape = object.contains_key("answers") || object.contains_key("approvals");
+    let nested_shape = object.contains_key("answers")
+        || object.contains_key("approvals")
+        || object.contains_key("request_digests");
     if !nested_shape {
         return Ok(ResolutionAnswers::agent(object));
     }
     let extra = object
         .keys()
-        .filter(|key| !matches!(key.as_str(), "answers" | "approvals"))
+        .filter(|key| !matches!(key.as_str(), "answers" | "approvals" | "request_digests"))
         .cloned()
         .collect::<Vec<_>>();
     if !extra.is_empty() {
@@ -92,7 +153,27 @@ fn normalize_answers(mut object: JsonObject) -> Result<ResolutionAnswers, SkillR
         Some(_) => return Err(invalid("approvals field must be a JSON object")),
         None => JsonObject::new(),
     };
-    ResolutionAnswers::from_lanes(answers, approvals)
+    let request_digests = match object.remove("request_digests") {
+        Some(JsonValue::Object(digests)) => digests
+            .into_iter()
+            .map(|(id, digest)| match digest {
+                JsonValue::String(digest) if !digest.trim().is_empty() => Ok((id, digest)),
+                _ => Err(invalid(
+                    "request_digests values must be non-empty digest strings",
+                )),
+            })
+            .collect::<Result<BTreeMap<_, _>, _>>()?,
+        Some(_) => return Err(invalid("request_digests field must be a JSON object")),
+        None => BTreeMap::new(),
+    };
+    let mut resolved = ResolutionAnswers::from_lanes(answers, approvals)?;
+    if !request_digests.is_empty() {
+        resolved
+            .digest_bound_requests
+            .extend(resolved.values.keys().cloned());
+    }
+    resolved.request_digests = request_digests;
+    Ok(resolved)
 }
 
 fn is_human_approval_payload(value: &JsonValue) -> bool {
@@ -115,7 +196,7 @@ fn is_human_approval_payload(value: &JsonValue) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::normalize_answers;
+    use super::{ResolutionAnswers, normalize_answers};
     use runx_contracts::{JsonObject, JsonValue};
 
     #[test]
@@ -163,6 +244,46 @@ mod tests {
         .map_err(|error| error.to_string())?;
 
         assert!(!answers.is_human_approval("send.approval"));
+        Ok(())
+    }
+
+    #[test]
+    fn continuation_merge_retains_completed_approval_and_new_agent_answer() -> Result<(), String> {
+        let mut accumulated = ResolutionAnswers::from_lanes(
+            JsonObject::new(),
+            [("action.approval".to_owned(), JsonValue::Bool(true))],
+        )
+        .map_err(|error| error.to_string())?;
+        accumulated
+            .merge(ResolutionAnswers::agent(JsonObject::from([(
+                "delegate.result".to_owned(),
+                JsonValue::String("completed".to_owned()),
+            )])))
+            .map_err(|error| error.to_string())?;
+
+        assert!(accumulated.is_human_approval("action.approval"));
+        assert_eq!(
+            accumulated.get("delegate.result"),
+            Some(&JsonValue::String("completed".to_owned()))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn continuation_merge_rejects_authority_lane_changes() -> Result<(), String> {
+        let mut accumulated = ResolutionAnswers::from_lanes(
+            JsonObject::new(),
+            [("action.approval".to_owned(), JsonValue::Bool(true))],
+        )
+        .map_err(|error| error.to_string())?;
+        let Err(error) = accumulated.merge(ResolutionAnswers::agent(JsonObject::from([(
+            "action.approval".to_owned(),
+            JsonValue::Bool(true),
+        )]))) else {
+            return Err("an agent answer replaced a human approval".to_owned());
+        };
+
+        assert!(error.to_string().contains("authority lane"));
         Ok(())
     }
 }

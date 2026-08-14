@@ -1,5 +1,5 @@
 skill: vault-unseal
-version: "0.3.1"
+version: "0.4.1"
 
 catalog:
   kind: skill
@@ -41,7 +41,6 @@ input_definitions:
 
 runners:
   vault-unseal:
-    default: true
     type: javascript
     module: vault-unseal.mjs
     outputs:
@@ -77,6 +76,7 @@ runners:
         policy_notes: The handle is limited to one monthly export.
 
   execute:
+    default: true
     type: graph
     inputs:
       provider:
@@ -111,7 +111,7 @@ runners:
         scope: { resource: drive.files, action: export, path: /reports/* }
         principal: svc/report-exporter
         policy_notes: The handle is limited to one monthly export.
-        idempotency_key: 8f347ca0-d2f6-49d9-bdbc-b7d0175d87bc
+        idempotency_key: vault-vault-vault-001
     graph:
       name: vault-unseal-execute
       result_from: [readback]

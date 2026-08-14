@@ -1,5 +1,5 @@
 skill: x402-pay
-version: "0.3.2"
+version: "0.5.0"
 catalog:
   kind: graph
   audience: operator
@@ -8,13 +8,74 @@ catalog:
   canonical_skill: runx/spend
   provider: x402
   runtime_path: x402
-  execution: plan
-  completion: plan
-  requires_adapter: false
-  approval: none
+  execution: execute
+  completion: provider_readback
+  requires_adapter: true
+  approval: required
 runners:
-  x402:
+  pay:
     default: true
+    type: graph
+    inputs:
+      payment_signal:
+        type: json
+        packet: runx.payment.signal.v1
+        required: true
+      parent_payment_authority:
+        type: json
+        packet: runx.authority_term.v1
+        required: true
+      realm: { type: string, required: false }
+      idempotency_seed: { type: string, required: true }
+    graph:
+      name: x402-pay-execute
+      result_from: [readback]
+      steps:
+        - id: plan
+          skill: .
+          runner: x402
+          inputs:
+            payment_signal: $input.payment_signal
+            parent_payment_authority: $input.parent_payment_authority
+            realm: $input.realm
+            idempotency_seed: $input.idempotency_seed
+        - id: pay
+          tool: provider.mutate
+          mutation: true
+          idempotency_key: $input.idempotency_seed
+          scopes: [payment.x402]
+          policy:
+            provider_permission: { verb: write }
+          inputs:
+            operation: payment.x402
+            target: $input.payment_signal.counterparty
+            expected_provider: x402
+            idempotency_key: $input.idempotency_seed
+            result_fields: [payment_ref, challenge_id, amount_minor, currency, status]
+            expected_result:
+              challenge_id: $input.payment_signal.challenge_id
+              amount_minor: $input.payment_signal.amount_minor
+              currency: $input.payment_signal.currency
+            input:
+              payment_signal: $input.payment_signal
+              payment_quote: $input.payment_quote
+          context:
+            payment_quote: plan.payment_quote_packet.data
+        - id: readback
+          tool: provider.read
+          scopes: [payment.x402.read]
+          policy:
+            provider_permission: { verb: read }
+          inputs:
+            operation: payment.x402.read
+            target: $input.payment_signal.counterparty
+            expected_provider: x402
+            result_fields: [payment_ref, challenge_id, amount_minor, currency, status]
+          context:
+            input: pay.provider_operation.data.result
+            expected_result: pay.provider_operation.data.result
+
+  x402:
     type: graph
     inputs:
       payment_signal:

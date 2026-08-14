@@ -1,0 +1,66 @@
+name: send-as-default-reaches-exact-live-send-gate
+kind: skill
+target: ..
+operator_journeys:
+  - mode: refusal
+    confusors: [slack-notify, governed-outbound]
+    request: Attempt to send this digest-bound release notice without approving the exact live effect.
+    expected_outcome: Refuse at one exact live-send approval without claiming delivery.
+env:
+  RUNX_PROVIDER_PERMISSION_GRANT_ID: grant-send-demo
+  RUNX_PROVIDER_PERMISSION_GRANTED_SCOPES: '["message.send"]'
+  RUNX_PROVIDER_PERMISSION_PRINCIPAL_REF: runx:principal:release-bot
+  RUNX_PROVIDER_PERMISSION_TRANSPORT: hosted:grant-send-demo
+inputs:
+  objective: Send the digest-bound release notice.
+  principal: account:release-bot
+  provider_context:
+    provider: provider-send-demo
+    account_ref: acct_release
+    runtime_path: provider.send
+    ready: true
+  audience:
+    type: channel
+    ref: release-subscribers
+  content_ref:
+    draft_ref: message:release-notice
+    digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+    subject_or_title: Release notice
+  consent_basis: Subscribers opted in to release notices.
+  operator_context: Require exact approval before live delivery.
+  connector:
+    provider: provider-send-demo
+    target: account:acct_release/channel:release-subscribers
+caller:
+  answers:
+    agent_task.send-as.output:
+      send_plan:
+        decision: ready
+        action_family: send-as
+        principal: { type: account, ref: account:release-bot }
+        provider: { name: provider-send-demo, account_ref: acct_release, runtime_path: provider.send }
+        send_class: status
+        channel: email
+        audience: { type: channel, ref: release-subscribers, requires_reconfirmation: false }
+        content:
+          draft_ref: message:release-notice
+          digest: sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+          subject_or_title: Release notice
+        gates: { preflight_required: true, human_approval_required: true, approval_ref: send-as.live-send.approval }
+        blockers: []
+        provider_actions: [message.send]
+        evidence_refs: [provider_context:provider-send-demo]
+        success_checkpoint:
+          milestone: send_ready_for_approval
+          description: The exact digest-bound release notice awaits live-send approval.
+  approvals:
+    "provider-effect:sha256:e41743bc96f7779bbe61dad47f07bca8ff0f9b47e9104cf66a770b5eb8f63088": false
+expect:
+  status: policy_denied
+  receipt:
+    schema: runx.receipt.v1
+    disposition: blocked
+metadata:
+  public_skill: send-as
+  source_case: direct-default-live-send-gate
+  source: operator-journey

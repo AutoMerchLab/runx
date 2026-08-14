@@ -4,11 +4,25 @@ use runx_contracts::{JsonObject, JsonValue};
 use serde::{Deserialize, Serialize};
 
 use crate::ValidationError;
-pub use crate::harness_fixture::{HarnessExpectation, ReceiptExpectation};
+pub use crate::harness_fixture::{
+    HarnessExpectation, HarnessHttpResponseFixture, OperatorJourneyClaim, OperatorJourneyMode,
+    ReceiptExpectation,
+};
 
 use super::FIELDS;
 
 const RUNTIME_OWNED_HARNESS_ENV: &[&str] = &["RUNX_CWD", "RUNX_RECEIPT_DIR"];
+const HARNESS_FIELDS: &[&str] = &["files", "cases"];
+const HARNESS_CASE_FIELDS: &[&str] = &[
+    "name",
+    "runner",
+    "inputs",
+    "env",
+    "caller",
+    "expect",
+    "operator_journeys",
+];
+const HARNESS_CALLER_FIELDS: &[&str] = &["answers", "approvals", "http_responses"];
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct HarnessCallerFixture {
@@ -16,6 +30,8 @@ pub struct HarnessCallerFixture {
     pub answers: Option<JsonObject>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub approvals: Option<BTreeMap<String, bool>>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub http_responses: BTreeMap<String, HarnessHttpResponseFixture>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -27,6 +43,8 @@ pub struct RunnerHarnessCase {
     pub env: BTreeMap<String, String>,
     pub caller: HarnessCallerFixture,
     pub expect: HarnessExpectation,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub operator_journeys: Vec<OperatorJourneyClaim>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -43,6 +61,7 @@ pub(crate) fn validate_harness_manifest(
     let Some(value) = value else {
         return Ok(None);
     };
+    FIELDS.reject_unknown_fields(&value, field, HARNESS_FIELDS)?;
     let files = FIELDS
         .optional_string_array(value.get("files"), &format!("{field}.files"))?
         .unwrap_or_default();
@@ -64,6 +83,7 @@ fn validate_harness_case(
     value: &JsonObject,
     field: &str,
 ) -> Result<RunnerHarnessCase, ValidationError> {
+    FIELDS.reject_unknown_fields(value, field, HARNESS_CASE_FIELDS)?;
     Ok(RunnerHarnessCase {
         name: FIELDS.required_string(value.get("name"), &format!("{field}.name"))?,
         runner: FIELDS
@@ -87,7 +107,31 @@ fn validate_harness_case(
             FIELDS.required_object(value.get("expect"), &format!("{field}.expect"))?,
             &format!("{field}.expect"),
         )?,
+        operator_journeys: validate_operator_journeys(
+            value.get("operator_journeys"),
+            &format!("{field}.operator_journeys"),
+        )?,
     })
+}
+
+fn validate_operator_journeys(
+    value: Option<&JsonValue>,
+    field: &str,
+) -> Result<Vec<OperatorJourneyClaim>, ValidationError> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+    FIELDS
+        .required_plain_array(Some(value), field)?
+        .iter()
+        .enumerate()
+        .map(|(index, value)| {
+            let claim_field = format!("{field}[{index}]");
+            let object = FIELDS.required_object(Some(value), &claim_field)?.clone();
+            crate::harness_fixture::parse_operator_journey(object)
+                .map_err(|error| FIELDS.validation_error(format!("{claim_field}: {error}")))
+        })
+        .collect()
 }
 
 fn validate_string_object(
@@ -114,6 +158,7 @@ fn validate_harness_caller(
     value: JsonObject,
     field: &str,
 ) -> Result<HarnessCallerFixture, ValidationError> {
+    FIELDS.reject_unknown_fields(&value, field, HARNESS_CALLER_FIELDS)?;
     Ok(HarnessCallerFixture {
         answers: FIELDS.optional_object(value.get("answers"), &format!("{field}.answers"))?,
         approvals: Some(validate_bool_object(
@@ -122,6 +167,11 @@ fn validate_harness_caller(
                 .unwrap_or_default(),
             &format!("{field}.approvals"),
         )?),
+        http_responses: crate::harness_fixture::parse_harness_http_responses(
+            value.get("http_responses"),
+            &format!("{field}.http_responses"),
+        )
+        .map_err(|error| FIELDS.validation_error(error.to_string()))?,
     })
 }
 
@@ -148,6 +198,7 @@ fn validate_harness_expectation(
 
 #[cfg(test)]
 mod tests {
+    use super::OperatorJourneyMode;
     use crate::{parse_runner_manifest_yaml, validate_runner_manifest};
 
     #[test]
@@ -186,6 +237,94 @@ runners:
 
             assert!(error.to_string().contains("isolated harness runtime"));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn inline_harness_projects_semantic_operator_journey_claims()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let raw = parse_runner_manifest_yaml(
+            r#"
+skill: fixture
+harness:
+  cases:
+    - name: reuses-prior-evidence
+      inputs: {}
+      operator_journeys:
+        - mode: composed
+          request: Continue from this prior evidence packet.
+          expected_outcome: Return the bounded result without rediscovery.
+          prior_evidence:
+            - runx.fixture.evidence.v1
+          must_not_repeat:
+            - Do not fetch the source again.
+      expect:
+        status: sealed
+runners:
+  fixture:
+    default: true
+    type: graph
+    graph:
+      name: fixture
+      result_from: [digest]
+      steps:
+        - id: digest
+          tool: data.digest
+          inputs:
+            value: fixture
+"#,
+        )?;
+        let manifest = validate_runner_manifest(raw)?;
+        let claim = manifest
+            .harness
+            .as_ref()
+            .and_then(|harness| harness.cases.first())
+            .and_then(|case| case.operator_journeys.first())
+            .ok_or("operator journey claim was not retained")?;
+        assert_eq!(claim.mode, OperatorJourneyMode::Composed);
+        assert_eq!(claim.prior_evidence, ["runx.fixture.evidence.v1"]);
+        assert_eq!(claim.must_not_repeat, ["Do not fetch the source again."]);
+        Ok(())
+    }
+
+    #[test]
+    fn composed_operator_journey_requires_reuse_and_non_repetition_claims()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let raw = parse_runner_manifest_yaml(
+            r#"
+skill: fixture
+harness:
+  cases:
+    - name: empty-composition-claim
+      inputs: {}
+      operator_journeys:
+        - mode: composed
+          request: Continue this work.
+          expected_outcome: Return a result.
+      expect:
+        status: sealed
+runners:
+  fixture:
+    default: true
+    type: graph
+    graph:
+      name: fixture
+      result_from: [digest]
+      steps:
+        - id: digest
+          tool: data.digest
+          inputs:
+            value: fixture
+"#,
+        )?;
+        let Err(error) = validate_runner_manifest(raw) else {
+            return Err("empty composed claim must fail".into());
+        };
+        assert!(
+            error
+                .to_string()
+                .contains("prior_evidence and must_not_repeat")
+        );
         Ok(())
     }
 }

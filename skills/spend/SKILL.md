@@ -7,11 +7,12 @@ runx:
 
 # Spend
 
-`spend` is the canonical buyer-side payment operation. Its `plan` runner turns
-one structured payment-required signal into a bounded quote. Executable runners
-then turn that quote into one approved rail effect and will not report success
-until provider evidence is sealed. All executable rails share the same
-authority, idempotency, approval, recovery, and finality story.
+`spend` is the canonical buyer-side payment operation. The default `spend`
+runner requires an explicit real rail, then quotes, reserves, approves,
+fulfills, and records provider evidence. `plan` stops after the bounded quote.
+Named rail runners remain available for explicit composition. No implicit
+invocation selects a simulator. All executable rails share the same authority,
+idempotency, approval, recovery, and finality story.
 
 Use this skill when a caller has a real parent payment authority and needs to
 pay a known counterparty for a known operation. Do not call a rail directly
@@ -50,7 +51,10 @@ constitutes approval.
 
 ## Runtime paths
 
-- `mock` is a deterministic local and test rail.
+- `spend` is the default end-to-end operation and accepts only `mpp` or
+  `stripe-spt` as its explicit `rail`.
+- `mock` is a deterministic local and test rail. It is never selected by
+  default and must be named explicitly.
 - `mpp` executes through a configured MPP provider path.
 - `stripe-spt` uses a Stripe Shared Payment Token path. Live credential custody
   stays outside skill inputs.
@@ -65,6 +69,9 @@ authority model.
 
 - `payment_signal` carries positive `amount_minor`, uppercase currency, rail,
   counterparty, operation, and optional challenge and realm.
+- `rail` is required by the default runner and selects one real configured
+  settlement lane. Absence is an actionable input blocker, never permission to
+  simulate.
 - `parent_payment_authority` is the complete bounded payment term.
 - `rail_profile_ref` identifies configured rail policy without exposing its
   secret material.
@@ -87,6 +94,8 @@ terminal evidence.
 - Stop on quote drift, target-binding drift, failed subset proof, missing
   admission identity, or absent approval.
 - Do not switch rails opportunistically or silently widen the parent term.
+- Do not fall back to `mock` when a real rail is absent, unavailable, or
+  under-authorized.
 - Do not label an ambiguous provider response successful. Enter recovery under
   the same idempotency key.
 

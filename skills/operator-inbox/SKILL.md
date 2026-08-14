@@ -37,6 +37,11 @@ by query digest. Action snapshots live in `operator_inbox_actions`, with one
 stream per stable thread digest. Queue reads use bounded `list_stream_heads`
 pages; no command folds or transports the complete queue.
 
+Direct invocation defaults to a bounded `list_actions` read against that local
+source. To record a disposition or provider observation, select the exact write
+runner; composed graphs can pass the prior action packet without re-reading or
+re-fetching provider data.
+
 ## When to use this skill
 
 - Build or revisit a local action queue from bounded connector observations.
@@ -115,7 +120,8 @@ a newer external reply in the same thread appends a reopened `open` snapshot.
 
 ## Inputs
 
-All runners require `data_source_ref`. Write runners take `expected_version`
+The default `list_actions` runner uses the local source when `data_source_ref`
+is omitted. Other runners require an explicit source. Write runners take `expected_version`
 and `observed_at`, plus exactly the normalized payload for their operation:
 `scan` and `messages`, `message` and `triage`, `disposition`, or an imported
 `action`. Action writes derive the stream id from the normalized thread

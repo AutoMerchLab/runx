@@ -18,7 +18,7 @@ inputs:
     validation: { status: pass, findings: [] }
   channel_locator: slack://T123ABC/C123ABC
   text: changed
-  idempotency_key: 39506df3-0278-4fac-81b1-39c96221fe3f
+  idempotency_key: 00000000-0000-4000-8000-000000000002
 expect:
   status: sealed
   steps:

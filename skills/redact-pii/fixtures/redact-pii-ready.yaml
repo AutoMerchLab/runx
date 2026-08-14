@@ -2,6 +2,19 @@ name: redact-pii-ready
 kind: skill
 target: ..
 runner: redact-pii
+operator_journeys:
+  - mode: standalone
+    confusors: [extract, governed-outbound]
+    request: Remove names, emails, and phone numbers from this support text before it crosses a trust boundary.
+    expected_outcome: Return usable scrubbed content only after deterministic residual scanning passes.
+  - mode: composed
+    request: Redact this outbound support artifact before delivery.
+    expected_outcome: Reuse the supplied content and classification policy without re-fetching the source, then return a boundary-safe artifact.
+    prior_evidence:
+      - The exact support content, PII classes, locale, and redaction mode supplied in the fixture.
+    must_not_repeat:
+      - Do not fetch the original support request again.
+      - Do not forward unredacted content to a downstream sender.
 inputs:
   content: "Customer Dana Whitfield wrote in from dana.w@example.com about order #44120; callback number on file is 415-555-0188."
   classes:

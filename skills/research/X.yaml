@@ -1,5 +1,5 @@
 skill: research
-version: "0.3.1"
+version: "0.3.2"
 
 catalog:
   kind: graph
@@ -16,6 +16,18 @@ harness:
     - fixtures/local-architecture-evidence.txt
   cases:
     - name: research-native-local-files-use-the-shared-analysis-path
+      operator_journeys:
+        - mode: standalone
+          request: Research this question from the bounded local sources and return a source-backed packet.
+          expected_outcome: Read the admitted sources once and return bounded findings with exact provenance and caveats.
+        - mode: composed
+          request: Continue the decision from these already admitted research sources.
+          expected_outcome: Reuse the supplied source artifacts and provenance without rereading or rediscovering unrelated material.
+          prior_evidence:
+            - The admitted local source artifacts and objective supplied in the fixture.
+          must_not_repeat:
+            - Do not enumerate the repository beyond the admitted paths.
+            - Do not reacquire source content already present in the evidence packet.
       runner: local-files
       inputs:
         objective: Decide where generic evidence admission belongs.

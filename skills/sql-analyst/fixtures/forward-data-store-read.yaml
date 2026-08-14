@@ -1,6 +1,12 @@
 name: sql-analyst-forwards-governed-data-store-read
 kind: graph
 target: ../harness/forward-data-store-read.yaml
+operator_journeys:
+  - mode: standalone
+    exercises_runner: analyst
+    confusors: [data-store, research]
+    request: Answer this bounded analytics question through the declared governed data read.
+    expected_outcome: Validate the plan, perform only the declared data-store read, and return a source-bound interpretation without raw SQL.
 caller:
   answers:
     agent_task.sql-plan.output:
@@ -19,29 +25,22 @@ caller:
           summary: Read the declared projection before interpreting qualified trials.
           caveats: [The projection is a bounded summary, not raw event history.]
         residual_risks: [The projection may lag source events.]
+    agent_task.sql-interpret.output:
+      analysis_result:
+        decision: answered
+        answer: The bounded projection records one analysis snapshot for the launch summary.
+        observations: [The projection contains one event and is at version 1.]
+        caveats: [The projection is a bounded summary, not raw event history.]
+        evidence_ref: launch-summary
 expect:
   status: sealed
-  steps: [seed, analyze, read]
+  steps: [seed, analyze]
   step_outputs:
     analyze:
       subset:
-        sql_analysis_plan:
+        analysis_result:
           data:
-            decision: ready
-            execution:
-              status: prepared_for_governed_read
-              executed: false
-              handoff:
-                skill: data-store
-                runner: read_projection
-    read:
-      subset:
-        data_operation_result:
-          data:
-            operation: read_projection
-            aggregate_id: launch-summary
-            projection:
-              event_count: 1
-              last_event_type: analysis_snapshot.created
+            decision: answered
+            evidence_ref: launch-summary
   receipt: { schema: runx.receipt.v1 }
 metadata: { public_skill: sql-analyst, source_case: forward-data-store-read, source: skills-fixture }

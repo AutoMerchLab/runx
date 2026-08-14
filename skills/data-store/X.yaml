@@ -1,5 +1,5 @@
 skill: data-store
-version: "0.3.0"
+version: "0.4.0"
 
 catalog:
   kind: skill
@@ -32,7 +32,6 @@ emits:
 
 runners:
   append_event:
-    default: true
     type: graph
     inputs:
       data_source_ref:
@@ -187,6 +186,7 @@ runners:
             cursor: "$input.cursor"
 
   append_and_readback:
+    default: true
     type: graph
     inputs:
       data_source_ref:

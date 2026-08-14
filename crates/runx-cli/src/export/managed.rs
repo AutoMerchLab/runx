@@ -53,6 +53,34 @@ pub(super) fn write_files(files: &[GeneratedFile]) -> Result<(), ExportError> {
     Ok(())
 }
 
+pub(super) fn managed_drift_warnings(
+    target: Target,
+    files: &[GeneratedFile],
+) -> Result<Vec<String>, ExportError> {
+    let mut warnings = Vec::new();
+    for file in files {
+        if !file.path.exists() {
+            continue;
+        }
+        let existing = read_to_string(&file.path)?;
+        let Some(existing_digest) = managed_package_digest(&existing, target) else {
+            continue;
+        };
+        let Some(generated_digest) = managed_package_digest(&file.contents, target) else {
+            continue;
+        };
+        if existing_digest != generated_digest {
+            warnings.push(format!(
+                "replaced stale managed export {} ({} -> {})",
+                display_path(&file.path),
+                existing_digest,
+                generated_digest
+            ));
+        }
+    }
+    Ok(warnings)
+}
+
 pub(super) fn prune_managed_files(
     target: Target,
     skill_dir: &Path,
@@ -110,6 +138,21 @@ fn managed_source(contents: &str, target: Target) -> Option<&str> {
     contents.lines().find_map(|line| {
         line.strip_prefix(&prefix)
             .and_then(|value| value.strip_suffix(suffix))
+            .map(|value| {
+                value
+                    .split_once(" package-digest=")
+                    .map_or(value, |(source, _)| source)
+            })
+    })
+}
+
+fn managed_package_digest(contents: &str, target: Target) -> Option<&str> {
+    let prefix = format!("<!-- {} source=", target.marker());
+    contents.lines().find_map(|line| {
+        line.strip_prefix(&prefix)?
+            .split_once(" package-digest=")?
+            .1
+            .strip_suffix(" - generated, do not edit -->")
     })
 }
 

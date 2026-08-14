@@ -1956,7 +1956,7 @@ fn native_graph_skill_run_rejects_agent_task_output_envelope_claim()
         .ok_or("pending graph agent artifact envelope result missing run_id")?
         .to_owned();
 
-    let error = match run_skill(SkillRunRequest {
+    let rejected = run_skill(SkillRunRequest {
         skill_path: skill_dir,
         receipt_dir: Some(receipt_dir),
         run_id: Some(run_id),
@@ -1966,17 +1966,13 @@ fn native_graph_skill_run_rejects_agent_task_output_envelope_claim()
         cwd: temp.path().to_path_buf(),
         managed_agent: Default::default(),
         local_credential: None,
-    }) {
-        Ok(result) => {
-            return Err(format!(
-                "envelope-wrapped agent claim unexpectedly sealed: {:?}",
-                result.output
-            )
-            .into());
-        }
-        Err(error) => error,
-    };
-    let message = error.to_string();
+    })?;
+    let output = object(&rejected.output, "rejected agent envelope result")?;
+    assert_eq!(string_field(output, "status"), Some("sealed"));
+    let closure = object_field(output, "closure").ok_or("missing rejection closure")?;
+    assert_eq!(string_field(closure, "disposition"), Some("failed"));
+    let result = object_field(output, "result").ok_or("missing rejection result")?;
+    let message = string_field(result, "message").ok_or("missing rejection message")?;
     assert!(
         message.contains("runner output contract violation at $.output"),
         "unexpected envelope rejection: {message}"
@@ -2153,7 +2149,7 @@ fn native_graph_skill_resume_rejects_agent_answer_for_approval()
         .ok_or("pending approval result missing run_id")?
         .to_owned();
 
-    let result = run_skill(SkillRunRequest {
+    let rejected = run_skill(SkillRunRequest {
         skill_path: skill_dir,
         receipt_dir: Some(receipt_dir),
         run_id: Some(run_id),
@@ -2163,12 +2159,16 @@ fn native_graph_skill_resume_rejects_agent_answer_for_approval()
         cwd: temp.path().to_path_buf(),
         managed_agent: Default::default(),
         local_credential: None,
-    });
-    let error = match result {
-        Ok(_) => return Err("agent answer resolved an approval gate".into()),
-        Err(error) => error,
-    };
-    assert!(error.to_string().contains("host-attested human"));
+    })?;
+    let output = object(&rejected.output, "rejected agent approval result")?;
+    assert_eq!(string_field(output, "status"), Some("sealed"));
+    let closure = object_field(output, "closure").ok_or("missing rejection closure")?;
+    assert_eq!(string_field(closure, "disposition"), Some("failed"));
+    let result = object_field(output, "result").ok_or("missing rejection result")?;
+    assert!(
+        string_field(result, "message")
+            .is_some_and(|message| message.contains("host-attested human"))
+    );
 
     Ok(())
 }
@@ -2871,6 +2871,10 @@ runners:
   graph:
     default: true
     type: graph
+    inputs:
+      thread_title:
+        type: string
+        required: false
     graph:
       name: graph-issue-to-pr
       result_from:
@@ -2994,11 +2998,19 @@ fn write_graph_nested_agent_skill(
         r#"    type: agent-task
     agent: builder
     task: child-agent-task
+    inputs:
+      thread_title:
+        type: string
+        required: false
     outputs:
       result: object
 "#
     } else {
         r#"    type: agent
+    inputs:
+      thread_title:
+        type: string
+        required: false
     outputs:
       result: object
 "#
@@ -3038,6 +3050,10 @@ runners:
   graph:
     default: true
     type: graph
+    inputs:
+      thread_title:
+        type: string
+        required: false
     graph:
       name: graph-nested-{source_type}
       result_from:
@@ -3151,6 +3167,10 @@ runners:
   graph:
     default: true
     type: graph
+    inputs:
+      thread_title:
+        type: string
+        required: true
     graph:
       name: graph-tool
       result_from:
@@ -3227,6 +3247,10 @@ runners:
   graph:
     default: true
     type: graph
+    inputs:
+      thread_title:
+        type: string
+        required: true
     graph:
       name: graph-agent-then-input-tool
       result_from:
@@ -3267,6 +3291,13 @@ runners:
   graph:
     default: true
     type: graph
+    inputs:
+      thread_title:
+        type: string
+        required: true
+      harness:
+        type: json
+        required: false
     graph:
       name: graph-optional-json-tool
       result_from:

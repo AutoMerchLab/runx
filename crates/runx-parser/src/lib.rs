@@ -28,6 +28,10 @@ pub use graph::{
     MintAuthorityDirective, MintScopeSource, RawGraphIr, parse_graph_yaml, validate_graph,
     validate_graph_document,
 };
+pub use harness_fixture::{
+    HarnessProviderAccess, HarnessProviderGrantFixture, HarnessProviderOperationFixture,
+    HarnessProviderResponsesFixture,
+};
 pub use install::{
     SkillInstallError, SkillInstallOrigin, ValidatedSkillInstall, validate_skill_install,
 };
@@ -44,13 +48,16 @@ pub use runner::{
 };
 pub use skill::{
     ActDeclaration, ArtifactPageFraming, ArtifactPageSource, CatalogApproval, CatalogAudience,
-    CatalogCompletion, CatalogExecution, CatalogKind, CatalogMetadata, CatalogRole,
-    CatalogVisibility, CredentialRequirement, HarnessCallerFixture, HarnessExpectation, InputMode,
-    RawSkillIr, ReceiptExpectation, RunnerHarnessCase, RunnerHarnessManifest,
+    CatalogCompletion, CatalogExecution, CatalogKind, CatalogMetadata, CatalogOperatorReadiness,
+    CatalogProviderProof, CatalogRole, CatalogSemanticCode, CatalogSemanticDiagnostic,
+    CatalogSemanticReport, CatalogVisibility, CredentialRequirement, HarnessCallerFixture,
+    HarnessExpectation, HarnessHttpResponseFixture, InputMode, OperatorJourneyClaim,
+    OperatorJourneyMode, RawSkillIr, ReceiptExpectation, RunnerHarnessCase, RunnerHarnessManifest,
     SkillArtifactContract, SkillExternalAdapterManifest, SkillIdempotencyPolicy, SkillInput,
     SkillMcpServer, SkillRetryPolicy, SkillRunnerDefinition, SkillSource,
     SkillThreadOutboxProviderSource, SourceKind, ValidateSkillMode, ValidateSkillOptions,
-    ValidatedSkill, parse_skill_markdown, validate_input_examples, validate_skill,
+    ValidatedSkill, analyze_catalog_semantics, analyze_package_catalog_semantics,
+    parse_skill_markdown, validate_input_examples, validate_skill,
     validate_skill_artifact_contract, validate_skill_source, validate_skill_with_options,
 };
 pub use tool::{

@@ -382,6 +382,23 @@ authoring.
   certify a package that needs the original checkout to run.
 - Include a realistic happy path and refusal, stop, or error path.
 - Never treat supplied agent answers as provider-effect proof.
+- For every public package, make the native readiness report the acceptance
+  boundary. One executable `standalone` journey must select the actual default
+  runner and name at least two existing nearby public skills as `confusors`.
+  One executable `composed` journey must consume named prior evidence and state
+  the work or effects it must not repeat. A journey on a convenient phase runner
+  cannot prove the standalone default. A graph-level harness may use
+  `exercises_runner` only to identify the public runner it really invokes.
+- Read `semantic_report.readiness` from `runx skill inspect`; do not recreate its
+  classification in package code, prose, or a second test script. Public work is
+  not ready unless `evaluated`, `coldSelection`, `standaloneDefault`, and
+  `composedReuse` are true and native semantic diagnostics are empty.
+- Keep provider proof labels exact. Deterministic replay is `harness`, not
+  `live`. A sealed provider-readback case supplied through caller agent answers
+  does not prove provider execution. Harnesses must not inherit local Runx
+  grants, tokens, credential delivery, or global configuration; every fake
+  binding must be explicit in the fixture, and live proof must come from a
+  separately identified provider run.
 
 Before admitting an architecture, perform a cold-operator trial against the
 actual proposed result:
@@ -430,13 +447,14 @@ do not compensate with more fixtures, prose padding, or a bespoke wrapper.
 - `target_dir` (required for mutating runners): repo-relative package directory.
 - `project_context` (optional): product, repository, and operator constraints.
 - `receipt_id`, `receipt_summary`, `harness_output`, `failure_packet` (improve):
-  failure evidence, including the stable packet from `review-receipt`.
+  failure evidence, including the stable packet from `diagnose-skill-run`.
 
 ## Agent task contracts
 
 ### `skill-lab-architecture`
 
-Return exactly one `architecture_decision` using
+Call `runx_final_result` with exactly one root field,
+`{"architecture_decision": <decision>}`. The inner decision uses
 `runx.skill.architecture_decision.v1`. Choose `build`, `extend_existing`,
 `no_skill`, or `needs_core`. Explain the operator value and the manual's
 knowledge contract: purpose, required evidence, decision logic, stop conditions,
@@ -446,8 +464,49 @@ and recovery. Assign every required behavior to exactly one real execution lane
 a domain module supplies a specific justification. Record inspected, selected,
 and genuinely missing native capabilities; use `needs_core` only for a runtime
 or security invariant or a primitive with two independent existing consumers.
+Before calling `runx_final_result`, call `runx.skill.plan` once with the exact
+`authoring_context.base_digest` and candidate `architecture_decision`. Repair
+any deterministic architecture error it returns, then submit the same validated
+decision. For every `native_capability` behavior, `reuse_ref` must be exactly one
+entry from `native_reuse.selected_capabilities`; split a behavior when it needs
+more than one capability. This prevalidation is read-only and does not replace
+the graph's native digest-binding step.
 When `package_name` is supplied, treat it as the requested package identity;
 do not silently rename the package from its target path.
+
+Inspect an existing target in one bounded pass. Use the target file list and
+repository root in `authoring_context` to read the relevant files together with
+`fs.read_bundle`; do not crawl them one at a time or reread files already
+present in context. Once the evidence is sufficient, return the declared
+architecture decision instead of spending the remaining round budget on
+optional discovery.
+
+For every `build` or `extend_existing` decision, make the identity decision
+explicit. Record the current and proposed name, choose `keep`, `rename`,
+`create`, or `internalize`, state whether the package is public or internal,
+and explain why that name is the operation a cold agent will reach for. A
+rename or internalization is a clean cutover: identify every consumer and do
+not plan aliases or duplicate discovery rows. Internal packages have no public
+direct-use contract.
+
+For every public package, declare both operator contexts before authoring:
+
+- `direct_use` names realistic natural-language trigger and non-trigger
+  requests, the default outcome, routine work the host should do normally, the
+  exact boundary where Runx adds value, the terminal result, one actionable
+  blocker behavior, and the context-preserving native escape path.
+- `chain_use` names accepted typed inputs, the reusable result, prior evidence
+  and effects that survive the boundary, and work that must not repeat.
+
+The proof plan must contain distinct `selection_trial`,
+`standalone_operator_journey`, and `composed_operator_journey` entries for a
+public package. They are different claims: intuitive selection, useful direct
+completion, and evidence-preserving composition. A generic harness or sealed
+receipt may supplement them but cannot replace them. The selection trial names
+at least two real public catalog confusors; the standalone journey runs the
+actual default; and the composed journey names both reused prior evidence and
+work that must not repeat. The final package inspection must report all four
+native readiness facts true with no semantic diagnostics.
 
 Declare effects, authority scopes, approval meaning, provider boundary, skill
 routes, resource ceilings, preservation obligations, exact intended deletions,
@@ -491,6 +550,11 @@ that agrees with the plan. A non-write draft has empty `writes` and `deletes`.
 A write contains the smallest complete target-relative file set, the exact
 planned deletions, a truthful summary and non-goals, and the outputs the package
 will actually produce.
+
+When source bytes are needed, read the planned target files together with
+`fs.read_bundle`. Do not spend separate rounds reopening files already supplied
+by `authoring_context` or the architecture plan; reserve the final round for the
+complete `change_draft`.
 
 When `package_name` is supplied, use it consistently in the `SKILL.md`
 frontmatter and the `X.yaml` `skill` field. The directory is a placement

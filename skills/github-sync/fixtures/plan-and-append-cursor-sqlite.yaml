@@ -2,6 +2,15 @@ name: github-sync-persists-cursor-through-native-data-operation
 kind: skill
 target: ..
 runner: plan_and_append_cursor
+operator_journeys:
+  - mode: composed
+    request: Continue this GitHub synchronization from the supplied cursor and prior sync evidence.
+    expected_outcome: Reuse the cursor, target, and prior evidence without repeating completed discovery or provider reads.
+    prior_evidence:
+      - The persisted synchronization cursor and prior provider evidence supplied in the fixture.
+    must_not_repeat:
+      - Do not repeat provider discovery already covered by the cursor.
+      - Do not reapply completed synchronization mutations.
 env:
   RUNX_DATA_SOURCES: '{"data_sources":{"tenant://github-sync/sqlite-cursors":{"adapter":"data.sqlite","database_path":".runx/data/github-sync-cursors.sqlite","resources":{"github_sync_events":{"kind":"event_stream","partition_key":"aggregate_id"}}}}}'
 inputs:

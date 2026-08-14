@@ -1,5 +1,5 @@
 skill: operator-inbox
-version: "0.2.4"
+version: "0.3.0"
 
 catalog:
   kind: graph
@@ -69,7 +69,6 @@ runners:
             event: plan.transition.data.event
 
   record_action_observation:
-    default: true
     type: graph
     inputs:
       data_source_ref:
@@ -243,11 +242,14 @@ runners:
             limit: 1
 
   list_actions:
+    default: true
     type: graph
     inputs:
       data_source_ref:
         type: string
-        required: true
+        required: false
+        default: local://runx/operator-inbox/default
+        description: Local `.runx` inbox source by default; a hosted binding is explicit opt-in.
       event_types:
         type: json
         required: false

@@ -1,0 +1,28 @@
+#!/bin/sh
+set -eu
+
+commit=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+state=${RUNX_ISSUE_TO_PR_GIT_STATE:-.runx/issue-to-pr-fixture-ref}
+
+case "$*" in
+  "-c core.fsmonitor=false remote get-url origin"|"config --get remote.origin.url")
+    printf '%s\n' 'https://github.com/runxhq/runx.git'
+    ;;
+  "rev-parse --verify ${commit}^{commit}")
+    printf '%s\n' "$commit"
+    ;;
+  "ls-remote --refs origin refs/heads/fix/442-operator-first")
+    if [ -f "$state" ]; then
+      printf '%s\t%s\n' "$commit" 'refs/heads/fix/442-operator-first'
+    fi
+    ;;
+  "push --porcelain origin ${commit}:refs/heads/fix/442-operator-first")
+    /bin/mkdir -p "$(/usr/bin/dirname "$state")"
+    : > "$state"
+    printf '%s\n' 'To https://github.com/runxhq/runx.git'
+    ;;
+  *)
+    printf '%s\n' "unexpected fixture git invocation: $*" >&2
+    exit 2
+    ;;
+esac

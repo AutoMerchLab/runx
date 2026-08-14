@@ -692,7 +692,7 @@ function hostResultFixtures(): readonly ContractFixture[] {
   return [
     hostFixture("result-host-run-needs-agent", "run_result", {
       status: "needs_agent",
-      skillName: "review-receipt",
+      skillName: "diagnose-skill-run",
       runId: "run_needs_agent",
       requests: [inputResolutionRequest()],
       stepIds: ["collect"],
@@ -701,28 +701,28 @@ function hostResultFixtures(): readonly ContractFixture[] {
     }),
     hostFixture("result-host-run-completed", "run_result", {
       status: "completed",
-      skillName: "review-receipt",
+      skillName: "diagnose-skill-run",
       receiptId: "rx_completed",
       output: "done",
       events: [event("completed")],
     }),
     hostFixture("result-host-run-failed", "run_result", {
       status: "failed",
-      skillName: "review-receipt",
+      skillName: "diagnose-skill-run",
       receiptId: "rx_failed",
       error: "adapter failed",
       events: [event("warning")],
     }),
     hostFixture("result-host-run-escalated", "run_result", {
       status: "escalated",
-      skillName: "review-receipt",
+      skillName: "diagnose-skill-run",
       receiptId: "rx_escalated",
       error: "needs human review",
       events: [event("step_waiting_resolution")],
     }),
     hostFixture("result-host-run-denied", "run_result", {
       status: "denied",
-      skillName: "review-receipt",
+      skillName: "diagnose-skill-run",
       receiptId: "rx_denied",
       reasons: ["authority denied"],
       events: [event("admitted")],
@@ -734,7 +734,7 @@ function hostStateFixtures(): readonly ContractFixture[] {
   return [
     hostFixture("inspect-host-state-needs-agent", "run_state", {
       status: "needs_agent",
-      skillName: "review-receipt",
+      skillName: "diagnose-skill-run",
       runId: "run_needs_agent",
       requestedPath: "skills/review.md",
       resolvedPath: "/workspace/skills/review.md",
@@ -840,7 +840,7 @@ function agentActResolutionRequest(): Readonly<Record<string, unknown>> {
           execution_boundary: { kind: "remote_provider" },
         },
         run_id: "run_1",
-        skill: "review-receipt",
+        skill: "diagnose-skill-run",
         step_id: "step_1",
         trust_boundary: "test",
       },
@@ -852,7 +852,7 @@ function terminalState(status: string, verificationStatus: string): Readonly<Rec
   return {
     status,
     kind: "harness",
-    skillName: "review-receipt",
+    skillName: "diagnose-skill-run",
     runId: `run_${status}`,
     receiptId: `rx_${status}`,
     verification: {

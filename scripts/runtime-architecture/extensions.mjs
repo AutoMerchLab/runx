@@ -120,7 +120,6 @@ export function checkGeneratedMirrorOwnership(findings) {
     "packages/cli/skills",
     "packages/cli/tools",
     "scripts/registry-publish-summary.ts",
-    "skills/issue-to-pr/push-outbox/manifest.json",
     "examples/governed-spend/verify.mjs",
     "scripts/generate-runtime-catalog-adapter-oracles.ts",
     "scripts/generate-runtime-mcp-oracles.ts",

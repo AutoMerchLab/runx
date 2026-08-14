@@ -43,7 +43,7 @@ fn top_level_help_and_version_are_native() {
     );
     assert_help_line(
         &help,
-        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--full-operator-context] [--registry url|path] [--digest sha256] [--package-digest sha256 --execution-closure-digest sha256] [--flag value] [-R dir]",
+        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--diagnostics] [--managed-agent [--managed-agent-rounds n]] [--full-operator-context] [--registry url|path] [--digest sha256] [--package-digest sha256 --execution-closure-digest sha256] [--flag value] [-R dir]",
     );
     assert_help_line(
         &help,
@@ -55,7 +55,7 @@ fn top_level_help_and_version_are_native() {
     );
     assert_help_line(
         &help,
-        "runx resume <run-id> <answers.json> [-R dir] [--package-digest sha256] [--execution-closure-digest sha256] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [-j|--json]",
+        "runx resume <run-id> <answers.json|-> [-R dir] [--package-digest sha256] [--execution-closure-digest sha256] [--managed-agent [--managed-agent-rounds n]] [--non-interactive] [--diagnostics] [-j|--json]",
     );
     assert_help_line(
         &help,
@@ -77,7 +77,7 @@ fn top_level_help_and_version_are_native() {
     );
     assert_help_line(
         &help,
-        "runx connect list|start|status|revoke ... [-j|--json]",
+        "runx connect list|bind|start|status|revoke ... [-j|--json]",
     );
     assert!(
         !help.contains("runx harness <fixture.yaml|skill-dir|SKILL.md>"),
@@ -146,7 +146,7 @@ fn nested_skill_history_verify_and_publish_help_are_native() {
 
     assert_help_line(
         &skill_help_text(),
-        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--managed-agent [--managed-agent-rounds n]] [--full-operator-context] [--registry url|path] [--digest sha256] [--package-digest sha256 --execution-closure-digest sha256] [--flag value] [-R dir]",
+        "runx skill <skill-ref|owner/name@version|skill-dir|SKILL.md> [runner] [-p profile] [-i key=value] [--input-json key=json] [--inputs file|-] [-j] [--diagnostics] [--managed-agent [--managed-agent-rounds n]] [--full-operator-context] [--registry url|path] [--digest sha256] [--package-digest sha256 --execution-closure-digest sha256] [--flag value] [-R dir]",
     );
     assert_help_line(
         &skill_help_text(),
@@ -158,7 +158,7 @@ fn nested_skill_history_verify_and_publish_help_are_native() {
     );
     assert_help_line(
         &history_help_text(),
-        "runx history [query] [--detail] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--limit n] [--receipt-dir dir] [--json]",
+        "runx history [query] [--detail] [--skill s] [--status s] [--source s] [--actor a] [--artifact-type t] [--since iso] [--until iso] [--limit n] [--include-harness] [--receipt-dir dir] [--json]",
     );
     assert_help_line(
         &verify_help_text(),
@@ -229,6 +229,7 @@ fn filesystem_paths_do_not_require_utf8() {
             expected_package_digest: None,
             expected_execution_closure_digest: None,
             json: false,
+            diagnostics: false,
             managed_agent: Default::default(),
         })
     );
@@ -521,6 +522,7 @@ fn routes_canonical_skill_run_to_native_plan() {
             expected_package_digest: None,
             expected_execution_closure_digest: None,
             json: true,
+            diagnostics: false,
             non_interactive: true,
             trusted_command_execution: false,
             full_operator_context: false,
@@ -555,7 +557,7 @@ fn skill_rejects_legacy_runner_and_continuation_flags() {
     assert_eq!(
             plan(&["skill", "skills/issue-intake", "--run-id", "run_123"]),
             RouterAction::Error(
-                "runx skill continuation flags are no longer supported; use `runx resume <run-id> <answers.json>`"
+                "runx skill continuation flags are no longer supported; use `runx resume <run-id> <answers.json|->`"
                     .to_owned()
             )
         );
@@ -567,7 +569,7 @@ fn skill_rejects_legacy_runner_and_continuation_flags() {
             "/tmp/answers.json",
         ]),
             RouterAction::Error(
-                "runx skill continuation flags are no longer supported; use `runx resume <run-id> <answers.json>`"
+                "runx skill continuation flags are no longer supported; use `runx resume <run-id> <answers.json|->`"
                     .to_owned()
             )
         );
@@ -765,6 +767,7 @@ fn routes_doctor_history_list_new_and_init_to_native_plans() {
             expected_package_digest: None,
             expected_execution_closure_digest: None,
             json: true,
+            diagnostics: false,
             managed_agent: Default::default(),
         })
     );

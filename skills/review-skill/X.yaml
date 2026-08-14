@@ -1,5 +1,5 @@
 skill: review-skill
-version: "0.2.3"
+version: "0.3.1"
 
 catalog:
   kind: graph
@@ -14,16 +14,29 @@ catalog:
 harness:
   cases:
     - name: review-skill-collects-native-evidence
+      operator_journeys:
+        - mode: standalone
+          confusors: [diagnose-skill-run, skill-lab]
+          request: Review diagnose-skill-run for capability, trust, and operator readiness.
+          expected_outcome: Collect native inspection and harness evidence, then return a bounded adoption or improvement recommendation.
+        - mode: composed
+          request: Assess this skill from the native evidence already collected by the catalog review.
+          expected_outcome: Reuse inspection and harness evidence without rerunning provider effects or rebuilding the skill.
+          prior_evidence:
+            - The native package inspection, harness result, objective, and test constraints supplied in the fixture.
+          must_not_repeat:
+            - Do not rerun live provider operations.
+            - Do not rediscover package contracts already present in native inspection.
       runner: review
       inputs:
-        skill_ref: ../review-receipt
+        skill_ref: ../diagnose-skill-run
         objective: Decide whether receipt diagnosis has bounded evidence and stop behavior
         test_constraints: Run only local read-only harnesses.
       caller:
         answers:
           agent_task.review-skill-assess.output:
             capability_profile:
-              skill_ref: ../review-receipt
+              skill_ref: ../diagnose-skill-run
               summary: Diagnoses one receipt or harness failure into a bounded recommendation.
             trust_assessment:
               tier: local_harness
@@ -50,7 +63,7 @@ harness:
                   verdict: tested
                   inspect:
                     status: ok
-                    name: review-receipt
+                    name: diagnose-skill-run
                   harness:
                     status: passed
 

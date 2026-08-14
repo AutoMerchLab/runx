@@ -279,13 +279,7 @@ fn required_response_string<'a>(
 }
 
 pub fn validate_provider_grant_id(value: &str) -> Result<(), ProviderOperationError> {
-    let value = value.trim();
-    if value.is_empty()
-        || value.len() > 200
-        || value
-            .chars()
-            .any(|character| character.is_control() || matches!(character, '/' | '?' | '#'))
-    {
+    if !crate::path_util::is_safe_url_path_identifier(value) {
         return Err(ProviderOperationError::InvalidGrantId);
     }
     Ok(())

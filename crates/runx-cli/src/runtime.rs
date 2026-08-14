@@ -19,8 +19,8 @@ use runx_pay::{
     },
 };
 use runx_runtime::{
-    CredentialDelivery, HarnessReplayOutput, LocalOrchestrator, ProviderPermissionEffect,
-    RUNX_RECEIPT_DIR_ENV, RuntimeEffectRegistry,
+    CredentialDelivery, ExternalReceiptEffect, HarnessReplayOutput, LocalOrchestrator,
+    ProviderPermissionEffect, RUNX_RECEIPT_DIR_ENV, RuntimeEffectRegistry,
     adapters::external_adapter::{
         ExternalAdapterProcessOutcome, ExternalAdapterProcessSupervisor, ExternalAdapterSupervisor,
     },
@@ -44,6 +44,7 @@ pub fn payment_effect_registry(
         ConfiguredPaymentFinalitySupervisor::from_env(env),
     ))?;
     registry.register_effect(ProviderPermissionEffect::default())?;
+    registry.register_effect(ExternalReceiptEffect)?;
     Ok(registry)
 }
 
