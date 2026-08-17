@@ -283,7 +283,7 @@ impl rmcp::ServerHandler for RmcpProofServer {
         &self,
         request: rmcp::model::CallToolRequestParams,
         _context: rmcp::service::RequestContext<rmcp::RoleServer>,
-    ) -> impl Future<Output = Result<rmcp::model::CallToolResult, rmcp::ErrorData>> + Send + '_
+    ) -> impl Future<Output = Result<rmcp::model::CallToolResponse, rmcp::ErrorData>> + Send + '_
     {
         let prepared = (|| {
             let arguments = match request.arguments {
@@ -393,9 +393,9 @@ fn admit_mcp_tool_scopes(
 
 async fn execute_rmcp_tool_call(
     prepared: Result<PreparedMcpToolCall, rmcp::ErrorData>,
-) -> Result<rmcp::model::CallToolResult, rmcp::ErrorData> {
+) -> Result<rmcp::model::CallToolResponse, rmcp::ErrorData> {
     match prepared? {
-        PreparedMcpToolCall::Fixed(result) => rmcp_call_tool_result(result),
+        PreparedMcpToolCall::Fixed(result) => rmcp_call_tool_result(result).map(Into::into),
         PreparedMcpToolCall::Skill {
             run_id,
             execution,
@@ -408,7 +408,7 @@ async fn execute_rmcp_tool_call(
             .await
             .map_err(|error| rmcp_internal_error(format!("MCP tool task failed: {error}")))?;
             match result {
-                Ok(result) => rmcp_call_tool_result(result),
+                Ok(result) => rmcp_call_tool_result(result).map(Into::into),
                 Err(error) => Err(rmcp_internal_error(error.to_string())),
             }
         }
@@ -429,7 +429,7 @@ fn rmcp_call_tool_result(
     let content = result
         .content
         .into_iter()
-        .map(|entry| rmcp::model::Content::text(entry.text))
+        .map(|entry| rmcp::model::ContentBlock::text(entry.text))
         .collect();
     let mut call_result = if result.is_error {
         rmcp::model::CallToolResult::error(content)

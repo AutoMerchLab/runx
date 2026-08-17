@@ -1116,52 +1116,54 @@ fn invalid(message: impl Into<String>) -> SkillRunError {
 mod domain_act_frame_tests {
     use super::*;
 
-    fn act(value: serde_json::Value) -> ActDeclaration {
-        serde_json::from_value(value).expect("act declaration")
+    fn act(value: serde_json::Value) -> Result<ActDeclaration, serde_json::Error> {
+        serde_json::from_value(value)
     }
 
-    fn inputs(value: serde_json::Value) -> JsonObject {
-        serde_json::from_value(value).expect("input object")
+    fn inputs(value: serde_json::Value) -> Result<JsonObject, serde_json::Error> {
+        serde_json::from_value(value)
     }
 
     #[test]
-    fn operator_reason_input_seals_the_operator_line() {
+    fn operator_reason_input_seals_the_operator_line() -> Result<(), Box<dyn std::error::Error>> {
         let frame = build_domain_act_frame(
             &act(serde_json::json!({
                 "purpose_from": "act_purpose",
                 "reason_from_input": "line",
-            })),
+            }))?,
             &inputs(serde_json::json!({
                 "act_purpose": "settle the accepted claim",
                 "line": "Paid @worker for the accepted delivery on #120.",
-            })),
+            }))?,
             &JsonValue::Null,
             None,
             Vec::new(),
         )
-        .expect("frame");
+        .ok_or_else(|| std::io::Error::other("frame"))?;
         assert_eq!(
             frame.summary.as_str(),
             "Paid @worker for the accepted delivery on #120."
         );
+        Ok(())
     }
 
     #[test]
-    fn absent_operator_line_falls_back_to_purpose() {
+    fn absent_operator_line_falls_back_to_purpose() -> Result<(), Box<dyn std::error::Error>> {
         let frame = build_domain_act_frame(
             &act(serde_json::json!({
                 "purpose_from": "act_purpose",
                 "reason_from_input": "line",
-            })),
+            }))?,
             &inputs(serde_json::json!({
                 "act_purpose": "settle the accepted claim",
-            })),
+            }))?,
             &JsonValue::Null,
             None,
             Vec::new(),
         )
-        .expect("frame");
+        .ok_or_else(|| std::io::Error::other("frame"))?;
         assert_eq!(frame.summary.as_str(), "settle the accepted claim");
+        Ok(())
     }
 }
 
