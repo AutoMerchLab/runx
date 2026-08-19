@@ -53,8 +53,9 @@ does not fold domain state. Everything else is delegation.
 
 - One-shot or interactive work. Call the member skills directly; the agency is
   overhead when the operator is already the loop.
-- To compute proposals (that is `ops-desk`) or claim and clock logic (that is
-  `messageboard`). Compose them.
+- To compute proposals (that is `ops-desk`) or product domain logic such as
+  claim and clock rules (that is the product's own governed skill from the
+  registry). Compose them.
 - To bake a storage backend. The case lives in `data-store` via `data_source_ref`.
 - To let the model invent the roster, the mandate, or the limits. They are operator
   config, snapshotted into the case at `open`.

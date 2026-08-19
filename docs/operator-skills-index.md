@@ -26,7 +26,6 @@ Skills that run a standing mandate, route work, or operate a project workspace.
 | `business-ops/` | Route one business signal through a replayable governed ops chain. |
 | `ops-desk/` | Operate a project, workspace, or account from an agent or machine principal. |
 | `policy-author/` | Turn a plain-English governance brief into one validated runx policy. |
-| `messageboard/` | Govern a bounty-style messageboard from post through moderation. |
 | `lead-router/` | Qualify a lead and route it to the right governed action. |
 | `lead-enrichment/` | Enrich a lead from supplied account signals and produce a reviewable packet. |
 | `knowledge-router/` | Route a question or source event to the right knowledge source. |

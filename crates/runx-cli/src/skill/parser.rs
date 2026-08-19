@@ -542,7 +542,7 @@ mod tests {
 
     #[test]
     fn skill_without_inputs_executes_default_runner() -> Result<(), String> {
-        let args = ["skill", "skills/messageboard"]
+        let args = ["skill", "skills/weather-forecast"]
             .into_iter()
             .map(std::ffi::OsString::from)
             .collect::<Vec<_>>();
@@ -551,7 +551,7 @@ mod tests {
         assert_eq!(plan.action, SkillAction::Run);
         assert_eq!(
             plan.skill_path,
-            std::path::PathBuf::from("skills/messageboard")
+            std::path::PathBuf::from("skills/weather-forecast")
         );
         assert_eq!(plan.runner, None);
         Ok(())
@@ -559,20 +559,20 @@ mod tests {
 
     #[test]
     fn positional_runner_without_inputs_executes_runner() -> Result<(), String> {
-        let args = ["skill", "skills/messageboard", "post_and_append"]
+        let args = ["skill", "skills/weather-forecast", "normalize"]
             .into_iter()
             .map(std::ffi::OsString::from)
             .collect::<Vec<_>>();
         let plan = super::parse_skill_plan(&args)?;
 
         assert_eq!(plan.action, SkillAction::Run);
-        assert_eq!(plan.runner.as_deref(), Some("post_and_append"));
+        assert_eq!(plan.runner.as_deref(), Some("normalize"));
         Ok(())
     }
 
     #[test]
     fn explicit_inspect_returns_skill_card() -> Result<(), String> {
-        let args = ["skill", "inspect", "skills/messageboard", "post_and_append"]
+        let args = ["skill", "inspect", "skills/weather-forecast", "normalize"]
             .into_iter()
             .map(std::ffi::OsString::from)
             .collect::<Vec<_>>();
@@ -581,9 +581,9 @@ mod tests {
         assert_eq!(plan.action, SkillAction::Inspect);
         assert_eq!(
             plan.skill_path,
-            std::path::PathBuf::from("skills/messageboard")
+            std::path::PathBuf::from("skills/weather-forecast")
         );
-        assert_eq!(plan.runner.as_deref(), Some("post_and_append"));
+        assert_eq!(plan.runner.as_deref(), Some("normalize"));
         Ok(())
     }
 
@@ -591,10 +591,10 @@ mod tests {
     fn positional_runner_with_inputs_executes_runner() -> Result<(), String> {
         let args = [
             "skill",
-            "skills/messageboard",
-            "post_and_append",
+            "skills/weather-forecast",
+            "normalize",
             "-i",
-            "title=hello",
+            "location=hello",
         ]
         .into_iter()
         .map(std::ffi::OsString::from)
@@ -602,9 +602,9 @@ mod tests {
         let plan = super::parse_skill_plan(&args)?;
 
         assert_eq!(plan.action, SkillAction::Run);
-        assert_eq!(plan.runner.as_deref(), Some("post_and_append"));
+        assert_eq!(plan.runner.as_deref(), Some("normalize"));
         assert_eq!(
-            plan.inputs.get("title"),
+            plan.inputs.get("location"),
             Some(&runx_contracts::JsonValue::String("hello".to_owned()))
         );
         Ok(())
@@ -614,10 +614,10 @@ mod tests {
     fn unbound_operator_context_bypass_is_not_a_public_flag() -> Result<(), String> {
         let args = [
             "skill",
-            "skills/messageboard",
+            "skills/weather-forecast",
             "--skip-operator-context",
             "--input",
-            "title=hello",
+            "location=hello",
         ]
         .into_iter()
         .map(std::ffi::OsString::from)
@@ -634,7 +634,7 @@ mod tests {
     fn bound_execution_requires_package_and_closure_digests() -> Result<(), String> {
         let package_only = [
             "skill",
-            "skills/messageboard",
+            "skills/weather-forecast",
             "--package-digest",
             "sha256:package",
         ]
@@ -649,7 +649,7 @@ mod tests {
 
         let closure_only = [
             "skill",
-            "skills/messageboard",
+            "skills/weather-forecast",
             "--execution-closure-digest",
             "sha256:closure",
         ]
@@ -668,10 +668,10 @@ mod tests {
     fn full_operator_context_flag_is_not_a_skill_input() -> Result<(), String> {
         let args = [
             "skill",
-            "skills/messageboard",
+            "skills/weather-forecast",
             "--full-operator-context",
             "--input",
-            "title=hello",
+            "location=hello",
         ]
         .into_iter()
         .map(std::ffi::OsString::from)
@@ -680,7 +680,7 @@ mod tests {
 
         assert!(plan.full_operator_context);
         assert_eq!(plan.inputs.len(), 1);
-        assert!(plan.inputs.contains_key("title"));
+        assert!(plan.inputs.contains_key("location"));
         Ok(())
     }
 
@@ -688,10 +688,10 @@ mod tests {
     fn inline_operator_context_flags_are_not_skill_inputs() -> Result<(), String> {
         let args = [
             "skill",
-            "skills/messageboard",
+            "skills/weather-forecast",
             "--full-operator-context=true",
             "--input",
-            "title=hello",
+            "location=hello",
         ]
         .into_iter()
         .map(std::ffi::OsString::from)
@@ -700,7 +700,7 @@ mod tests {
 
         assert!(plan.full_operator_context);
         assert_eq!(plan.inputs.len(), 1);
-        assert!(plan.inputs.contains_key("title"));
+        assert!(plan.inputs.contains_key("location"));
         Ok(())
     }
 

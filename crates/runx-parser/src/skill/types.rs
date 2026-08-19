@@ -187,6 +187,12 @@ pub struct ActDeclaration {
     pub legitimacy_from: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub reason_from: Option<String>,
+    /// The input key carrying the reason prose, authored by the calling operator
+    /// (mutually exclusive with `reason_step`/`reason_from`): the operator agent
+    /// holds the context and voice; runners must not embed an agent step just to
+    /// write the sealed reason line.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason_from_input: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub target_from: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]

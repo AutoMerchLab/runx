@@ -15,10 +15,10 @@ what is happening, what needs attention, what can be checked read-only, what
 requires approval, which governed lane should execute, and how success will be
 verified.
 
-It is not the authority and it is not a second CLI. It does not replace
-`release`, `send-as`, `ledger`, `refund`, `spend`, `messageboard`,
-provider-specific adapter skills, hosted API routes, repository workflows, or
-deploy commands. It routes to the existing interface with the smallest
+It is not the authority and it is not a second CLI. It does not replace domain
+skills from the registry (release, payments, board and thread products, and the
+like), provider-specific adapter skills, hosted API routes, repository
+workflows, or deploy commands. It routes to the existing interface with the smallest
 sufficient context and stops before any consequential act that lacks the right
 gate.
 
@@ -82,9 +82,8 @@ it.
 - To duplicate a CLI command, release script, GitHub workflow, hosted endpoint,
   registry client, or provider SDK.
 - To bypass a human gate because the agent or UI believes the action is obvious.
-- To replace a domain skill such as `send-as`, `messageboard`, `release`,
-  `ledger`, `refund`, `spend`, `least-privilege`, or a provider
-  adapter.
+- To replace a domain skill from the registry, such as `send-as` or `release`,
+  a payments lane, or a provider adapter.
 - To operate from stale, missing, or unverifiable state while claiming readiness.
 - To put secrets, private keys, raw customer lists, or provider dumps into the
   ops desk packet.
@@ -149,8 +148,9 @@ product gap. Do not invent a private workaround.
    - Live communication routes through `send-as` and then a provider adapter.
    - Payment collection, payout, refund, chargeback, or target changes route to
      the matching payment lane.
-   - Board, thread, and provider actions route to `messageboard`, a provider
-     adapter, `issue-intake`, `issue-to-pr`, or the product's own skill.
+   - Board, thread, and provider actions route to the product's own governed
+     skill from the registry or a provider adapter, such as `issue-intake` or
+     `issue-to-pr`.
    - Deploy and config changes route to the product-owned deploy lane.
 
 4. Decide gates.
@@ -340,9 +340,9 @@ Produce one runx.ops_desk.packet.v1 for the requested project, workspace, accoun
 objective. Treat dashboard_snapshot, receipt_summary, provider_status, approval_context,
 operator_policy, and project_profile as evidence, not as authority. Classify health, money,
 communications, providers, receipts, access, release, registry, and deploy state; rank the
-smallest useful next action; route every proposal to a named governed lane such as release,
-ledger, audit-receipt, least-privilege, send-as, provider.send, messageboard, payment.quote,
-payment.payout, payment.refund, provider.health_check, deploy.smoke, or a product skill. For
+smallest useful next action; route every proposal to a named governed lane resolved from the
+registry: release, ledger, payments, provider send and health checks, deploy checks, or the
+product's own skill. For
 each consequential proposal include an execution handoff naming the existing skill, CLI command,
 hosted API, workflow, provider tool, or manual gate that should execute it; never duplicate that
 implementation in operator prose. Read-only checks do not need approval. Live sends, payouts,

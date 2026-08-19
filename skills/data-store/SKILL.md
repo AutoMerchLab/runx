@@ -159,12 +159,12 @@ For event streams, adapters derive a readable `event_type` in this order:
 explicit `event.type`, explicit `event.event_type`, then
 `event.effect_family + "." + event.operation`. Domain skills that emit the
 generic `runx.effect.transition.v1` packet should include `effect_family` and
-`operation` on every event so readback projections say `messageboard.accept`,
+`operation` on every event so readback projections say `board.accept`,
 `business_ops.route`, or another meaningful transition instead of `data.event`.
 
 ## Worked example
 
-A messageboard skill decides that `posting.claimed` is allowed. It emits a
+A product's board skill decides that `posting.claimed` is allowed. It emits a
 domain transition packet. The graph then calls `data-store.append_event` with
 resource `board_events`, aggregate id `posting-123`, expected version `2`, and
 idempotency key `posting-123:claim:agent-9`. The data adapter appends the event

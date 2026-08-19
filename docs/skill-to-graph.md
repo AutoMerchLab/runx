@@ -281,7 +281,7 @@ a declared data operation:
 ```yaml
 steps:
   - id: decide
-    skill: ./messageboard
+    skill: ./your-domain-skill
     runner: claim
   - id: append
     skill: ./data-store
@@ -293,7 +293,7 @@ steps:
       expected_version: "$input.expected_version"
       idempotency_key: "$input.idempotency_key"
     context:
-      event: decide.messageboard_claim_packet.data
+      event: decide.claim_packet.data
 ```
 
 The storage provider can be SQL, Redis, D1, DynamoDB, object storage, or a
@@ -310,7 +310,7 @@ at `.runx/data/local-sources/source-<digest>.sqlite`. Production capability
 packs keep the same operation inputs and move provider choice into the
 data-source binding rather than forking the domain skill.
 
-Do not put messageboard, CRM, billing, or support-specific state machines into
+Do not put board, CRM, billing, or support-specific state machines into
 the data adapter. Domain skills own meaning; data adapters own bounded reads,
 idempotent writes, and projection evidence. See
 [the governed data plane](./governed-data-plane.md).

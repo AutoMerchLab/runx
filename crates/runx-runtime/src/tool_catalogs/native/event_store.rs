@@ -182,11 +182,7 @@ const fn definition(
             output: "data_operation_result",
             packet: "runx.data.operation_result.v1",
         },
-        admission: CapabilityAdmission::ReusedBy(&[
-            "operator-inbox",
-            "messageboard",
-            "business-ops",
-        ]),
+        admission: CapabilityAdmission::ReusedBy(&["operator-inbox", "business-ops"]),
         fields,
     }
 }

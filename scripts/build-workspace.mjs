@@ -11,7 +11,8 @@ const workspaceRoot = path.resolve(fileURLToPath(new URL("..", import.meta.url))
 const packageRoot = path.join(workspaceRoot, "packages");
 const packageSearchRoots = [packageRoot, path.join(workspaceRoot, "plugins")];
 const runtimeOutDir = path.join(workspaceRoot, ".build", "runtime");
-const tscPath = require.resolve("typescript/bin/tsc");
+const typescriptRoot = path.dirname(require.resolve("typescript/package.json"));
+const tscPath = path.join(typescriptRoot, "bin", "tsc");
 
 const mode = process.argv.includes("--pack") ? "pack" : "dev";
 
